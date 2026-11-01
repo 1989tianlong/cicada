@@ -18,6 +18,10 @@
   <img src="https://img.shields.io/badge/Swift-5-orange" alt="Swift 5">
 </p>
 
+<p align="center">
+  <img src="docs/hero.jpg" width="880" alt="A livestream in English with Live Subs showing the Chinese translation in a subtitle bar">
+</p>
+
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
 ---
@@ -32,6 +36,16 @@ Live Subs listens to what your Mac is playing — a livestream, a video, a meeti
 - **Speak back** — hold ⌥ Space and talk; the room hears your words translated, through a virtual microphone you install from the app.
 - **Meeting records** — every session is saved as a bilingual transcript (with the audio, on your Mac only) and exports to Markdown, Word or SRT.
 - **Private by design** — audio capture, language detection and speech recognition all run on-device.
+
+<p align="center">
+  <img src="docs/panel.png" width="300" alt="The menu bar panel">
+  &nbsp;
+  <img src="docs/meetings.png" width="520" alt="A meeting record with each line in the original language and in translation">
+</p>
+
+<p align="center">
+  <img src="docs/onboarding.png" width="520" alt="First-run guide playing the built-in sample with live subtitles">
+</p>
 
 ## Requirements
 

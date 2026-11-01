@@ -13,8 +13,11 @@ git rev-parse "v$VERSION" >/dev/null 2>&1 && { echo "tag v$VERSION already exist
 grep -q "^## $VERSION — $(date +%Y-%m-%d)" CHANGELOG.md \
   || { echo "add \"## $VERSION — $(date +%Y-%m-%d)\" to CHANGELOG.md first" >&2; exit 1; }
 
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
-git commit -m "Release v$VERSION" Resources/Info.plist
+CURRENT=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+if [[ "$CURRENT" != "$VERSION" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
+  git commit -m "Release v$VERSION" Resources/Info.plist
+fi
 git tag -a "v$VERSION" -m "Live Subs $VERSION"
 git push origin main "v$VERSION"
 echo "Pushed v$VERSION; follow it at https://github.com/wquguru/live-subs/actions/workflows/release.yml"

@@ -10,3 +10,6 @@ the release workflow publishes it as the release notes.
 - New: hold ⌥ Space to speak; your words are translated and spoken into a virtual microphone, installed from the app.
 - New: the subtitle bar shows up only while someone talks, tucks away into a dot, turns see-through when the pointer passes; ⌃⌥S shows or hides it.
 - Improved: on-device recognition with macOS 26 SpeechAnalyzer (no audio leaves the Mac), new icon, DMG installer.
+- Improved: the subtitle bar is only as tall as the translation needs.
+- Fixed: after a language switch the start of the sentence was sometimes lost.
+- Fixed: when translation fails, your untranslated words are no longer spoken into the room.

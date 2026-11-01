@@ -18,6 +18,10 @@
   <img src="https://img.shields.io/badge/Swift-5-orange" alt="Swift 5">
 </p>
 
+<p align="center">
+  <img src="docs/hero.jpg" width="880" alt="英文直播画面上，Live Subs 的字幕条显示中文翻译">
+</p>
+
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
 ---
@@ -36,6 +40,16 @@ Live Subs 听电脑里正在播放的声音，比如直播、视频、会议或�
 - **说话也能翻译**：按住 ⌥ Space 说话，会议里的人听到的是翻译后的语音。这需要一个虚拟麦克风，在 App 里一键安装。
 - **会议记录**：每场会议都自动存成双语稿子（录音只存在本机），可以导出 Markdown、Word 或 SRT。
 - **隐私**：声音采集、语言识别、语音识别都在本机完成。
+
+<p align="center">
+  <img src="docs/panel.png" width="300" alt="菜单栏面板">
+  &nbsp;
+  <img src="docs/meetings.png" width="520" alt="会议记录：每句话都有原文和译文">
+</p>
+
+<p align="center">
+  <img src="docs/onboarding.png" width="520" alt="首次引导：播放内置示例，字幕实时出现">
+</p>
 
 ## 系统要求
 
