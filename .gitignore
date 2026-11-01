@@ -1,0 +1,17 @@
+# Build output
+.build/
+build/
+.swiftpm/
+.swift-module-cache/
+*.xcodeproj/
+*.app
+*.icns
+*.iconset/
+*.dmg
+
+# Local only: old backups, test screenshots, scratch
+v1/
+test-shots/
+
+.DS_Store
+!Resources/dmg/DS_Store

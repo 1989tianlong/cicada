@@ -1,0 +1,531 @@
+import AppKit
+import SwiftUI
+
+enum Palette {
+    static let ink = Color(red: 0.08, green: 0.09, blue: 0.11)
+    static let ground = Color(red: 0.953, green: 0.957, blue: 0.965)
+    static let line = Color(red: 0.894, green: 0.902, blue: 0.918)
+    static let secondary = Color(red: 0.353, green: 0.373, blue: 0.42)
+    static let tertiary = Color(red: 0.42, green: 0.44, blue: 0.50)
+    static let accent = Color(red: 0.91, green: 0.33, blue: 0.17)
+    static let accentInk = Color(red: 0.70, green: 0.23, blue: 0.08)
+    static let accentPale = Color(red: 0.99, green: 0.93, blue: 0.906)
+}
+
+struct LogoTile: View {
+    var size: CGFloat = 34
+    var body: some View { BrandMark(size: size) }
+}
+
+/// A gray rounded row that opens a menu, used for the language choices.
+struct ChoiceRow: View {
+    let label: String
+    let value: String
+    var badge: String? = nil
+    let options: [(id: String, title: String)]
+    let onPick: (String) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(options, id: \.id) { o in
+                Button(o.title) { onPick(o.id) }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(label).font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(width: 44, alignment: .leading)
+                Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Palette.accentInk)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Capsule().fill(Palette.accentPale))
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Palette.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: 11).fill(Palette.ground))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+    }
+}
+
+// MARK: - Menu bar panel
+
+struct MenuPanelView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var settings: AppSettings
+
+    private var sourceOptions: [(id: String, title: String)] {
+        let auto = model.candidates.map(\.name).joined(separator: "、")
+        return [("auto", auto.isEmpty ? "自动识别" : "自动识别（\(auto)）")] + sourceLanguages.map {
+            ($0.locale, model.installed.isEmpty || model.installed.contains($0.locale) ? $0.name : "\($0.name)（需下载）")
+        }
+    }
+
+    private var targetOptions: [(id: String, title: String)] {
+        [("system", "跟随系统（\(settings.systemTargetDescription())）")] + targetLanguages.map { ($0.code, $0.name) }
+    }
+
+    private var heardValue: (String, String?) {
+        switch settings.sourceMode {
+        case .fixed(let l): return (l.name, nil)
+        case .auto: return (model.listen.activeLang?.name ?? "自动", "自动识别")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                LogoTile(size: 34)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Live Subs").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.ink)
+                        if let dev = DevBuild.label {
+                            Text("DEV").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Palette.ink))
+                                .help(dev)
+                        }
+                    }
+                    if let dev = DevBuild.label {
+                        Text(dev).font(.system(size: 10).monospaced()).foregroundStyle(Palette.tertiary).lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        Circle().fill(model.running ? Palette.accent : Color.gray.opacity(0.5)).frame(width: 7, height: 7)
+                        Text(model.running ? model.summary : "已暂停")
+                            .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                Toggle("字幕", isOn: Binding(get: { model.running }, set: { model.setRunning($0) }))
+                    .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
+            }
+
+            VStack(spacing: 8) {
+                ChoiceRow(label: "听到", value: heardValue.0, badge: heardValue.1, options: sourceOptions) {
+                    model.sourceSelection = $0
+                }
+                ChoiceRow(label: "翻译成",
+                          value: targetName(model.listen.resolvedTarget),
+                          badge: settings.target == "system" ? "跟随系统" : nil,
+                          options: targetOptions) {
+                    model.targetSelection = $0
+                }
+            }
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("我说话也翻译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    HStack(spacing: 5) {
+                        Text("按住").foregroundStyle(Palette.secondary)
+                        KeyCap(HotKey.display)
+                        Text("说\(settings.speakFromLang.name) → \(targetName(model.speak.targetCode))")
+                            .foregroundStyle(Palette.secondary).lineLimit(1)
+                    }
+                    .font(.system(size: 12))
+                }
+                Spacer()
+                Toggle("我说话也翻译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
+                    .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
+            }
+            if settings.speakEnabled && model.virtualMic == nil {
+                HStack {
+                    Text("还没有虚拟麦克风，对方听不到").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                    Spacer()
+                    InstallMicButton(installer: model.installer) { model.virtualMicInstalled() }
+                        .font(.system(size: 12))
+                }
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
+            }
+
+            Divider()
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text("字幕条").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Spacer()
+                    Picker("字幕条", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
+                        Text("说话时显示").tag(true)
+                        Text("一直显示").tag(false)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                }
+                if settings.overlayAuto {
+                    HStack {
+                        Text("安静多久后收起").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                        Spacer()
+                        Picker("收起前等待", selection: $settings.overlayHideAfter) {
+                            Text("2 秒").tag(2.0)
+                            Text("4 秒").tag(4.0)
+                            Text("8 秒").tag(8.0)
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                    }
+                }
+                HStack(spacing: 5) {
+                    Text("随时显示 / 隐藏").foregroundStyle(Palette.secondary)
+                    Spacer()
+                    KeyCap("⌃ ⌥ S")
+                }
+                .font(.system(size: 12))
+            }
+
+            Divider()
+
+            HStack {
+                Button("会议记录") { model.openMainWindow?() }
+                Spacer()
+                Button("退出") { NSApp.terminate(nil) }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundStyle(Palette.secondary)
+        }
+        .padding(18)
+        .frame(width: 320)
+        .background(Color.white)
+    }
+}
+
+struct KeyCap: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.82), lineWidth: 1))
+    }
+}
+
+// MARK: - Main window
+
+struct MainWindowView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var store: SessionStore
+    @ObservedObject var settings: AppSettings
+    @State private var selection: String?
+    @State private var query = ""
+    @State private var view = "both"
+    @State private var titleDraft = ""
+
+    private var filtered: [Session] {
+        guard !query.isEmpty else { return store.sessions }
+        return store.sessions.filter { s in
+            s.title.localizedCaseInsensitiveContains(query)
+                || s.lines.contains { $0.src.localizedCaseInsensitiveContains(query) || ($0.dst ?? "").localizedCaseInsensitiveContains(query) }
+        }
+    }
+
+    private var current: Session? { store.session(selection ?? store.sessions.first?.id) }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 270)
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.line, lineWidth: 1))
+                .padding(.trailing, 14).padding(.bottom, 14).padding(.top, 38)
+        }
+        .background(Palette.ground)
+        .sheet(isPresented: $model.showSettings) {
+            SettingsSheet(model: model, settings: settings)
+        }
+    }
+
+    // MARK: Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                LogoTile(size: 28)
+                Text("会议记录").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.ink)
+                Spacer()
+                Button { model.showSettings = true } label: {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 14)).frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain).foregroundStyle(Palette.secondary).help("设置")
+            }
+            .padding(.top, 38)
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Palette.tertiary)
+                TextField("搜索会议内容", text: $query).textFieldStyle(.plain)
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 10).frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.line, lineWidth: 1))
+
+            ScrollView {
+                LazyVStack(spacing: 4) {
+                    ForEach(filtered) { s in
+                        sessionRow(s)
+                    }
+                }
+            }
+            if store.sessions.isEmpty {
+                Text("打开字幕后，每场会议会自动记在这里。")
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .padding(.top, 8)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 14)
+    }
+
+    private func sessionRow(_ s: Session) -> some View {
+        let selected = s.id == (selection ?? store.sessions.first?.id)
+        let live = s.id == store.liveID
+        return Button {
+            selection = s.id
+            titleDraft = s.title
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if live { Circle().fill(Palette.accent).frame(width: 7, height: 7) }
+                    Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
+                }
+                Text(meta(s, live: live)).font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.white : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Palette.line : Color.clear, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) }
+            Button("删除", role: .destructive) { store.delete(s.id) }.disabled(live)
+        }
+    }
+
+    private func meta(_ s: Session, live: Bool) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = Calendar.current.isDateInToday(s.startedAt) ? "今天 HH:mm" : "M月d日 HH:mm"
+        let mins = Int(s.duration / 60)
+        let length = mins < 1 ? "不到 1 分钟" : "\(mins) 分钟"
+        return live ? "进行中 · \(s.lines.count) 句" : "\(f.string(from: s.startedAt)) · \(length) · \(s.lines.count) 句"
+    }
+
+    // MARK: Detail
+
+    @ViewBuilder
+    private var detail: some View {
+        if let s = current {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("标题", text: Binding(
+                            get: { titleDraft.isEmpty ? s.title : titleDraft },
+                            set: { titleDraft = $0 }
+                        ))
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 20, weight: .bold))
+                        .onSubmit { store.rename(s.id, to: titleDraft) }
+                        Text(TranscriptExport.header(s) + " · \(s.lines.count) 句")
+                            .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    }
+                    Spacer()
+                    Picker("显示", selection: $view) {
+                        Text("双语").tag("both")
+                        Text("原文").tag("src")
+                        Text("译文").tag("dst")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                    Menu {
+                        Button("复制为 Markdown") { model.export(s, kind: "copy") }
+                        Divider()
+                        Button("导出 Markdown…") { model.export(s, kind: "md") }
+                        Button("导出 Word…") { model.export(s, kind: "word") }
+                        Button("导出字幕 SRT…") { model.export(s, kind: "srt") }
+                        Divider()
+                        Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) }
+                    } label: {
+                        Text("导出").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 16).frame(height: 32)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Palette.ink))
+                    }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+                    .disabled(s.lines.isEmpty)
+                }
+                .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
+                .onChange(of: s.id) { _, _ in titleDraft = "" }
+
+                Divider().padding(.horizontal, 28)
+
+                if s.lines.isEmpty {
+                    VStack(spacing: 8) {
+                        Spacer()
+                        Text(s.id == store.liveID ? "正在听，说话的内容会出现在这里" : "这场会议没有记录到内容")
+                            .font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(s.lines) { l in
+                                    lineRow(l).id(l.id)
+                                    Divider()
+                                }
+                            }
+                            .padding(.horizontal, 28)
+                        }
+                        .onChange(of: s.lines.count) { _, _ in
+                            if s.id == store.liveID, let last = s.lines.last {
+                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            VStack(spacing: 10) {
+                LogoTile(size: 44)
+                Text("还没有会议记录").font(.system(size: 15, weight: .semibold))
+                Text("打开字幕后，每场会议会自动保存一份双语稿子。")
+                    .font(.system(size: 13)).foregroundStyle(Palette.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func lineRow(_ l: TranscriptLine) -> some View {
+        let me = l.speaker == "me"
+        return HStack(alignment: .top, spacing: 16) {
+            Text(TranscriptExport.clock(l.t))
+                .font(.system(size: 11).monospacedDigit()).foregroundStyle(Palette.tertiary)
+                .frame(width: 44, alignment: .leading).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Circle().fill(me ? Palette.accent : Palette.ink.opacity(0.35)).frame(width: 7, height: 7)
+                    Text(me ? "你" : "对方").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.secondary)
+                }
+                if view != "dst" {
+                    Text(l.src)
+                        .font(.system(size: view == "src" ? 14 : 13))
+                        .foregroundStyle(view == "src" ? Palette.ink : Palette.tertiary)
+                        .textSelection(.enabled)
+                }
+                if view != "src" {
+                    Text(l.dst ?? "翻译中…")
+                        .font(.system(size: 14))
+                        .foregroundStyle(l.dst == nil ? Palette.tertiary : Palette.ink)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Settings sheet
+
+struct SettingsSheet: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var settings: AppSettings
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("设置").font(.system(size: 18, weight: .bold))
+
+            group("会议记录") {
+                Toggle("保存会议录音（只存在这台 Mac 上）", isOn: $settings.recordAudio)
+                Button("打开记录文件夹") { NSWorkspace.shared.open(model.store.root) }
+            }
+
+            group("我说话也翻译") {
+                Picker("我说的语言", selection: Binding(get: { settings.speakFrom },
+                                                    set: { settings.speakFrom = $0; model.speakFromChanged() })) {
+                    ForEach(sourceLanguages, id: \.locale) { Text($0.name).tag($0.locale) }
+                }
+                Picker("对方听到", selection: $settings.speakTo) {
+                    Text("跟随房间语言").tag("room")
+                    ForEach(targetLanguages, id: \.code) { Text($0.name).tag($0.code) }
+                }
+                Picker("声音输出到", selection: $settings.speakOutput) {
+                    Text("自动（优先虚拟麦克风）").tag("")
+                    ForEach(model.outputs) { Text($0.name).tag($0.uid) }
+                }
+                HStack {
+                    Text("按住").foregroundStyle(Palette.secondary)
+                    KeyCap(HotKey.display)
+                    Text("说话，松开后发送译文").foregroundStyle(Palette.secondary)
+                    Spacer()
+                    Button("试听") { model.speak.preview() }
+                }
+                .font(.system(size: 12))
+                if model.virtualMic == nil {
+                    HStack {
+                        Text("让对方听到译文，需要虚拟麦克风")
+                            .font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                        Spacer()
+                        InstallMicButton(installer: model.installer) { model.virtualMicInstalled() }
+                    }
+                } else {
+                    Text("在会议软件里，把麦克风选成 \(model.virtualMic?.name ?? "")")
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                }
+            }
+
+            group("字幕条") {
+                Text("说话时自动出现，安静后收成小点；鼠标经过会变透明。停住不动 0.6 秒可拖动，拖右下角缩放，双击回到默认位置。⌃⌥S 随时显示 / 隐藏。")
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                HStack {
+                    Button("恢复默认位置") { model.overlay.resetPosition() }
+                    Button("重新看引导") { dismiss(); model.onboardingStep = 1; model.openOnboarding?() }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+
+    private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
+            VStack(alignment: .leading, spacing: 10) { content() }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.ground))
+        }
+    }
+}
+
+struct InstallMicButton: View {
+    @ObservedObject var installer: VirtualMicInstaller
+    var onInstalled: () -> Void
+    var body: some View {
+        switch installer.state {
+        case .downloading, .installing:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text(installer.state == .downloading ? "下载中…" : "安装中…").font(.system(size: 12)) }
+        default:
+            Button("一键安装") { installer.install(onInstalled: onInstalled) }
+        }
+    }
+}

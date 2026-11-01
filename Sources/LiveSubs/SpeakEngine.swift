@@ -1,0 +1,435 @@
+import AppKit
+import AVFoundation
+import Carbon.HIToolbox
+import CoreAudio
+import Speech
+
+// MARK: - Output devices
+
+struct OutputDevice: Identifiable, Hashable {
+    let id: AudioObjectID
+    let uid: String
+    let name: String
+    var isVirtualMic: Bool {
+        let n = name.lowercased()
+        return n.contains("blackhole") || n.contains("livesubs") || n.contains("loopback")
+    }
+}
+
+enum AudioDevices {
+    private static func string(_ device: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var value: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        let status = withUnsafeMutablePointer(to: &value) { AudioObjectGetPropertyData(device, &addr, 0, nil, &size, $0) }
+        return status == noErr ? value as String : nil
+    }
+
+    static func outputs() -> [OutputDevice] {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return [] }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.compactMap { id in
+            var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
+                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mElement: kAudioObjectPropertyElementMain)
+            var s: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &streams, 0, nil, &s) == noErr, s > 0,
+                  let uid = string(id, kAudioDevicePropertyDeviceUID),
+                  let name = string(id, kAudioObjectPropertyName),
+                  !uid.hasPrefix("com.wquguru.cicada") else { return nil }
+            return OutputDevice(id: id, uid: uid, name: name)
+        }
+    }
+
+    static var virtualMic: OutputDevice? { outputs().first(where: \.isVirtualMic) }
+}
+
+// MARK: - Push-to-talk hotkey
+
+/// A global hold-to-talk hotkey via Carbon. Unlike NSEvent global monitors it
+/// needs no Accessibility / Input Monitoring permission and reports release.
+final class HotKey {
+    static let display = "⌥ Space"
+    var onDown: (() -> Void)?
+    var onUp: (() -> Void)?
+    private var ref: EventHotKeyRef?
+    private var handler: EventHandlerRef?
+    private let id: UInt32
+    private let keyCode: UInt32
+    private let modifiers: UInt32
+
+    init(id: UInt32 = 1, keyCode: Int = kVK_Space, modifiers: Int = optionKey) {
+        self.id = id
+        self.keyCode = UInt32(keyCode)
+        self.modifiers = UInt32(modifiers)
+        var types = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
+        ]
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, user in
+            guard let event, let user else { return noErr }
+            let hk = Unmanaged<HotKey>.fromOpaque(user).takeUnretainedValue()
+            var hkID = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                              nil, MemoryLayout<EventHotKeyID>.size, nil, &hkID)
+            guard hkID.id == hk.id else { return OSStatus(eventNotHandledErr) }
+            if GetEventKind(event) == UInt32(kEventHotKeyPressed) { hk.onDown?() } else { hk.onUp?() }
+            return noErr
+        }, 2, &types, me, &handler)
+    }
+
+    func register() {
+        guard ref == nil else { return }
+        let hkID = EventHotKeyID(signature: OSType(0x4C535542), id: id) // 'LSUB'
+        RegisterEventHotKey(keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &ref)
+    }
+
+    func unregister() {
+        if let ref { UnregisterEventHotKey(ref) }
+        ref = nil
+    }
+}
+
+// MARK: - Speak engine
+
+/// Hold to talk: microphone → on-device transcription → translation →
+/// system voice → chosen output device (a virtual microphone for the call).
+@MainActor
+final class SpeakEngine {
+    enum Phase { case idle, listening, translating, speaking }
+
+    var onLive: ((_ phase: Phase, _ source: String, _ translation: String) -> Void)?
+    /// A finished utterance for the meeting record.
+    var onUtterance: ((_ source: String, _ translation: String, _ from: String, _ to: String, _ secondsAgo: Double) -> Void)?
+    var onStatus: ((String) -> Void)?
+    /// Translator shared with the listening side.
+    var translate: ((_ text: String, _ from: String, _ to: String) async -> String?)?
+    /// Language the room speaks (for "follow the room").
+    var roomLanguage: (() -> String?)?
+
+    let settings: AppSettings
+    private(set) var phase: Phase = .idle
+
+    private let mic = AVAudioEngine()
+    private let micQueue = DispatchQueue(label: "com.wquguru.cicada.mic", qos: .userInitiated)
+    private let converter = PCMConverter()
+    private var analyzerFormat: AVAudioFormat?
+    private var analyzerLocale = ""
+    private nonisolated(unsafe) var feeding = false
+    private var finals: [String] = []
+    private var volatile = ""
+    private var pressStarted = Date()
+    private nonisolated(unsafe) var micRecorder: AVAudioFile?
+    private nonisolated(unsafe) var micRecordURL: URL?
+
+    private let synth = AVSpeechSynthesizer()
+    private let out = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private var outFormat: AVAudioFormat?
+    private var outDeviceUID: String?
+    /// Debug: also write synthesized speech here.
+    var debugOutputURL: URL?
+
+    init(settings: AppSettings) {
+        self.settings = settings
+        out.attach(player)
+    }
+
+    var targetCode: String {
+        if settings.speakTo != "room" { return settings.speakTo }
+        let room = roomLanguage?() ?? "en"
+        return room == settings.speakFromLang.code ? "en" : room
+    }
+
+    func setRecording(_ url: URL?) {
+        micQueue.sync {
+            micRecorder = nil
+            micRecordURL = url
+        }
+    }
+
+    // MARK: Transcriber
+
+    /// Makes sure the speech model for my language is installed and learns the
+    /// audio format it wants. Each press then gets its own short-lived analyzer.
+    func prepare() async {
+        let lang = settings.speakFromLang
+        guard analyzerLocale != lang.locale || analyzerFormat == nil else { return }
+        let t = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
+                                  reportingOptions: [.volatileResults], attributeOptions: [])
+        do {
+            if await AssetInventory.status(forModules: [t]) != .installed,
+               let req = try await AssetInventory.assetInstallationRequest(supporting: [t]) {
+                onStatus?("正在下载 \(lang.name) 语音模型…")
+                try await req.downloadAndInstall()
+            }
+            analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t])
+                ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
+            analyzerLocale = lang.locale
+            debugLog("speak transcriber ready locale=\(lang.locale)")
+        } catch {
+            debugLog("speak transcriber failed: \(error)")
+            onStatus?("无法准备语音识别：\(error.localizedDescription)")
+        }
+    }
+
+    func teardownAnalyzer() async {
+        utterance?.input.finish()
+        utterance = nil
+        analyzerFormat = nil
+        analyzerLocale = ""
+    }
+
+    /// One press = one analyzer over a finite stream. Finishing the stream and
+    /// awaiting `finalizeAndFinishThroughEndOfInput` guarantees every word
+    /// spoken during the press is in the result before we translate it.
+    private var utterance: (input: AsyncStream<AnalyzerInput>.Continuation, text: Task<String, Never>)?
+
+    private func beginUtterance() -> AsyncStream<AnalyzerInput>.Continuation? {
+        guard analyzerFormat != nil else { return nil }
+        let lang = settings.speakFromLang
+        let t = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
+                                  reportingOptions: [.volatileResults], attributeOptions: [])
+        let (stream, cont) = AsyncStream.makeStream(of: AnalyzerInput.self)
+        finals = []
+        volatile = ""
+        let task = Task { [weak self] () -> String in
+            let collector = Task { [weak self] in
+                do {
+                    for try await r in t.results { self?.handle(r) }
+                } catch {
+                    debugLog("speak recognition error: \(error)")
+                }
+            }
+            let analyzer = SpeechAnalyzer(inputSequence: stream, modules: [t])
+            do {
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
+            } catch {
+                debugLog("speak analyzer error: \(error)")
+            }
+            await collector.value
+            return self?.currentText ?? ""
+        }
+        utterance = (cont, task)
+        return cont
+    }
+
+    private func handle(_ r: SpeechTranscriber.Result) {
+        let text = String(r.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+        if r.isFinal {
+            if !text.isEmpty { finals.append(text) }
+            volatile = ""
+        } else {
+            volatile = text
+        }
+        if phase == .listening { onLive?(.listening, currentText, "") }
+    }
+
+    private var currentText: String {
+        let j = joiner(for: settings.speakFromLang.code)
+        return (finals + [volatile]).filter { !$0.isEmpty }.joined(separator: j.isEmpty ? "" : " ")
+    }
+
+    // MARK: Push to talk
+
+    func pressBegan() {
+        guard settings.speakEnabled, phase == .idle || phase == .speaking else { return }
+        guard let format = analyzerFormat, let input = beginUtterance() else {
+            Task { await prepare() }
+            onStatus?("语音识别还在准备，请再按一次")
+            return
+        }
+        pressStarted = Date()
+        phase = .listening
+        onLive?(.listening, "", "")
+        startMic(format: format, input: input)
+    }
+
+    func pressEnded() {
+        guard phase == .listening else { return }
+        // Keep the mic open a moment so the last syllable isn't cut off.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            MainActor.assumeIsolated { self?.finishUtterance() }
+        }
+    }
+
+    /// Debug path: feed an audio file as if it were spoken into the mic.
+    func speakFile(_ url: URL) {
+        guard phase == .idle || phase == .speaking else { return }
+        guard let format = analyzerFormat, let file = try? AVAudioFile(forReading: url),
+              let input = beginUtterance() else {
+            debugLog("speakFile: not ready or unreadable \(url.path)")
+            return
+        }
+        pressStarted = Date()
+        phase = .listening
+        onLive?(.listening, "", "")
+        let conv = PCMConverter()
+        while true {
+            guard let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 4096),
+                  (try? file.read(into: buf)) != nil, buf.frameLength > 0 else { break }
+            if let c = conv.convert(buf, to: format) { input.yield(AnalyzerInput(buffer: c)) }
+        }
+        finishUtterance()
+    }
+
+    private func startMic(format: AVAudioFormat, input cont: AsyncStream<AnalyzerInput>.Continuation) {
+        let inputNode = mic.inputNode
+        let inFormat = inputNode.outputFormat(forBus: 0)
+        guard inFormat.sampleRate > 0 else {
+            onStatus?("没有可用的麦克风")
+            phase = .idle
+            return
+        }
+        inputNode.removeTap(onBus: 0)
+        let conv = converter
+        let queue = micQueue
+        feeding = true
+        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inFormat) { [weak self] buf, _ in
+            queue.async {
+                guard let self, self.feeding else { return }
+                if let c = conv.convert(buf, to: format) {
+                    cont.yield(AnalyzerInput(buffer: c))
+                    self.recordMic(c)
+                }
+            }
+        }
+        do {
+            try mic.start()
+        } catch {
+            debugLog("mic start failed: \(error)")
+            onStatus?("麦克风无法启动，请在系统设置里允许 Live Subs 使用麦克风")
+            phase = .idle
+        }
+    }
+
+    private nonisolated func recordMic(_ buffer: AVAudioPCMBuffer) {
+        guard let url = micRecordURL else { return }
+        if micRecorder == nil { micRecorder = AudioFileWriter.open(url, format: buffer.format) }
+        try? micRecorder?.write(from: buffer)
+    }
+
+    private func stopMic() {
+        micQueue.sync { feeding = false }
+        if mic.isRunning {
+            mic.inputNode.removeTap(onBus: 0)
+            mic.stop()
+        }
+    }
+
+    private func finishUtterance() {
+        stopMic()
+        phase = .translating
+        guard let u = utterance else { phase = .idle; return }
+        utterance = nil
+        u.input.finish()
+        Task {
+            let text = await u.text.value
+            finals = []
+            volatile = ""
+            guard !text.isEmpty else {
+                phase = .idle
+                onLive?(.idle, "", "")
+                return
+            }
+            let from = settings.speakFromLang.code
+            let to = targetCode
+            onLive?(.translating, text, "")
+            let translated = await translate?(text, from, to) ?? text
+            contentLog("SPEAK [\(from)→\(to)] \(text) => \(translated)")
+            onUtterance?(text, translated, from, to, Date().timeIntervalSince(pressStarted))
+            phase = .speaking
+            onLive?(.speaking, text, translated)
+            await speak(translated, language: to)
+            if phase == .speaking { phase = .idle }
+            onLive?(.idle, text, translated)
+        }
+    }
+
+    // MARK: Voice output
+
+    private func voice(for code: String) -> AVSpeechSynthesisVoice? {
+        let lang = code == "zh-CN" ? "zh-CN" : code == "zh-TW" ? "zh-TW" : code
+        let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix(lang) }
+        return voices.max(by: { $0.quality.rawValue < $1.quality.rawValue }) ?? AVSpeechSynthesisVoice(language: lang)
+    }
+
+    func outputDevice() -> OutputDevice? {
+        let all = AudioDevices.outputs()
+        if !settings.speakOutput.isEmpty, let d = all.first(where: { $0.uid == settings.speakOutput }) { return d }
+        return all.first(where: \.isVirtualMic)
+    }
+
+    private func synthesize(_ text: String, language: String) async -> [AVAudioPCMBuffer] {
+        let u = AVSpeechUtterance(string: text)
+        u.voice = voice(for: language)
+        return await withCheckedContinuation { cont in
+            var buffers: [AVAudioPCMBuffer] = []
+            var done = false
+            synth.write(u) { buf in
+                guard !done else { return }
+                guard let pcm = buf as? AVAudioPCMBuffer, pcm.frameLength > 0 else {
+                    done = true
+                    cont.resume(returning: buffers)
+                    return
+                }
+                buffers.append(pcm)
+            }
+        }
+    }
+
+    func speak(_ text: String, language: String) async {
+        let buffers = await synthesize(text, language: language)
+        guard let first = buffers.first else { return }
+        if let url = debugOutputURL, let f = AudioFileWriter.open(url, format: first.format) {
+            for b in buffers { try? f.write(from: b) }
+        }
+        let device = outputDevice()
+        configureOutput(format: first.format, device: device)
+        do {
+            if !out.isRunning { try out.start() }
+        } catch {
+            debugLog("voice output failed: \(error)")
+            return
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            for (i, b) in buffers.enumerated() {
+                if i == buffers.count - 1 {
+                    player.scheduleBuffer(b, completionCallbackType: .dataPlayedBack) { _ in cont.resume() }
+                } else {
+                    player.scheduleBuffer(b)
+                }
+            }
+            player.play()
+        }
+        debugLog("spoke \(buffers.count) buffers to \(device?.name ?? "default output")")
+    }
+
+    private func configureOutput(format: AVAudioFormat, device: OutputDevice?) {
+        let uid = device?.uid ?? ""
+        guard outFormat != format || outDeviceUID != uid else { return }
+        player.stop()
+        out.stop()
+        if let device, let unit = out.outputNode.audioUnit {
+            var id = device.id
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                 &id, UInt32(MemoryLayout<AudioObjectID>.size))
+        }
+        out.disconnectNodeOutput(player)
+        out.connect(player, to: out.mainMixerNode, format: format)
+        outFormat = format
+        outDeviceUID = uid
+    }
+
+    /// Plays a short sample through the chosen output so the user can check it.
+    func preview() {
+        Task { await speak(targetCode.hasPrefix("zh") ? "这是对方会听到的声音。" : "This is the voice the room will hear.", language: targetCode) }
+    }
+}
