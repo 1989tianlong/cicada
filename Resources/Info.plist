@@ -4,10 +4,17 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh_CN</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
 	<key>CFBundleDisplayName</key>
-	<string>Live Subs</string>
+	<string>Cicada</string>
 	<key>CFBundleExecutable</key>
-	<string>LiveSubs</string>
+	<string>Cicada</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +22,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Live Subs</string>
+	<string>Cicada</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -31,12 +38,12 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 Live Subs</string>
+	<string>Copyright © 2026 知了 Cicada</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>Live Subs 需要读取系统正在播放的声音，用于生成实时字幕。</string>
+	<string>知了需要读取系统正在播放的声音，用于生成实时字幕。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>按住快捷键说话时，Live Subs 需要麦克风把你的话翻译成对方的语言。</string>
+	<string>按住快捷键说话时，知了需要麦克风把你的话翻译成对方的语言。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Live Subs 需要语音识别权限，把音频转成文字。</string>
+	<string>知了需要语音识别权限，把音频转成文字。</string>
 </dict>
 </plist>

@@ -6,21 +6,21 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-[[ -d build/LiveSubs.app && -f build/dmg/background.tiff ]] || { echo "run scripts/package.sh first" >&2; exit 1; }
+[[ -d build/Cicada.app && -f build/dmg/background.tiff ]] || { echo "run scripts/package.sh first" >&2; exit 1; }
 # A neutral scratch path: Finder records the disk image path in the layout.
-WORK=/tmp/livesubs-dmg-template
-[[ ! -e "/Volumes/Live Subs" ]] || { echo "eject the volume named Live Subs first" >&2; exit 1; }
+WORK=/tmp/cicada-dmg-template
+[[ ! -e "/Volumes/Cicada" ]] || { echo "eject the volume named Cicada first" >&2; exit 1; }
 rm -rf "$WORK" && mkdir -p "$WORK/stage/.background"
-cp -R build/LiveSubs.app "$WORK/stage/"
+cp -R build/Cicada.app "$WORK/stage/"
 ln -s /Applications "$WORK/stage/Applications"
 cp build/dmg/background.tiff "$WORK/stage/.background/background.tiff"
-hdiutil create -quiet -srcfolder "$WORK/stage" -volname "Live Subs" -fs HFS+ -format UDRW -size 60m "$WORK/rw.dmg"
+hdiutil create -quiet -srcfolder "$WORK/stage" -volname "Cicada" -fs HFS+ -format UDRW -size 60m "$WORK/rw.dmg"
 hdiutil attach -quiet -readwrite -noverify -noautoopen "$WORK/rw.dmg"
 
 # Window 640 × 400 of content (428 with the title bar); icons at the background's marks.
 osascript <<'APPLESCRIPT'
 tell application "Finder"
-  tell disk "Live Subs"
+  tell disk "Cicada"
     open
     set current view of container window to icon view
     set toolbar visible of container window to false
@@ -31,7 +31,7 @@ tell application "Finder"
     set icon size of opts to 112
     set text size of opts to 13
     set background picture of opts to file ".background:background.tiff"
-    set position of item "LiveSubs.app" of container window to {170, 205}
+    set position of item "Cicada.app" of container window to {170, 205}
     set position of item "Applications" of container window to {470, 205}
     update without registering applications
     delay 2
@@ -42,7 +42,7 @@ APPLESCRIPT
 
 sync
 mkdir -p Resources/dmg
-cp "/Volumes/Live Subs/.DS_Store" Resources/dmg/DS_Store
-hdiutil detach "/Volumes/Live Subs" -quiet
+cp "/Volumes/Cicada/.DS_Store" Resources/dmg/DS_Store
+hdiutil detach "/Volumes/Cicada" -quiet
 rm -rf "$WORK"
 echo "Updated Resources/dmg/DS_Store"

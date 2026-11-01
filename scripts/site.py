@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT_DIR, "site")
 OUT = os.path.join(ROOT_DIR, "build", "site")
-SITE = (os.environ.get("SITE_URL") or "https://wquguru.github.io/live-subs/").rstrip("/") + "/"
-REPO = "https://github.com/wquguru/live-subs"
+SITE = (os.environ.get("SITE_URL") or "https://wquguru.github.io/cicada/").rstrip("/") + "/"
+REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
 STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img"]
 APPS = ["Zoom", "Microsoft Teams", "飞书", "腾讯会议", "Google Meet", "X Spaces", "YouTube 直播",

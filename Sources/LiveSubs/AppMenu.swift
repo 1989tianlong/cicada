@@ -15,7 +15,7 @@ final class AppMenu: NSObject, NSMenuItemValidation {
     }
 
     func install() {
-        let name = DevBuild.isDev ? "Live Subs Dev" : "Live Subs"
+        let name = appDisplayName
         let main = NSMenu()
 
         let app = NSMenu(title: name)

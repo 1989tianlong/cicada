@@ -28,7 +28,7 @@ struct GoogleTranslator {
         guard let url = comps.url else { throw TranslateFailure.badURL }
         var req = URLRequest(url: url)
         req.timeoutInterval = 8
-        req.setValue("LiveSubs/1.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("Cicada/1.1", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw TranslateFailure.parse }
         guard http.statusCode == 200 else { throw TranslateFailure.badResponse(http.statusCode) }

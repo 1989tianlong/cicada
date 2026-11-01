@@ -75,7 +75,7 @@ final class SystemAudioTap {
         // Exclude our own process so the app's spoken translations never
         // come back in as subtitles.
         let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: Self.ownProcessObject().map { [$0] } ?? [])
-        desc.name = "Live Subs"
+        desc.name = "Cicada"
         desc.isPrivate = true
 
         var tap = AudioObjectID(kAudioObjectUnknown)
@@ -87,7 +87,7 @@ final class SystemAudioTap {
 
         let aggregateUID = "com.wquguru.cicada.\(UUID().uuidString)"
         let aggregate: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Live Subs Tap",
+            kAudioAggregateDeviceNameKey: "Cicada Tap",
             kAudioAggregateDeviceUIDKey: aggregateUID,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,

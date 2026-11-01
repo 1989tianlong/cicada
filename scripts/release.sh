@@ -18,6 +18,6 @@ if [[ "$CURRENT" != "$VERSION" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
   git commit -m "Release v$VERSION" Resources/Info.plist
 fi
-git tag -a "v$VERSION" -m "Live Subs $VERSION"
+git tag -a "v$VERSION" -m "知了 Cicada $VERSION"
 git push origin main "v$VERSION"
-echo "Pushed v$VERSION; follow it at https://github.com/wquguru/live-subs/actions/workflows/release.yml"
+echo "Pushed v$VERSION; follow it at https://github.com/wquguru/cicada/actions/workflows/release.yml"

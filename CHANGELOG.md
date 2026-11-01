@@ -5,8 +5,9 @@ the release workflow publishes it as the release notes.
 
 ## Unreleased
 
+- Changed: Live Subs is now 知了 (Cicada in English): new name, new logo, new app id (`com.wquguru.cicada`). macOS treats it as a new app, so it asks again for system audio, microphone and Input Monitoring, and settings and the AI key start fresh; meeting records are kept. Delete the old Live Subs from Applications.
 - New: choose the voice the room hears for each language (Settings › 同声传译 › 对方听到的声音): natural Ming voices, two women and two men where available (Emma, George, Charlotte in English; 小雅, 小棠, 小锋, 卓然 in Chinese; Japanese, Korean, German, French and Spanish too), the Mac's own voices, each with a play button. Or record 15 s of your own voice and the room hears you, in any language (with your accent, about 1.5 s later than the built-in voices). The recording stays on your Mac and is sent to Ling only with what you say.
-- Changed: a new logo (a cicada peeking over a subtitle bar) for the app icon, the menu bar and the app's windows; clearer wording throughout the Chinese interface.
+- Changed: clearer wording throughout the Chinese interface.
 - New: the project is licensed under Apache-2.0, and has a website (Chinese first) with a searchable changelog and an RSS feed.
 - Changed: the Ling API key is kept in a file only your account can read (in the app's Application Support folder, left out of backups) instead of the Keychain, which asked for your password every time the app was updated. A key saved earlier is moved over once (one last password prompt).
 - Changed: settings are now 显示 (who is heard and what it's translated into, then how it shows) / 同声传译 (was 我说话也翻译; the panel uses the new name too) / 会议记录 / AI 服务.
@@ -30,8 +31,8 @@ the release workflow publishes it as the release notes.
 - New: with a key, finished sentences and speak-back are translated by Ling (names kept consistent through the notes' glossary); if Ling is busy or fails, that sentence falls back to Google, then to Apple's on-device translation. Partial text while someone is still talking stays on Google.
 - New: Settings › AI 服务 takes your own Ling (ant-ling.com) API key. It is kept in the macOS Keychain, checked with a one-token request, and shown masked; without a key everything works as before.
 - New: both shortcuts (talk, hide/show the subtitle bar) can be changed in settings: click and press new keys. Combinations without ⌃ or ⌘, system shortcuts and ones another app already uses are refused with a reason.
-
 - Fixed: clicking the live notes window no longer brings the main or settings window forward or takes focus from the meeting app, and the notes window alone no longer puts the app in the Dock. The Dock icon reopens whichever window is open instead of always the main window; exporting from the main window opens the save dialog on it; quitting while a meeting is being recorded asks first; settings remember their position and last tab; the 窗口 menu lists the open windows.
+
 ## 2.0.0 — 2026-11-01
 
 - New: spoken-language auto-detection across the installed on-device models; translation target follows the system language or a manual choice.

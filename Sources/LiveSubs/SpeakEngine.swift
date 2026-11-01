@@ -12,7 +12,7 @@ struct OutputDevice: Identifiable, Hashable {
     let name: String
     var isVirtualMic: Bool {
         let n = name.lowercased()
-        return n.contains("blackhole") || n.contains("livesubs") || n.contains("loopback")
+        return n.contains("blackhole") || n.contains("livesubs") || n.contains("cicada") || n.contains("loopback")
     }
 }
 
@@ -287,7 +287,7 @@ final class SpeakEngine {
             try mic.start()
         } catch {
             debugLog("mic start failed: \(error)")
-            onStatus?("麦克风无法启动，请在系统设置里允许 Live Subs 使用麦克风")
+            onStatus?("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风")
             phase = .idle
         }
     }

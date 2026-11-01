@@ -97,7 +97,7 @@ struct MenuPanelView: View {
                 LogoTile(size: 34)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text("Live Subs").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.ink)
+                        Text(appDisplayName).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.ink)
                         if let dev = DevBuild.label {
                             Text("DEV").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
                                 .padding(.horizontal, 5).padding(.vertical, 1)

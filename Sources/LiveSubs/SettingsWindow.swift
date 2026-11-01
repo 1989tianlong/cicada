@@ -209,7 +209,7 @@ struct TalkKeyPermissionRow: View {
     }
 }
 
-let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Live Subs"
+let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "知了"
 
 // MARK: - Virtual microphone checklist
 

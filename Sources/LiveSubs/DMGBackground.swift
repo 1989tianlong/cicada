@@ -1,6 +1,6 @@
 import AppKit
 
-/// `LiveSubs --render-dmg-background out.png <scale>` draws the installer window's background.
+/// `Cicada --render-dmg-background out.png <scale>` draws the installer window's background.
 /// Finder places the icons on top of it at `appIcon` and `applicationsIcon`, so the art leaves
 /// those spots empty. Keep in step with `scripts/dmg-template.sh`.
 enum DMGBackground {
@@ -34,7 +34,7 @@ enum DMGBackground {
         ctx.setFillColor(CGColor(srgbRed: 0.965, green: 0.969, blue: 0.976, alpha: 1)) // #F6F7F9
         ctx.fill(CGRect(origin: .zero, size: size))
 
-        text("把 Live Subs 拖进「应用程序」", size: 22, weight: .semibold, color: ink, centerX: size.width / 2, top: 40)
+        text("把知了拖进「应用程序」", size: 22, weight: .semibold, color: ink, centerX: size.width / 2, top: 40)
         text("然后在「应用程序」或启动台里打开它", size: 13, weight: .regular, color: secondary, centerX: size.width / 2, top: 76)
 
         // Dotted arrow from the app to Applications.

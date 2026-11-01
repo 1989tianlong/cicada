@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Live Subs is a macOS menu bar app that turns whatever the Mac is playing (streams, videos, meetings, voice rooms) into live translated subtitles, keeps every meeting as a bilingual transcript, and can translate what you say back into the room as speech.
+Cicada (知了, formerly Live Subs) is a macOS menu bar app that turns whatever the Mac is playing (streams, videos, meetings, voice rooms) into live translated subtitles, keeps every meeting as a bilingual transcript, and can translate what you say back into the room as speech.
 
 ## Scope (deliberately small)
 
@@ -22,7 +22,7 @@ Live Subs is a macOS menu bar app that turns whatever the Mac is playing (stream
 
 - Source of truth: the Design canvases in claude.ai (logo directions, onboarding, auto show/hide) and the app itself.
 - Look: light grey ground `#F3F4F6`/`#F6F7F9`, white cards, ink `#15171C`, one accent orange `#E8552B` for "live" (dots, the speaking line, the icon). Text greys `#5A5F6B` / `#6B7080` (they pass 4.5:1 on white).
-- Logo H1: a cicada's eyes and wings peeking over a subtitle bar, on an orange squircle. The geometry (100-unit design space) is in three places kept in step: `CicadaLogo` in `Onboarding.swift` (the in-app `BrandMark` and the one-colour menu bar glyph `BrandImage.menuBar`, 40% when paused), `Sources/LiveSubsIcon` (the app icon) and `site/icon.svg`.
+- Logo B (design: claude.ai/artifact/96R6Md276c3jAS4Mk4Ustn): a cicada's dark eyes and white wings peeking over a white subtitle card that leans 5° and bleeds off the bottom right, on an orange gradient squircle. The geometry (100-unit design space) is in three places kept in step: `CicadaLogo` in `Onboarding.swift` (the in-app `BrandMark` and the one-colour menu bar glyph `BrandImage.menuBar` with a whole card, 40% when paused), its copy in `Sources/LiveSubsIcon` (the app icon) and `site/icon.svg`. After changing it: `scripts/site-images.sh` (site `icon.png`, `og.png`) and `docs/icon.png` (the README's, the app icon's 256 px render).
 - Copy is Chinese, short: one line of grey helper text at most.
 
 ## Layout
@@ -31,8 +31,8 @@ Live Subs is a macOS menu bar app that turns whatever the Mac is playing (stream
 - `Sources/LiveSubs`: the app. Engine files are UI-free: `SystemAudioTap`, `AudioRouter` (resample, feed, ring buffer, recording), `LanguageDetector`, `ListenEngine`, `SpeakEngine`, `Shortcuts` (Carbon `HotKey`, right-⌥ `RightOptionKey`), `Ling` (Keychain key + client), `Notes` (model + engine), `Translator`, `VirtualMic`, `SessionStore` (+ exports). UI: `Overlay` (subtitle bar), `Views` (panel, main window), `SettingsWindow` (settings + the virtual mic checklist), `AISettings`, `NotesWindow` + `NotesViews` (live notes window; notes and transcript views shared with the main window), `Onboarding` (+ sample player, brand mark), `AppMenu` (the menus top left), `AppModel` (wiring, status item, windows, activation policy, debug control, `@main`). `DMGBackground` draws the installer background; `DevBuild` tells dev from release.
 - `Sources/LiveSubsIcon`: CLI that renders the icon set (`--dev` adds the DEV band).
 - `Resources/`: `Info.plist`, `sample/` (the 7 s onboarding clip, made by `scripts/make-sample.sh`), `dmg/DS_Store` (installer window layout).
-- `scripts/build.sh`: builds `build/LiveSubs.app`. Without `RELEASE=1` it is a **dev build**: "Live Subs Dev", bundle id `com.wquguru.cicada.dev`, `LiveSubsDev` = `branch @ commit[+]` in Info.plist; "DEV" beside the menu bar glyph, a DEV badge and the stamp in the panel, a DEV band on the icon, its own settings, permissions, `~/Library/Application Support/LiveSubs Dev` and log `/tmp/livesubs-dev-debug.log`. Both builds are signed ad hoc with a fixed designated requirement (the bundle id) so rebuilding keeps the system-audio and microphone permissions. Don't change the release bundle id `com.wquguru.cicada`: permissions are tied to it.
-- `scripts/package.sh`: `RELEASE=1` build (refuses any other bundle id) → `LiveSubs-<version>-macOS-AppleSilicon.dmg` / `.zip` + `checksums.txt`. The DMG background is drawn by the app (`LiveSubs --render-dmg-background out.png <scale>`); the window layout is `Resources/dmg/DS_Store`, made by Finder via `scripts/dmg-template.sh` — rerun it after changing the window, icon positions or background, and keep `DMGBackground.swift` in step.
+- `scripts/build.sh`: builds `build/Cicada.app` (executable `Cicada`; the SwiftPM product and the source folder are still `LiveSubs`). Shown as 知了 on Chinese systems and Cicada elsewhere (`Resources/*.lproj/InfoPlist.strings`). Without `RELEASE=1` it is a **dev build**: "知了 Dev" / "Cicada Dev", bundle id `com.wquguru.cicada.dev`, `LiveSubsDev` = `branch @ commit[+]` in Info.plist; "DEV" beside the menu bar glyph, a DEV badge and the stamp in the panel, a DEV band on the icon, its own settings, permissions, `~/Library/Application Support/LiveSubs Dev` and log `/tmp/livesubs-dev-debug.log`. Both builds are signed ad hoc with a fixed designated requirement (the bundle id) so rebuilding keeps the system-audio and microphone permissions. Don't change the release bundle id `com.wquguru.cicada`: permissions are tied to it.
+- `scripts/package.sh`: `RELEASE=1` build (refuses any other bundle id) → `Cicada-<version>-macOS-AppleSilicon.dmg` / `.zip` + `checksums.txt`. The DMG background is drawn by the app (`LiveSubs --render-dmg-background out.png <scale>`); the window layout is `Resources/dmg/DS_Store`, made by Finder via `scripts/dmg-template.sh` — rerun it after changing the window, icon positions or background, and keep `DMGBackground.swift` in step.
 - `site/`: the website (GitHub Pages, Chinese first): `index.html` and `changelog.html` are templates sharing `header.html` / `footer.html` and `style.css`; `changelog.json` is the Chinese changelog the site shows (newest first, `"date": null` = not released yet; keep it in step with `CHANGELOG.md`). `scripts/site.py` builds `build/site/` (pages, `feed.xml`, `sitemap.xml`, `robots.txt`; `SITE_URL` sets the address); `.github/workflows/pages.yml` deploys it (skipped while the repo is private). `og.png` and `icon.png` are rendered by `scripts/site-images.sh` (Chrome) from `scripts/site-og.html` and `site/icon.svg`, and committed. Phones get no download: a "发到我的 Mac" button shares or copies the link.
 - `tools/`: test helpers (remote control, synthetic mouse/keys, window capture, transcription check); see `tools/README.md`.
 
@@ -40,7 +40,7 @@ Live Subs is a macOS menu bar app that turns whatever the Mac is playing (stream
 
 ```bash
 swift build                          # debug build
-scripts/build.sh && open build/LiveSubs.app          # dev build (Live Subs Dev)
+scripts/build.sh && open build/Cicada.app            # dev build (知了 Dev)
 RELEASE=1 scripts/build.sh           # release build (com.wquguru.cicada)
 scripts/package.sh                   # DMG + zip + checksums in build/
 scripts/make-sample.sh               # regenerate the onboarding sample clip

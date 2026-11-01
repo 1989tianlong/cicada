@@ -153,7 +153,7 @@ final class Diagnostics: ObservableObject {
     /// Plain text for "复制诊断信息": numbers only, safe to paste anywhere.
     func report(version: String, model: String) -> String {
         func f(_ s: Stat?) -> String { s.map { String(format: "p50 %.2fs p95 %.2fs n=%d", $0.p50, $0.p95, $0.n) } ?? "-" }
-        var lines = ["Live Subs \(version) 诊断  \(Date())", "模型 \(model)"]
+        var lines = ["\(appDisplayName) \(version) 诊断  \(Date())", "模型 \(model)"]
         if let startedAt { lines.append(String(format: "本场 %.0f 分钟", Date().timeIntervalSince(startedAt) / 60)) }
         lines.append("说完到出字幕 " + f(endToEnd))
         lines.append("识别定稿 " + f(recognize))

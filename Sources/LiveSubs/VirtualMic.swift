@@ -73,7 +73,7 @@ final class VirtualMicInstaller: ObservableObject {
             state = .installing
             try? await Task.sleep(nanoseconds: 200_000_000) // let "安装中" show before the dialog
             let cmd = "/usr/sbin/installer -pkg " + shellQuote(pkg.path) + " -target / && " + Self.restartAudio
-            guard runPrivileged(cmd, prompt: "Live Subs 要安装虚拟麦克风，让会议里的人听到你的翻译。") else { return }
+            guard runPrivileged(cmd, prompt: "\(appDisplayName)要安装虚拟麦克风，让会议里的人听到你的翻译。") else { return }
             state = .reloading
             await waitForDevice(onLoaded: onInstalled)
         }
@@ -85,7 +85,7 @@ final class VirtualMicInstaller: ObservableObject {
         Task {
             state = .reloading
             try? await Task.sleep(nanoseconds: 200_000_000)
-            guard runPrivileged(Self.restartAudio, prompt: "Live Subs 要让系统认出虚拟麦克风，声音会断约 1 秒。") else { return }
+            guard runPrivileged(Self.restartAudio, prompt: "\(appDisplayName)要让系统认出虚拟麦克风，声音会断约 1 秒。") else { return }
             await waitForDevice(onLoaded: nil)
         }
     }
@@ -99,7 +99,7 @@ final class VirtualMicInstaller: ObservableObject {
                 _ = await AVCaptureDevice.requestAccess(for: .audio)
             }
             guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
-                test = .init(heard: false, text: "", levels: [], problem: "试音要用麦克风权限，请在系统设置里允许 Live Subs")
+                test = .init(heard: false, text: "", levels: [], problem: "试音要用麦克风权限，请在系统设置里允许\(appDisplayName)")
                 state = .idle
                 return
             }

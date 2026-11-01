@@ -715,6 +715,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.stop()
     }
 
+    /// Dock icon or Finder: bring back what is open; the main window only when nothing is.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         let open = [mainWindow, settingsWindow, onboardingWindow].compactMap { $0 }.filter { $0.isVisible || $0.isMiniaturized }
         if open.isEmpty { showMainWindow() } else { open.forEach { $0.deminiaturize(nil) }; NSApp.activate() }
@@ -745,7 +746,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     .font: NSFont.systemFont(ofSize: 9, weight: .heavy),
                     .baselineOffset: 1,
                 ])
-                button.toolTip = "Live Subs Dev · \(DevBuild.label ?? "")"
+                button.toolTip = "\(appDisplayName) · \(DevBuild.label ?? "")"
             }
             button.action = #selector(togglePopover)
             button.target = self
@@ -777,7 +778,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                              backing: .buffered, defer: false)
-            w.title = DevBuild.isDev ? "Live Subs Dev" : "Live Subs"
+            w.title = appDisplayName
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.isReleasedWhenClosed = false
@@ -806,8 +807,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             w.delegate = self
             w.contentView = NSHostingView(rootView: SettingsView(model: model, settings: model.settings, installer: model.installer))
             w.center()
-            settingsWindow = w
             w.setFrameAutosaveName("LiveSubsSettings")
+            settingsWindow = w
         }
         model.refreshOutputs()
         NSApp.setActivationPolicy(.regular)
@@ -821,7 +822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
                              styleMask: [.titled, .closable, .fullSizeContentView],
                              backing: .buffered, defer: false)
-            w.title = "欢迎使用 Live Subs"
+            w.title = "欢迎使用\(appDisplayName)"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.isReleasedWhenClosed = false
@@ -849,9 +850,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         updateActivationPolicy(closing: w)
     }
 
-    /// A regular app (name and menus top left, Dock icon, ⌘Tab) while any of its windows is
-    /// open, the notes window included; only the menu bar item otherwise. Never activates: the
-    /// notes window appearing must not take focus from the meeting app.
+    /// A regular app (name and menus top left, Dock icon, ⌘Tab) while the main, settings or
+    /// onboarding window is open; only the menu bar item otherwise. The notes window doesn't
+    /// count: it floats beside the meeting app and never takes focus from it.
     func updateActivationPolicy(closing: NSWindow? = nil) {
         let open = [mainWindow, onboardingWindow, settingsWindow].contains { $0 != nil && $0 != closing && $0!.isVisible }
         let policy: NSApplication.ActivationPolicy = open ? .regular : .accessory
