@@ -309,6 +309,8 @@ final class ListenEngine {
             let seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
             nextSegmentID += 1
             segments.append(seg)
+            // Only the last few are shown; in notes mode nothing clears them after a pause.
+            if segments.count > 30 { segments.removeFirst(segments.count - 30) }
             if segments.count > 8 { segments.removeFirst(segments.count - 8) }
             volatileTranslation = ""
             lastVolatileSent = ""

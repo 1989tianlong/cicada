@@ -494,7 +494,7 @@ struct SessionNotesView: View {
 
     private var live: Bool { session.id == model.store.liveID }
     private var notes: MeetingNotes? { live ? engine.notes : session.notes }
-    private var generating: Bool { engine.state == .updating && engine.shownID == session.id }
+    private var generating: Bool { engine.generatingID == session.id }
 
     var body: some View {
         ScrollView {
@@ -512,7 +512,6 @@ struct SessionNotesView: View {
                             HStack(spacing: 8) {
                                 if ling.hasKey {
                                     SoftButton(generating ? "正在生成…" : "生成纪要", dark: true) {
-                                        engine.show(session.id)
                                         engine.generate(for: session.id)
                                     }
                                     .disabled(generating)

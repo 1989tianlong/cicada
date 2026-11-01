@@ -78,6 +78,8 @@ final class NotesEngine: ObservableObject {
     /// Points and topics that appeared in the last update ("新").
     @Published private(set) var fresh: Set<String> = []
     @Published private(set) var summaryChangedAt: Date?
+    /// A finished meeting whose full notes are being written (main window "生成纪要").
+    @Published private(set) var generatingID: String?
 
     let ling: LingClient
     let store: SessionStore
@@ -89,6 +91,8 @@ final class NotesEngine: ObservableObject {
     private(set) var shownID: String?
     private var timer: Timer?
     private var inFlight = false
+    /// A final pass asked for while another call was running; it runs right after.
+    private var pendingFinal: String?
     private var lastAttempt = Date.distantPast
     static let interval: TimeInterval = 45
 
@@ -171,12 +175,25 @@ final class NotesEngine: ObservableObject {
     }
 
     private func update(_ id: String, final: Bool, upto: Int? = nil) async {
-        guard !inFlight, let session = store.session(id), !session.lines.isEmpty else { return }
+        if inFlight {
+            // Never drop the end-of-meeting pass or a "生成纪要" request: queue it.
+            if final { pendingFinal = id; generatingID = id }
+            return
+        }
+        guard let session = store.session(id), !session.lines.isEmpty else { return }
         guard ling.hasKey else { state = .noKey; return }
         inFlight = true
         lastAttempt = Date()
         state = .updating
-        defer { inFlight = false }
+        if final { generatingID = id }
+        defer {
+            inFlight = false
+            if final, generatingID == id { generatingID = nil }
+            if let next = pendingFinal {
+                pendingFinal = nil
+                Task { await update(next, final: true) }
+            }
+        }
 
         let lines = Array(session.lines.prefix(upto ?? session.lines.count))
         let base = final ? MeetingNotes() : (id == shownID ? notes : session.notes ?? MeetingNotes())
