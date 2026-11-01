@@ -175,8 +175,34 @@ enum TranscriptExport {
         return "\(f.string(from: s.startedAt)) · " + (mins < 1 ? "不到 1 分钟" : "\(mins) 分钟")
     }
 
+    /// The notes as Markdown (empty when there are none).
+    static func notesMarkdown(_ n: MeetingNotes?) -> String {
+        guard let n, !n.isEmpty else { return "" }
+        var out = "## 纪要\n\n\(n.summary)\n\n"
+        for t in n.topics {
+            out += "### \(clock(t.start)) \(t.title)\n\n"
+            if !t.summary.isEmpty { out += "\(t.summary)\n\n" }
+            for p in t.points { out += "- \(p)\n" }
+            if let f = t.fishbone {
+                out += "\n**\(f.question)**\n\n"
+                for b in f.branches { out += "- \(b.label)：\(b.detail)\n" }
+            }
+            out += "\n"
+        }
+        if !n.conclusions.isEmpty { out += "### 结论\n\n" + n.conclusions.map { "- \($0.text)\n" }.joined() + "\n" }
+        if !n.todos.isEmpty {
+            out += "### 待办\n\n" + n.todos.map { "- [ ] \($0.text)" + ($0.owner.map { "（\($0)）" } ?? "") + "\n" }.joined() + "\n"
+        }
+        if !n.terms.isEmpty {
+            out += "### 人名和术语\n\n" + n.terms.map { "- **\($0.name)** \($0.note)\n" }.joined() + "\n"
+        }
+        return out
+    }
+
     static func markdown(_ s: Session) -> String {
         var out = "# \(s.title)\n\n\(header(s))\n\n"
+        let notes = notesMarkdown(s.notes)
+        if !notes.isEmpty { out += notes + "## 文字记录\n\n" }
         for l in s.lines {
             out += "**[\(clock(l.t))] \(speakerName(l))**  \n\(l.src)\n"
             if let d = l.dst, d != l.src { out += "> \(d)\n" }
@@ -214,6 +240,29 @@ enum TranscriptExport {
         }
         add(s.title, size: 20, weight: .bold, after: 6)
         add(header(s), size: 10, color: .darkGray, after: 14)
+        if let n = s.notes, !n.isEmpty {
+            add("纪要", size: 15, weight: .bold, after: 6)
+            add(n.summary, size: 11, after: 10)
+            for t in n.topics {
+                add("\(clock(t.start))  \(t.title)", size: 12, weight: .semibold, after: 3)
+                if !t.summary.isEmpty { add(t.summary, size: 11, color: .darkGray, after: 3) }
+                for p in t.points { add("• \(p)", size: 11, after: 2) }
+                if let f = t.fishbone {
+                    add(f.question, size: 11, weight: .semibold, after: 2)
+                    for b in f.branches { add("  – \(b.label)：\(b.detail)", size: 11, after: 2) }
+                }
+                add("", size: 6, after: 4)
+            }
+            if !n.conclusions.isEmpty {
+                add("结论", size: 12, weight: .semibold, after: 3)
+                for c in n.conclusions { add("• \(c.text)", size: 11, after: 2) }
+            }
+            if !n.todos.isEmpty {
+                add("待办", size: 12, weight: .semibold, after: 3)
+                for t in n.todos { add("☐ \(t.text)" + (t.owner.map { "（\($0)）" } ?? ""), size: 11, after: 2) }
+            }
+            add("文字记录", size: 15, weight: .bold, after: 6)
+        }
         for l in s.lines {
             add("[\(clock(l.t))] \(speakerName(l))", size: 9, weight: .semibold, color: .darkGray, after: 2)
             add(l.src, size: 11, after: 2)

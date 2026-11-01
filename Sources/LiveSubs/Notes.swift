@@ -265,6 +265,7 @@ final class NotesEngine: ObservableObject {
         - Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.
         - Every topic, point source, branch, conclusion and to-do needs evidence: the ids of the lines that say it. Never state anything the transcript does not say.
         - terms: at most 10 people, places or jargon words that matter. name is the correct spelling in the transcript's language (no translation in brackets); heard lists only the wrong forms the transcript used; note is a few words.
+        - Write about what was said, never about the transcript or recognition quality.
         - Use empty arrays when there is nothing. No markdown, no text outside the JSON.
         """
         return p

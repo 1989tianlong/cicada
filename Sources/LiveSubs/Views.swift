@@ -248,6 +248,8 @@ struct MainWindowView: View {
     @State private var query = ""
     @State private var view = "both"
     @State private var titleDraft = ""
+    @State private var tab = "notes"
+    @State private var jumpTo: Double?
 
     private var filtered: [Session] {
         guard !query.isEmpty else { return store.sessions }
@@ -369,12 +371,19 @@ struct MainWindowView: View {
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     }
                     Spacer()
-                    Picker("显示", selection: $view) {
-                        Text("双语").tag("both")
-                        Text("原文").tag("src")
-                        Text("译文").tag("dst")
+                    Picker("内容", selection: $tab) {
+                        Text("纪要").tag("notes")
+                        Text("文字记录").tag("transcript")
                     }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 150)
+                    if tab == "transcript" {
+                        Picker("显示", selection: $view) {
+                            Text("双语").tag("both")
+                            Text("原文").tag("src")
+                            Text("译文").tag("dst")
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 150)
+                    }
                     Menu {
                         Button("复制为 Markdown") { model.export(s, kind: "copy") }
                         Divider()
@@ -396,7 +405,12 @@ struct MainWindowView: View {
 
                 Divider().padding(.horizontal, 28)
 
-                if s.lines.isEmpty {
+                if tab == "notes" && !s.lines.isEmpty {
+                    SessionNotesView(model: model, engine: model.notes, ling: model.ling, session: s) { t in
+                        jumpTo = t
+                        tab = "transcript"
+                    }
+                } else if s.lines.isEmpty {
                     VStack(spacing: 8) {
                         Spacer()
                         Text(s.id == store.liveID ? "正在听，说话的内容会出现在这里" : "这场会议没有记录到内容")
@@ -419,6 +433,10 @@ struct MainWindowView: View {
                             if s.id == store.liveID, let last = s.lines.last {
                                 withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                             }
+                        }
+                        .onAppear {
+                            if let t = jumpTo, let l = s.lines.first(where: { $0.t >= t - 1 }) { proxy.scrollTo(l.id, anchor: .top) }
+                            jumpTo = nil
                         }
                     }
                 }
@@ -461,5 +479,55 @@ struct MainWindowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 12)
+    }
+}
+
+
+/// A meeting's notes in the main window: the same notes view as the live window, or a way to
+/// make them for a meeting recorded without a key.
+struct SessionNotesView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var engine: NotesEngine
+    @ObservedObject var ling: LingClient
+    let session: Session
+    let onJump: (Double) -> Void
+
+    private var live: Bool { session.id == model.store.liveID }
+    private var notes: MeetingNotes? { live ? engine.notes : session.notes }
+    private var generating: Bool { engine.state == .updating && engine.shownID == session.id }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if let notes, !notes.isEmpty {
+                    NotesContentView(notes: notes, fresh: live ? engine.fresh : [], live: live, onJump: onJump)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(generating ? "正在整理纪要…" : live ? "纪要会在会议进行中自动生成" : "这场会议还没有纪要")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(ling.hasKey ? "用 Ling 从文字记录整理总结、议题、结论和人名，大约半分钟。"
+                                         : "在 设置 › AI 服务 填上 Ling 的 API key 后就能生成。")
+                            .font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                        if !live {
+                            HStack(spacing: 8) {
+                                if ling.hasKey {
+                                    SoftButton(generating ? "正在生成…" : "生成纪要", dark: true) {
+                                        engine.show(session.id)
+                                        engine.generate(for: session.id)
+                                    }
+                                    .disabled(generating)
+                                } else {
+                                    SoftButton("去填 key", dark: true) { model.openSettings(.ai) }
+                                }
+                            }
+                        }
+                    }
+                    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 18).fill(Palette.raised))
+                }
+            }
+            .padding(.horizontal, 28).padding(.vertical, 20)
+            .frame(maxWidth: 760, alignment: .leading)
+        }
     }
 }
