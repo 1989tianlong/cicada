@@ -16,16 +16,13 @@ struct AISettingsView: View {
                 .padding(.top, 4)
             SettingsCard {
                 usageRow("实时纪要", tag: ling.usable ? "用 Ling" : "需要 key", on: ling.usable,
-                         note: ling.usable ? "会中每 45 秒更新" : "填上 key 才有")
+                         note: ling.usable ? "会中每 45 秒更新" : "填好 key 后可用")
                 usageRow("翻译", tag: ling.usable ? "用 Ling" : "Google", on: ling.usable,
                          note: ling.usable ? "整句用 Ling；不行时换 Google、本机" : "没有 key 时照常可用")
                 usageRow("语音识别", tag: "本机", on: false, note: "更快，不花钱")
-                SettingsRow(title: "我说话时的声音", detail: settings.speakVoice == "ming" ? "Ming 声音，首句约 1.3 秒出声" : "系统声音，不用 key", divider: false) {
-                    PillMenu(value: settings.speakVoice == "ming" ? "Ming 声音" : "系统声音",
-                             options: [("system", "系统声音")] + (ling.usable ? [("ming", "Ming 声音")] : [])) {
-                        settings.speakVoice = $0
-                        model.applyVoice()
-                    }
+                SettingsRow(title: "同声传译的声音", detail: ling.usable ? "Ming 的声音或你自己的声音" : "没有 key 时用本机声音",
+                            divider: false) {
+                    SoftButton("去选声音") { model.settingsSection = .speak }
                 }
             }
             SettingsCard {
@@ -33,7 +30,7 @@ struct AISettingsView: View {
                     PillMenu(value: settings.aiModel, options: LingClient.models.map { ($0, $0) }) { settings.aiModel = $0 }
                 }
             }
-            Text("一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字，语音识别留在本机。")
+            Text("一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字（用你自己的声音时还有那段录音），语音识别留在本机。")
                 .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
         }
     }
@@ -83,7 +80,7 @@ struct AISettingsView: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "lock").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-                Text("加密存在这台 Mac 的钥匙串里，只发给 Ling（ant-ling.com）")
+                Text("只存在这台 Mac 上（只有你的账户能读），只发给 Ling（ant-ling.com）")
                     .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 Spacer()
                 if ling.key != nil && !editing {
@@ -126,9 +123,9 @@ struct AISettingsView: View {
     private var statusDetail: String? {
         switch ling.keyState {
         case .ok(let s): "\(settings.aiModel) · 响应约 \(String(format: "%.1f", s)) 秒"
-        case .invalid: "Ling 说这个令牌无效，检查是否复制完整，或新建一个"
+        case .invalid: "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个"
         case .unreachable(let why): why
-        case .none: "没有 key 时，字幕和翻译照常可用"
+        case .none: "不填 key 时，字幕和翻译仍可正常使用"
         default: nil
         }
     }

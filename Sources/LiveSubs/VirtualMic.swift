@@ -128,7 +128,7 @@ final class VirtualMicInstaller: ObservableObject {
             let digest = SHA256.hash(data: try Data(contentsOf: tmp)).map { String(format: "%02x", $0) }.joined()
             guard digest == Self.packageSHA256 else {
                 debugLog("virtual mic: checksum mismatch \(digest)")
-                state = .failed("安装包校验没通过，已停止")
+                state = .failed("安装包校验未通过，已中止安装")
                 return nil
             }
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("LiveSubsMic", isDirectory: true)
@@ -153,7 +153,7 @@ final class VirtualMicInstaller: ObservableObject {
         guard let errorInfo else { return true }
         let code = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
         debugLog("virtual mic: privileged command error \(errorInfo)")
-        state = code == -128 ? .idle : .failed("没有完成，可以再试一次")
+        state = code == -128 ? .idle : .failed("安装未完成，请再试一次")
         return false
     }
 
@@ -163,7 +163,7 @@ final class VirtualMicInstaller: ObservableObject {
         }
         generation += 1
         guard isLoaded else {
-            state = .failed(isOnDisk ? "系统还没认出它，点“让系统认出它”再试一次" : "安装没有完成，可以再试一次")
+            state = .failed(isOnDisk ? "系统还没认出它，点“让系统认出它”再试一次" : "安装未完成，请再试一次")
             return
         }
         debugLog("virtual mic: loaded")
@@ -202,10 +202,10 @@ enum LoopbackTest {
         let text = loud ? await transcribe(buffers, locale: "en-US") : ""
         // Any real signal counts; the transcript is shown so people can judge it themselves.
         return .init(heard: loud, text: text, levels: levels,
-                     problem: loud ? nil : buffers.isEmpty ? "虚拟麦克风没有送来声音，再试一次" : nil)
+                     problem: loud ? nil : buffers.isEmpty ? "虚拟麦克风未收到声音，请再试一次" : nil)
     }
 
-    private static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> String {
+    static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> String {
         let t = SpeechTranscriber(locale: Locale(identifier: locale), transcriptionOptions: [],
                                   reportingOptions: [], attributeOptions: [])
         guard await AssetInventory.status(forModules: [t]) == .installed,

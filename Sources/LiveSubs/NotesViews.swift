@@ -14,6 +14,10 @@ struct NotesContentView: View {
     var live = false
     var updating = false
     var summaryJustChanged = false
+    /// The time of the last line the notes cover ("到 03:52").
+    var coveredUntil: Double?
+    /// Where the last topic ends when the meeting is over (its last line).
+    var endedAt: Double?
     var onJump: (Double) -> Void = { _ in }
 
     var body: some View {
@@ -24,7 +28,9 @@ struct NotesContentView: View {
                         Text("总结").font(.system(size: 15, weight: .bold))
                         if summaryJustChanged { Tag("刚更新", live: true) }
                         Spacer()
-                        if notes.final { Tag("完整版") } else if live { Tag("速记版") }
+                        if notes.final { Tag("完整版") } else if live {
+                            Tag(coveredUntil.map { "速记版 · 到 \(NotesEngine.clock($0))" } ?? "速记版")
+                        }
                     }
                     Text(notes.summary).font(.system(size: 14)).lineSpacing(4).textSelection(.enabled)
                 }
@@ -37,7 +43,9 @@ struct NotesContentView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     SectionTitle("议题")
                     ForEach(Array(notes.topics.enumerated()), id: \.element.id) { i, topic in
-                        TopicView(topic: topic, current: live && i == notes.topics.count - 1,
+                        TopicView(topic: topic,
+                                  end: i + 1 < notes.topics.count ? notes.topics[i + 1].start : (live ? nil : endedAt),
+                                  current: live && i == notes.topics.count - 1,
                                   updating: updating && i == notes.topics.count - 1, fresh: fresh, onJump: onJump)
                     }
                 }
@@ -57,7 +65,13 @@ struct NotesContentView: View {
                                     .font(.system(size: 14)).lineSpacing(2)
                                     .foregroundStyle(item.support == 0 ? Palette.tertiary : Palette.ink)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                Tag(item.support == 0 ? "依据少" : "依据 \(item.support) 句")
+                                if item.support == 0 {
+                                    Tag("依据较少")
+                                } else if let t = item.t {
+                                    TimeLink(text: "\(NotesEngine.clock(t)) · \(item.support) 句", t: t, onJump: onJump)
+                                } else {
+                                    Tag("依据 \(item.support) 句")
+                                }
                             }
                             .padding(.horizontal, 16).padding(.vertical, 11)
                             if i < notes.conclusions.count + notes.todos.count - 1 { Divider() }
@@ -87,6 +101,8 @@ struct NotesContentView: View {
 
 private struct TopicView: View {
     let topic: NoteTopic
+    /// The next topic's start, or the meeting's end; nil while it is still being discussed.
+    let end: Double?
     let current: Bool
     let updating: Bool
     let fresh: Set<String>
@@ -96,10 +112,10 @@ private struct TopicView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Button { onJump(topic.start) } label: {
-                    Text(NotesEngine.clock(topic.start))
-                        .font(.system(size: 12).monospacedDigit())
+                    Text(range)
+                        .font(.system(size: 12, weight: current ? .semibold : .regular).monospacedDigit())
                         .foregroundStyle(current ? Palette.accentInk : Palette.tertiary)
-                        .frame(width: topic.start >= 3600 ? 56 : 40, alignment: .leading)
+                        .frame(width: column, alignment: .leading)
                 }
                 .buttonStyle(.plain).help("看原话")
                 Text(topic.title).font(.system(size: 15, weight: .bold))
@@ -111,29 +127,61 @@ private struct TopicView: View {
                     Text(topic.summary).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                ForEach(topic.points, id: \.self) { p in
+                ForEach(Array(topic.points.enumerated()), id: \.offset) { i, p in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(fresh.contains(p) ? Palette.accent : Palette.ink.opacity(0.55)).frame(width: 4, height: 4)
                             .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
                         Text(p).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         if fresh.contains(p) { Tag("新", live: true) }
+                        Spacer(minLength: 4)
+                        if let t = topic.pointTime(i) { TimeLink(text: NotesEngine.clock(t), t: t, onJump: onJump) }
                     }
+                    .modifier(FadeIn(active: fresh.contains(p)))
                 }
                 if let fish = topic.fishbone { FishboneView(fishbone: fish, onJump: onJump).padding(.top, 4) }
                 if updating {
-                    VStack(alignment: .leading, spacing: 6) {
-                        RoundedRectangle(cornerRadius: 4).fill(Palette.fill).frame(height: 9).frame(maxWidth: 260)
-                        RoundedRectangle(cornerRadius: 4).fill(Palette.fill).frame(width: 160, height: 9)
-                        Text("正在整理这一段…").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                    VStack(alignment: .leading, spacing: 7) {
+                        SkeletonBar(fraction: 0.82, height: 10, warm: true)
+                        SkeletonBar(fraction: 0.56, height: 10, warm: true)
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 2)
                 }
             }
-            .padding(.leading, topic.start >= 3600 ? 66 : 50)
+            .padding(.leading, column + 10)
         }
         .padding(.vertical, current ? 10 : 0).padding(.horizontal, current ? 10 : 0)
         .background(RoundedRectangle(cornerRadius: 14).fill(current ? Palette.accentWash : .clear))
+    }
+
+    /// "01:04–02:02", or "02:03 起" for the topic being discussed.
+    private var range: String {
+        let from = NotesEngine.clock(topic.start)
+        guard let end, end > topic.start + 1 else { return current ? "\(from) 起" : from }
+        return "\(from)–\(NotesEngine.clock(end))"
+    }
+
+    private var column: CGFloat { (end ?? topic.start) >= 3600 ? 104 : 76 }
+}
+
+/// A small time that jumps to that moment in the transcript.
+struct TimeLink: View {
+    let text: String
+    let t: Double
+    let onJump: (Double) -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button { onJump(t) } label: {
+            Text(text).font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(hover ? Palette.ink : Palette.tertiary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 5).fill(hover ? Palette.fill : .clear))
+                .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help("回到原话")
     }
 }
 
@@ -165,7 +213,7 @@ struct FishboneView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Text("点分支回到原话").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+            Text("点击分支跳回原话").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).stroke(Palette.line, lineWidth: 1))
@@ -198,89 +246,231 @@ struct FishboneView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(weak ? "依据少，仅供参考" : "看原话")
+        .help(weak ? "依据较少，仅供参考" : "看原话")
     }
 }
 
 // MARK: - Transcript
 
-/// The transcript grouped under the notes' topics, newest at the bottom.
+/// The transcript grouped under the notes' topics, oldest first. While live it follows the
+/// newest line; scrolling up pauses that and collects new lines into a "↓ N 句新内容" button.
+/// A search highlights matches in place instead of hiding the lines around them.
 struct TranscriptListView: View {
     let lines: [TranscriptLine]
     let topics: [NoteTopic]
-    var query = ""
+    /// Spellings to highlight: the query, plus the notes' misrecognised forms of a name.
+    var terms: [String] = []
+    var currentMatch: String?
     var bilingual = true
     var live = false
+    /// What is being said right now, not yet a finished line.
+    var partial = ""
+    var partialTime: Double?
     var jumpTo: Double?
 
+    @State private var following = true
+    @State private var seenCount = 0
+
+    private var searching: Bool { !terms.isEmpty }
+    /// The caption keeps the last sentence after it is finished: only show text not yet a line.
+    private var showsPartial: Bool {
+        let p = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard live, !p.isEmpty else { return false }
+        guard let last = lines.last?.src else { return true }
+        return !last.contains(p) && !p.contains(last)
+    }
+
     private var groups: [(title: String, start: Double, lines: [TranscriptLine])] {
-        let shown = query.isEmpty ? lines : lines.filter {
-            $0.src.localizedCaseInsensitiveContains(query) || ($0.dst ?? "").localizedCaseInsensitiveContains(query)
-        }
-        guard !topics.isEmpty else { return [("", 0, shown)] }
+        guard !topics.isEmpty else { return [("", 0, lines)] }
         var out: [(String, Double, [TranscriptLine])] = []
         for (i, t) in topics.enumerated() {
             let end = i + 1 < topics.count ? topics[i + 1].start : .infinity
             let first = i == 0 ? -Double.infinity : t.start
-            let ls = shown.filter { $0.t >= first && $0.t < end }
+            let ls = lines.filter { $0.t >= first && $0.t < end }
             if !ls.isEmpty { out.append((t.title, t.start, ls)) }
         }
         return out
     }
 
+    private struct Edge: Equatable {
+        var distance: CGFloat
+        var height: CGFloat
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(groups, id: \.start) { g in
-                        if !g.title.isEmpty { SectionTitle(g.title).padding(.top, 6) }
-                        FramedList {
-                            ForEach(Array(g.lines.enumerated()), id: \.element.id) { i, l in
-                                row(l, current: live && l.id == lines.last?.id).id(l.id)
-                                if i < g.lines.count - 1 { Divider() }
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        let gs = groups
+                        ForEach(Array(gs.enumerated()), id: \.element.start) { gi, g in
+                            // One lazy child per topic group, with an id to scroll to before it is drawn.
+                            VStack(alignment: .leading, spacing: 10) {
+                                if !g.title.isEmpty {
+                                    Text("\(NotesEngine.clock(g.start)) · \(g.title)")
+                                        .font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.secondary).padding(.top, 6)
+                                }
+                                FramedList {
+                                    ForEach(Array(g.lines.enumerated()), id: \.element.id) { i, l in
+                                        row(l).id(l.id)
+                                        if i < g.lines.count - 1 { Divider() }
+                                    }
+                                    if gi == gs.count - 1, showsPartial {
+                                        Divider()
+                                        partialRow
+                                    }
+                                }
                             }
+                            .id(groupID(g.start))
                         }
+                        if lines.isEmpty && !showsPartial {
+                            Text("说话的内容会出现在这里").font(.system(size: 13)).foregroundStyle(Palette.tertiary)
+                                .frame(maxWidth: .infinity).padding(.top, 40)
+                        }
+                        Color.clear.frame(height: 1).id("bottom")
                     }
-                    if lines.isEmpty {
-                        Text("说话的内容会出现在这里").font(.system(size: 13)).foregroundStyle(Palette.tertiary)
-                            .frame(maxWidth: .infinity).padding(.top, 40)
+                    .padding(.bottom, 12)
+                }
+                .onScrollGeometryChange(for: Edge.self) { g in
+                    Edge(distance: g.contentSize.height - g.contentOffset.y - g.containerSize.height, height: g.contentSize.height)
+                } action: { old, new in
+                    if new.distance < 40 {
+                        if !following { following = true }
+                    } else if following, new.distance > 60, new.height == old.height {
+                        // The reader scrolled up (content growing never pauses following).
+                        following = false
+                        seenCount = lines.count
                     }
                 }
-                .padding(.bottom, 12)
-            }
-            .onChange(of: lines.count) { _, _ in
-                if live, query.isEmpty, let last = lines.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
-            }
-            .onChange(of: jumpTo) { _, t in
-                guard let t, let target = lines.first(where: { $0.t >= t - 1 }) ?? lines.last else { return }
-                withAnimation { proxy.scrollTo(target.id, anchor: .top) }
-            }
-            .onAppear {
-                if let t = jumpTo, let target = lines.first(where: { $0.t >= t - 1 }) {
-                    proxy.scrollTo(target.id, anchor: .top)
-                } else if live, let last = lines.last {
-                    proxy.scrollTo(last.id, anchor: .bottom)
+                .onChange(of: lines.count) { _, _ in follow(proxy) }
+                .onChange(of: partial) { _, _ in follow(proxy) }
+                .onChange(of: currentMatch) { _, id in
+                    guard let id, let line = lines.first(where: { $0.id == id }) else { return }
+                    reveal(line, anchor: .center, proxy)
+                }
+                .onChange(of: jumpTo) { _, t in
+                    guard let t, let target = lines.first(where: { $0.t >= t - 1 }) ?? lines.last else { return }
+                    following = false
+                    seenCount = lines.count
+                    reveal(target, anchor: .top, proxy)
+                }
+                .onAppear {
+                    seenCount = lines.count
+                    if let t = jumpTo, let target = lines.first(where: { $0.t >= t - 1 }) {
+                        following = false
+                        reveal(target, anchor: .top, proxy)
+                    } else if live {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+
+                if live, !following, !searching, lines.count > seenCount {
+                    newLinesButton { following = true; proxy.scrollTo("bottom", anchor: .bottom) }
                 }
             }
         }
     }
 
-    private func row(_ l: TranscriptLine, current: Bool) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text(NotesEngine.clock(l.t)).font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(current ? Palette.accentInk : Palette.tertiary)
+    private func groupID(_ start: Double) -> String { "group-\(start)" }
+
+    /// Rows inside a topic group that the lazy stack hasn't drawn yet can't be scrolled to:
+    /// bring the group in first, then the line.
+    private func reveal(_ line: TranscriptLine, anchor: UnitPoint, _ proxy: ScrollViewProxy) {
+        if let g = groups.last(where: { $0.lines.contains { $0.id == line.id } }) {
+            proxy.scrollTo(groupID(g.start), anchor: .top)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation { proxy.scrollTo(line.id, anchor: anchor) }
+        }
+    }
+
+    private func follow(_ proxy: ScrollViewProxy) {
+        guard live, following, !searching else { return }
+        proxy.scrollTo("bottom", anchor: .bottom)
+    }
+
+    private func newLinesButton(_ action: @escaping () -> Void) -> some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom).frame(height: 40)
+            Button(action: action) {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down").font(.system(size: 12, weight: .bold))
+                    Text("\(lines.count - seenCount) 句新内容").font(.system(size: 13, weight: .semibold))
+                    if let last = lines.last {
+                        Text(last.src).font(.system(size: 13)).foregroundStyle(Color(white: 0.74)).lineLimit(1)
+                    }
+                }
+                .foregroundStyle(.white)
+                .padding(.leading, 14).padding(.trailing, 18).frame(height: 40)
+                .background(Capsule().fill(Palette.ink).shadow(color: .black.opacity(0.18), radius: 12, y: 6))
+                .frame(maxWidth: 380)
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity)
+            .background(Color.white)
+        }
+        .transition(.opacity)
+    }
+
+    private func matches(_ l: TranscriptLine) -> Bool {
+        terms.contains { l.src.localizedCaseInsensitiveContains($0) || (l.dst ?? "").localizedCaseInsensitiveContains($0) }
+    }
+
+    private func highlighted(_ text: String, current: Bool) -> AttributedString {
+        var a = AttributedString(text)
+        for term in terms where !term.isEmpty {
+            var from = a.startIndex
+            while from < a.endIndex, let r = a[from...].range(of: term, options: .caseInsensitive) {
+                a[r].backgroundColor = current ? Palette.accent : Palette.accentPale
+                a[r].foregroundColor = current ? .white : Palette.accentInk
+                from = r.upperBound
+            }
+        }
+        return a
+    }
+
+    private func row(_ l: TranscriptLine) -> some View {
+        let isMatch = l.id == currentMatch
+        let latest = live && l.id == lines.last?.id
+        let dim = searching && !matches(l)
+        return HStack(alignment: .top, spacing: 12) {
+            Text(NotesEngine.clock(l.t)).font(.system(size: 12, weight: isMatch ? .semibold : .regular).monospacedDigit())
+                .foregroundStyle(latest || isMatch ? Palette.accentInk : Palette.tertiary)
                 .frame(width: l.t >= 3600 ? 56 : 40, alignment: .leading).padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
-                Text(l.src).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
+                Text(highlighted(l.src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                 if bilingual, let d = l.dst, d != l.src {
-                    Text(d).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineSpacing(2).textSelection(.enabled)
+                    Text(highlighted(d, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                        .lineSpacing(2).textSelection(.enabled)
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(current ? Palette.accentWash : Color.clear)
+        .background(latest || isMatch ? Palette.accentWash : Color.clear)
+        .opacity(dim ? 0.5 : 1)
+    }
+
+    private var partialRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(partialTime.map(NotesEngine.clock) ?? "").font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(Palette.accentInk)
+                .frame(width: (partialTime ?? 0) >= 3600 ? 56 : 40, alignment: .leading).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .lastTextBaseline, spacing: 0) {
+                    Text(partial).font(.system(size: 14)).foregroundStyle(Palette.secondary).lineSpacing(2)
+                    AnimatedDots().font(.system(size: 14)).foregroundStyle(Palette.secondary)
+                }
+                Text("正在说").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(Palette.accentWash)
+        .id("partial")
     }
 }
 
@@ -345,5 +535,191 @@ struct FlowLayout: Layout {
             x += s.width + spacing
             row = max(row, s.height)
         }
+    }
+}
+
+// MARK: - Motion (notes in progress)
+// One moving thing at a time says the app is working. Driven by TimelineView rather than
+// repeatForever animations, which the window's once-a-second redraw would restart.
+
+private func phase(_ date: Date, period: Double, delay: Double = 0) -> Double {
+    let t = date.timeIntervalSinceReferenceDate - delay
+    return (t.truncatingRemainder(dividingBy: period) + period).truncatingRemainder(dividingBy: period) / period
+}
+
+/// Listening, nobody has spoken yet: five sound bars with a soft ring pulsing behind them.
+struct ListeningMark: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+            let ring = phase(ctx.date, period: 2)
+            ZStack {
+                Circle().fill(Palette.accentPale)
+                    .scaleEffect(0.8 + 0.8 * ring).opacity(0.55 * (1 - ring))
+                HStack(spacing: 6) {
+                    ForEach(0..<5, id: \.self) { i in
+                        let p = phase(ctx.date, period: 1.1, delay: Double(i) * 0.15)
+                        Capsule().fill(Palette.accent).frame(width: 6, height: 44)
+                            .scaleEffect(x: 1, y: 0.25 + 0.75 * (0.5 - 0.5 * cos(p * 2 * .pi)))
+                    }
+                }
+            }
+            .frame(width: 120, height: 120)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A small orange ring spinner.
+struct Spinner: View {
+    var size: CGFloat = 16
+    var track = Palette.accentPale
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+            ZStack {
+                Circle().stroke(track, lineWidth: 2)
+                Circle().trim(from: 0, to: 0.25)
+                    .stroke(Palette.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(phase(ctx.date, period: 0.9) * 360))
+            }
+            .frame(width: size, height: size)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// "…" whose dots light up one after another.
+struct AnimatedDots: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 15)) { ctx in
+            HStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { i in
+                    Text(".").opacity(0.3 + 0.7 * (0.5 - 0.5 * cos(phase(ctx.date, period: 1.2, delay: Double(i) * 0.2) * 2 * .pi)))
+                }
+            }
+        }
+    }
+}
+
+/// The live dot beside "正在记录", breathing slowly.
+struct LiveDot: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 15)) { ctx in
+            Circle().fill(Palette.accent).frame(width: 7, height: 7)
+                .opacity(0.35 + 0.65 * (0.5 + 0.5 * cos(phase(ctx.date, period: 1.4) * 2 * .pi)))
+        }
+    }
+}
+
+/// A placeholder line with a light sweeping across it. `warm` is the pale orange used inside
+/// the topic being updated.
+struct SkeletonBar: View {
+    var fraction: CGFloat = 1
+    var height: CGFloat = 12
+    var warm = false
+
+    var body: some View {
+        let base = warm ? Color(red: 0.965, green: 0.89, blue: 0.86) : Color(red: 0.933, green: 0.941, blue: 0.953)
+        let light = warm ? Color(red: 0.992, green: 0.953, blue: 0.933) : Color(red: 0.969, green: 0.973, blue: 0.98)
+        GeometryReader { g in
+            TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+                let x = phase(ctx.date, period: 1.4) * 2 - 0.5
+                RoundedRectangle(cornerRadius: min(6, height / 2))
+                    .fill(LinearGradient(stops: [.init(color: base, location: 0), .init(color: light, location: 0.5),
+                                                 .init(color: base, location: 1)],
+                                         startPoint: UnitPoint(x: x - 0.6, y: 0.5), endPoint: UnitPoint(x: x + 0.6, y: 0.5)))
+                    .frame(width: g.size.width * fraction)
+            }
+        }
+        .frame(height: height)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Listening, nothing said yet.
+struct NotesListeningView: View {
+    var body: some View {
+        VStack(spacing: 22) {
+            ListeningMark()
+            VStack(spacing: 8) {
+                Text("正在听").font(.system(size: 17, weight: .bold))
+                Text("有人说话时，会自动开始写纪要").font(.system(size: 13)).foregroundStyle(Palette.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// The first version of the notes is being written: a spinner, how much has been heard, and
+/// the shape of the notes shimmering where they will appear.
+struct NotesGeneratingView: View {
+    var heard: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 10) {
+                Spinner()
+                HStack(spacing: 0) {
+                    Text("正在生成纪要")
+                    AnimatedDots()
+                }
+                .font(.system(size: 15, weight: .bold))
+                Spacer()
+                if let heard, heard > 0 {
+                    Text("已听到 \(heard) 句").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                }
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text("总结").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.placeholder)
+                SkeletonBar()
+                SkeletonBar(fraction: 0.92)
+                SkeletonBar(fraction: 0.64)
+            }
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Palette.raised))
+            VStack(alignment: .leading, spacing: 14) {
+                Text("议题").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.placeholder)
+                topicRow(lines: [0.55, 0.88, 0.72])
+                topicRow(lines: [0.42, 0.8]).opacity(0.6)
+            }
+        }
+    }
+
+    private func topicRow(lines: [CGFloat]) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            SkeletonBar(height: 12).frame(width: 36)
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { i, f in
+                    SkeletonBar(fraction: f, height: i == 0 ? 14 : 10)
+                }
+            }
+        }
+    }
+}
+
+/// "正在更新" pill in the header while notes that already exist are being updated.
+struct UpdatingPill: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            Spinner(size: 12, track: Color(red: 0.965, green: 0.847, blue: 0.796))
+            Text("正在更新").font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(Palette.accentInk)
+        .padding(.horizontal, 11).padding(.vertical, 6)
+        .background(Capsule().fill(Palette.accentPale))
+        .fixedSize()
+    }
+}
+
+/// A point that just arrived fades in from slightly below.
+struct FadeIn: ViewModifier {
+    let active: Bool
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(!active || shown ? 1 : 0)
+            .offset(y: !active || shown ? 0 : 4)
+            .onAppear { if active { withAnimation(.easeOut(duration: 0.6)) { shown = true } } }
     }
 }

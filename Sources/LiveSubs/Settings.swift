@@ -57,12 +57,18 @@ final class AppSettings: ObservableObject {
     @Published var displayMode: String {
         didSet { save() }
     }
-    /// Voice for speak-back: "system" or "ming" (Ming TTS through the Ling key).
-    @Published var speakVoice: String {
+    /// The voice the room hears, per language ("en" → "ming:US_Emma", "system:<id>" or "clone").
+    /// A language not listed uses `VoiceCatalog.defaultID`.
+    @Published var speakVoices: [String: String] {
         didSet { save() }
     }
     /// Ling model for notes and translation.
     @Published var aiModel: String {
+        didSet { save() }
+    }
+
+    /// Record per-sentence timings (never text) and show the 诊断 tab. On by default in dev builds.
+    @Published var diagnostics: Bool {
         didSet { save() }
     }
 
@@ -88,7 +94,8 @@ final class AppSettings: ObservableObject {
         toggleKey = Shortcut(stored: defaults.string(forKey: "toggleKey")) ?? .defaultToggle
         aiModel = defaults.string(forKey: "aiModel") ?? "Ling-3.1-flash"
         displayMode = defaults.string(forKey: "displayMode") ?? "notes"
-        speakVoice = defaults.string(forKey: "speakVoice") ?? "system"
+        speakVoices = defaults.dictionary(forKey: "speakVoices") as? [String: String] ?? [:]
+        diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
     }
 
     private func save() {
@@ -108,7 +115,8 @@ final class AppSettings: ObservableObject {
         defaults.set(toggleKey.stored, forKey: "toggleKey")
         defaults.set(aiModel, forKey: "aiModel")
         defaults.set(displayMode, forKey: "displayMode")
-        defaults.set(speakVoice, forKey: "speakVoice")
+        defaults.set(speakVoices, forKey: "speakVoices")
+        defaults.set(diagnostics, forKey: "diagnostics")
     }
 
     /// Target language. "Follow system" uses the first system language that

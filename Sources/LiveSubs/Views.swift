@@ -20,6 +20,8 @@ enum Palette {
     static let okPale = Color(red: 0.906, green: 0.961, blue: 0.925)
     static let error = Color(red: 0.706, green: 0.137, blue: 0.094)
     static let errorPale = Color(red: 0.992, green: 0.925, blue: 0.918)
+    /// Headings over placeholder shapes while notes are being written.
+    static let placeholder = Color(red: 0.722, green: 0.741, blue: 0.776)
 }
 
 struct LogoTile: View {
@@ -133,7 +135,7 @@ struct MenuPanelView: View {
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("我说话也翻译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Text("同声传译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
                     HStack(spacing: 5) {
                         Text("按住").foregroundStyle(Palette.secondary)
                         KeyCap(settings.talkKey.display)
@@ -143,12 +145,12 @@ struct MenuPanelView: View {
                     .font(.system(size: 12))
                 }
                 Spacer()
-                Toggle("我说话也翻译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
+                Toggle("同声传译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
                     .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
             }
             if settings.speakEnabled && model.virtualMic == nil {
                 HStack {
-                    Text("虚拟麦克风还没设置好，对方听不到").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                    Text("虚拟麦克风尚未设置好，对方听不到你的声音").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
                     Spacer()
                     SoftButton("设置") { model.openSettings(.speak) }
                 }
@@ -171,7 +173,7 @@ struct MenuPanelView: View {
                 }
                 if settings.displayMode == "notes" {
                     HStack {
-                        Text(model.ling.hasKey ? "纪要、文字记录和字幕都在一个窗口里" : "填上 API key 才有纪要；文字记录照常")
+                        Text(model.ling.hasKey ? "纪要、文字记录和字幕都在一个窗口里" : "填入 API key 后可生成纪要；文字记录照常保存")
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                         Spacer()
                         SoftButton("打开") { model.openNotesWindow() }
@@ -182,8 +184,8 @@ struct MenuPanelView: View {
                         Text("字幕条").font(.system(size: 12)).foregroundStyle(Palette.secondary)
                         Spacer()
                         Picker("字幕条", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
-                            Text("说话时显示").tag(true)
-                            Text("一直显示").tag(false)
+                            Text("有人说话时显示").tag(true)
+                            Text("始终显示").tag(false)
                         }
                         .pickerStyle(.segmented).labelsHidden().frame(width: 170)
                     }
@@ -306,7 +308,7 @@ struct MainWindowView: View {
                 }
             }
             if store.sessions.isEmpty {
-                Text("打开字幕后，每场会议会自动记在这里。")
+                Text("开启字幕后，每场会议都会自动保存在这里。")
                     .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     .padding(.top, 8)
                 Spacer()
@@ -445,7 +447,7 @@ struct MainWindowView: View {
             VStack(spacing: 10) {
                 LogoTile(size: 44)
                 Text("还没有会议记录").font(.system(size: 15, weight: .semibold))
-                Text("打开字幕后，每场会议会自动保存一份双语稿子。")
+                Text("开启字幕后，每场会议都会自动保存一份双语记录。")
                     .font(.system(size: 13)).foregroundStyle(Palette.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -501,12 +503,14 @@ struct SessionNotesView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let notes, !notes.isEmpty {
                     NotesContentView(notes: notes, fresh: live ? engine.fresh : [], live: live, onJump: onJump)
+                } else if generating || (live && ling.hasKey && !session.lines.isEmpty) {
+                    NotesGeneratingView(heard: session.lines.count)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(generating ? "正在整理纪要…" : live ? "纪要会在会议进行中自动生成" : "这场会议还没有纪要")
                             .font(.system(size: 15, weight: .bold))
-                        Text(ling.hasKey ? "用 Ling 从文字记录整理总结、议题、结论和人名，大约半分钟。"
-                                         : "在 设置 › AI 服务 填上 Ling 的 API key 后就能生成。")
+                        Text(ling.hasKey ? "使用 Ling 将文字记录整理为总结、议题、结论和人名，约需半分钟。"
+                                         : "前往 设置 › AI 服务 填入 Ling 的 API key 后即可生成。")
                             .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         if !live {
                             HStack(spacing: 8) {

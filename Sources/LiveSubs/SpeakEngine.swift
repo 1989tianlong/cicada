@@ -48,6 +48,16 @@ enum AudioDevices {
     }
 
     static var virtualMic: OutputDevice? { outputs().first(where: \.isVirtualMic) }
+
+    /// The system output (speakers or headphones): voice previews play here, not into the room.
+    static var defaultOutput: OutputDevice? {
+        var id = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                              mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &id) == noErr else { return nil }
+        return outputs().first { $0.id == id }
+    }
 }
 
 // MARK: - Speak engine
@@ -63,7 +73,10 @@ final class SpeakEngine {
     var onUtterance: ((_ source: String, _ translation: String, _ from: String, _ to: String, _ secondsAgo: Double) -> Void)?
     var onStatus: ((String) -> Void)?
     /// Translator shared with the listening side.
-    var translate: ((_ text: String, _ from: String, _ to: String) async -> String?)?
+    var translate: ((_ text: String, _ from: String, _ to: String, _ trace: TranslateTrace) async -> String?)?
+    /// Diagnostics: key released → transcript → translation → voice finished.
+    var onTiming: ((SentenceTiming) -> Void)?
+    private var releasedAt: Date?
     /// Language the room speaks (for "follow the room").
     var roomLanguage: (() -> String?)?
 
@@ -196,7 +209,7 @@ final class SpeakEngine {
         guard settings.speakEnabled, phase == .idle || phase == .speaking else { return }
         guard let format = analyzerFormat, let input = beginUtterance() else {
             Task { await prepare() }
-            onStatus?("语音识别还在准备，请再按一次")
+            onStatus?("语音识别仍在准备中，请再按一次")
             return
         }
         debugLog("speak: press began")
@@ -222,6 +235,7 @@ final class SpeakEngine {
     func pressEnded() {
         guard phase == .listening else { return }
         debugLog("speak: press ended")
+        releasedAt = Date()
         // Keep the mic open a moment so the last syllable isn't cut off.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             MainActor.assumeIsolated { self?.finishUtterance() }
@@ -298,8 +312,11 @@ final class SpeakEngine {
         guard let u = utterance else { phase = .idle; return }
         utterance = nil
         u.input.finish()
+        let released = releasedAt ?? Date()
+        releasedAt = nil
         Task {
             let text = await u.text.value
+            let textAt = Date()
             finals = []
             volatile = ""
             guard !text.isEmpty else {
@@ -312,10 +329,19 @@ final class SpeakEngine {
             onLive?(.translating, text, "")
             // Never speak the untranslated original into the room: if translation
             // fails, say so on the bar and send nothing.
-            guard let translated = await translate?(text, from, to) else {
+            let trace = TranslateTrace()
+            let result = await translate?(text, from, to, trace)
+            let translatedAt = Date()
+            @MainActor func timing(voice: Double?) -> SentenceTiming {
+                SentenceTiming(at: textAt, side: "me", chars: text.count, recognize: textAt.timeIntervalSince(released),
+                               queue: trace.lingQueue, translate: translatedAt.timeIntervalSince(textAt), voice: voice,
+                               failed: trace.failedSeconds, via: result == nil ? "none" : trace.via, fallbacks: trace.fallbacks)
+            }
+            guard let translated = result else {
                 debugLog("speak: translation failed, nothing sent")
+                onTiming?(timing(voice: nil))
                 phase = .idle
-                onLive?(.idle, text, "翻译失败，这句没有发出")
+                onLive?(.idle, text, "翻译失败，这句话未发送")
                 return
             }
             contentLog("SPEAK [\(from)→\(to)] \(text) => \(translated)")
@@ -323,6 +349,7 @@ final class SpeakEngine {
             phase = .speaking
             onLive?(.speaking, text, translated)
             await speak(translated, language: to)
+            onTiming?(timing(voice: Date().timeIntervalSince(translatedAt)))
             if phase == .speaking { phase = .idle }
             onLive?(.idle, text, translated)
         }
@@ -330,7 +357,8 @@ final class SpeakEngine {
 
     // MARK: Voice output
 
-    private func voice(for code: String) -> AVSpeechSynthesisVoice? {
+    private func voice(for code: String, identifier: String? = nil) -> AVSpeechSynthesisVoice? {
+        if let identifier, let v = AVSpeechSynthesisVoice(identifier: identifier) { return v }
         let lang = code == "zh-CN" ? "zh-CN" : code == "zh-TW" ? "zh-TW" : code
         let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix(lang) }
         return voices.max(by: { $0.quality.rawValue < $1.quality.rawValue }) ?? AVSpeechSynthesisVoice(language: lang)
@@ -342,9 +370,9 @@ final class SpeakEngine {
         return all.first(where: \.isVirtualMic)
     }
 
-    private func synthesize(_ text: String, language: String) async -> [AVAudioPCMBuffer] {
+    private func synthesize(_ text: String, language: String, voiceID: String?) async -> [AVAudioPCMBuffer] {
         let u = AVSpeechUtterance(string: text)
-        u.voice = voice(for: language)
+        u.voice = voice(for: language, identifier: voiceID)
         return await withCheckedContinuation { cont in
             var buffers: [AVAudioPCMBuffer] = []
             var done = false
@@ -361,12 +389,27 @@ final class SpeakEngine {
     }
 
     /// `device` overrides the chosen output (the virtual mic sound test).
-    /// Set by the app: Ming's voice as a PCM stream, when chosen and a key is set.
-    var mingVoice: ((String) -> AsyncThrowingStream<Data, Error>)?
+    /// How a language is voiced: a PCM stream (Ming's built-in voices or the user's cloned one) or
+    /// a voice on this Mac (nil: the best one for the language).
+    enum VoiceRoute {
+        case stream((String) -> AsyncThrowingStream<Data, Error>)
+        case system(String?)
+    }
 
-    func speak(_ text: String, language: String, device override: OutputDevice? = nil) async {
-        if let ming = mingVoice, await speakStream(ming(text), device: override ?? outputDevice()) { return }
-        let buffers = await synthesize(text, language: language)
+    /// Set by the app: the voice chosen for a language.
+    var route: ((String) -> VoiceRoute)?
+
+    /// Returns after the audio has played. A stream that fails before any audio falls back to the
+    /// Mac's voice, so the room always hears the sentence.
+    func speak(_ text: String, language: String, device override: OutputDevice? = nil, route forced: VoiceRoute? = nil) async {
+        var voiceID: String?
+        switch forced ?? route?(language) ?? .system(nil) {
+        case .stream(let make):
+            if await speakStream(make(text), device: override ?? outputDevice()) { return }
+        case .system(let id):
+            voiceID = id
+        }
+        let buffers = await synthesize(text, language: language, voiceID: voiceID)
         guard let first = buffers.first else { return }
         if let url = debugOutputURL, let f = AudioFileWriter.open(url, format: first.format) {
             for b in buffers { try? f.write(from: b) }

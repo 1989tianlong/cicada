@@ -63,32 +63,49 @@ final class TranslationService {
 
     init(ling: LingClient) { self.ling = ling }
 
-    func translate(_ text: String, source: String, target: String, kind: Kind) async -> String? {
+    /// `trace`, when given, collects which providers were tried, how long each took and why it
+    /// fell through (diagnostics; never the text).
+    func translate(_ text: String, source: String, target: String, kind: Kind, trace: TranslateTrace? = nil) async -> String? {
         if source == target { return text }
         if kind != .draft, ling.usable {
-            if let out = await viaLing(text, source: source, target: target, kind: kind) {
+            let started = Date()
+            let (out, failure) = await viaLing(text, source: source, target: target, kind: kind, trace: trace)
+            trace?.attempts.append(.init(provider: "ling", seconds: Date().timeIntervalSince(started), failure: out == nil ? failure : nil))
+            if let out {
                 debugLog("translate via=ling kind=\(kind)")
                 return out
             }
         }
         if Date() >= googleBackoffUntil {
+            let started = Date()
             do {
                 let out = try await GoogleTranslator.translate(text, source: source, target: target)
+                trace?.attempts.append(.init(provider: "google", seconds: Date().timeIntervalSince(started), failure: nil))
                 if kind != .draft { debugLog("translate via=google kind=\(kind)") }
                 return out
             } catch {
                 debugLog("translate google failed: \(error)")
+                var reason = "error"
+                if case TranslateFailure.badResponse(let code) = error { reason = code == 429 ? "rateLimited" : "http\(code)" }
+                if (error as? URLError)?.code == .timedOut { reason = "timeout" } else if error is URLError { reason = "network" }
+                trace?.attempts.append(.init(provider: "google", seconds: Date().timeIntervalSince(started), failure: reason))
                 if case TranslateFailure.badResponse(429) = error { googleBackoffUntil = Date().addingTimeInterval(10) }
             }
+        } else {
+            trace?.attempts.append(.init(provider: "google", seconds: 0, failure: "rateLimited"))
         }
+        let started = Date()
         if let out = await viaApple(text, source: source, target: target) {
+            trace?.attempts.append(.init(provider: "apple", seconds: Date().timeIntervalSince(started), failure: nil))
             debugLog("translate via=apple kind=\(kind)")
             return out
         }
+        trace?.attempts.append(.init(provider: "apple", seconds: Date().timeIntervalSince(started), failure: "unavailable"))
         return nil
     }
 
-    private func viaLing(_ text: String, source: String, target: String, kind: Kind) async -> String? {
+    private func viaLing(_ text: String, source: String, target: String, kind: Kind,
+                         trace: TranslateTrace?) async -> (String?, String) {
         let from = source == "auto" ? "the spoken language" : Self.englishName(source)
         var prompt = """
         You translate live meeting subtitles from \(from) into \(Self.englishName(target)).
@@ -99,11 +116,12 @@ final class TranslationService {
         prompt += "\nSubtitle: " + text
         do {
             let out = try await ling.chat(content: prompt, instruction: "Translate.", priority: kind == .speak ? .speak : .translate,
-                                          maxTokens: 400, timeout: kind == .speak ? 10 : 6)
-            return out.isEmpty ? nil : out
+                                          maxTokens: 400, timeout: kind == .speak ? 10 : 6,
+                                          onQueued: { [weak trace] in trace?.lingQueue += $0 })
+            return (out.isEmpty ? nil : out, "empty")
         } catch {
             debugLog("translate ling failed: \(error)")
-            return nil
+            return (nil, (error as? LingClient.Failure).map(LingClient.name) ?? "error")
         }
     }
 

@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
-// usage: mouse move x y | mouse drag x1 y1 x2 y2 | mouse dclick x y   (Cocoa coords, origin bottom-left of main screen)
+// usage: mouse move x y | mouse drag x1 y1 x2 y2 | mouse dclick x y | mouse click x y | mouse scroll x y lines
+// (Cocoa coords, origin bottom-left of main screen; scroll lines > 0 scrolls the content up, toward older lines)
 let a = CommandLine.arguments
 let H = CGDisplayBounds(CGMainDisplayID()).height
 func p(_ x: String, _ y: String) -> CGPoint { CGPoint(x: Double(x)!, y: Double(H) - Double(y)!) }
@@ -20,5 +21,15 @@ case "dclick":
   let s = p(a[2], a[3]); post(.mouseMoved, s); usleep(600_000)
   post(.leftMouseDown, s, clicks: 1); post(.leftMouseUp, s, clicks: 1); usleep(50_000)
   post(.leftMouseDown, s, clicks: 2); post(.leftMouseUp, s, clicks: 2)
+case "click":
+  let s = p(a[2], a[3]); post(.mouseMoved, s); usleep(300_000)
+  post(.leftMouseDown, s); post(.leftMouseUp, s)
+case "scroll":
+  post(.mouseMoved, p(a[2], a[3])); usleep(200_000)
+  let n = Int32(a[4])!
+  for _ in 0..<abs(n) {
+    CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: n > 0 ? 3 : -3, wheel2: 0, wheel3: 0)!.post(tap: .cghidEventTap)
+    usleep(30_000)
+  }
 default: break
 }

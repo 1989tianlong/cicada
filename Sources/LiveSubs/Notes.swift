@@ -24,7 +24,11 @@ struct NoteTopic: Codable, Equatable, Identifiable {
     var summary: String
     var points: [String]
     var fishbone: Fishbone?
+    /// When each point was said (its first evidence line), parallel to `points`; older notes have none.
+    var pointTimes: [Double?]?
     var id: String { "\(Int(start))-\(title)" }
+
+    func pointTime(_ i: Int) -> Double? { pointTimes.flatMap { i < $0.count ? $0[i] : nil } }
 }
 
 /// A cause-and-effect diagram for a topic that discusses why something happened.
@@ -46,6 +50,8 @@ struct NoteItem: Codable, Equatable, Identifiable {
     var text: String
     var owner: String?
     var support: Int
+    /// When it was said (first evidence line).
+    var t: Double?
     var id: String { text }
 }
 
@@ -94,6 +100,7 @@ final class NotesEngine: ObservableObject {
     /// A final pass asked for while another call was running; it runs right after.
     private var pendingFinal: String?
     private var lastAttempt = Date.distantPast
+    private var freshGeneration = 0
     static let interval: TimeInterval = 45
 
     init(ling: LingClient, store: SessionStore) {
@@ -203,16 +210,17 @@ final class NotesEngine: ObservableObject {
         do {
             let raw = try await ling.chat(content: prompt, instruction: "Update the notes.", priority: .notes,
                                           json: true, maxTokens: 6000, timeout: 90)
-            guard var next = Self.parse(raw, lineCount: lines.count, startedAt: session.lines.first?.t ?? 0) else {
+            guard var next = Self.parse(raw, times: lines.map(\.t), startedAt: session.lines.first?.t ?? 0) else {
                 debugLog("notes: reply was not usable JSON, kept the previous notes")
                 state = .failed
                 return
             }
+            Self.carryTimes(from: base, into: &next)
             next.covered = lines.count
             next.updatedAt = Date()
             next.final = final
             if id == shownID {
-                markFresh(old: notes, new: next)
+                markFresh(old: notes, new: next, final: final)
                 if next.summary != notes.summary { summaryChangedAt = Date() }
                 notes = next
             }
@@ -231,10 +239,32 @@ final class NotesEngine: ObservableObject {
         }
     }
 
-    private func markFresh(old: MeetingNotes, new: MeetingNotes) {
-        guard !old.isEmpty else { fresh = []; return }
+    /// "新" marks what the last live update added, for a minute. The final pass rewrites
+    /// everything, so it marks nothing.
+    private func markFresh(old: MeetingNotes, new: MeetingNotes, final: Bool) {
+        freshGeneration += 1
+        guard !old.isEmpty, !final else { fresh = []; return }
         let before = Set(old.topics.flatMap { [$0.title] + $0.points })
         fresh = Set(new.topics.flatMap { [$0.title] + $0.points }).subtracting(before)
+        let generation = freshGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
+            MainActor.assumeIsolated {
+                if self?.freshGeneration == generation { self?.fresh = [] }
+            }
+        }
+    }
+
+    /// The model echoes points it already had without evidence: keep the times they had.
+    static func carryTimes(from old: MeetingNotes, into new: inout MeetingNotes) {
+        var known: [String: Double] = [:]
+        for t in old.topics { for (i, p) in t.points.enumerated() { if let x = t.pointTime(i) { known[p] = x } } }
+        for (ti, t) in new.topics.enumerated() {
+            let times = t.points.enumerated().map { i, p in t.pointTime(i) ?? known[p] }
+            new.topics[ti].pointTimes = times.contains { $0 != nil } ? times : nil
+        }
+        let items = Dictionary((old.conclusions + old.todos).compactMap { i in i.t.map { (i.text, $0) } }, uniquingKeysWith: { a, _ in a })
+        for i in new.conclusions.indices where new.conclusions[i].t == nil { new.conclusions[i].t = items[new.conclusions[i].text] }
+        for i in new.todos.indices where new.todos[i].t == nil { new.todos[i].t = items[new.todos[i].text] }
     }
 
     // MARK: Prompt
@@ -269,7 +299,7 @@ final class NotesEngine: ObservableObject {
 
         Return the full notes as one JSON object with exactly these keys:
         {"summary": "2-3 sentences on the whole meeting so far",
-         "topics": [{"start": seconds, "title": "short title", "summary": "one sentence", "points": ["key point"], "evidence": ["L3"],
+         "topics": [{"start": seconds, "title": "short title", "summary": "one sentence", "points": [{"text": "key point", "evidence": ["L4"]}], "evidence": ["L3"],
                      "fishbone": null or {"question": "the problem or question", "branches": [{"label": "2-6 words", "detail": "one short line", "t": seconds, "evidence": ["L5"]}]}}],
          "conclusions": [{"text": "...", "evidence": ["L7", "L8"]}],
          "todos": [{"text": "...", "owner": "对方" or "你" or null, "evidence": ["L9"]}],
@@ -280,7 +310,7 @@ final class NotesEngine: ObservableObject {
         - At most 4 points per topic, each one short phrase. Merge rather than repeat.
         - At most 5 conclusions and only real to-dos (often none).
         - Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.
-        - Every topic, point source, branch, conclusion and to-do needs evidence: the ids of the lines that say it. Never state anything the transcript does not say.
+        - Every topic, point, branch, conclusion and to-do needs evidence: the ids of the lines that say it. Never state anything the transcript does not say.
         - terms: at most 10 people, places or jargon words that matter. name is the correct spelling in the transcript's language (no translation in brackets); heard lists only the wrong forms the transcript used; note is a few words.
         - Write about what was said, never about the transcript or recognition quality.
         - Use empty arrays when there is nothing. No markdown, no text outside the JSON.
@@ -291,13 +321,20 @@ final class NotesEngine: ObservableObject {
     /// The current notes as sent back to the model (no bookkeeping fields).
     private struct Compact: Encodable {
         let summary: String
-        let topics: [NoteTopic]
+        let topics: [Topic]
         let conclusions: [String]
         let todos: [String]
         let terms: [NoteTerm]
+        struct Topic: Encodable {
+            let start: Double
+            let title: String
+            let summary: String
+            let points: [String]
+            let fishbone: Fishbone?
+        }
         init(_ n: MeetingNotes) {
             summary = n.summary
-            topics = n.topics
+            topics = n.topics.map { Topic(start: $0.start, title: $0.title, summary: $0.summary, points: $0.points, fishbone: $0.fishbone) }
             conclusions = n.conclusions.map(\.text)
             todos = n.todos.map(\.text)
             terms = n.terms
@@ -307,20 +344,24 @@ final class NotesEngine: ObservableObject {
     // MARK: Parse
 
     /// Lenient: missing keys become empty, evidence ids are checked against the transcript.
-    static func parse(_ raw: String, lineCount: Int, startedAt: Double) -> MeetingNotes? {
+    static func parse(_ raw: String, times: [Double], startedAt: Double) -> MeetingNotes? {
+        let lineCount = times.count
         var text = raw
         if let a = text.firstIndex(of: "{"), let b = text.lastIndex(of: "}") { text = String(text[a...b]) }
         guard let data = text.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         func str(_ v: Any?) -> String { (v as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
         func num(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue ?? (v as? String).flatMap(Double.init) }
-        func support(_ v: Any?) -> Int {
+        func lineNumbers(_ v: Any?) -> Set<Int> {
             let ids = (v as? [Any])?.compactMap { $0 as? String } ?? []
             return Set(ids.compactMap { id -> Int? in
                 guard let n = Int(id.drop(while: { !$0.isNumber })), n >= 1, n <= lineCount else { return nil }
                 return n
-            }).count
+            })
         }
+        func support(_ v: Any?) -> Int { lineNumbers(v).count }
+        /// When it was first said: the earliest evidence line.
+        func time(_ v: Any?) -> Double? { lineNumbers(v).min().map { times[$0 - 1] } }
         var n = MeetingNotes()
         n.summary = str(root["summary"])
         n.topics = (root["topics"] as? [[String: Any]] ?? []).compactMap { t in
@@ -335,14 +376,24 @@ final class NotesEngine: ObservableObject {
                 }
                 if branches.count >= 2 { fish = Fishbone(question: str(f["question"]), branches: branches) }
             }
+            // Points come as {"text", "evidence"} (or plain strings from older replies).
+            var points: [String] = [], pointTimes: [Double?] = []
+            for p in t["points"] as? [Any] ?? [] {
+                let text = (p as? [String: Any]).map { str($0["text"]) } ?? str(p)
+                guard !text.isEmpty else { continue }
+                points.append(text)
+                pointTimes.append((p as? [String: Any]).flatMap { time($0["evidence"]) })
+            }
             return NoteTopic(start: num(t["start"]) ?? startedAt, title: title, summary: str(t["summary"]),
-                             points: (t["points"] as? [Any] ?? []).map(str).filter { !$0.isEmpty }, fishbone: fish)
+                             points: points, fishbone: fish,
+                             pointTimes: pointTimes.contains { $0 != nil } ? pointTimes : nil)
         }
         func items(_ key: String) -> [NoteItem] {
             (root[key] as? [[String: Any]] ?? []).compactMap { i in
                 let text = str(i["text"])
                 let owner = str(i["owner"])
-                return text.isEmpty ? nil : NoteItem(text: text, owner: owner.isEmpty ? nil : owner, support: support(i["evidence"]))
+                return text.isEmpty ? nil : NoteItem(text: text, owner: owner.isEmpty ? nil : owner, support: support(i["evidence"]),
+                                                     t: time(i["evidence"]))
             }
         }
         n.conclusions = items("conclusions")

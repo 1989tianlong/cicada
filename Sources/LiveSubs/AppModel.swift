@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     let installer = VirtualMicInstaller()
     let ling = LingClient()
     lazy var translator = TranslationService(ling: ling)
+    let diagnostics = Diagnostics()
     lazy var notes = NotesEngine(ling: ling, store: store)
     lazy var notesWindow = NotesWindowController(model: self)
     let sample = SamplePlayer()
@@ -68,6 +69,15 @@ final class AppModel: ObservableObject {
             self.store.setTranslation(lineID: line, text)
         }
 
+        diagnostics.enabled = { [weak self] in self?.settings.diagnostics ?? false }
+        diagnostics.folder = { [weak self] in
+            guard let self, let id = self.store.liveID else { return nil }
+            return self.store.folder(id)
+        }
+        listen.onTiming = { [weak self] in self?.diagnostics.record($0) }
+        speak.onTiming = { [weak self] in self?.diagnostics.record($0) }
+        ling.onCall = { [weak self] in self?.diagnostics.record($0) }
+
         ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
         listen.translator = translator
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
@@ -84,11 +94,10 @@ final class AppModel: ObservableObject {
         }
         installer.onLoaded = { [weak self] in self?.virtualMicInstalled() }
 
-        speak.translate = { [weak self] text, from, to in
-            await self?.listen.translate(text, source: from, target: to, kind: .speak)
+        speak.translate = { [weak self] text, from, to, trace in
+            await self?.listen.translate(text, source: from, target: to, kind: .speak, trace: trace)
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
-        speak.mingVoice = nil
         applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
@@ -203,6 +212,8 @@ final class AppModel: ObservableObject {
 
     func openSettings(_ section: SettingsSection? = nil) {
         if let section { settingsSection = section }
+        // The 诊断 tab only exists while its switch is on.
+        if settingsSection == .diagnostics && !settings.diagnostics { settingsSection = .overlay }
         openSettingsWindow?()
     }
 
@@ -224,6 +235,7 @@ final class AppModel: ObservableObject {
     func start() {
         guard !listen.isRunning else { return }
         let session = store.begin()
+        diagnostics.begin()
         lineForSegment = [:]
         if settings.recordAudio {
             listen.router.setRecording(store.systemAudioURL(session.id))
@@ -250,6 +262,13 @@ final class AppModel: ObservableObject {
     }
 
     func setRunning(_ on: Bool) { on ? start() : stop() }
+
+    /// The bottom-left 诊断 switch in settings: shows or hides the 诊断 tab.
+    func setDiagnostics(_ on: Bool) {
+        settings.diagnostics = on
+        if !on && settingsSection == .diagnostics { settingsSection = .overlay }
+        objectWillChange.send()
+    }
 
     // MARK: Display (live notes / subtitle bar / nothing)
 
@@ -381,10 +400,10 @@ final class AppModel: ObservableObject {
 
     /// Validates and saves a new shortcut. Returns why it was refused, or nil.
     func setShortcut(_ s: Shortcut, for role: ShortcutRole) -> String? {
-        if role == .toggle && s.isRightOption { return "右 ⌥ 只能用来按住说话" }
+        if role == .toggle && s.isRightOption { return "右 ⌥ 只能用于“按住说话”" }
         if let p = s.typingProblem { return p }
         let other = role == .talk ? settings.toggleKey : settings.talkKey
-        if s == other { return "和另一个快捷键重复了" }
+        if s == other { return "与另一个快捷键冲突" }
         if s.isSystemShortcut { return "\(s.display) 是系统快捷键，换一个吧" }
         if !s.isRightOption {
             // Probe: Carbon refuses a combo another app already registered.
@@ -406,14 +425,60 @@ final class AppModel: ObservableObject {
         return nil
     }
 
-    /// Ming's voice when chosen and a key works; otherwise the system voice.
+    /// The room hears the voice chosen for its language (looked up each time it speaks).
     func applyVoice() {
-        speak.mingVoice = settings.speakVoice == "ming" ? { [weak self] text in
-            guard let self, self.ling.usable else {
-                return AsyncThrowingStream { $0.finish(throwing: LingClient.Failure.noKey) }
+        speak.route = { [weak self] language in
+            guard let self else { return .system(nil) }
+            return self.voiceRoute(id: self.voiceID(for: language), language: language)
+        }
+    }
+
+    /// The chosen voice for a language, or its default (Ming's first with a key, else the Mac's).
+    func voiceID(for language: String) -> String? {
+        if let id = settings.speakVoices[VoiceCatalog.key(for: language)] {
+            if id == "clone" && !VoiceReference.exists { return VoiceCatalog.defaultID(for: language, hasKey: ling.usable) }
+            return id
+        }
+        return VoiceCatalog.defaultID(for: language, hasKey: ling.usable)
+    }
+
+    func setVoice(_ id: String, for language: String) {
+        settings.speakVoices[VoiceCatalog.key(for: language)] = id
+    }
+
+    /// Ming's voices need a working key; without one the Mac's voice speaks.
+    func voiceRoute(id: String?, language: String) -> SpeakEngine.VoiceRoute {
+        guard let id else { return .system(nil) }
+        if id.hasPrefix("system:") { return .system(String(id.dropFirst("system:".count))) }
+        guard ling.usable else { return .system(nil) }
+        let lang = VoiceCatalog.mingLanguage(for: language)
+        if id == "clone" {
+            guard let ref = VoiceReference.reference() else { return .system(nil) }
+            return .stream { [weak self] text in
+                self?.ling.speech(text, voice: nil, reference: ref, language: lang)
+                    ?? AsyncThrowingStream { $0.finish(throwing: LingClient.Failure.noKey) }
             }
-            return self.ling.speech(text)
-        } : nil
+        }
+        let voice = String(id.dropFirst("ming:".count))
+        return .stream { [weak self] text in
+            self?.ling.speech(text, voice: voice, language: lang)
+                ?? AsyncThrowingStream { $0.finish(throwing: LingClient.Failure.noKey) }
+        }
+    }
+
+    /// Plays a voice on the speakers (not into the room) with a line in that language.
+    @Published var previewing: String?
+
+    func previewVoice(_ id: String, language: String, text: String? = nil) {
+        previewing = id
+        let route = voiceRoute(id: id, language: language)
+        Task {
+            let started = Date()
+            await speak.speak(text ?? VoiceCatalog.sample(for: language), language: language,
+                              device: AudioDevices.defaultOutput, route: route)
+            debugLog("voice preview \(id) \(language) took \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
+            if previewing == id { previewing = nil }
+        }
     }
 
     func speakFromChanged() {
@@ -501,6 +566,11 @@ final class AppModel: ObservableObject {
         case "settings":
             settingsSection = SettingsSection(rawValue: arg) ?? settingsSection
             openSettings(settingsSection)
+        case "diagnostics":
+            setDiagnostics(arg != "off")
+            debugLog("diagnostics \(settings.diagnostics ? "on" : "off")")
+        case "diagReport":
+            debugLog("diag report:\n" + diagnostics.report(version: "", model: settings.aiModel))
         case "micTest": installer.runTest()
         case "micNext": installer.next()
         case "talkKey", "toggleKey":
@@ -514,21 +584,39 @@ final class AppModel: ObservableObject {
             if let k = try? String(contentsOfFile: arg, encoding: .utf8) { Task { await ling.setKey(k) } }
         case "aiCheck": Task { await ling.check() }
         case "voice":
-            settings.speakVoice = arg == "ming" ? "ming" : "system"
-            applyVoice()
+            // voice:<lang>=<id> chooses ("voice:en=ming:UK_George", "voice:zh=clone"); voice:<lang> logs the choice.
+            let kv = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            if kv.count == 2 { setVoice(kv[1], for: kv[0]) }
+            debugLog("voice \(kv[0]) → \(voiceID(for: kv[0]) ?? "none") options=\(VoiceCatalog.options(for: kv[0]).map(\.id)) clone=\(VoiceReference.exists)")
+        case "voiceCloneFile":
+            // voiceCloneFile:<wav> uses a recording as "my voice", transcribing it like the sheet does.
+            Task {
+                let url = URL(fileURLWithPath: arg)
+                guard let f = try? AVAudioFile(forReading: url),
+                      let buf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)),
+                      (try? f.read(into: buf)) != nil else { debugLog("voiceCloneFile: unreadable"); return }
+                let text = await LoopbackTest.transcribe([buf], locale: settings.speakFromLang.locale)
+                do { try VoiceReference.save(wav: url, text: text) } catch { debugLog("voiceCloneFile: \(error)") }
+                debugLog("voiceCloneFile: saved, transcript \(text.count) chars")
+            }
+        case "voicePreview":
+            // voicePreview:<lang>=<id>
+            let kv = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            if kv.count == 2 { previewVoice(kv[1], language: kv[0]) }
         case "notesNow": notes.updateNow()
         case "display": setDisplayMode(arg)
         case "notesWindow":
             let v = arg.split(separator: ",").compactMap { Double($0) }
             openNotesWindow()
             if v.count == 4 { notesWindow.place(NSRect(x: v[0], y: v[1], width: v[2], height: v[3])) }
-        case "notesFrame": debugLog("notes window frame=\(String(describing: notesWindow.frame)) visible=\(notesWindow.isVisible)")
+        case "notesFrame": debugLog("notes window frame=\(String(describing: notesWindow.frame)) visible=\(notesWindow.isVisible) policy=\(NSApp.activationPolicy() == .regular ? "regular" : "accessory")")
         case "notesReplay": Task { await notes.replay(arg) }
         case "notesShow": notes.show(arg)
         case "notesCapturable": notesWindow.setCapturable(arg != "off")
         case "notesRender":
             // The whole notes column as a PNG, for checking what is below the fold.
-            let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil)
+            let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil,
+                                        updating: notes.state == .updating)
                 .padding(24).frame(width: 460).background(Color.white)
             let r = ImageRenderer(content: view)
             r.scale = 2
@@ -536,7 +624,7 @@ final class AppModel: ObservableObject {
                let png = rep.representation(using: .png, properties: [:]) {
                 try? png.write(to: URL(fileURLWithPath: arg))
             }
-        case "notesState": debugLog("notes state=\(notes.state) topics=\(notes.notes.topics.count) covered=\(notes.notes.covered) glossary=\(notes.glossary.count)")
+        case "notesState": debugLog("notes state=\(notes.state) topics=\(notes.notes.topics.count) covered=\(notes.notes.covered) glossary=\(notes.glossary.count) timedPoints=\(notes.notes.topics.reduce(0) { $0 + ($1.pointTimes?.compactMap { $0 }.count ?? 0) })/\(notes.notes.topics.reduce(0) { $0 + $1.points.count }) fresh=\(notes.fresh.count)")
         case "lingSimulate":
             ling.simulate = ["429": .rateLimited, "hijack": .hijacked, "timeout": .timeout][arg]
             debugLog("ling simulate=\(String(describing: ling.simulate))")
@@ -581,9 +669,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var settingsWindow: NSWindow?
     private var pollTimer: Timer?
     private var runningObserver: Any?
+    private lazy var menu = AppMenu(model: model)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        menu.showMainWindow = { [weak self] in self?.showMainWindow() }
+        menu.showOnboarding = { [weak self] in self?.showOnboarding() }
+        menu.install()
+        model.notesWindow.onVisibilityChange = { [weak self] in self?.updateActivationPolicy() }
         setupStatusItem()
         model.openMainWindow = { [weak self] in self?.showMainWindow() }
         model.openSettingsWindow = { [weak self] in self?.showSettingsWindow() }
@@ -728,8 +821,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             model.sample.stop()
             UserDefaults.standard.set(true, forKey: "onboarded")
         }
-        let otherOpen = [mainWindow, onboardingWindow, settingsWindow].contains { $0 != nil && $0 != w && $0!.isVisible }
-        if !otherOpen { NSApp.setActivationPolicy(.accessory) }
+        updateActivationPolicy(closing: w)
+    }
+
+    /// A regular app (name and menus top left, Dock icon, ⌘Tab) while any of its windows is
+    /// open, the notes window included; only the menu bar item otherwise. Never activates: the
+    /// notes window appearing must not take focus from the meeting app.
+    func updateActivationPolicy(closing: NSWindow? = nil) {
+        let open = [mainWindow, onboardingWindow, settingsWindow].contains { $0 != nil && $0 != closing && $0!.isVisible }
+            || model.notesWindow.isVisible
+        let policy: NSApplication.ActivationPolicy = open ? .regular : .accessory
+        guard NSApp.activationPolicy() != policy else { return }
+        NSApp.setActivationPolicy(policy)
+        debugLog("activation policy → \(open ? "regular" : "accessory")")
     }
 
     // MARK: Output device changes
@@ -775,6 +879,9 @@ struct LiveSubsMain {
                 exit(1)
             }
         }
+        // AppKit adds "进入全屏幕" to a menu titled 显示 (View) unless told before launch;
+        // no Live Subs window goes full screen.
+        UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])
         MainActor.assumeIsolated {
             let app = NSApplication.shared
             let delegate = AppDelegate()

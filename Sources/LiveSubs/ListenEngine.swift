@@ -21,6 +21,8 @@ final class ListenEngine {
     /// A finished sentence; `secondsAgo` ≈ how long ago it started.
     var onFinal: ((Segment, _ secondsAgo: Double) -> Void)?
     var onTranslated: ((_ segmentID: Int, _ translation: String) -> Void)?
+    /// Diagnostics: how long a sentence took from its last new words to its translation on screen.
+    var onTiming: ((SentenceTiming) -> Void)?
 
     let settings: AppSettings
     let router = AudioRouter()
@@ -52,6 +54,8 @@ final class ListenEngine {
     private var volatileInFlight = false
     private var volatileEpoch = 0
     private var tickTimer: Timer?
+    /// Final transcript time and how long after the last word it came, per segment, until its translation lands.
+    private var finalTiming: [Int: (at: Date, recognize: Double?)] = [:]
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -308,6 +312,10 @@ final class ListenEngine {
             let provisional = volatileTranslation.isEmpty ? nil : volatileTranslation
             let seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
             nextSegmentID += 1
+            // How long ago, in real time, the sentence's last word was spoken.
+            let ago = router.fedSeconds() - CMTimeGetSeconds(result.range.end)
+            finalTiming[seg.id] = (Date(), ago.isFinite && ago >= 0 && ago < 30 ? ago : nil)
+            if finalTiming.count > 40, let oldest = finalTiming.keys.min() { finalTiming[oldest] = nil }
             segments.append(seg)
             // Only the last few are shown; in notes mode nothing clears them after a pause.
             if segments.count > 30 { segments.removeFirst(segments.count - 30) }
@@ -427,10 +435,10 @@ final class ListenEngine {
     var translator: TranslationService?
 
     func translate(_ text: String, source: String, target: String? = nil,
-                   kind: TranslationService.Kind = .sentence) async -> String? {
+                   kind: TranslationService.Kind = .sentence, trace: TranslateTrace? = nil) async -> String? {
         let target = target ?? resolvedTarget
         if source == target { return text }
-        let out = await translator?.translate(text, source: source, target: target, kind: kind)
+        let out = await translator?.translate(text, source: source, target: target, kind: kind, trace: trace)
         if out == nil, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
             onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, "翻译暂不可用")
         }
@@ -439,8 +447,18 @@ final class ListenEngine {
 
     private func translateSegment(id: Int) {
         guard let seg = segments.first(where: { $0.id == id }) else { return }
+        let trace = TranslateTrace()
+        let asked = Date()
         Task { [weak self] in
-            guard let self, let out = await self.translate(seg.text, source: seg.sourceCode) else { return }
+            guard let self else { return }
+            let result = await self.translate(seg.text, source: seg.sourceCode, trace: trace)
+            if let timing = self.finalTiming.removeValue(forKey: id), !trace.attempts.isEmpty {
+                self.onTiming?(SentenceTiming(at: timing.at, side: "them", chars: seg.text.count, recognize: timing.recognize,
+                                              queue: trace.lingQueue, translate: Date().timeIntervalSince(asked), voice: nil,
+                                              failed: trace.failedSeconds, via: result == nil ? "none" : trace.via,
+                                              fallbacks: trace.fallbacks))
+            }
+            guard let out = result else { return }
             guard self.isRunning else { return }
             if let idx = self.segments.firstIndex(where: { $0.id == id }) {
                 self.segments[idx].translation = out

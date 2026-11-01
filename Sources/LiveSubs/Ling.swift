@@ -1,58 +1,102 @@
 import Foundation
 import Security
 
-// MARK: - API key (Keychain)
+// MARK: - API key (local file)
 
-/// The user's Ling API key, kept in the login Keychain (encrypted by the system, readable only by
-/// this app's code signature). Never written to UserDefaults, logs or exports.
+/// The user's Ling API key, in a file only this user can read (0600, folder 0700) under
+/// Application Support, left out of backups. Never written to UserDefaults, logs or exports.
+///
+/// Not the Keychain for now: the app is signed ad hoc, so the Keychain only trusts one exact build
+/// (its cdhash) and asks for the login password after every rebuild or update. Back to the Keychain
+/// once builds are signed with a Developer ID (a stable team id). Keys saved there by earlier
+/// builds are moved over once.
 enum AIKey {
-    /// Dev and release builds keep separate keys, like their other settings.
-    private static var service: String { (Bundle.main.bundleIdentifier ?? "com.wquguru.cicada.swiftrun") + ".ai" }
-    private static let account = "ling"
     private static var cached: String??
+
+    private static var folder: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(DevBuild.supportFolder)
+    }
+    private static var file: URL { folder.appendingPathComponent("ling-api-key") }
 
     static func read() -> String? {
         if let cached { return cached }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var out: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &out)
-        let value = status == errSecSuccess ? (out as? Data).flatMap { String(data: $0, encoding: .utf8) } : nil
-        if status != errSecSuccess && status != errSecItemNotFound { debugLog("keychain read failed: \(status)") }
+        var value = (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value?.isEmpty ?? true { value = nil }
+        if value == nil, let old = LegacyKeychain.take() {
+            // One last Keychain prompt, then the key lives in the file.
+            value = old
+            write(old)
+        }
         cached = .some(value)
         return value
     }
 
     @discardableResult
     static func save(_ key: String) -> Bool {
-        remove()
-        let item: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrLabel as String: "Live Subs · Ling API key",
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecValueData as String: Data(key.utf8),
-        ]
-        let status = SecItemAdd(item as CFDictionary, nil)
-        if status != errSecSuccess { debugLog("keychain save failed: \(status)") }
-        cached = .some(status == errSecSuccess ? key : nil)
-        return status == errSecSuccess
+        let ok = write(key)
+        cached = .some(ok ? key : nil)
+        return ok
     }
 
     static func remove() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
+        try? FileManager.default.removeItem(at: file)
+        LegacyKeychain.delete()
         cached = .some(nil)
+    }
+
+    @discardableResult
+    private static func write(_ key: String) -> Bool {
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+            // Create it 0600 before the key goes in, so it is never readable by others.
+            if !fm.fileExists(atPath: file.path) {
+                guard fm.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+                    debugLog("ai key: could not create the key file")
+                    return false
+                }
+            }
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            try Data(key.utf8).write(to: file)
+            var url = file
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? url.setResourceValues(values)
+            return true
+        } catch {
+            debugLog("ai key: save failed \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Where builds before the file kept the key: login Keychain, service = bundle id + ".ai".
+    private enum LegacyKeychain {
+        private static var query: [String: Any] {
+            [kSecClass as String: kSecClassGenericPassword,
+             kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "com.wquguru.cicada.swiftrun") + ".ai",
+             kSecAttrAccount as String: "ling"]
+        }
+
+        /// The old key, removed from the Keychain once read.
+        static func take() -> String? {
+            // Skip the Keychain entirely when there was never an item (no prompt for new users).
+            var exists = query
+            exists[kSecReturnAttributes as String] = true
+            guard SecItemCopyMatching(exists as CFDictionary, nil) == errSecSuccess else { return nil }
+            var q = query
+            q[kSecReturnData as String] = true
+            q[kSecMatchLimit as String] = kSecMatchLimitOne
+            var out: AnyObject?
+            guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
+                  let key = (out as? Data).flatMap({ String(data: $0, encoding: .utf8) }), !key.isEmpty else { return nil }
+            delete()
+            debugLog("ai key: moved from the Keychain to the key file")
+            return key
+        }
+
+        static func delete() { SecItemDelete(query as CFDictionary) }
     }
 
     /// "sk-…3f9a" for display.
@@ -157,7 +201,8 @@ final class LingClient: ObservableObject {
     /// message. Notes retry 429s with backoff; translation and speak-back fail fast so the caller
     /// can fall back to another translator.
     func chat(content: String, instruction: String, priority: Priority, json: Bool = false,
-              maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil) async throws -> String {
+              maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil,
+              onQueued: ((Double) -> Void)? = nil) async throws -> String {
         guard let key else { throw Failure.noKey }
         guard keyState != .invalid else { throw Failure.invalidKey }
         if let simulate {
@@ -179,7 +224,10 @@ final class LingClient: ObservableObject {
         let attempts = priority == .notes ? 4 : 1
         var delay = 1.0
         for attempt in 1...attempts {
+            let asked = Date()
             await acquire(priority)
+            let queued = Date().timeIntervalSince(asked)
+            onQueued?(queued)
             let started = Date()
             do {
                 let root = try await post("chat/completions", body: body, key: key, timeout: timeout)
@@ -195,25 +243,48 @@ final class LingClient: ObservableObject {
                 let ms = Int(Date().timeIntervalSince(started) * 1000)
                 let usage = root["usage"] as? [String: Any]
                 debugLog("ling: \(priority) ok \(ms) ms tokens=\(usage?["prompt_tokens"] ?? "?")/\(usage?["completion_tokens"] ?? "?")")
+                report(priority, at: started, queued: queued, outcome: "ok",
+                       tokens: (usage?["prompt_tokens"] as? Int ?? 0, usage?["completion_tokens"] as? Int ?? 0))
                 if rateLimitedAt != nil { rateLimitedAt = nil }
                 return trimmed
-            } catch Failure.rateLimited where attempt < attempts {
+            } catch let failure as Failure {
+                report(priority, at: started, queued: queued, outcome: Self.name(failure))
+                guard failure == .rateLimited else { throw failure }
+                guard attempt < attempts else {
+                    rateLimitedAt = Date()
+                    throw failure
+                }
                 let wait = delay + Double.random(in: 0...0.5)
                 debugLog("ling: \(priority) 429, retry in \(String(format: "%.1f", wait)) s")
                 try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 delay *= 2
-            } catch Failure.rateLimited {
-                rateLimitedAt = Date()
-                throw Failure.rateLimited
             }
         }
         throw Failure.rateLimited
     }
 
+    /// Every request, for diagnostics (timings and token counts only).
+    var onCall: ((LingCall) -> Void)?
+
+    private func report(_ priority: Priority, at started: Date, queued: Double, outcome: String, tokens: (Int, Int) = (0, 0)) {
+        onCall?(LingCall(at: started, priority: "\(priority)", queue: queued, seconds: Date().timeIntervalSince(started),
+                         outcome: outcome, promptTokens: tokens.0, completionTokens: tokens.1))
+    }
+
+    static func name(_ failure: Failure) -> String {
+        switch failure {
+        case .http(let code): "http\(code)"
+        default: "\(failure)"
+        }
+    }
+
     // MARK: Speech (Ming TTS)
 
-    /// Streams Ming's voice for `text` as raw 24 kHz mono 16-bit PCM chunks.
-    func speech(_ text: String, voice: String = "UK_Charlotte") -> AsyncThrowingStream<Data, Error> {
+    /// Streams Ming's voice for `text` as raw 24 kHz mono 16-bit PCM chunks: a built-in `voice`, or
+    /// a voice cloned from `reference` (a WAV data URI and what it says). `language` is Ming's
+    /// `language_id`, needed for Japanese, Korean, German, French and Spanish.
+    func speech(_ text: String, voice: String? = "UK_Charlotte", reference: (audio: String, text: String)? = nil,
+                language: String? = nil) -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { cont in
             let task = Task { @MainActor [weak self] in
                 guard let self, let key = self.key else { cont.finish(throwing: Failure.noKey); return }
@@ -223,10 +294,18 @@ final class LingClient: ObservableObject {
                 req.timeoutInterval = 20
                 req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try? JSONSerialization.data(withJSONObject: [
-                    "model": "Ming-3.0-tts-0.5B", "input": text, "voice": voice,
+                var body: [String: Any] = [
+                    "model": "Ming-3.0-tts-0.5B", "input": text,
                     "response_format": "pcm", "sample_rate": 24000, "stream": true, "stream_format": "sse",
-                ] as [String: Any])
+                ]
+                if let reference {
+                    body["references"] = [["audio": reference.audio, "text": reference.text]]
+                    req.timeoutInterval = 30
+                } else if let voice {
+                    body["voice"] = voice
+                }
+                if let language { body["language_id"] = language }
+                req.httpBody = try? JSONSerialization.data(withJSONObject: body)
                 do {
                     let (bytes, response) = try await URLSession.shared.bytes(for: req)
                     switch (response as? HTTPURLResponse)?.statusCode ?? 0 {

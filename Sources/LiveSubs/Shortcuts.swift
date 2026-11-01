@@ -86,7 +86,7 @@ struct Shortcut: Equatable {
     /// most Mac keyboards. So a combination needs ⌃ or ⌘.
     var typingProblem: String? {
         if isRightOption { return nil }
-        if modifiers & (controlKey | cmdKey) == 0 { return "要带上 ⌃ 或 ⌘，不然会挡住打字" }
+        if modifiers & (controlKey | cmdKey) == 0 { return "请包含 ⌃ 或 ⌘，否则会影响正常打字" }
         return nil
     }
 

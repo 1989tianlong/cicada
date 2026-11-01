@@ -89,6 +89,7 @@ final class AudioRouter: @unchecked Sendable {
 
         guard let format, let converted = converter.convert(mono, to: format) else { return }
         continuation?.yield(AnalyzerInput(buffer: converted))
+        if continuation != nil { fed += seconds }
         record(converted)
         ring.append((converted, seconds, voiced))
         ringSeconds += seconds
@@ -116,8 +117,14 @@ final class AudioRouter: @unchecked Sendable {
         try? recorder?.write(from: buffer)
     }
 
+    /// Seconds of audio given to the current analyzer, replay included: the analyzer's clock. A
+    /// result ending at t was spoken (fed − t) seconds ago, since the tap runs in real time.
+    private var fed = 0.0
+    func fedSeconds() -> Double { queue.sync { fed } }
+
     func attach(format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation, replaySeconds: Double = 0) {
         queue.sync {
+            fed = 0
             if self.format != format {
                 ring.removeAll()
                 ringSeconds = 0
@@ -130,6 +137,7 @@ final class AudioRouter: @unchecked Sendable {
                     replay.append(item.buffer)
                 }
                 for buffer in replay.reversed() { continuation.yield(AnalyzerInput(buffer: buffer)) }
+                fed = acc
             }
             self.format = format
             self.continuation?.finish()

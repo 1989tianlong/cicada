@@ -13,7 +13,7 @@
   - 字幕条：`frame` 把位置写进日志，`place:x,y,宽,字号` 摆到指定位置
   - 说话同传：`speakOn` / `speakOff` 开关，`speakFile:<音频>` 把文件当作麦克风输入，`speakOut:<路径>` 把译文语音另存一份
   - 导出：`export:<目录>`
-- `mouse move|drag|dclick ...`：模拟鼠标移动、拖动、双击，坐标原点在主屏左下角。
+- `mouse move|drag|dclick|click|scroll ...`：模拟鼠标移动、拖动、双击、单击、滚轮（`scroll x y 行数`，正数往上翻），坐标原点在主屏左下角。
 - `key`：模拟按住说话键。`key right [秒]` 单按右 ⌥；`key <keyCode> <Carbon 修饰键> [秒]` 按组合键（如 `key 122 0` 是 F1）；不带参数是 ⌥ Space。
 - `toggle-key`：模拟按一下 ⌃⌥S。
 - `winall <pid>`：列出某个进程的窗口 ID，配合 `screencapture -l <ID>` 截图。
