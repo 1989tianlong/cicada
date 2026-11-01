@@ -417,7 +417,11 @@ final class SpeakEngine {
             }
             player.play()
         }
-        debugLog("spoke \(buffers.count) buffers to \(device?.name ?? "default output")")
+        var cur = AudioObjectID(0); var sz = UInt32(MemoryLayout<AudioObjectID>.size)
+        if let unit = out.outputNode.audioUnit {
+            AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &cur, &sz)
+        }
+        debugLog("spoke \(buffers.count) buffers to \(device?.name ?? "default output") id=\(device?.id ?? 0) readback=\(cur)")
     }
 
     /// Core Audio restarted (virtual mic install): device IDs changed, rebuild the output next time.

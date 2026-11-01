@@ -30,6 +30,8 @@ final class VirtualMicInstaller: ObservableObject {
         var heard: Bool
         var text: String
         var levels: [Float]
+        /// Why nothing was heard, shown instead of the generic line.
+        var problem: String? = nil
     }
 
     @Published private(set) var state: State = .idle
@@ -92,10 +94,19 @@ final class VirtualMicInstaller: ObservableObject {
         guard !busy, let device else { return }
         Task {
             state = .testing
+            // Reading the virtual mic's input side is microphone access like any other.
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+                _ = await AVCaptureDevice.requestAccess(for: .audio)
+            }
+            guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+                test = .init(heard: false, text: "", levels: [], problem: "试音要用麦克风权限，请在系统设置里允许 Live Subs")
+                state = .idle
+                return
+            }
             test = await LoopbackTest.run(device: device, phrase: Self.testPhrase) { [weak self] in
                 await self?.speakThrough?(Self.testPhrase, "en", device)
             }
-            debugLog("virtual mic test: heard=\(test?.heard ?? false) text=\(test?.text ?? "")")
+            debugLog("virtual mic test: mic=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue) heard=\(test?.heard ?? false) text=\(test?.text ?? "")")
             state = .idle
         }
     }
@@ -179,17 +190,19 @@ enum LoopbackTest {
     static func run(device: OutputDevice, phrase: String, play: @escaping () async -> Void) async -> VirtualMicInstaller.TestResult {
         let recorder = LoopbackRecorder()
         guard recorder.start(deviceID: device.id) else {
-            return .init(heard: false, text: "", levels: [])
+            return .init(heard: false, text: "", levels: [], problem: "打不开虚拟麦克风，点“让系统认出它”后再试")
         }
         try? await Task.sleep(nanoseconds: 150_000_000)
         await play()
         try? await Task.sleep(nanoseconds: 400_000_000)
         let buffers = recorder.stop()
+        debugLog("loopback: \(buffers.first?.frameLength ?? 0) frames")
         let levels = LoopbackRecorder.levels(buffers, bars: 12)
         let loud = (levels.max() ?? 0) > 0.02
         let text = loud ? await transcribe(buffers, locale: "en-US") : ""
         // Any real signal counts; the transcript is shown so people can judge it themselves.
-        return .init(heard: loud, text: text, levels: levels)
+        return .init(heard: loud, text: text, levels: levels,
+                     problem: loud ? nil : buffers.isEmpty ? "虚拟麦克风没有送来声音，再试一次" : nil)
     }
 
     private static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> String {
@@ -216,41 +229,58 @@ enum LoopbackTest {
     }
 }
 
-/// An input-only engine pointed at one device (the virtual mic), collecting buffers.
+/// Records one device's input side with a plain Core Audio IO proc. (An AVAudioEngine input
+/// node switched to another device keeps the default mic's format and can stop itself on the
+/// format change, which made the test flaky.)
 final class LoopbackRecorder: @unchecked Sendable {
-    private let engine = AVAudioEngine()
     private let lock = NSLock()
-    private var buffers: [AVAudioPCMBuffer] = []
+    private var samples: [Float] = []
+    private var device = AudioObjectID(0)
+    private var proc: AudioDeviceIOProcID?
+    private(set) var sampleRate: Double = 48_000
+    private let queue = DispatchQueue(label: "com.wquguru.cicada.loopback")
 
     func start(deviceID: AudioObjectID) -> Bool {
-        let input = engine.inputNode
-        guard let unit = input.audioUnit else { return false }
-        var id = deviceID
-        let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                          &id, UInt32(MemoryLayout<AudioObjectID>.size))
-        let format = input.outputFormat(forBus: 0)
-        guard status == noErr, format.sampleRate > 0 else {
-            debugLog("loopback: cannot open device \(deviceID) status=\(status)")
+        device = deviceID
+        var rate = Float64(0)
+        var size = UInt32(MemoryLayout<Float64>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        if AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &rate) == noErr, rate > 0 { sampleRate = rate }
+        let status = AudioDeviceCreateIOProcIDWithBlock(&proc, deviceID, queue) { [weak self] _, input, _, _, _ in
+            guard let self else { return }
+            let list = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+            guard let first = list.first, let data = first.mData else { return }
+            let channels = max(1, Int(first.mNumberChannels))
+            let frames = Int(first.mDataByteSize) / MemoryLayout<Float>.size / channels
+            let p = data.assumingMemoryBound(to: Float.self)
+            self.lock.lock()
+            for i in 0..<frames { self.samples.append(p[i * channels]) } // first channel is enough
+            self.lock.unlock()
+        }
+        guard status == noErr, let proc else {
+            debugLog("loopback: io proc failed \(status)")
             return false
         }
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buf, _ in
-            guard let self, let copy = buf.copy() as? AVAudioPCMBuffer else { return }
-            self.lock.lock(); self.buffers.append(copy); self.lock.unlock()
-        }
-        do {
-            try engine.start()
-            return true
-        } catch {
-            debugLog("loopback: start failed \(error)")
-            return false
-        }
+        let started = AudioDeviceStart(deviceID, proc)
+        debugLog("loopback: recording device \(deviceID) at \(sampleRate) Hz, start=\(started)")
+        return started == noErr
     }
 
     func stop() -> [AVAudioPCMBuffer] {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        lock.lock(); defer { lock.unlock() }
-        return buffers
+        if let proc {
+            AudioDeviceStop(device, proc)
+            AudioDeviceDestroyIOProcID(device, proc)
+        }
+        proc = nil
+        lock.lock(); let all = samples; lock.unlock()
+        guard !all.isEmpty,
+              let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(all.count)) else { return [] }
+        buf.frameLength = AVAudioFrameCount(all.count)
+        all.withUnsafeBufferPointer { buf.floatChannelData![0].update(from: $0.baseAddress!, count: all.count) }
+        return [buf]
     }
 
     /// Peak level per slice of the recording, 0…1, for the little bar graph.

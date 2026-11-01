@@ -208,18 +208,18 @@ struct TestResultView: View {
     let result: VirtualMicInstaller.TestResult
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            HStack(alignment: .center, spacing: 2) {
+            if result.heard { HStack(alignment: .center, spacing: 2) {
                 ForEach(Array(result.levels.enumerated()), id: \.offset) { _, l in
                     Capsule().fill(result.heard ? Palette.accent : Color(white: 0.8))
                         .frame(width: 3, height: max(3, CGFloat(min(1, l * 2.5)) * 24))
                 }
             }
-            .frame(height: 24)
+            .frame(height: 24) }
             if result.heard {
                 (Text("对方会听到：") + Text(result.text.isEmpty ? "一段声音" : "“\(result.text)”").bold())
                     .font(.system(size: 12)).foregroundStyle(Palette.ink)
             } else {
-                Text("虚拟麦克风里没收到声音，再试一次").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                Text(result.problem ?? "虚拟麦克风里没收到声音，再试一次").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
             }
             Spacer(minLength: 0)
         }
