@@ -1,4 +1,4 @@
-// Renders the app icon (logo C: sound bars turning into lines of text, on orange)
+// Renders the app icon (logo H1: a cicada's eyes and wings peeking over a subtitle bar, on orange)
 // into an .iconset. `LiveSubsIcon [--dev] <out.iconset>`; --dev adds a "DEV" band.
 import AppKit
 
@@ -24,21 +24,26 @@ func render(_ px: Int, dev: Bool) -> Data {
     squircle.fill()
     NSShadow().set()
 
-    // Design space is the 100-unit logo (y down); map it onto the body.
-    let u = 824 * s / 92, ox = body.minX - 4 * u, top = body.maxY + 4 * u
-    func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
-        NSRect(x: ox + x * u, y: top - (y + h) * u, width: w * u, height: h * u)
-    }
-    func bar(_ rect: NSRect, alpha: CGFloat = 1) {
-        NSColor.white.withAlphaComponent(alpha).setFill()
-        let radius = min(rect.width, rect.height) / 2
-        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-    }
-    bar(r(20, 42, 7, 16))
-    bar(r(31, 34, 7, 32))
-    bar(r(42, 40, 7, 20))
-    bar(r(57, 40, 24, 7))
-    bar(r(57, 53, 16, 7), alpha: 0.7)
+    // Design space is the 100-unit logo, y down, mapped onto the body (same geometry as
+    // CicadaLogo in Sources/LiveSubs/Onboarding.swift and site/icon.svg; keep them in step).
+    let c = NSGraphicsContext.current!.cgContext
+    c.saveGState()
+    c.translateBy(x: body.minX, y: body.maxY)
+    c.scaleBy(x: body.width / 100, y: -body.height / 100)
+    c.setLineCap(.round)
+    c.setStrokeColor(NSColor.white.cgColor)
+    c.setLineWidth(6)
+    c.move(to: CGPoint(x: 18, y: 36)); c.addQuadCurve(to: CGPoint(x: 45, y: 20), control: CGPoint(x: 26, y: 10))
+    c.move(to: CGPoint(x: 82, y: 36)); c.addQuadCurve(to: CGPoint(x: 55, y: 20), control: CGPoint(x: 74, y: 10))
+    c.strokePath()
+    func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) { c.addEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)) }
+    c.setFillColor(NSColor.white.cgColor); circle(36, 46, 13); circle(64, 46, 13); c.fillPath()
+    c.setFillColor(ink.cgColor); circle(39, 49, 6); circle(67, 49, 6); c.fillPath()
+    c.addPath(CGPath(roundedRect: CGRect(x: 12, y: 58, width: 76, height: 28), cornerWidth: 9, cornerHeight: 9, transform: nil)); c.fillPath()
+    c.setLineWidth(5)
+    c.setStrokeColor(NSColor.white.cgColor); c.move(to: CGPoint(x: 21, y: 68)); c.addLine(to: CGPoint(x: 65, y: 68)); c.strokePath()
+    c.setStrokeColor(orange.cgColor); c.move(to: CGPoint(x: 21, y: 77)); c.addLine(to: CGPoint(x: 47, y: 77)); c.strokePath()
+    c.restoreGState()
 
     if dev {
         // Dev builds: a dark "DEV" band across the bottom, so the Dock, Finder and

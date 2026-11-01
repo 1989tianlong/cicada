@@ -3,49 +3,89 @@ import AVFoundation
 import AVKit
 import SwiftUI
 
-// MARK: - Brand mark (logo C: sound bars turning into lines of text)
+// MARK: - Brand mark (logo H1: a cicada's eyes and wings peeking over a subtitle bar)
 
-private func logoBars(_ r: (CGFloat, CGFloat, CGFloat, CGFloat) -> CGRect) -> [(CGRect, Double)] {
-    [(r(20, 42, 7, 16), 1), (r(31, 34, 7, 32), 1), (r(42, 40, 7, 20), 1), (r(57, 40, 24, 7), 1), (r(57, 53, 16, 7), 0.7)]
+/// The logo in its 100-unit design space, y down (same geometry as site/icon.svg and
+/// Sources/LiveSubsIcon; keep the three in step).
+enum CicadaLogo {
+    static let orange = CGColor(srgbRed: 0.91, green: 0.333, blue: 0.169, alpha: 1)   // #E8552B
+    static let ink = CGColor(srgbRed: 0.082, green: 0.09, blue: 0.11, alpha: 1)       // #15171C
+    static let white = CGColor(gray: 1, alpha: 1)
+
+    static func wings(_ c: CGContext) {
+        c.move(to: CGPoint(x: 18, y: 36)); c.addQuadCurve(to: CGPoint(x: 45, y: 20), control: CGPoint(x: 26, y: 10))
+        c.move(to: CGPoint(x: 82, y: 36)); c.addQuadCurve(to: CGPoint(x: 55, y: 20), control: CGPoint(x: 74, y: 10))
+    }
+    static func circle(_ c: CGContext, _ x: CGFloat, _ y: CGFloat, _ r: CGFloat) {
+        c.addEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
+    }
+    static let bar = CGPath(roundedRect: CGRect(x: 12, y: 58, width: 76, height: 28), cornerWidth: 9, cornerHeight: 9, transform: nil)
+    static func line(_ c: CGContext, y: CGFloat, length: CGFloat) {
+        c.move(to: CGPoint(x: 21, y: y)); c.addLine(to: CGPoint(x: 21 + length, y: y))
+    }
+
+    /// Full colour, without the orange squircle (callers draw their own ground).
+    static func drawMark(_ c: CGContext) {
+        c.setLineCap(.round)
+        c.setStrokeColor(white); c.setLineWidth(6); wings(c); c.strokePath()
+        c.setFillColor(white); circle(c, 36, 46, 13); circle(c, 64, 46, 13); c.fillPath()
+        c.setFillColor(ink); circle(c, 39, 49, 6); circle(c, 67, 49, 6); c.fillPath()
+        c.addPath(bar); c.fillPath()
+        c.setLineWidth(5)
+        c.setStrokeColor(white); line(c, y: 68, length: 44); c.strokePath()
+        c.setStrokeColor(orange); line(c, y: 77, length: 26); c.strokePath()
+    }
+
+    /// One colour: wings, eyes and bar filled; pupils and text lines cut out.
+    static func drawTemplate(_ c: CGContext, color: CGColor) {
+        c.setLineCap(.round)
+        c.setStrokeColor(color); c.setLineWidth(7); wings(c); c.strokePath()
+        c.setFillColor(color); circle(c, 36, 46, 13); circle(c, 64, 46, 13); c.fillPath()
+        // In one colour the eyes would melt into the bar: cut a thin gap around it first.
+        c.setBlendMode(.clear); c.setLineWidth(9); c.addPath(bar); c.strokePath(); c.setBlendMode(.normal)
+        c.addPath(bar); c.fillPath()
+        c.setBlendMode(.clear)
+        circle(c, 39, 49, 6.5); circle(c, 67, 49, 6.5); c.fillPath()
+        c.setLineWidth(6); line(c, y: 68, length: 44); line(c, y: 77, length: 26); c.strokePath()
+        c.setBlendMode(.normal)
+    }
 }
 
 struct BrandMark: View {
     var size: CGFloat = 36
     var body: some View {
-        Canvas { ctx, sz in
-            let u = sz.width / 100
-            func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
-                CGRect(x: x * u, y: y * u, width: w * u, height: h * u)
-            }
-            ctx.fill(Path(roundedRect: r(4, 4, 92, 92), cornerRadius: 22 * u), with: .color(Palette.accent))
-            for (rect, alpha) in logoBars(r) {
-                ctx.fill(Path(roundedRect: rect, cornerRadius: min(rect.width, rect.height) / 2),
-                         with: .color(.white.opacity(alpha)))
-            }
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
+        Image(nsImage: BrandImage.mark)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
 enum BrandImage {
-    /// Menu bar template glyph: sound bars and text lines. Paused draws it at 40%.
+    /// The in-app mark: the logo on its orange squircle, drawn as a vector image so it is sharp at any size.
+    static let mark: NSImage = {
+        NSImage(size: NSSize(width: 100, height: 100), flipped: true) { rect in
+            guard let c = NSGraphicsContext.current?.cgContext else { return false }
+            c.scaleBy(x: rect.width / 100, y: rect.height / 100)
+            c.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 100, height: 100), cornerWidth: 23, cornerHeight: 23, transform: nil))
+            c.setFillColor(CicadaLogo.orange); c.fillPath()
+            CicadaLogo.drawMark(c)
+            return true
+        }
+    }()
+
+    /// Menu bar template glyph: the logo in one colour. Paused draws it at 40%.
     static func menuBar(live: Bool) -> NSImage {
-        let img = NSImage(size: NSSize(width: 20, height: 16), flipped: true) { _ in
-            NSColor.black.withAlphaComponent(live ? 1 : 0.4).setFill()
-            // 100-unit logo design space scaled into 20 × 16 (bars are a little bolder at this size).
-            let u: CGFloat = 0.22
-            func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
-                NSRect(x: (x - 14) * u, y: (y - 26) * u - 0.4, width: w * u + 0.6, height: h * u + 0.6)
-            }
-            for (rect, _) in logoBars(r) {
-                NSBezierPath(roundedRect: rect, xRadius: min(rect.width, rect.height) / 2,
-                             yRadius: min(rect.width, rect.height) / 2).fill()
-            }
+        let img = NSImage(size: NSSize(width: 18, height: 16), flipped: true) { _ in
+            guard let c = NSGraphicsContext.current?.cgContext else { return false }
+            // Design units 10…90 across and 8…88 down fill the 16 pt height.
+            c.translateBy(x: 1, y: 0); c.scaleBy(x: 0.2, y: 0.2); c.translateBy(x: -10, y: -8)
+            CicadaLogo.drawTemplate(c, color: CGColor(gray: 0, alpha: live ? 1 : 0.4))
             return true
         }
         img.isTemplate = true
-        img.accessibilityDescription = "Live Subs"
+        img.accessibilityDescription = appDisplayName
         return img
     }
 }
@@ -267,11 +307,11 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 24) {
             title("先打开两个开关", "去系统设置打开，回来会自动识别。")
             VStack(spacing: 0) {
-                row(icon: "speaker.wave.2", title: "听电脑里的声音", tag: "必需", tagAccent: true, detail: "生成字幕用，不录屏幕") {
-                    if model.systemAudioOK { done("已打开") } else { primary("去打开") { model.requestSystemAudio() } }
+                row(icon: "speaker.wave.2", title: "听电脑里的声音", tag: "必需", tagAccent: true, detail: "用于生成字幕，不会录制屏幕画面") {
+                    if model.systemAudioOK { done("已打开") } else { primary("去开启") { model.requestSystemAudio() } }
                 }
                 Divider().padding(.horizontal, 22)
-                row(icon: "mic", title: "麦克风", tag: "可选", detail: "说话翻译时才用") {
+                row(icon: "mic", title: "麦克风", tag: "可选", detail: "仅在同声传译时使用") {
                     switch model.micStatus {
                     case .authorized: done("已允许")
                     case .notDetermined: secondary("允许") { model.requestMicrophone() }
@@ -290,7 +330,7 @@ struct OnboardingView: View {
 
     private var tryIt: some View {
         VStack(alignment: .leading, spacing: 22) {
-            title("放一段视频试试", "点播放，看字幕出来。")
+            title("放一段视频试试", "点击播放，看看实时字幕效果。")
             ZStack {
                 PlayerSurface(player: sample.player)
                 if !sample.playing {
@@ -342,7 +382,7 @@ struct OnboardingView: View {
                 ChoiceRow(label: "翻译成", value: targetName(model.listen.resolvedTarget),
                           badge: settings.target == "system" ? "跟随系统" : nil, options: targetOptions) { model.targetSelection = $0 }
             }
-            Text("字幕条可以拖动，拖右下角改大小。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            Text("字幕条可任意拖动，拖拽右下角可调整大小。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
     }
 
@@ -367,14 +407,14 @@ struct OnboardingView: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     HStack(alignment: .bottom, spacing: 6) {
                         if settings.talkKey.isRightOption {
-                            key("⌥", "右边 option", width: 96)
+                            key("⌥", "右侧 option", width: 96)
                         } else {
                             ForEach(Array(settings.talkKey.keys.enumerated()), id: \.offset) {
                                 key($0.element, "", width: $0.element.count > 2 ? 96 : 52)
                             }
                         }
                     }
-                    Text("可以在设置里换").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                    Text("可在设置中更改").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
             }
             VStack(spacing: 0) {
@@ -397,7 +437,7 @@ struct OnboardingView: View {
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
 
             if model.virtualMic != nil && installer.passed {
-                (Text("最后一步：在会议软件里，把麦克风选成 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
+                (Text("最后一步：在会议软件中，将麦克风选为 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
                     .font(.system(size: 13)).foregroundStyle(Palette.ink)
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
