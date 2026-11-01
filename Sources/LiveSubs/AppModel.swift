@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     private var shortcutsSuspended = false
     let installer = VirtualMicInstaller()
     let ling = LingClient()
+    lazy var translator = TranslationService(ling: ling)
     let sample = SamplePlayer()
     var openOnboarding: (() -> Void)?
 
@@ -65,6 +66,7 @@ final class AppModel: ObservableObject {
         }
 
         ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
+        listen.translator = translator
         if ling.hasKey { Task { await ling.check() } }
 
         installer.speakThrough = { [weak self] text, lang, device in
@@ -73,7 +75,7 @@ final class AppModel: ObservableObject {
         installer.onLoaded = { [weak self] in self?.virtualMicInstalled() }
 
         speak.translate = { [weak self] text, from, to in
-            await self?.listen.translate(text, source: from, target: to)
+            await self?.listen.translate(text, source: from, target: to, kind: .speak)
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
         speak.onStatus = { [weak self] text in self?.status = text }
@@ -445,6 +447,9 @@ final class AppModel: ObservableObject {
             // Dev testing: the key comes from a file so it never passes through the log.
             if let k = try? String(contentsOfFile: arg, encoding: .utf8) { Task { await ling.setKey(k) } }
         case "aiCheck": Task { await ling.check() }
+        case "lingSimulate":
+            ling.simulate = ["429": .rateLimited, "hijack": .hijacked, "timeout": .timeout][arg]
+            debugLog("ling simulate=\(String(describing: ling.simulate))")
         case "aiRemove": ling.removeKey()
         case "aiState": debugLog("ai state=\(ling.keyState) hasKey=\(ling.hasKey) model=\(settings.aiModel)")
         case "speakOn": enableSpeaking(true)

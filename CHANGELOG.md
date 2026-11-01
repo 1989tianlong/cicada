@@ -9,6 +9,7 @@ the release workflow publishes it as the release notes.
 - New: a sound test for the virtual microphone: the app plays a sentence into it, listens back and shows what the room will hear.
 - New: a settings window with a sidebar (听 / 我说话也翻译 / 字幕条 / 会议记录) replaces the settings sheet; the virtual microphone is set up from a three-step checklist there and in the first-run guide.
 - Changed: hold the right ⌥ key on its own to talk, instead of ⌥ Space (which other apps' launchers often use, and which types a space). Pressing another key while holding it cancels, so ⌥ + letter still types. It needs the "输入监控" permission; the app asks for it.
+- New: with a key, finished sentences and speak-back are translated by Ling (names kept consistent through the notes' glossary); if Ling is busy or fails, that sentence falls back to Google, then to Apple's on-device translation. Partial text while someone is still talking stays on Google.
 - New: Settings › AI 服务 takes your own Ling (ant-ling.com) API key. It is kept in the macOS Keychain, checked with a one-token request, and shown masked; without a key everything works as before.
 - New: both shortcuts (talk, hide/show the subtitle bar) can be changed in settings: click and press new keys. Combinations without ⌃ or ⌘, system shortcuts and ones another app already uses are refused with a reason.
 

@@ -51,7 +51,6 @@ final class ListenEngine {
     private var lastVolatileSent = ""
     private var volatileInFlight = false
     private var volatileEpoch = 0
-    private var translateBackoffUntil = Date.distantPast
     private var tickTimer: Timer?
 
     init(settings: AppSettings) {
@@ -422,22 +421,18 @@ final class ListenEngine {
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    func translate(_ text: String, source: String, target: String? = nil) async -> String? {
+    /// Set by the app: the shared translation chain.
+    var translator: TranslationService?
+
+    func translate(_ text: String, source: String, target: String? = nil,
+                   kind: TranslationService.Kind = .sentence) async -> String? {
         let target = target ?? resolvedTarget
         if source == target { return text }
-        guard Date() >= translateBackoffUntil else { return nil }
-        do {
-            return try await GoogleTranslator.translate(text, source: source, target: target)
-        } catch {
-            debugLog("translate failed: \(error)")
-            if case TranslateFailure.badResponse(429) = error {
-                translateBackoffUntil = Date().addingTimeInterval(10)
-            }
-            if segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
-                onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, "翻译暂不可用")
-            }
-            return nil
+        let out = await translator?.translate(text, source: source, target: target, kind: kind)
+        if out == nil, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
+            onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, "翻译暂不可用")
         }
+        return out
     }
 
     private func translateSegment(id: Int) {
@@ -463,7 +458,7 @@ final class ListenEngine {
         volatileInFlight = true
         Task { [weak self] in
             guard let self else { return }
-            let out = await self.translate(text, source: source)
+            let out = await self.translate(text, source: source, kind: .draft)
             self.volatileInFlight = false
             guard let out, self.isRunning, epoch == self.volatileEpoch else { return }
             self.volatileTranslation = out

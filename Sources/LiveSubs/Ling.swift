@@ -101,6 +101,9 @@ final class LingClient: ObservableObject {
     @Published private(set) var rateLimitedAt: Date?
     var model: () -> String = { "Ling-3.1-flash" }
 
+    /// Debug control only: make every chat call fail this way.
+    var simulate: Failure?
+
     var hasKey: Bool { key != nil }
     var key: String? { AIKey.read() }
     /// The key is known to work (or at least not known to be bad).
@@ -157,6 +160,10 @@ final class LingClient: ObservableObject {
               maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil) async throws -> String {
         guard let key else { throw Failure.noKey }
         guard keyState != .invalid else { throw Failure.invalidKey }
+        if let simulate {
+            if simulate == .rateLimited { rateLimitedAt = Date() }
+            throw simulate
+        }
         var body: [String: Any] = [
             "model": model ?? self.model(),
             "messages": [
