@@ -9,11 +9,12 @@
   - 开关字幕：`start` / `stop`
   - 打开界面：`open`（主窗口）、`panel`（菜单栏面板）、`settings[:speak]`（设置，可指定栏目）
   - 虚拟麦克风：`micTest` 试音（往虚拟麦克风播一句再听回来，结果写进日志），`micNext` 做清单里的下一步
+  - 快捷键：`talkKey:right` 或 `talkKey:<keyCode>:<Carbon 修饰键>` 换说话键（被拒的原因写进日志），`toggleKey:…` 同理，`shortcuts` 把当前状态写进日志
   - 字幕条：`frame` 把位置写进日志，`place:x,y,宽,字号` 摆到指定位置
   - 说话同传：`speakOn` / `speakOff` 开关，`speakFile:<音频>` 把文件当作麦克风输入，`speakOut:<路径>` 把译文语音另存一份
   - 导出：`export:<目录>`
 - `mouse move|drag|dclick ...`：模拟鼠标移动、拖动、双击，坐标原点在主屏左下角。
-- `key`：模拟按住 ⌥ Space 1.5 秒。
+- `key`：模拟按住说话键。`key right [秒]` 单按右 ⌥；`key <keyCode> <Carbon 修饰键> [秒]` 按组合键（如 `key 122 0` 是 F1）；不带参数是 ⌥ Space。
 - `toggle-key`：模拟按一下 ⌃⌥S。
 - `winall <pid>`：列出某个进程的窗口 ID，配合 `screencapture -l <ID>` 截图。
 - `transcribe <音频> <locale>`：用本机模型转写一个文件，用来核对输出。

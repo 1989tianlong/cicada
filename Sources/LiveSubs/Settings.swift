@@ -44,6 +44,15 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Hold to talk: the right ⌥ key (default) or a key combination.
+    @Published var talkKey: Shortcut {
+        didSet { save() }
+    }
+    /// Hide / show the subtitle bar.
+    @Published var toggleKey: Shortcut {
+        didSet { save() }
+    }
+
     var debug: Bool { defaults.bool(forKey: "debug") }
 
     init() {
@@ -62,6 +71,8 @@ final class AppSettings: ObservableObject {
         recordAudio = defaults.object(forKey: "recordAudio") as? Bool ?? true
         overlayAuto = defaults.object(forKey: "overlayAuto") as? Bool ?? true
         overlayHideAfter = defaults.object(forKey: "overlayHideAfter") as? Double ?? 4
+        talkKey = Shortcut(stored: defaults.string(forKey: "talkKey")) ?? .defaultTalk
+        toggleKey = Shortcut(stored: defaults.string(forKey: "toggleKey")) ?? .defaultToggle
     }
 
     private func save() {
@@ -77,6 +88,8 @@ final class AppSettings: ObservableObject {
         defaults.set(recordAudio, forKey: "recordAudio")
         defaults.set(overlayAuto, forKey: "overlayAuto")
         defaults.set(overlayHideAfter, forKey: "overlayHideAfter")
+        defaults.set(talkKey.stored, forKey: "talkKey")
+        defaults.set(toggleKey.stored, forKey: "toggleKey")
     }
 
     /// Target language. "Follow system" uses the first system language that

@@ -10,8 +10,9 @@ final class AppModel: ObservableObject {
     let settings = AppSettings()
     let store = SessionStore()
     let overlay = OverlayController()
-    let hotkey = HotKey()
-    let toggleKey = HotKey(id: 2, keyCode: kVK_ANSI_S, modifiers: controlKey | optionKey)
+    let talkCombo = HotKey(id: 1, shortcut: .defaultTalk)
+    let talkRight = RightOptionKey()
+    let toggleKey = HotKey(id: 2, shortcut: .defaultToggle)
     lazy var listen = ListenEngine(settings: settings)
     lazy var speak = SpeakEngine(settings: settings)
 
@@ -28,6 +29,11 @@ final class AppModel: ObservableObject {
     @Published var liveSource = ""
     @Published var liveTranslation = ""
     @Published var onboardingStep = 1
+    /// Hold right ⌥ is chosen but "输入监控" isn't allowed yet.
+    @Published var talkNeedsPermission = false
+    @Published var toggleKeyTaken = false
+    private var permissionPoll: Timer?
+    private var shortcutsSuspended = false
     let installer = VirtualMicInstaller()
     let sample = SamplePlayer()
     var openOnboarding: (() -> Void)?
@@ -81,11 +87,18 @@ final class AppModel: ObservableObject {
             self?.recordSaid(src, dst, from: from, to: to, secondsAgo: ago)
         }
 
-        hotkey.onDown = { [weak self] in
+        let began: () -> Void = { [weak self] in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.speak.pressBegan() } }
         }
-        hotkey.onUp = { [weak self] in
+        let ended: () -> Void = { [weak self] in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.speak.pressEnded() } }
+        }
+        talkCombo.onDown = began
+        talkCombo.onUp = ended
+        talkRight.onDown = began
+        talkRight.onUp = ended
+        talkRight.onCancel = { [weak self] in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.speak.pressCancelled() } }
         }
         overlay.onCollapsed = { [weak self] in
             self?.listen.clearDisplay()
@@ -97,7 +110,7 @@ final class AppModel: ObservableObject {
         toggleKey.onDown = { [weak self] in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.overlay.toggleManual() } }
         }
-        toggleKey.register()
+        applyToggleKey()
         refreshOutputs()
     }
 
@@ -243,13 +256,92 @@ final class AppModel: ObservableObject {
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 if !granted { debugLog("microphone permission denied") }
             }
-            hotkey.register()
+            if settings.talkKey.isRightOption && !RightOptionKey.allowed { RightOptionKey.requestAccess() }
+            applyTalkKey()
             refreshOutputs()
             Task { await speak.prepare() }
         } else {
-            hotkey.unregister()
+            applyTalkKey()
             Task { await speak.teardownAnalyzer() }
         }
+    }
+
+    // MARK: Shortcuts
+
+    enum ShortcutRole { case talk, toggle }
+
+    /// Arms the talk key for the current setting. Right ⌥ waits for "输入监控" and
+    /// arms itself as soon as it's allowed (no relaunch).
+    func applyTalkKey() {
+        talkCombo.unregister()
+        talkRight.stop()
+        var needsPermission = false
+        if settings.speakEnabled && !shortcutsSuspended {
+            if settings.talkKey.isRightOption {
+                needsPermission = !talkRight.start()
+            } else {
+                talkCombo.register(settings.talkKey)
+            }
+        }
+        if talkNeedsPermission != needsPermission { talkNeedsPermission = needsPermission }
+        if needsPermission, permissionPoll == nil {
+            permissionPoll = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if RightOptionKey.allowed || !self.settings.speakEnabled || !self.settings.talkKey.isRightOption {
+                        self.permissionPoll?.invalidate()
+                        self.permissionPoll = nil
+                        self.applyTalkKey()
+                    }
+                }
+            }
+        }
+    }
+
+    func applyToggleKey() {
+        toggleKey.unregister()
+        guard !shortcutsSuspended else { return }
+        let ok = toggleKey.register(settings.toggleKey)
+        if toggleKeyTaken == ok { toggleKeyTaken = !ok }
+    }
+
+    func allowTalkKey() {
+        RightOptionKey.requestAccess()
+        RightOptionKey.openSystemSettings()
+    }
+
+    /// While a shortcut field is recording, our own shortcuts must not swallow the keys.
+    func suspendShortcuts(_ on: Bool) {
+        shortcutsSuspended = on
+        applyTalkKey()
+        applyToggleKey()
+    }
+
+    /// Validates and saves a new shortcut. Returns why it was refused, or nil.
+    func setShortcut(_ s: Shortcut, for role: ShortcutRole) -> String? {
+        if role == .toggle && s.isRightOption { return "右 ⌥ 只能用来按住说话" }
+        if let p = s.typingProblem { return p }
+        let other = role == .talk ? settings.toggleKey : settings.talkKey
+        if s == other { return "和另一个快捷键重复了" }
+        if s.isSystemShortcut { return "\(s.display) 是系统快捷键，换一个吧" }
+        if !s.isRightOption {
+            // Probe: Carbon refuses a combo another app already registered.
+            let probe = HotKey(id: 9, shortcut: s)
+            let free = probe.register()
+            probe.unregister()
+            if !free { return "\(s.display) 已被其他应用占用，换一个吧" }
+        }
+        switch role {
+        case .talk:
+            settings.talkKey = s
+            if s.isRightOption && settings.speakEnabled && !RightOptionKey.allowed { RightOptionKey.requestAccess() }
+        case .toggle:
+            settings.toggleKey = s
+        }
+        applyTalkKey()
+        applyToggleKey()
+        objectWillChange.send()
+        return nil
     }
 
     func speakFromChanged() {
@@ -339,6 +431,12 @@ final class AppModel: ObservableObject {
             openSettings(settingsSection)
         case "micTest": installer.runTest()
         case "micNext": installer.next()
+        case "talkKey", "toggleKey":
+            let s = arg == "right" ? Shortcut.rightOption : Shortcut(stored: arg)
+            let refusal = s.map { setShortcut($0, for: parts[0] == "talkKey" ? .talk : .toggle) } ?? "bad shortcut"
+            debugLog("\(parts[0]) \(arg): \(refusal ?? "ok")")
+        case "shortcuts":
+            debugLog("shortcuts talk=\(settings.talkKey.display) armed=\(talkRight.isRunning || talkCombo.isRegistered) needsPermission=\(talkNeedsPermission) inputMonitoring=\(RightOptionKey.allowed) toggle=\(settings.toggleKey.display) taken=\(toggleKeyTaken)")
         case "speakOn": enableSpeaking(true)
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)

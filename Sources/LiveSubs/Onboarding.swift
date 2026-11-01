@@ -364,9 +364,17 @@ struct OnboardingView: View {
             HStack(alignment: .top, spacing: 24) {
                 title("想让对方听懂你？", "按住说\(settings.speakFromLang.name)，对方听到翻译后的语音。")
                 Spacer()
-                HStack(alignment: .bottom, spacing: 6) {
-                    key("⌥", "option", width: 58)
-                    key("", "space", width: 120)
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(alignment: .bottom, spacing: 6) {
+                        if settings.talkKey.isRightOption {
+                            key("⌥", "右边 option", width: 96)
+                        } else {
+                            ForEach(Array(settings.talkKey.keys.enumerated()), id: \.offset) {
+                                key($0.element, "", width: $0.element.count > 2 ? 96 : 52)
+                            }
+                        }
+                    }
+                    Text("可以在设置里换").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
             }
             VStack(spacing: 0) {
@@ -380,6 +388,10 @@ struct OnboardingView: View {
                         .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
                 }
                 .padding(.horizontal, 22).padding(.vertical, 14)
+                if settings.speakEnabled && model.talkNeedsPermission {
+                    Divider().padding(.horizontal, 22)
+                    TalkKeyPermissionRow(model: model).padding(.horizontal, 6).padding(.vertical, 4)
+                }
             }
             .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))

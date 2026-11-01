@@ -50,53 +50,6 @@ enum AudioDevices {
     static var virtualMic: OutputDevice? { outputs().first(where: \.isVirtualMic) }
 }
 
-// MARK: - Push-to-talk hotkey
-
-/// A global hold-to-talk hotkey via Carbon. Unlike NSEvent global monitors it
-/// needs no Accessibility / Input Monitoring permission and reports release.
-final class HotKey {
-    static let display = "⌥ Space"
-    var onDown: (() -> Void)?
-    var onUp: (() -> Void)?
-    private var ref: EventHotKeyRef?
-    private var handler: EventHandlerRef?
-    private let id: UInt32
-    private let keyCode: UInt32
-    private let modifiers: UInt32
-
-    init(id: UInt32 = 1, keyCode: Int = kVK_Space, modifiers: Int = optionKey) {
-        self.id = id
-        self.keyCode = UInt32(keyCode)
-        self.modifiers = UInt32(modifiers)
-        var types = [
-            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
-            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
-        ]
-        let me = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, event, user in
-            guard let event, let user else { return noErr }
-            let hk = Unmanaged<HotKey>.fromOpaque(user).takeUnretainedValue()
-            var hkID = EventHotKeyID()
-            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-                              nil, MemoryLayout<EventHotKeyID>.size, nil, &hkID)
-            guard hkID.id == hk.id else { return OSStatus(eventNotHandledErr) }
-            if GetEventKind(event) == UInt32(kEventHotKeyPressed) { hk.onDown?() } else { hk.onUp?() }
-            return noErr
-        }, 2, &types, me, &handler)
-    }
-
-    func register() {
-        guard ref == nil else { return }
-        let hkID = EventHotKeyID(signature: OSType(0x4C535542), id: id) // 'LSUB'
-        RegisterEventHotKey(keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &ref)
-    }
-
-    func unregister() {
-        if let ref { UnregisterEventHotKey(ref) }
-        ref = nil
-    }
-}
-
 // MARK: - Speak engine
 
 /// Hold to talk: microphone → on-device transcription → translation →
@@ -246,14 +199,29 @@ final class SpeakEngine {
             onStatus?("语音识别还在准备，请再按一次")
             return
         }
+        debugLog("speak: press began")
         pressStarted = Date()
         phase = .listening
         onLive?(.listening, "", "")
         startMic(format: format, input: input)
     }
 
+    /// The talk key turned out to be part of a chord: drop what was heard, send nothing.
+    func pressCancelled() {
+        guard phase == .listening else { return }
+        stopMic()
+        utterance?.input.finish()
+        utterance = nil
+        finals = []
+        volatile = ""
+        phase = .idle
+        onLive?(.idle, "", "")
+        debugLog("speak: press cancelled (chord)")
+    }
+
     func pressEnded() {
         guard phase == .listening else { return }
+        debugLog("speak: press ended")
         // Keep the mic open a moment so the last syllable isn't cut off.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             MainActor.assumeIsolated { self?.finishUtterance() }

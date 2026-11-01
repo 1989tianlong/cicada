@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
@@ -100,6 +101,113 @@ struct SoftButton: View {
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - Shortcut field
+
+/// Shows a shortcut as key caps; click it, then press the new keys (esc cancels).
+/// The talk key also accepts the right ⌥ on its own.
+struct ShortcutField: View {
+    @ObservedObject var model: AppModel
+    let role: AppModel.ShortcutRole
+    @State private var recording = false
+    @State private var error: String?
+    @State private var monitor: Any?
+    @State private var rightDown = false
+
+    private var current: Shortcut { role == .talk ? model.settings.talkKey : model.settings.toggleKey }
+    private var standard: Shortcut { role == .talk ? .defaultTalk : .defaultToggle }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 6) {
+                if current != standard && !recording {
+                    Button { error = model.setShortcut(standard, for: role) } label: {
+                        Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.secondary).frame(width: 24, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("恢复默认（\(standard.display)）")
+                }
+                Button { recording ? stop() : start() } label: {
+                    HStack(spacing: 4) {
+                        if recording {
+                            Text(role == .talk ? "按下组合键，或单按右 ⌥" : "按下新的组合键")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.accentInk)
+                        } else {
+                            ForEach(Array(current.keys.enumerated()), id: \.offset) { KeyCap($0.element) }
+                        }
+                    }
+                    .padding(.horizontal, 8).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(recording ? Palette.accentPale : Palette.ground))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(recording ? Palette.accent : .clear, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(recording ? "按 esc 取消" : "点一下，换成别的按键")
+            }
+            if let error {
+                Text(error).font(.system(size: 11)).foregroundStyle(Palette.accentInk)
+            }
+        }
+        .onDisappear { stop() }
+        // Another app grabbed the keys (its launcher came up): stop waiting for them.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in stop() }
+    }
+
+    private func start() {
+        error = nil
+        recording = true
+        rightDown = false
+        model.suspendShortcuts(true)
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { e in
+            handle(e)
+            return nil
+        }
+    }
+
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        guard recording else { return }
+        recording = false
+        model.suspendShortcuts(false)
+    }
+
+    private func handle(_ e: NSEvent) {
+        let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        switch e.type {
+        case .keyDown:
+            if e.keyCode == UInt16(kVK_Escape) && flags.isEmpty { stop(); return }
+            commit(Shortcut(keyCode: e.keyCode, flags: flags))
+        case .flagsChanged:
+            if role == .talk && e.keyCode == UInt16(kVK_RightOption) {
+                // Right ⌥ pressed and released with nothing else: that's the choice.
+                if e.modifierFlags.rawValue & 0x40 != 0 { rightDown = true } else if rightDown { commit(.rightOption) }
+            } else {
+                rightDown = false
+            }
+        default:
+            break
+        }
+    }
+
+    private func commit(_ s: Shortcut) {
+        error = model.setShortcut(s, for: role)
+        stop()
+    }
+}
+
+/// "输入监控" is missing for the right ⌥ key: one line and a button.
+struct TalkKeyPermissionRow: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        SettingsRow(title: "还差一步：允许“输入监控”",
+                    detail: "按住右 ⌥ 要用到它。在系统设置里打开 \(appDisplayName)，回到这里就生效") {
+            SoftButton("去允许", dark: true) { model.allowTalkKey() }
+        }
+    }
+}
+
+let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Live Subs"
 
 // MARK: - Virtual microphone checklist
 
@@ -314,7 +422,11 @@ struct SettingsView: View {
                     Toggle("我说话也翻译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
                         .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
                 }
-                SettingsRow(title: "按住说话") { KeyCap(HotKey.display) }
+                SettingsRow(title: "按住说话",
+                            detail: settings.talkKey.isRightOption ? "只按右边的 ⌥；和别的键一起按不算" : nil) {
+                    ShortcutField(model: model, role: .talk)
+                }
+                if settings.speakEnabled && model.talkNeedsPermission { TalkKeyPermissionRow(model: model) }
                 SettingsRow(title: "我说的语言") {
                     PillMenu(value: settings.speakFromLang.name, options: sourceLanguages.map { ($0.locale, $0.name) }) {
                         settings.speakFrom = $0
@@ -364,7 +476,9 @@ struct SettingsView: View {
                         .pickerStyle(.segmented).labelsHidden().frame(width: 140)
                     }
                 }
-                SettingsRow(title: "随时显示 / 隐藏") { KeyCap("⌃ ⌥ S") }
+                SettingsRow(title: "随时显示 / 隐藏", detail: model.toggleKeyTaken ? "被其他应用占用了，点右边换一个" : nil) {
+                    ShortcutField(model: model, role: .toggle)
+                }
                 SettingsRow(title: "位置和大小", detail: "鼠标停住不动可拖动，拖右下角缩放", divider: false) {
                     SoftButton("恢复默认") { model.overlay.resetPosition() }
                 }

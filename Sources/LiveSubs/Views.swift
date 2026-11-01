@@ -126,7 +126,7 @@ struct MenuPanelView: View {
                     Text("我说话也翻译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
                     HStack(spacing: 5) {
                         Text("按住").foregroundStyle(Palette.secondary)
-                        KeyCap(HotKey.display)
+                        KeyCap(settings.talkKey.display)
                         Text("说\(settings.speakFromLang.name) → \(targetName(model.speak.targetCode))")
                             .foregroundStyle(Palette.secondary).lineLimit(1)
                     }
@@ -173,7 +173,7 @@ struct MenuPanelView: View {
                 HStack(spacing: 5) {
                     Text("随时显示 / 隐藏").foregroundStyle(Palette.secondary)
                     Spacer()
-                    KeyCap("⌃ ⌥ S")
+                    KeyCap(settings.toggleKey.display)
                 }
                 .font(.system(size: 12))
             }

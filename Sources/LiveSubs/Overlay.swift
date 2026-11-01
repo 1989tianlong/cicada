@@ -191,7 +191,7 @@ final class OverlayController {
         }
     }
 
-    /// ⌃⌥S: hide everything now, or bring the bar back.
+    /// The toggle shortcut (⌃⌥S by default): hide everything now, or bring the bar back.
     func toggleManual() {
         guard isShown else { return }
         if manualHidden || !expanded {

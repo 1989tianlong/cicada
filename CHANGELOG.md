@@ -8,6 +8,8 @@ the release workflow publishes it as the release notes.
 - Fixed: installing the virtual microphone looked like it failed ("系统还没识别到"). The package installed fine, but macOS only loads a new audio driver after its audio service restarts; the same password prompt now restarts it. If the driver is already there but not loaded, the app offers "让系统认出它" instead of reinstalling.
 - New: a sound test for the virtual microphone: the app plays a sentence into it, listens back and shows what the room will hear.
 - New: a settings window with a sidebar (听 / 我说话也翻译 / 字幕条 / 会议记录) replaces the settings sheet; the virtual microphone is set up from a three-step checklist there and in the first-run guide.
+- Changed: hold the right ⌥ key on its own to talk, instead of ⌥ Space (which other apps' launchers often use, and which types a space). Pressing another key while holding it cancels, so ⌥ + letter still types. It needs the "输入监控" permission; the app asks for it.
+- New: both shortcuts (talk, hide/show the subtitle bar) can be changed in settings: click and press new keys. Combinations without ⌃ or ⌘, system shortcuts and ones another app already uses are refused with a reason.
 
 ## 2.0.0 — 2026-11-01
 

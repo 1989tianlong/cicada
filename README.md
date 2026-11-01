@@ -33,7 +33,7 @@ Live Subs listens to what your Mac is playing — a livestream, a video, a meeti
 - **Detects the language for you** — every installed on-device speech model listens to the same few seconds; the most confident one wins, usually within half a second.
 - **Translates into your language** — follows your system languages by default (English audio on an English Mac goes to your next language), or pick one.
 - **Stays out of the way** — the subtitle bar appears only while someone talks, tucks into a small dot when it's quiet, and turns see-through when your pointer passes over it, so you can still click what's underneath. Rest the pointer on it to drag or resize; ⌃⌥S hides it.
-- **Speak back** — hold ⌥ Space and talk; the room hears your words translated, through a virtual microphone you install from the app.
+- **Speak back** — hold the right ⌥ key and talk; the room hears your words translated, through a virtual microphone you install from the app.
 - **Meeting records** — every session is saved as a bilingual transcript (with the audio, on your Mac only) and exports to Markdown, Word or SRT.
 - **Private by design** — audio capture, language detection and speech recognition all run on-device.
 
@@ -64,7 +64,7 @@ The first launch walks you through three steps: turn on **system audio recording
 
 1. Play anything with sound. Subtitles appear at the bottom of the screen.
 2. Click the menu bar icon to change the heard language (auto by default), the language to translate into, or how the subtitle bar behaves.
-3. To speak back: turn on **我说话也翻译**, choose **BlackHole 2ch** as the microphone in your meeting app, then hold ⌥ Space while you talk.
+3. To speak back: turn on **我说话也翻译**, choose **BlackHole 2ch** as the microphone in your meeting app, then hold the right ⌥ key while you talk (allow "Input Monitoring" when asked). Both shortcuts can be changed in settings.
 4. **会议记录** in the panel opens your transcripts: search, switch between bilingual / original / translation, export.
 
 ### Uninstall
