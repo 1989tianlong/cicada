@@ -1,9 +1,86 @@
-// Renders the app icon (logo H1: a cicada's eyes and wings peeking over a subtitle bar, on orange)
+// Renders the app icon (logo B: a cicada's eyes and wings peeking over a white subtitle card, on orange)
 // into an .iconset. `LiveSubsIcon [--dev] <out.iconset>`; --dev adds a "DEV" band.
 import AppKit
 
 let orange = NSColor(srgbRed: 0.91, green: 0.33, blue: 0.17, alpha: 1)   // #E8552B
 let ink = NSColor(srgbRed: 0.082, green: 0.09, blue: 0.11, alpha: 1)     // #15171C
+
+// A copy of CicadaLogo in Sources/LiveSubs/Onboarding.swift (this target can't import the app);
+// keep it, that file and site/icon.svg in step.
+enum CicadaLogo {
+    static let orange = rgb(0xE8552B)
+    static let ink = rgb(0x15171C)
+    static let white = CGColor(gray: 1, alpha: 1)
+
+    static func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
+        CGColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+    }
+    static func gradient(_ stops: [(UInt32, CGFloat)], at locations: [CGFloat]) -> CGGradient {
+        CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: stops.map { rgb($0.0, $0.1) } as CFArray,
+                   locations: locations)!
+    }
+    static func circle(_ c: CGContext, _ x: CGFloat, _ y: CGFloat, _ r: CGFloat) {
+        c.addEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
+    }
+    static func wings(_ c: CGContext) {
+        c.move(to: CGPoint(x: 21, y: 42)); c.addQuadCurve(to: CGPoint(x: 44, y: 27), control: CGPoint(x: 26, y: 17))
+        c.move(to: CGPoint(x: 78, y: 39)); c.addQuadCurve(to: CGPoint(x: 55, y: 25), control: CGPoint(x: 73, y: 14))
+    }
+    static let eyes: [(CGFloat, CGFloat)] = [(36, 51), (63, 49)]
+    /// The card leans 5° and bleeds off the right and bottom edges, so the eyes peek over it.
+    static func tilt(_ c: CGContext) {
+        c.translateBy(x: 50, y: 70); c.rotate(by: -5 * .pi / 180); c.translateBy(x: -50, y: -70)
+    }
+
+    /// The whole icon, clipped to its squircle. `unit` is device pixels per design unit
+    /// (shadows are in device space).
+    static func drawIcon(_ c: CGContext, unit: CGFloat) {
+        c.saveGState()
+        c.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 100, height: 100), cornerWidth: 23, cornerHeight: 23, transform: nil))
+        c.clip()
+        c.drawLinearGradient(gradient([(0xF57447, 1), (0xDC461C, 1)], at: [0, 1]),
+                             start: .zero, end: CGPoint(x: 100, y: 100), options: [])
+        c.drawLinearGradient(gradient([(0xFFFFFF, 0.2), (0xFFFFFF, 0)], at: [0, 1]),
+                             start: .zero, end: CGPoint(x: 0, y: 50), options: [])
+        c.setLineCap(.round)
+        c.setStrokeColor(white); c.setLineWidth(5.5); wings(c); c.strokePath()
+
+        let eyeShade = gradient([(0x3A3E48, 1), (0x0E0F12, 1)], at: [0, 1])
+        for (x, y) in eyes {
+            c.saveGState(); circle(c, x, y, 12.5); c.clip()
+            let centre = CGPoint(x: x - 3.75, y: y - 6.25)
+            c.drawRadialGradient(eyeShade, startCenter: centre, startRadius: 0, endCenter: centre, endRadius: 22.5,
+                                 options: [.drawsAfterEndLocation])
+            c.restoreGState()
+            c.setStrokeColor(white); c.setLineWidth(5); circle(c, x, y, 12.5); c.strokePath()
+            c.setFillColor(white); circle(c, x, y, 8.4); c.fillPath()
+            c.setFillColor(ink); circle(c, x + 2, y + 2.2, 4.7); c.fillPath()
+            c.setFillColor(white); circle(c, x + 3.5, y + 0.6, 1.5); c.fillPath()
+        }
+
+        c.saveGState()
+        tilt(c)
+        let card = CGPath(roundedRect: CGRect(x: 9, y: 60, width: 104, height: 56), cornerWidth: 12, cornerHeight: 12, transform: nil)
+        c.saveGState()
+        c.setShadow(offset: CGSize(width: 0, height: unit), blur: 4 * unit, color: rgb(0x7A1E05, 0.3))
+        c.setFillColor(white); c.addPath(card); c.fillPath()
+        c.restoreGState()
+        c.saveGState(); c.addPath(card); c.clip()
+        c.drawLinearGradient(gradient([(0xFFFFFF, 1), (0xF1EEEC, 1)], at: [0, 1]),
+                             start: CGPoint(x: 0, y: 60), end: CGPoint(x: 0, y: 116), options: [])
+        c.restoreGState()
+        c.saveGState(); c.addPath(card); c.setLineWidth(2); c.replacePathWithStrokedPath(); c.clip()
+        c.drawLinearGradient(gradient([(0xFFC9B4, 1), (0xFFFFFF, 1), (0xFFE3A8, 1)], at: [0, 0.5, 1]),
+                             start: CGPoint(x: 9, y: 0), end: CGPoint(x: 113, y: 0), options: [])
+        c.restoreGState()
+        c.setLineWidth(5.4)
+        c.setStrokeColor(ink); c.move(to: CGPoint(x: 22, y: 75)); c.addLine(to: CGPoint(x: 72, y: 75)); c.strokePath()
+        c.setStrokeColor(orange); c.move(to: CGPoint(x: 22, y: 86)); c.addLine(to: CGPoint(x: 49, y: 86)); c.strokePath()
+        c.restoreGState()
+        c.restoreGState()
+    }
+}
 
 func render(_ px: Int, dev: Bool) -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
@@ -24,25 +101,12 @@ func render(_ px: Int, dev: Bool) -> Data {
     squircle.fill()
     NSShadow().set()
 
-    // Design space is the 100-unit logo, y down, mapped onto the body (same geometry as
-    // CicadaLogo in Sources/LiveSubs/Onboarding.swift and site/icon.svg; keep them in step).
+    // Design space is the 100-unit logo, y down, mapped onto the body.
     let c = NSGraphicsContext.current!.cgContext
     c.saveGState()
     c.translateBy(x: body.minX, y: body.maxY)
     c.scaleBy(x: body.width / 100, y: -body.height / 100)
-    c.setLineCap(.round)
-    c.setStrokeColor(NSColor.white.cgColor)
-    c.setLineWidth(6)
-    c.move(to: CGPoint(x: 18, y: 36)); c.addQuadCurve(to: CGPoint(x: 45, y: 20), control: CGPoint(x: 26, y: 10))
-    c.move(to: CGPoint(x: 82, y: 36)); c.addQuadCurve(to: CGPoint(x: 55, y: 20), control: CGPoint(x: 74, y: 10))
-    c.strokePath()
-    func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) { c.addEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)) }
-    c.setFillColor(NSColor.white.cgColor); circle(36, 46, 13); circle(64, 46, 13); c.fillPath()
-    c.setFillColor(ink.cgColor); circle(39, 49, 6); circle(67, 49, 6); c.fillPath()
-    c.addPath(CGPath(roundedRect: CGRect(x: 12, y: 58, width: 76, height: 28), cornerWidth: 9, cornerHeight: 9, transform: nil)); c.fillPath()
-    c.setLineWidth(5)
-    c.setStrokeColor(NSColor.white.cgColor); c.move(to: CGPoint(x: 21, y: 68)); c.addLine(to: CGPoint(x: 65, y: 68)); c.strokePath()
-    c.setStrokeColor(orange.cgColor); c.move(to: CGPoint(x: 21, y: 77)); c.addLine(to: CGPoint(x: 47, y: 77)); c.strokePath()
+    CicadaLogo.drawIcon(c, unit: body.width / 100)
     c.restoreGState()
 
     if dev {

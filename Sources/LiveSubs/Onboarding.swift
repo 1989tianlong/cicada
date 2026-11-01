@@ -3,51 +3,109 @@ import AVFoundation
 import AVKit
 import SwiftUI
 
-// MARK: - Brand mark (logo H1: a cicada's eyes and wings peeking over a subtitle bar)
+// MARK: - Brand mark (logo B: a cicada's eyes and wings peeking over a white subtitle card)
 
 /// The logo in its 100-unit design space, y down (same geometry as site/icon.svg and
-/// Sources/LiveSubsIcon; keep the three in step).
+/// Sources/LiveSubsIcon; keep the three in step). Design: claude.ai/artifact/96R6Md276c3jAS4Mk4Ustn
 enum CicadaLogo {
-    static let orange = CGColor(srgbRed: 0.91, green: 0.333, blue: 0.169, alpha: 1)   // #E8552B
-    static let ink = CGColor(srgbRed: 0.082, green: 0.09, blue: 0.11, alpha: 1)       // #15171C
+    static let orange = rgb(0xE8552B)
+    static let ink = rgb(0x15171C)
     static let white = CGColor(gray: 1, alpha: 1)
 
-    static func wings(_ c: CGContext) {
-        c.move(to: CGPoint(x: 18, y: 36)); c.addQuadCurve(to: CGPoint(x: 45, y: 20), control: CGPoint(x: 26, y: 10))
-        c.move(to: CGPoint(x: 82, y: 36)); c.addQuadCurve(to: CGPoint(x: 55, y: 20), control: CGPoint(x: 74, y: 10))
+    static func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
+        CGColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+    }
+    static func gradient(_ stops: [(UInt32, CGFloat)], at locations: [CGFloat]) -> CGGradient {
+        CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: stops.map { rgb($0.0, $0.1) } as CFArray,
+                   locations: locations)!
     }
     static func circle(_ c: CGContext, _ x: CGFloat, _ y: CGFloat, _ r: CGFloat) {
         c.addEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
     }
-    static let bar = CGPath(roundedRect: CGRect(x: 12, y: 58, width: 76, height: 28), cornerWidth: 9, cornerHeight: 9, transform: nil)
-    static func line(_ c: CGContext, y: CGFloat, length: CGFloat) {
-        c.move(to: CGPoint(x: 21, y: y)); c.addLine(to: CGPoint(x: 21 + length, y: y))
+    static func wings(_ c: CGContext) {
+        c.move(to: CGPoint(x: 21, y: 42)); c.addQuadCurve(to: CGPoint(x: 44, y: 27), control: CGPoint(x: 26, y: 17))
+        c.move(to: CGPoint(x: 78, y: 39)); c.addQuadCurve(to: CGPoint(x: 55, y: 25), control: CGPoint(x: 73, y: 14))
+    }
+    static let eyes: [(CGFloat, CGFloat)] = [(36, 51), (63, 49)]
+    /// The card leans 5° and bleeds off the right and bottom edges, so the eyes peek over it.
+    static func tilt(_ c: CGContext) {
+        c.translateBy(x: 50, y: 70); c.rotate(by: -5 * .pi / 180); c.translateBy(x: -50, y: -70)
     }
 
-    /// Full colour, without the orange squircle (callers draw their own ground).
-    static func drawMark(_ c: CGContext) {
+    /// The whole icon, clipped to its squircle. `unit` is device pixels per design unit
+    /// (shadows are in device space).
+    static func drawIcon(_ c: CGContext, unit: CGFloat) {
+        c.saveGState()
+        c.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 100, height: 100), cornerWidth: 23, cornerHeight: 23, transform: nil))
+        c.clip()
+        c.drawLinearGradient(gradient([(0xF57447, 1), (0xDC461C, 1)], at: [0, 1]),
+                             start: .zero, end: CGPoint(x: 100, y: 100), options: [])
+        c.drawLinearGradient(gradient([(0xFFFFFF, 0.2), (0xFFFFFF, 0)], at: [0, 1]),
+                             start: .zero, end: CGPoint(x: 0, y: 50), options: [])
         c.setLineCap(.round)
-        c.setStrokeColor(white); c.setLineWidth(6); wings(c); c.strokePath()
-        c.setFillColor(white); circle(c, 36, 46, 13); circle(c, 64, 46, 13); c.fillPath()
-        c.setFillColor(ink); circle(c, 39, 49, 6); circle(c, 67, 49, 6); c.fillPath()
-        c.addPath(bar); c.fillPath()
-        c.setLineWidth(5)
-        c.setStrokeColor(white); line(c, y: 68, length: 44); c.strokePath()
-        c.setStrokeColor(orange); line(c, y: 77, length: 26); c.strokePath()
+        c.setStrokeColor(white); c.setLineWidth(5.5); wings(c); c.strokePath()
+
+        let eyeShade = gradient([(0x3A3E48, 1), (0x0E0F12, 1)], at: [0, 1])
+        for (x, y) in eyes {
+            c.saveGState(); circle(c, x, y, 12.5); c.clip()
+            let centre = CGPoint(x: x - 3.75, y: y - 6.25)
+            c.drawRadialGradient(eyeShade, startCenter: centre, startRadius: 0, endCenter: centre, endRadius: 22.5,
+                                 options: [.drawsAfterEndLocation])
+            c.restoreGState()
+            c.setStrokeColor(white); c.setLineWidth(5); circle(c, x, y, 12.5); c.strokePath()
+            c.setFillColor(white); circle(c, x, y, 8.4); c.fillPath()
+            c.setFillColor(ink); circle(c, x + 2, y + 2.2, 4.7); c.fillPath()
+            c.setFillColor(white); circle(c, x + 3.5, y + 0.6, 1.5); c.fillPath()
+        }
+
+        c.saveGState()
+        tilt(c)
+        let card = CGPath(roundedRect: CGRect(x: 9, y: 60, width: 104, height: 56), cornerWidth: 12, cornerHeight: 12, transform: nil)
+        c.saveGState()
+        c.setShadow(offset: CGSize(width: 0, height: unit), blur: 4 * unit, color: rgb(0x7A1E05, 0.3))
+        c.setFillColor(white); c.addPath(card); c.fillPath()
+        c.restoreGState()
+        c.saveGState(); c.addPath(card); c.clip()
+        c.drawLinearGradient(gradient([(0xFFFFFF, 1), (0xF1EEEC, 1)], at: [0, 1]),
+                             start: CGPoint(x: 0, y: 60), end: CGPoint(x: 0, y: 116), options: [])
+        c.restoreGState()
+        c.saveGState(); c.addPath(card); c.setLineWidth(2); c.replacePathWithStrokedPath(); c.clip()
+        c.drawLinearGradient(gradient([(0xFFC9B4, 1), (0xFFFFFF, 1), (0xFFE3A8, 1)], at: [0, 0.5, 1]),
+                             start: CGPoint(x: 9, y: 0), end: CGPoint(x: 113, y: 0), options: [])
+        c.restoreGState()
+        c.setLineWidth(5.4)
+        c.setStrokeColor(ink); c.move(to: CGPoint(x: 22, y: 75)); c.addLine(to: CGPoint(x: 72, y: 75)); c.strokePath()
+        c.setStrokeColor(orange); c.move(to: CGPoint(x: 22, y: 86)); c.addLine(to: CGPoint(x: 49, y: 86)); c.strokePath()
+        c.restoreGState()
+        c.restoreGState()
     }
 
-    /// One colour: wings, eyes and bar filled; pupils and text lines cut out.
+    /// One colour for the menu bar: wings, eyes and a whole (not bleeding) card; whites of the eyes and text lines cut out.
     static func drawTemplate(_ c: CGContext, color: CGColor) {
         c.setLineCap(.round)
-        c.setStrokeColor(color); c.setLineWidth(7); wings(c); c.strokePath()
-        c.setFillColor(color); circle(c, 36, 46, 13); circle(c, 64, 46, 13); c.fillPath()
-        // In one colour the eyes would melt into the bar: cut a thin gap around it first.
-        c.setBlendMode(.clear); c.setLineWidth(9); c.addPath(bar); c.strokePath(); c.setBlendMode(.normal)
-        c.addPath(bar); c.fillPath()
+        c.setStrokeColor(color); c.setLineWidth(6.5); wings(c); c.strokePath()
+        c.setFillColor(color)
+        for (x, y) in eyes { circle(c, x, y, 12.5) }
+        c.fillPath()
+        c.saveGState()
+        tilt(c)
+        let card = CGPath(roundedRect: CGRect(x: 10, y: 60, width: 80, height: 30), cornerWidth: 9, cornerHeight: 9, transform: nil)
+        // In one colour the eyes would melt into the card: cut a thin gap around it first.
+        c.setBlendMode(.clear); c.setLineWidth(9); c.addPath(card); c.strokePath(); c.setBlendMode(.normal)
+        c.addPath(card); c.fillPath()
+        c.setBlendMode(.clear); c.setLineWidth(6)
+        c.move(to: CGPoint(x: 22, y: 70.5)); c.addLine(to: CGPoint(x: 72, y: 70.5))
+        c.move(to: CGPoint(x: 22, y: 80.5)); c.addLine(to: CGPoint(x: 49, y: 80.5))
+        c.strokePath()
+        c.restoreGState()
+        // Eyes as in colour: ring, cut-out white, pupil.
         c.setBlendMode(.clear)
-        circle(c, 39, 49, 6.5); circle(c, 67, 49, 6.5); c.fillPath()
-        c.setLineWidth(6); line(c, y: 68, length: 44); line(c, y: 77, length: 26); c.strokePath()
+        for (x, y) in eyes { circle(c, x, y, 8.4) }
+        c.fillPath()
         c.setBlendMode(.normal)
+        for (x, y) in eyes { circle(c, x + 2, y + 2.2, 4.7) }
+        c.fillPath()
     }
 }
 
@@ -68,9 +126,7 @@ enum BrandImage {
         NSImage(size: NSSize(width: 100, height: 100), flipped: true) { rect in
             guard let c = NSGraphicsContext.current?.cgContext else { return false }
             c.scaleBy(x: rect.width / 100, y: rect.height / 100)
-            c.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 100, height: 100), cornerWidth: 23, cornerHeight: 23, transform: nil))
-            c.setFillColor(CicadaLogo.orange); c.fillPath()
-            CicadaLogo.drawMark(c)
+            CicadaLogo.drawIcon(c, unit: abs(c.ctm.a))
             return true
         }
     }()
@@ -79,8 +135,8 @@ enum BrandImage {
     static func menuBar(live: Bool) -> NSImage {
         let img = NSImage(size: NSSize(width: 18, height: 16), flipped: true) { _ in
             guard let c = NSGraphicsContext.current?.cgContext else { return false }
-            // Design units 10…90 across and 8…88 down fill the 16 pt height.
-            c.translateBy(x: 1, y: 0); c.scaleBy(x: 0.2, y: 0.2); c.translateBy(x: -10, y: -8)
+            // Design units 8…92 across and 16…94 down fill the 16 pt height.
+            c.translateBy(x: 1, y: 0.4); c.scaleBy(x: 0.19, y: 0.19); c.translateBy(x: -8, y: -16)
             CicadaLogo.drawTemplate(c, color: CGColor(gray: 0, alpha: live ? 1 : 0.4))
             return true
         }
