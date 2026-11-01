@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     let installer = VirtualMicInstaller()
     let ling = LingClient()
     lazy var translator = TranslationService(ling: ling)
+    lazy var notes = NotesEngine(ling: ling, store: store)
     let sample = SamplePlayer()
     var openOnboarding: (() -> Void)?
 
@@ -67,6 +68,13 @@ final class AppModel: ObservableObject {
 
         ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
         listen.translator = translator
+        translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
+        notes.language = {
+            // The app speaks Chinese, so notes do too when Chinese is among the system languages.
+            let prefs = Locale.preferredLanguages
+            let pick = prefs.first(where: { $0.hasPrefix("zh") }) ?? prefs.first ?? "zh-Hans"
+            return TranslationService.englishName(translationCode(forSystemLanguage: pick))
+        }
         if ling.hasKey { Task { await ling.check() } }
 
         installer.speakThrough = { [weak self] text, lang, device in
@@ -210,6 +218,7 @@ final class AppModel: ObservableObject {
             speak.setRecording(store.micAudioURL(session.id))
         }
         listen.start()
+        notes.begin(session.id)
         if listen.isRunning {
             overlay.show()
         } else {
@@ -223,6 +232,7 @@ final class AppModel: ObservableObject {
         listen.router.setRecording(nil)
         speak.setRecording(nil)
         store.end()
+        notes.finish()
         overlay.hide()
         refresh()
     }
@@ -447,6 +457,9 @@ final class AppModel: ObservableObject {
             // Dev testing: the key comes from a file so it never passes through the log.
             if let k = try? String(contentsOfFile: arg, encoding: .utf8) { Task { await ling.setKey(k) } }
         case "aiCheck": Task { await ling.check() }
+        case "notesNow": notes.updateNow()
+        case "notesReplay": Task { await notes.replay(arg) }
+        case "notesState": debugLog("notes state=\(notes.state) topics=\(notes.notes.topics.count) covered=\(notes.notes.covered) glossary=\(notes.glossary.count)")
         case "lingSimulate":
             ling.simulate = ["429": .rateLimited, "hijack": .hijacked, "timeout": .timeout][arg]
             debugLog("ling simulate=\(String(describing: ling.simulate))")

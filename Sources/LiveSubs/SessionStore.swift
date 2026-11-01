@@ -20,6 +20,8 @@ struct Session: Codable, Identifiable, Equatable {
     var endedAt: Date?
     var lines: [TranscriptLine]
     var hasAudio: Bool
+    /// AI notes (absent in older sessions and without an API key).
+    var notes: MeetingNotes?
 
     var duration: TimeInterval { (endedAt ?? Date()).timeIntervalSince(startedAt) }
 }
@@ -106,6 +108,12 @@ final class SessionStore: ObservableObject {
               let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
         sessions[i].lines[j].dst = text
         scheduleSave(id)
+    }
+
+    func setNotes(_ id: String, _ notes: MeetingNotes) {
+        guard let i = index(id) else { return }
+        sessions[i].notes = notes
+        id == liveID ? scheduleSave(id) : saveNow(id)
     }
 
     // MARK: Editing
