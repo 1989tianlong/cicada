@@ -160,15 +160,35 @@ struct MenuPanelView: View {
 
             VStack(spacing: 10) {
                 HStack {
-                    Text("字幕条").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Text("显示").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
                     Spacer()
-                    Picker("字幕条", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
-                        Text("说话时显示").tag(true)
-                        Text("一直显示").tag(false)
+                    Picker("显示", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
+                        Text("实时纪要").tag("notes")
+                        Text("字幕条").tag("bar")
+                        Text("不显示").tag("none")
                     }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 210)
                 }
-                if settings.overlayAuto {
+                if settings.displayMode == "notes" {
+                    HStack {
+                        Text(model.ling.hasKey ? "纪要、文字记录和字幕都在一个窗口里" : "填上 API key 才有纪要；文字记录照常")
+                            .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                        Spacer()
+                        SoftButton("打开") { model.openNotesWindow() }
+                    }
+                }
+                if settings.displayMode == "bar" {
+                    HStack {
+                        Text("字幕条").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                        Spacer()
+                        Picker("字幕条", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
+                            Text("说话时显示").tag(true)
+                            Text("一直显示").tag(false)
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                    }
+                }
+                if settings.displayMode == "bar" && settings.overlayAuto {
                     HStack {
                         Text("安静多久后收起").font(.system(size: 12)).foregroundStyle(Palette.secondary)
                         Spacer()
@@ -181,7 +201,7 @@ struct MenuPanelView: View {
                     }
                 }
                 HStack(spacing: 5) {
-                    Text("随时显示 / 隐藏").foregroundStyle(Palette.secondary)
+                    Text("切换显示方式").foregroundStyle(Palette.secondary)
                     Spacer()
                     KeyCap(settings.toggleKey.display)
                 }

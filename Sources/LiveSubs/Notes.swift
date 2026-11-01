@@ -37,7 +37,7 @@ struct FishboneBranch: Codable, Equatable, Identifiable {
     var label: String
     var detail: String
     var t: Double?
-    /// How many transcript lines back this branch; 0–1 is shown as weak.
+    /// How many transcript lines back this branch; 0 is shown as weak.
     var support: Int
     var id: String { label + detail }
 }
@@ -133,6 +133,13 @@ final class NotesEngine: ObservableObject {
         Task { await update(id, final: false) }
     }
 
+    /// Show a stored meeting's notes (the window shows the live meeting when there is one).
+    func show(_ id: String) {
+        shownID = id
+        notes = store.session(id)?.notes ?? MeetingNotes()
+        fresh = []
+    }
+
     /// Notes for a finished meeting that has none (e.g. recorded before a key was set).
     func generate(for id: String) {
         Task { await update(id, final: true) }
@@ -152,6 +159,9 @@ final class NotesEngine: ObservableObject {
     }
 
     private func tick() {
+        // A key was added or replaced since the last failure.
+        if (state == .noKey || state == .invalidKey), ling.usable, ling.keyState != .checking { state = .idle }
+        if state == .idle, !ling.hasKey { state = .noKey }
         guard let id = sessionID, !inFlight else { return }
         guard let s = store.session(id), s.lines.count > notes.covered else { return }
         // First notes as soon as there is something to say, then every 45 s.
@@ -212,7 +222,7 @@ final class NotesEngine: ObservableObject {
 
     // MARK: Prompt
 
-    static func clock(_ t: Double) -> String { String(format: "%02d:%02d", Int(t) / 60, Int(t) % 60) }
+    static func clock(_ t: Double) -> String { TranscriptExport.clock(t) }
 
     static func prompt(notes: MeetingNotes, lines: [TranscriptLine], from: Int, language: String, final: Bool) -> String {
         func line(_ i: Int) -> String {

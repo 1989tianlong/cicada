@@ -9,7 +9,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .listen: "听"
         case .speak: "我说话也翻译"
-        case .overlay: "字幕条"
+        case .overlay: "显示"
         case .records: "会议记录"
         case .ai: "AI 服务"
         }
@@ -462,7 +462,21 @@ struct SettingsView: View {
     private var overlay: some View {
         VStack(alignment: .leading, spacing: 14) {
             SettingsCard {
-                SettingsRow(title: "显示") {
+                SettingsRow(title: "听的时候显示", detail: "选哪个都会照样记录、照样出纪要") {
+                    Picker("显示方式", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
+                        Text("实时纪要").tag("notes")
+                        Text("字幕条").tag("bar")
+                        Text("不显示").tag("none")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 210)
+                }
+                SettingsRow(title: "切换显示方式", detail: model.toggleKeyTaken ? "被其他应用占用了，点右边换一个" : "实时纪要 → 字幕条 → 不显示", divider: false) {
+                    ShortcutField(model: model, role: .toggle)
+                }
+            }
+            Text("字幕条").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
+            SettingsCard {
+                SettingsRow(title: "字幕条出现") {
                     Picker("显示", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
                         Text("说话时").tag(true)
                         Text("一直").tag(false)
@@ -478,9 +492,6 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented).labelsHidden().frame(width: 140)
                     }
-                }
-                SettingsRow(title: "随时显示 / 隐藏", detail: model.toggleKeyTaken ? "被其他应用占用了，点右边换一个" : nil) {
-                    ShortcutField(model: model, role: .toggle)
                 }
                 SettingsRow(title: "位置和大小", detail: "鼠标停住不动可拖动，拖右下角缩放", divider: false) {
                     SoftButton("恢复默认") { model.overlay.resetPosition() }

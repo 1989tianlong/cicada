@@ -53,6 +53,10 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// What shows while listening: "notes" (live notes window, default), "bar" (subtitle bar), "none".
+    @Published var displayMode: String {
+        didSet { save() }
+    }
     /// Ling model for notes and translation.
     @Published var aiModel: String {
         didSet { save() }
@@ -79,6 +83,7 @@ final class AppSettings: ObservableObject {
         talkKey = Shortcut(stored: defaults.string(forKey: "talkKey")) ?? .defaultTalk
         toggleKey = Shortcut(stored: defaults.string(forKey: "toggleKey")) ?? .defaultToggle
         aiModel = defaults.string(forKey: "aiModel") ?? "Ling-3.1-flash"
+        displayMode = defaults.string(forKey: "displayMode") ?? "notes"
     }
 
     private func save() {
@@ -97,6 +102,7 @@ final class AppSettings: ObservableObject {
         defaults.set(talkKey.stored, forKey: "talkKey")
         defaults.set(toggleKey.stored, forKey: "toggleKey")
         defaults.set(aiModel, forKey: "aiModel")
+        defaults.set(displayMode, forKey: "displayMode")
     }
 
     /// Target language. "Follow system" uses the first system language that

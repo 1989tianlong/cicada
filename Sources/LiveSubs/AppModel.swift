@@ -38,6 +38,7 @@ final class AppModel: ObservableObject {
     let ling = LingClient()
     lazy var translator = TranslationService(ling: ling)
     lazy var notes = NotesEngine(ling: ling, store: store)
+    lazy var notesWindow = NotesWindowController(model: self)
     let sample = SamplePlayer()
     var openOnboarding: (() -> Void)?
 
@@ -52,6 +53,7 @@ final class AppModel: ObservableObject {
         listen.onSubtitle = { [weak self] src, dst in
             self?.liveSource = src
             self?.liveTranslation = dst
+            guard self?.settings.displayMode == "bar" else { return }
             self?.overlay.clearStatus()
             self?.overlay.setSubtitle(source: src, translation: dst)
         }
@@ -90,6 +92,14 @@ final class AppModel: ObservableObject {
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
             self.speakPhase = phase
+            guard self.settings.displayMode == "bar" else {
+                // The notes window's caption line shows what you are saying.
+                if phase != .idle || !src.isEmpty {
+                    self.liveSource = src.isEmpty ? "你正在说…" : "你：\(src)"
+                    self.liveTranslation = dst
+                }
+                return
+            }
             if !self.overlay.isShown { self.overlay.show() }
             if phase == .idle && src.isEmpty {
                 self.overlay.setSpeaking(nil)
@@ -122,7 +132,7 @@ final class AppModel: ObservableObject {
             (self?.settings.overlayAuto ?? true, self?.settings.overlayHideAfter ?? 4)
         }
         toggleKey.onDown = { [weak self] in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.overlay.toggleManual() } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.cycleDisplay() } }
         }
         applyToggleKey()
         refreshOutputs()
@@ -220,7 +230,7 @@ final class AppModel: ObservableObject {
         listen.start()
         notes.begin(session.id)
         if listen.isRunning {
-            overlay.show()
+            showDisplay()
         } else {
             store.end()
         }
@@ -238,6 +248,40 @@ final class AppModel: ObservableObject {
     }
 
     func setRunning(_ on: Bool) { on ? start() : stop() }
+
+    // MARK: Display (live notes / subtitle bar / nothing)
+
+    func setDisplayMode(_ mode: String) {
+        settings.displayMode = mode
+        objectWillChange.send()
+        showDisplay()
+    }
+
+    /// ⌃⌥S: notes → subtitle bar → nothing → notes.
+    func cycleDisplay() {
+        let order = ["notes", "bar", "none"]
+        let i = order.firstIndex(of: settings.displayMode) ?? 0
+        setDisplayMode(order[(i + 1) % order.count])
+    }
+
+    private func showDisplay() {
+        switch settings.displayMode {
+        case "bar":
+            notesWindow.hide()
+            if listen.isRunning { overlay.show() }
+        case "none":
+            notesWindow.hide()
+            overlay.hide()
+        default:
+            overlay.hide()
+            if listen.isRunning { notesWindow.show() }
+        }
+    }
+
+    func openNotesWindow() {
+        if settings.displayMode != "notes" { setDisplayMode("notes") }
+        notesWindow.show()
+    }
 
     // MARK: Settings actions
 
@@ -458,7 +502,25 @@ final class AppModel: ObservableObject {
             if let k = try? String(contentsOfFile: arg, encoding: .utf8) { Task { await ling.setKey(k) } }
         case "aiCheck": Task { await ling.check() }
         case "notesNow": notes.updateNow()
+        case "display": setDisplayMode(arg)
+        case "notesWindow":
+            let v = arg.split(separator: ",").compactMap { Double($0) }
+            openNotesWindow()
+            if v.count == 4 { notesWindow.place(NSRect(x: v[0], y: v[1], width: v[2], height: v[3])) }
+        case "notesFrame": debugLog("notes window frame=\(String(describing: notesWindow.frame)) visible=\(notesWindow.isVisible)")
         case "notesReplay": Task { await notes.replay(arg) }
+        case "notesShow": notes.show(arg)
+        case "notesCapturable": notesWindow.setCapturable(arg != "off")
+        case "notesRender":
+            // The whole notes column as a PNG, for checking what is below the fold.
+            let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil)
+                .padding(24).frame(width: 460).background(Color.white)
+            let r = ImageRenderer(content: view)
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: arg))
+            }
         case "notesState": debugLog("notes state=\(notes.state) topics=\(notes.notes.topics.count) covered=\(notes.notes.covered) glossary=\(notes.glossary.count)")
         case "lingSimulate":
             ling.simulate = ["429": .rateLimited, "hijack": .hijacked, "timeout": .timeout][arg]
