@@ -1,0 +1,37 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "scripts/site.py", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Pages needs a public repo on this plan; skip quietly while it is private.
+    if: ${{ !github.event.repository.private }}
+    # Linux is enough: the site is static files plus a Python build step (og.png / icon.png are committed).
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the site
+        run: python3 scripts/site.py
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/site
+      - id: deployment
+        uses: actions/deploy-pages@v4
