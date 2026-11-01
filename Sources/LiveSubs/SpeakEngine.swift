@@ -361,7 +361,11 @@ final class SpeakEngine {
     }
 
     /// `device` overrides the chosen output (the virtual mic sound test).
+    /// Set by the app: Ming's voice as a PCM stream, when chosen and a key is set.
+    var mingVoice: ((String) -> AsyncThrowingStream<Data, Error>)?
+
     func speak(_ text: String, language: String, device override: OutputDevice? = nil) async {
+        if let ming = mingVoice, await speakStream(ming(text), device: override ?? outputDevice()) { return }
         let buffers = await synthesize(text, language: language)
         guard let first = buffers.first else { return }
         if let url = debugOutputURL, let f = AudioFileWriter.open(url, format: first.format) {
@@ -393,6 +397,51 @@ final class SpeakEngine {
     }
 
     /// Core Audio restarted (virtual mic install): device IDs changed, rebuild the output next time.
+    /// Plays 24 kHz mono 16-bit PCM chunks as they arrive. Returns false if nothing came, so the
+    /// caller can fall back to the system voice.
+    private func speakStream(_ stream: AsyncThrowingStream<Data, Error>, device: OutputDevice?) async -> Bool {
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false) else { return false }
+        let started = Date()
+        var carry = Data()
+        var count = 0
+        var firstAt: TimeInterval?
+        do {
+            for try await chunk in stream {
+                var bytes = carry + chunk
+                if bytes.count % 2 == 1 { carry = bytes.suffix(1); bytes = bytes.dropLast() } else { carry = Data() }
+                let frames = bytes.count / 2
+                guard frames > 0, let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { continue }
+                buf.frameLength = AVAudioFrameCount(frames)
+                bytes.withUnsafeBytes { raw in
+                    let src = raw.bindMemory(to: Int16.self)
+                    let dst = buf.floatChannelData![0]
+                    for i in 0..<frames { dst[i] = Float(Int16(littleEndian: src[i])) / 32768 }
+                }
+                if count == 0 {
+                    firstAt = Date().timeIntervalSince(started)
+                    configureOutput(format: format, device: device)
+                    if !out.isRunning { try out.start() }
+                }
+                player.scheduleBuffer(buf, completionHandler: nil)
+                if !player.isPlaying { player.play() }
+                count += 1
+            }
+        } catch {
+            debugLog("ming voice failed: \(error)")
+            if count == 0 { return false }
+        }
+        guard count > 0 else { return false }
+        // Wait for the queued audio to finish before the next utterance.
+        if let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 240) {
+            tail.frameLength = 240
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                player.scheduleBuffer(tail, completionCallbackType: .dataPlayedBack) { _ in cont.resume() }
+            }
+        }
+        debugLog("spoke ming \(count) chunks to \(device?.name ?? "default output") first audio \(String(format: "%.2f", firstAt ?? 0)) s")
+        return true
+    }
+
     func resetOutput() {
         player.stop()
         out.stop()

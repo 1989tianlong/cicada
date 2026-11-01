@@ -19,7 +19,14 @@ struct AISettingsView: View {
                          note: ling.usable ? "会中每 45 秒更新" : "填上 key 才有")
                 usageRow("翻译", tag: ling.usable ? "用 Ling" : "Google", on: ling.usable,
                          note: ling.usable ? "整句用 Ling；不行时换 Google、本机" : "没有 key 时照常可用")
-                usageRow("语音识别", tag: "本机", on: false, note: "更快，不花钱", divider: false)
+                usageRow("语音识别", tag: "本机", on: false, note: "更快，不花钱")
+                SettingsRow(title: "我说话时的声音", detail: settings.speakVoice == "ming" ? "Ming 声音，首句约 1.3 秒出声" : "系统声音，不用 key", divider: false) {
+                    PillMenu(value: settings.speakVoice == "ming" ? "Ming 声音" : "系统声音",
+                             options: [("system", "系统声音")] + (ling.usable ? [("ming", "Ming 声音")] : [])) {
+                        settings.speakVoice = $0
+                        model.applyVoice()
+                    }
+                }
             }
             SettingsCard {
                 SettingsRow(title: "模型", detail: "3.1 更准；3.0 更快、更省", divider: false) {

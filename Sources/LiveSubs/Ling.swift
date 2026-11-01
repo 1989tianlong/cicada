@@ -210,6 +210,49 @@ final class LingClient: ObservableObject {
         throw Failure.rateLimited
     }
 
+    // MARK: Speech (Ming TTS)
+
+    /// Streams Ming's voice for `text` as raw 24 kHz mono 16-bit PCM chunks.
+    func speech(_ text: String, voice: String = "UK_Charlotte") -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { cont in
+            let task = Task { @MainActor [weak self] in
+                guard let self, let key = self.key else { cont.finish(throwing: Failure.noKey); return }
+                await self.acquire(.speak)
+                var req = URLRequest(url: Self.base.appendingPathComponent("audio/speech"))
+                req.httpMethod = "POST"
+                req.timeoutInterval = 20
+                req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try? JSONSerialization.data(withJSONObject: [
+                    "model": "Ming-3.0-tts-0.5B", "input": text, "voice": voice,
+                    "response_format": "pcm", "sample_rate": 24000, "stream": true, "stream_format": "sse",
+                ] as [String: Any])
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    switch (response as? HTTPURLResponse)?.statusCode ?? 0 {
+                    case 200: break
+                    case 401, 403:
+                        self.keyState = .invalid
+                        throw Failure.invalidKey
+                    case 429: throw Failure.rateLimited
+                    case let code: throw Failure.http(code)
+                    }
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data:"),
+                              let obj = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(5).utf8)) as? [String: Any]
+                        else { continue }
+                        if obj["type"] as? String == "speech.audio.done" { break }
+                        if let b64 = obj["audio"] as? String, let pcm = Data(base64Encoded: b64) { cont.yield(pcm) }
+                    }
+                    cont.finish()
+                } catch {
+                    cont.finish(throwing: error)
+                }
+            }
+            cont.onTermination = { _ in task.cancel() }
+        }
+    }
+
     // MARK: Transport
 
     private func post(_ path: String, body: [String: Any], key: String, timeout: TimeInterval) async throws -> [String: Any] {

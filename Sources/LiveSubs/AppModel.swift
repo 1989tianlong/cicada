@@ -88,6 +88,8 @@ final class AppModel: ObservableObject {
             await self?.listen.translate(text, source: from, target: to, kind: .speak)
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
+        speak.mingVoice = nil
+        applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
@@ -404,6 +406,16 @@ final class AppModel: ObservableObject {
         return nil
     }
 
+    /// Ming's voice when chosen and a key works; otherwise the system voice.
+    func applyVoice() {
+        speak.mingVoice = settings.speakVoice == "ming" ? { [weak self] text in
+            guard let self, self.ling.usable else {
+                return AsyncThrowingStream { $0.finish(throwing: LingClient.Failure.noKey) }
+            }
+            return self.ling.speech(text)
+        } : nil
+    }
+
     func speakFromChanged() {
         objectWillChange.send()
         if settings.speakEnabled { Task { await speak.prepare() } }
@@ -501,6 +513,9 @@ final class AppModel: ObservableObject {
             // Dev testing: the key comes from a file so it never passes through the log.
             if let k = try? String(contentsOfFile: arg, encoding: .utf8) { Task { await ling.setKey(k) } }
         case "aiCheck": Task { await ling.check() }
+        case "voice":
+            settings.speakVoice = arg == "ming" ? "ming" : "system"
+            applyVoice()
         case "notesNow": notes.updateNow()
         case "display": setDisplayMode(arg)
         case "notesWindow":

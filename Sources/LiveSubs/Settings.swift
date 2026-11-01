@@ -57,6 +57,10 @@ final class AppSettings: ObservableObject {
     @Published var displayMode: String {
         didSet { save() }
     }
+    /// Voice for speak-back: "system" or "ming" (Ming TTS through the Ling key).
+    @Published var speakVoice: String {
+        didSet { save() }
+    }
     /// Ling model for notes and translation.
     @Published var aiModel: String {
         didSet { save() }
@@ -84,6 +88,7 @@ final class AppSettings: ObservableObject {
         toggleKey = Shortcut(stored: defaults.string(forKey: "toggleKey")) ?? .defaultToggle
         aiModel = defaults.string(forKey: "aiModel") ?? "Ling-3.1-flash"
         displayMode = defaults.string(forKey: "displayMode") ?? "notes"
+        speakVoice = defaults.string(forKey: "speakVoice") ?? "system"
     }
 
     private func save() {
@@ -103,6 +108,7 @@ final class AppSettings: ObservableObject {
         defaults.set(toggleKey.stored, forKey: "toggleKey")
         defaults.set(aiModel, forKey: "aiModel")
         defaults.set(displayMode, forKey: "displayMode")
+        defaults.set(speakVoice, forKey: "speakVoice")
     }
 
     /// Target language. "Follow system" uses the first system language that
