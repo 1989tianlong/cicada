@@ -3,6 +3,12 @@
 One section per release, newest first. `scripts/release.sh` needs the section, dated today;
 the release workflow publishes it as the release notes.
 
+## Unreleased
+
+- Fixed: installing the virtual microphone looked like it failed ("系统还没识别到"). The package installed fine, but macOS only loads a new audio driver after its audio service restarts; the same password prompt now restarts it. If the driver is already there but not loaded, the app offers "让系统认出它" instead of reinstalling.
+- New: a sound test for the virtual microphone: the app plays a sentence into it, listens back and shows what the room will hear.
+- New: a settings window with a sidebar (听 / 我说话也翻译 / 字幕条 / 会议记录) replaces the settings sheet; the virtual microphone is set up from a three-step checklist there and in the first-run guide.
+
 ## 2.0.0 — 2026-11-01
 
 - New: spoken-language auto-detection across the installed on-device models; translation target follows the system language or a manual choice.

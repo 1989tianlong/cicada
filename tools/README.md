@@ -7,7 +7,8 @@
 
 - `lsctl <命令>`：通过分布式通知 `com.wquguru.cicada.debug` 遥控 App。
   - 开关字幕：`start` / `stop`
-  - 打开界面：`open`（主窗口）、`panel`（菜单栏面板）、`settings`（设置）
+  - 打开界面：`open`（主窗口）、`panel`（菜单栏面板）、`settings[:speak]`（设置，可指定栏目）
+  - 虚拟麦克风：`micTest` 试音（往虚拟麦克风播一句再听回来，结果写进日志），`micNext` 做清单里的下一步
   - 字幕条：`frame` 把位置写进日志，`place:x,y,宽,字号` 摆到指定位置
   - 说话同传：`speakOn` / `speakOff` 开关，`speakFile:<音频>` 把文件当作麦克风输入，`speakOut:<路径>` 把译文语音另存一份
   - 导出：`export:<目录>`

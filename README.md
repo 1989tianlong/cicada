@@ -58,7 +58,7 @@ Download **`LiveSubs-<version>-macOS-AppleSilicon.dmg`** from [Releases](https:/
 
 The app is ad-hoc signed (not notarized). On first launch macOS blocks it: open **System Settings › Privacy & Security** and click **Open Anyway**.
 
-The first launch walks you through three steps: turn on **system audio recording** (and, optionally, the microphone), play the built-in sample to see subtitles appear, and — if you want to speak back — install the virtual microphone with one click (it asks for your password once).
+The first launch walks you through three steps: turn on **system audio recording** (and, optionally, the microphone), play the built-in sample to see subtitles appear, and — if you want to speak back — install the virtual microphone with one click (it asks for your password once); a quick sound test then confirms the room will hear you.
 
 ## Usage
 

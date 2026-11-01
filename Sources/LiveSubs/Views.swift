@@ -138,10 +138,9 @@ struct MenuPanelView: View {
             }
             if settings.speakEnabled && model.virtualMic == nil {
                 HStack {
-                    Text("还没有虚拟麦克风，对方听不到").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                    Text("虚拟麦克风还没设置好，对方听不到").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
                     Spacer()
-                    InstallMicButton(installer: model.installer) { model.virtualMicInstalled() }
-                        .font(.system(size: 12))
+                    SoftButton("设置") { model.openSettings(.speak) }
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
@@ -241,9 +240,6 @@ struct MainWindowView: View {
                 .padding(.trailing, 14).padding(.bottom, 14).padding(.top, 38)
         }
         .background(Palette.ground)
-        .sheet(isPresented: $model.showSettings) {
-            SettingsSheet(model: model, settings: settings)
-        }
     }
 
     // MARK: Sidebar
@@ -254,7 +250,7 @@ struct MainWindowView: View {
                 LogoTile(size: 28)
                 Text("会议记录").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.ink)
                 Spacer()
-                Button { model.showSettings = true } label: {
+                Button { model.openSettings() } label: {
                     Image(systemName: "slider.horizontal.3").font(.system(size: 14)).frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain).foregroundStyle(Palette.secondary).help("设置")
@@ -435,97 +431,5 @@ struct MainWindowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 12)
-    }
-}
-
-// MARK: - Settings sheet
-
-struct SettingsSheet: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var settings: AppSettings
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("设置").font(.system(size: 18, weight: .bold))
-
-            group("会议记录") {
-                Toggle("保存会议录音（只存在这台 Mac 上）", isOn: $settings.recordAudio)
-                Button("打开记录文件夹") { NSWorkspace.shared.open(model.store.root) }
-            }
-
-            group("我说话也翻译") {
-                Picker("我说的语言", selection: Binding(get: { settings.speakFrom },
-                                                    set: { settings.speakFrom = $0; model.speakFromChanged() })) {
-                    ForEach(sourceLanguages, id: \.locale) { Text($0.name).tag($0.locale) }
-                }
-                Picker("对方听到", selection: $settings.speakTo) {
-                    Text("跟随房间语言").tag("room")
-                    ForEach(targetLanguages, id: \.code) { Text($0.name).tag($0.code) }
-                }
-                Picker("声音输出到", selection: $settings.speakOutput) {
-                    Text("自动（优先虚拟麦克风）").tag("")
-                    ForEach(model.outputs) { Text($0.name).tag($0.uid) }
-                }
-                HStack {
-                    Text("按住").foregroundStyle(Palette.secondary)
-                    KeyCap(HotKey.display)
-                    Text("说话，松开后发送译文").foregroundStyle(Palette.secondary)
-                    Spacer()
-                    Button("试听") { model.speak.preview() }
-                }
-                .font(.system(size: 12))
-                if model.virtualMic == nil {
-                    HStack {
-                        Text("让对方听到译文，需要虚拟麦克风")
-                            .font(.system(size: 12)).foregroundStyle(Palette.accentInk)
-                        Spacer()
-                        InstallMicButton(installer: model.installer) { model.virtualMicInstalled() }
-                    }
-                } else {
-                    Text("在会议软件里，把麦克风选成 \(model.virtualMic?.name ?? "")")
-                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                }
-            }
-
-            group("字幕条") {
-                Text("说话时自动出现，安静后收成小点；鼠标经过会变透明。停住不动 0.6 秒可拖动，拖右下角缩放，双击回到默认位置。⌃⌥S 随时显示 / 隐藏。")
-                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                HStack {
-                    Button("恢复默认位置") { model.overlay.resetPosition() }
-                    Button("重新看引导") { dismiss(); model.onboardingStep = 1; model.openOnboarding?() }
-                }
-            }
-
-            HStack {
-                Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 460)
-    }
-
-    private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
-            VStack(alignment: .leading, spacing: 10) { content() }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.ground))
-        }
-    }
-}
-
-struct InstallMicButton: View {
-    @ObservedObject var installer: VirtualMicInstaller
-    var onInstalled: () -> Void
-    var body: some View {
-        switch installer.state {
-        case .downloading, .installing:
-            HStack(spacing: 6) { ProgressView().controlSize(.small); Text(installer.state == .downloading ? "下载中…" : "安装中…").font(.system(size: 12)) }
-        default:
-            Button("一键安装") { installer.install(onInstalled: onInstalled) }
-        }
     }
 }

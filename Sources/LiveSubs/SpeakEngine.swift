@@ -392,13 +392,14 @@ final class SpeakEngine {
         }
     }
 
-    func speak(_ text: String, language: String) async {
+    /// `device` overrides the chosen output (the virtual mic sound test).
+    func speak(_ text: String, language: String, device override: OutputDevice? = nil) async {
         let buffers = await synthesize(text, language: language)
         guard let first = buffers.first else { return }
         if let url = debugOutputURL, let f = AudioFileWriter.open(url, format: first.format) {
             for b in buffers { try? f.write(from: b) }
         }
-        let device = outputDevice()
+        let device = override ?? outputDevice()
         configureOutput(format: first.format, device: device)
         do {
             if !out.isRunning { try out.start() }
@@ -417,6 +418,14 @@ final class SpeakEngine {
             player.play()
         }
         debugLog("spoke \(buffers.count) buffers to \(device?.name ?? "default output")")
+    }
+
+    /// Core Audio restarted (virtual mic install): device IDs changed, rebuild the output next time.
+    func resetOutput() {
+        player.stop()
+        out.stop()
+        outFormat = nil
+        outDeviceUID = nil
     }
 
     private func configureOutput(format: AVAudioFormat, device: OutputDevice?) {

@@ -370,62 +370,27 @@ struct OnboardingView: View {
                 }
             }
             VStack(spacing: 0) {
-                row(icon: "mic.badge.plus", tint: Palette.accentPale, iconColor: Palette.accentInk,
-                    title: "虚拟麦克风", detail: micDetail) {
-                    if model.virtualMic != nil {
-                        done("已安装")
-                    } else {
-                        switch installer.state {
-                        case .downloading: progressLabel("下载中…")
-                        case .installing: progressLabel("安装中…")
-                        default: primary("一键安装") { installer.install { model.virtualMicInstalled() } }
-                        }
-                    }
-                }
+                MicSetupCard(installer: installer, deviceName: model.virtualMic?.name)
+                    .padding(.horizontal, 6).padding(.vertical, 4)
                 Divider().padding(.horizontal, 22)
                 HStack(spacing: 16) {
-                    Text("按住说话").font(.system(size: 15, weight: .semibold))
+                    Text("按住说话").font(.system(size: 14, weight: .semibold))
                     Spacer()
                     Toggle("按住说话", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
                         .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
-                }
-                .padding(.horizontal, 22).padding(.vertical, 16)
-                Divider().padding(.horizontal, 22)
-                HStack(spacing: 16) {
-                    Text("对方听到").font(.system(size: 15, weight: .semibold))
-                    Spacer()
-                    Picker("对方听到", selection: $settings.speakTo) {
-                        Text("跟着对方说的语言").tag("room")
-                        ForEach(targetLanguages, id: \.code) { Text($0.name).tag($0.code) }
-                    }
-                    .labelsHidden().frame(width: 200)
                 }
                 .padding(.horizontal, 22).padding(.vertical, 14)
             }
             .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
 
-            if model.virtualMic != nil {
-                (Text("在会议软件里，把麦克风选成 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
+            if model.virtualMic != nil && installer.passed {
+                (Text("最后一步：在会议软件里，把麦克风选成 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
                     .font(.system(size: 13)).foregroundStyle(Palette.ink)
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
-            } else if case .failed(let msg) = installer.state {
-                Text(msg).font(.system(size: 13)).foregroundStyle(Palette.accentInk)
             }
-        }
-    }
-
-    private var micDetail: String {
-        if model.virtualMic != nil { return "已装好" }
-        return "需要输一次电脑密码"
-    }
-
-    private func progressLabel(_ text: String) -> some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text(text).font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
     }
 

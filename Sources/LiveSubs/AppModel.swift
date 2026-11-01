@@ -22,7 +22,7 @@ final class AppModel: ObservableObject {
     @Published var candidates: [Lang] = []
     @Published var outputs: [OutputDevice] = []
     @Published var speakPhase: SpeakEngine.Phase = .idle
-    @Published var showSettings = false
+    @Published var settingsSection: SettingsSection = .speak
     @Published var systemAudioOK = false
     @Published var micStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published var liveSource = ""
@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     var openOnboarding: (() -> Void)?
 
     var openMainWindow: (() -> Void)?
+    var openSettingsWindow: (() -> Void)?
     var showPanel: (() -> Void)?
 
     private var lineForSegment: [Int: String] = [:]
@@ -55,6 +56,11 @@ final class AppModel: ObservableObject {
             guard let self, let line = self.lineForSegment[segID] else { return }
             self.store.setTranslation(lineID: line, text)
         }
+
+        installer.speakThrough = { [weak self] text, lang, device in
+            await self?.speak.speak(text, language: lang, device: device)
+        }
+        installer.onLoaded = { [weak self] in self?.virtualMicInstalled() }
 
         speak.translate = { [weak self] text, from, to in
             await self?.listen.translate(text, source: from, target: to)
@@ -156,13 +162,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func openSettings(_ section: SettingsSection? = nil) {
+        if let section { settingsSection = section }
+        openSettingsWindow?()
+    }
+
     func ensureListening() {
         if !listen.isRunning { start() }
     }
 
     func virtualMicInstalled() {
         refreshOutputs()
-        // Core Audio restarts during the install; reattach the system-audio tap.
+        // Core Audio restarted to load the driver: device IDs changed, reattach the
+        // system-audio tap and rebuild the voice output.
+        speak.resetOutput()
         listen.reconnectAudio()
         objectWillChange.send()
     }
@@ -321,7 +334,11 @@ final class AppModel: ObservableObject {
         case "step": onboardingStep = Int(arg) ?? 1
         case "samplePlay": ensureListening(); sample.play()
         case "micVerify": installer.install(verifyOnly: true)
-        case "settings": openMainWindow?(); showSettings = true
+        case "settings":
+            settingsSection = SettingsSection(rawValue: arg) ?? settingsSection
+            openSettings(settingsSection)
+        case "micTest": installer.runTest()
+        case "micNext": installer.next()
         case "speakOn": enableSpeaking(true)
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
@@ -358,6 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var deviceListener: AudioObjectPropertyListenerBlock?
     private var deviceWork: DispatchWorkItem?
     private var onboardingWindow: NSWindow?
+    private var settingsWindow: NSWindow?
     private var pollTimer: Timer?
     private var runningObserver: Any?
 
@@ -365,6 +383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
         setupStatusItem()
         model.openMainWindow = { [weak self] in self?.showMainWindow() }
+        model.openSettingsWindow = { [weak self] in self?.showSettingsWindow() }
         model.showPanel = { [weak self] in self?.togglePopover() }
         model.openOnboarding = { [weak self] in self?.showOnboarding() }
         runningObserver = model.$running.sink { [weak self] live in
@@ -454,6 +473,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate()
     }
 
+    func showSettingsWindow() {
+        popover.performClose(nil)
+        if settingsWindow == nil {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 600),
+                             styleMask: [.titled, .closable, .fullSizeContentView],
+                             backing: .buffered, defer: false)
+            w.title = "设置"
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.isReleasedWhenClosed = false
+            w.delegate = self
+            w.contentView = NSHostingView(rootView: SettingsView(model: model, settings: model.settings, installer: model.installer))
+            w.center()
+            settingsWindow = w
+        }
+        model.refreshOutputs()
+        NSApp.setActivationPolicy(.regular)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
     func showOnboarding() {
         popover.performClose(nil)
         if onboardingWindow == nil {
@@ -485,7 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             model.sample.stop()
             UserDefaults.standard.set(true, forKey: "onboarded")
         }
-        let otherOpen = [mainWindow, onboardingWindow].contains { $0 != nil && $0 != w && $0!.isVisible }
+        let otherOpen = [mainWindow, onboardingWindow, settingsWindow].contains { $0 != nil && $0 != w && $0!.isVisible }
         if !otherOpen { NSApp.setActivationPolicy(.accessory) }
     }
 
