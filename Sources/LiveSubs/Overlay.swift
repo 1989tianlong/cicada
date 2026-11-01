@@ -67,6 +67,11 @@ final class OverlayController {
         let changed = source != view.source || translation != view.translation
         view.source = source
         view.translation = translation
+        let lines = view.neededLines(barWidth: width)
+        if lines != view.transLines, view.dragMode == nil {
+            view.transLines = lines
+            layout()
+        }
         view.needsDisplay = true
         if changed && !(source.isEmpty && translation.isEmpty) {
             lastContentAt = Date()
@@ -429,6 +434,8 @@ final class OverlayView: NSView {
     var hover = false
     var snapped = false
     var collapsed = false
+    /// Translation lines the bar is sized for (1 or 2), so a short line leaves no gap.
+    var transLines = 1
     var dragMode: Bool?
 
     private let orange = NSColor(srgbRed: 1.0, green: 0.71, blue: 0.62, alpha: 1)
@@ -447,7 +454,7 @@ final class OverlayView: NSView {
 
     func barHeight(fontSize fs: CGFloat) -> CGFloat {
         let pad = 14 * k(fs)
-        var h = pad * 2 + line(srcFont(fs)) + 6 * k(fs) + line(transFont(fs)) * 2
+        var h = pad * 2 + line(srcFont(fs)) + 6 * k(fs) + line(transFont(fs)) * CGFloat(transLines)
         if speaking != nil {
             h += 12 * k(fs) + line(srcFont(fs)) + line(speakFont(fs)) * 2
         }
@@ -511,7 +518,7 @@ final class OverlayView: NSView {
         draw(srcText, font: srcFont(fs), color: NSColor.white.withAlphaComponent(0.62), maxLines: 1)
         y -= 6 * k(fs)
         draw(translation, font: transFont(fs),
-             color: isStatus ? NSColor.white.withAlphaComponent(0.7) : .white, maxLines: 2)
+             color: isStatus ? NSColor.white.withAlphaComponent(0.7) : .white, maxLines: transLines)
 
         if let s = speaking {
             y -= 12 * k(fs)
@@ -537,6 +544,14 @@ final class OverlayView: NSView {
             NSColor(calibratedWhite: 0.08, alpha: 1).setStroke()
             p.stroke()
         }
+    }
+
+    /// How many lines the translation needs at the current width (1 or 2).
+    func neededLines(barWidth: CGFloat) -> Int {
+        let fs = fontSize
+        let attrs: [NSAttributedString.Key: Any] = [.font: transFont(fs)]
+        let w = barWidth - 2 * 26 * k(fs)
+        return height(of: translation, attrs: attrs, width: w) > line(transFont(fs)) * 1.3 ? 2 : 1
     }
 
     private func height(of s: String, attrs: [NSAttributedString.Key: Any], width: CGFloat) -> CGFloat {

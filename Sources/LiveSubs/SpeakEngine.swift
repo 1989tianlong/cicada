@@ -342,7 +342,14 @@ final class SpeakEngine {
             let from = settings.speakFromLang.code
             let to = targetCode
             onLive?(.translating, text, "")
-            let translated = await translate?(text, from, to) ?? text
+            // Never speak the untranslated original into the room: if translation
+            // fails, say so on the bar and send nothing.
+            guard let translated = await translate?(text, from, to) else {
+                debugLog("speak: translation failed, nothing sent")
+                phase = .idle
+                onLive?(.idle, text, "翻译失败，这句没有发出")
+                return
+            }
             contentLog("SPEAK [\(from)→\(to)] \(text) => \(translated)")
             onUtterance?(text, translated, from, to, Date().timeIntervalSince(pressStarted))
             phase = .speaking

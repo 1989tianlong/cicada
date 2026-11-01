@@ -254,7 +254,7 @@ final class ListenEngine {
                 await analyzer.cancelAndFinishNow()
                 return
             }
-            let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(400))
+            let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self, bufferingPolicy: .unbounded)
             router.attach(format: format, continuation: continuation, replaySeconds: replaySeconds)
             self.analyzer = analyzer
             resultsTask = Task { [weak self] in
@@ -395,7 +395,7 @@ final class ListenEngine {
             return
         }
         let currentScore = ranked.first(where: { $0.lang == activeLang })?.score ?? 0
-        let overwhelming = best.score - currentScore >= 0.35
+        let overwhelming = best.score - currentScore >= 0.30
         if !languageConfirmed || overwhelming || pendingSwitch == best.lang {
             debugLog("detect: switching \(activeLang?.locale ?? "-") → \(best.lang.locale)")
             languageConfirmed = true
