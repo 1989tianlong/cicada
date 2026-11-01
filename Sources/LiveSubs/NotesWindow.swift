@@ -14,8 +14,6 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private weak var model: AppModel?
     let commands = PassthroughSubject<Command, Never>()
-    /// Shown or hidden: the app is a regular app (menus, Dock) while any of its windows is open.
-    var onVisibilityChange: () -> Void = {}
 
     init(model: AppModel) {
         self.model = model
@@ -44,14 +42,10 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
         commands.send(command)
     }
 
-    func windowWillClose(_ notification: Notification) {
-        DispatchQueue.main.async { [weak self] in self?.onVisibilityChange() }
-    }
-
     func show() {
         guard let model else { return }
         if panel == nil {
-            let p = NSPanel(contentRect: defaultFrame(), styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            let p = NSPanel(contentRect: defaultFrame(), styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
                             backing: .buffered, defer: false)
             p.titleVisibility = .hidden
             p.titlebarAppearsTransparent = true
@@ -59,6 +53,8 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             p.isFloatingPanel = onTop
             p.level = onTop ? .floating : .normal
             p.delegate = self
+            // Clicking it leaves the meeting app active and our other windows where they are;
+            // it only takes the keyboard for its text fields.
             p.hidesOnDeactivate = false
             p.becomesKeyOnlyIfNeeded = true
             p.isReleasedWhenClosed = false
@@ -76,12 +72,10 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             panel = p
         }
         panel?.orderFrontRegardless()
-        onVisibilityChange()
     }
 
     func hide() {
         panel?.orderOut(nil)
-        onVisibilityChange()
     }
 
     var frame: NSRect? { panel?.frame }

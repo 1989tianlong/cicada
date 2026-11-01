@@ -23,7 +23,10 @@ final class AppModel: ObservableObject {
     @Published var candidates: [Lang] = []
     @Published var outputs: [OutputDevice] = []
     @Published var speakPhase: SpeakEngine.Phase = .idle
-    @Published var settingsSection: SettingsSection = .speak
+    @Published var settingsSection: SettingsSection =
+        SettingsSection(rawValue: UserDefaults.standard.string(forKey: "settingsSection") ?? "") ?? .speak {
+        didSet { UserDefaults.standard.set(settingsSection.rawValue, forKey: "settingsSection") }
+    }
     @Published var systemAudioOK = false
     @Published var micStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published var liveSource = ""
@@ -518,6 +521,15 @@ final class AppModel: ObservableObject {
         let ext = kind == "word" ? "docx" : kind == "srt" ? "srt" : "md"
         panel.nameFieldStringValue = "\(session.title).\(ext)"
         panel.canCreateDirectories = true
+        if let w = NSApp.keyWindow, !(w is NSPanel), w.isVisible {
+            panel.beginSheetModal(for: w) { [weak self] r in
+                guard r == .OK, let url = panel.url else { return }
+                MainActor.assumeIsolated { _ = self?.writeExport(session, kind: kind, to: url) }
+            }
+            return
+        }
+        NSApp.activate()
+        panel.level = .modalPanel
         guard panel.runModal() == .OK, let url = panel.url else { return }
         writeExport(session, kind: kind, to: url)
     }
@@ -676,7 +688,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.showMainWindow = { [weak self] in self?.showMainWindow() }
         menu.showOnboarding = { [weak self] in self?.showOnboarding() }
         menu.install()
-        model.notesWindow.onVisibilityChange = { [weak self] in self?.updateActivationPolicy() }
         setupStatusItem()
         model.openMainWindow = { [weak self] in self?.showMainWindow() }
         model.openSettingsWindow = { [weak self] in self?.showSettingsWindow() }
@@ -705,8 +716,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showMainWindow()
-        return true
+        let open = [mainWindow, settingsWindow, onboardingWindow].compactMap { $0 }.filter { $0.isVisible || $0.isMiniaturized }
+        if open.isEmpty { showMainWindow() } else { open.forEach { $0.deminiaturize(nil) }; NSApp.activate() }
+        return false
+    }
+
+    /// Quitting ends the meeting being recorded: ask first.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard model.running, let id = model.store.liveID, !(model.store.session(id)?.lines.isEmpty ?? true) else { return .terminateNow }
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "正在记录会议"
+        alert.informativeText = "退出会结束这场记录，已记下的内容会保存。"
+        alert.addButton(withTitle: "退出")
+        alert.addButton(withTitle: "取消")
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
     // MARK: Menu bar
@@ -783,6 +807,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             w.contentView = NSHostingView(rootView: SettingsView(model: model, settings: model.settings, installer: model.installer))
             w.center()
             settingsWindow = w
+            w.setFrameAutosaveName("LiveSubsSettings")
         }
         model.refreshOutputs()
         NSApp.setActivationPolicy(.regular)
@@ -829,7 +854,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// notes window appearing must not take focus from the meeting app.
     func updateActivationPolicy(closing: NSWindow? = nil) {
         let open = [mainWindow, onboardingWindow, settingsWindow].contains { $0 != nil && $0 != closing && $0!.isVisible }
-            || model.notesWindow.isVisible
         let policy: NSApplication.ActivationPolicy = open ? .regular : .accessory
         guard NSApp.activationPolicy() != policy else { return }
         NSApp.setActivationPolicy(policy)

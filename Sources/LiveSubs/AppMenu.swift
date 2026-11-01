@@ -1,7 +1,8 @@
 import AppKit
 
-/// The menus in the top-left of the screen. They show while any Live Subs window is in front
-/// (the app is a regular app then); the Edit menu also makes ⌘C / ⌘V / ⌘A work in text fields.
+/// The menus in the top-left of the screen. They show while the main, settings or onboarding
+/// window is in front (the app is a regular app then; the notes window never activates it).
+/// The Edit menu also makes ⌘C / ⌘V / ⌘A work in text fields.
 @MainActor
 final class AppMenu: NSObject, NSMenuItemValidation {
     private weak var model: AppModel?
@@ -85,6 +86,7 @@ final class AppMenu: NSObject, NSMenuItemValidation {
         add(help, to: main)
 
         NSApp.mainMenu = main
+        NSApp.windowsMenu = window
         NSApp.helpMenu = help
     }
 
@@ -168,7 +170,6 @@ final class AppMenu: NSObject, NSMenuItemValidation {
 
     @objc private func exportNotes(_ sender: NSMenuItem) {
         guard let model, let s = model.store.session(model.store.liveID ?? model.notes.shownID) else { return }
-        NSApp.activate()
         model.export(s, kind: ["md", "word", "srt"][sender.tag])
     }
 

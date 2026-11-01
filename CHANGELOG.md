@@ -31,6 +31,7 @@ the release workflow publishes it as the release notes.
 - New: Settings › AI 服务 takes your own Ling (ant-ling.com) API key. It is kept in the macOS Keychain, checked with a one-token request, and shown masked; without a key everything works as before.
 - New: both shortcuts (talk, hide/show the subtitle bar) can be changed in settings: click and press new keys. Combinations without ⌃ or ⌘, system shortcuts and ones another app already uses are refused with a reason.
 
+- Fixed: clicking the live notes window no longer brings the main or settings window forward or takes focus from the meeting app, and the notes window alone no longer puts the app in the Dock. The Dock icon reopens whichever window is open instead of always the main window; exporting from the main window opens the save dialog on it; quitting while a meeting is being recorded asks first; settings remember their position and last tab; the 窗口 menu lists the open windows.
 ## 2.0.0 — 2026-11-01
 
 - New: spoken-language auto-detection across the installed on-device models; translation target follows the system language or a manual choice.
