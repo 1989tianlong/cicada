@@ -10,6 +10,16 @@ enum Palette {
     static let accent = Color(red: 0.91, green: 0.33, blue: 0.17)
     static let accentInk = Color(red: 0.70, green: 0.23, blue: 0.08)
     static let accentPale = Color(red: 0.99, green: 0.93, blue: 0.906)
+    /// Controls, chips, search fields.
+    static let fill = Color(red: 0.949, green: 0.953, blue: 0.961)
+    /// Emphasis blocks (summary, setting cards).
+    static let raised = Color(red: 0.961, green: 0.965, blue: 0.973)
+    /// Current row while something is live.
+    static let accentWash = Color(red: 1.0, green: 0.98, blue: 0.973)
+    static let ok = Color(red: 0.122, green: 0.478, blue: 0.271)
+    static let okPale = Color(red: 0.906, green: 0.961, blue: 0.925)
+    static let error = Color(red: 0.706, green: 0.137, blue: 0.094)
+    static let errorPale = Color(red: 0.992, green: 0.925, blue: 0.918)
 }
 
 struct LogoTile: View {

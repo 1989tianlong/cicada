@@ -3,7 +3,7 @@ import Carbon.HIToolbox
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case listen, speak, overlay, records
+    case listen, speak, overlay, records, ai
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -11,6 +11,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .speak: "我说话也翻译"
         case .overlay: "字幕条"
         case .records: "会议记录"
+        case .ai: "AI 服务"
         }
     }
     var icon: String {
@@ -19,6 +20,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .speak: "mic"
         case .overlay: "captions.bubble"
         case .records: "doc.text"
+        case .ai: "key"
         }
     }
 }
@@ -354,6 +356,7 @@ struct SettingsView: View {
                     case .speak: speak
                     case .overlay: overlay
                     case .records: records
+                    case .ai: AISettingsView(model: model, ling: model.ling, settings: settings)
                     }
                 }
                 .padding(.leading, 12).padding(.trailing, 28).padding(.top, 40).padding(.bottom, 28)

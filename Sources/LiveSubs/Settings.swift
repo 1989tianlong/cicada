@@ -53,6 +53,11 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Ling model for notes and translation.
+    @Published var aiModel: String {
+        didSet { save() }
+    }
+
     var debug: Bool { defaults.bool(forKey: "debug") }
 
     init() {
@@ -73,6 +78,7 @@ final class AppSettings: ObservableObject {
         overlayHideAfter = defaults.object(forKey: "overlayHideAfter") as? Double ?? 4
         talkKey = Shortcut(stored: defaults.string(forKey: "talkKey")) ?? .defaultTalk
         toggleKey = Shortcut(stored: defaults.string(forKey: "toggleKey")) ?? .defaultToggle
+        aiModel = defaults.string(forKey: "aiModel") ?? "Ling-3.1-flash"
     }
 
     private func save() {
@@ -90,6 +96,7 @@ final class AppSettings: ObservableObject {
         defaults.set(overlayHideAfter, forKey: "overlayHideAfter")
         defaults.set(talkKey.stored, forKey: "talkKey")
         defaults.set(toggleKey.stored, forKey: "toggleKey")
+        defaults.set(aiModel, forKey: "aiModel")
     }
 
     /// Target language. "Follow system" uses the first system language that
