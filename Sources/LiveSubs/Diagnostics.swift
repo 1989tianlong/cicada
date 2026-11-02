@@ -61,6 +61,8 @@ final class Diagnostics: ObservableObject {
     @Published private(set) var sentences: [SentenceTiming] = []
     @Published private(set) var calls: [LingCall] = []
     @Published private(set) var startedAt: Date?
+    /// When the meeting stopped: the header stops counting minutes.
+    @Published private(set) var endedAt: Date?
 
     var enabled: () -> Bool = { false }
     /// The live meeting's folder, nil when not listening.
@@ -70,7 +72,10 @@ final class Diagnostics: ObservableObject {
         sentences = []
         calls = []
         startedAt = Date()
+        endedAt = nil
     }
+
+    func end() { if startedAt != nil, endedAt == nil { endedAt = Date() } }
 
     func record(_ s: SentenceTiming) {
         guard enabled() else { return }
@@ -153,17 +158,17 @@ final class Diagnostics: ObservableObject {
     /// Plain text for "复制诊断信息": numbers only, safe to paste anywhere.
     func report(version: String, model: String) -> String {
         func f(_ s: Stat?) -> String { s.map { String(format: "p50 %.2fs p95 %.2fs n=%d", $0.p50, $0.p95, $0.n) } ?? "-" }
-        var lines = ["\(appDisplayName) \(version) 诊断  \(Date())", "模型 \(model)"]
-        if let startedAt { lines.append(String(format: "本场 %.0f 分钟", Date().timeIntervalSince(startedAt) / 60)) }
-        lines.append("说完到出字幕 " + f(endToEnd))
-        lines.append("识别定稿 " + f(recognize))
-        lines.append("翻译 " + f(translate))
-        lines.append("同声传译（松开到译好）" + f(speakBack))
-        lines.append("单轮纪要耗时 " + f(notesRounds))
-        lines.append("翻译来源 " + viaCounts.map { String(format: "%@ %d (p50 %.2fs)", $0.0, $0.1, $0.2) }.joined(separator: " · "))
-        lines.append("换后备 " + (fallbackCounts.isEmpty ? "无" : fallbackCounts.map { "\($0.0) \($0.1)" }.joined(separator: " · ")))
+        var lines = [L("\(appDisplayName) \(version) 诊断  \(Date())"), L("模型 \(model)")]
+        if let startedAt { lines.append(String(format: L("本场 %.0f 分钟"), (endedAt ?? Date()).timeIntervalSince(startedAt) / 60)) }
+        lines.append(L("说完到出字幕 ") + f(endToEnd))
+        lines.append(L("识别定稿 ") + f(recognize))
+        lines.append(L("翻译 ") + f(translate))
+        lines.append(L("同声传译（松开到译好）") + f(speakBack))
+        lines.append(L("单轮纪要耗时 ") + f(notesRounds))
+        lines.append(L("翻译来源 ") + viaCounts.map { String(format: "%@ %d (p50 %.2fs)", $0.0, $0.1, $0.2) }.joined(separator: " · "))
+        lines.append(L("换后备 ") + (fallbackCounts.isEmpty ? L("无") : fallbackCounts.map { "\($0.0) \($0.1)" }.joined(separator: " · ")))
         let t = tokens
-        lines.append(String(format: "Ling 请求 %d 次 · 排队最久 %.2fs · token %d/%d", calls.count, maxQueue, t.0, t.1))
+        lines.append(String(format: L("Ling 请求 %d 次 · 排队最久 %.2fs · token %d/%d"), calls.count, maxQueue, t.0, t.1))
         return lines.joined(separator: "\n")
     }
 }
@@ -181,18 +186,18 @@ struct DiagnosticsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(subtitle).font(.system(size: 12)).foregroundStyle(Palette.secondary).padding(.top, -8)
             HStack(spacing: 8) {
-                tile("说完到上屏", diagnostics.endToEnd, dark: true)
-                tile("识别定稿", diagnostics.recognize)
-                tile("翻译", diagnostics.translate)
-                tile("纪要一轮", diagnostics.notesRounds)
+                tile(L("说完到上屏"), diagnostics.endToEnd, dark: true)
+                tile(L("识别定稿"), diagnostics.recognize)
+                tile(L("翻译"), diagnostics.translate)
+                tile(L("纪要一轮"), diagnostics.notesRounds)
             }
             providers
             lingCard
             recent
             HStack(spacing: 8) {
-                SoftButton(copied ? "已复制" : "复制诊断信息", dark: true) { copy() }
+                SoftButton(copied ? L("已复制") : L("复制诊断信息"), dark: true) { copy() }
                 // The meeting folder holds metrics.jsonl; the log only exists in dev builds or with `debug` on.
-                SoftButton(diagnostics.folder() == nil ? "打开日志" : "打开本场数据") {
+                SoftButton(diagnostics.folder() == nil ? L("打开日志") : L("打开本场数据")) {
                     NSWorkspace.shared.open(diagnostics.folder() ?? URL(fileURLWithPath: DevBuild.logPath))
                 }
                 Spacer()
@@ -203,9 +208,9 @@ struct DiagnosticsView: View {
     }
 
     private var subtitle: String {
-        guard let s = diagnostics.startedAt else { return "开始聆听后，这里会显示每句话的耗时明细" }
-        let m = Int(tick.timeIntervalSince(s) / 60)
-        return "这场会议 · \(m) 分钟 · \(diagnostics.heard.count) 句 · 同声传译 \(diagnostics.said.count) 次"
+        guard let s = diagnostics.startedAt else { return L("开始聆听后，这里会显示每句话的耗时明细") }
+        let m = Int((diagnostics.endedAt ?? tick).timeIntervalSince(s) / 60)
+        return L("这场会议 · \(m) 分钟 · \(diagnostics.heard.count) 句 · 同声传译 \(diagnostics.said.count) 次")
     }
 
     private func tile(_ title: String, _ s: Diagnostics.Stat?, dark: Bool = false) -> some View {
@@ -213,7 +218,7 @@ struct DiagnosticsView: View {
             Text(title).font(.system(size: 11)).foregroundStyle(dark ? Color.white.opacity(0.75) : Palette.secondary)
             Text(s.map { String(format: "%.1fs", $0.p50) } ?? "—").font(.system(size: 20, weight: .bold).monospacedDigit())
                 .foregroundStyle(dark ? Color.white : Palette.ink)
-            Text(s.map { String(format: "p95 %.1fs · %d", $0.p95, $0.n) } ?? "暂无数据")
+            Text(s.map { String(format: "p95 %.1fs · %d", $0.p95, $0.n) } ?? L("暂无数据"))
                 .font(.system(size: 11).monospacedDigit()).foregroundStyle(dark ? Color.white.opacity(0.75) : Palette.tertiary)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -234,23 +239,23 @@ struct DiagnosticsView: View {
         switch via {
         case "ling": "Ling"
         case "google": "Google"
-        case "apple": "本机"
-        case "ming": "Ming 语音"
-        default: "没译出"
+        case "apple": L("本机")
+        case "ming": L("Ming 语音")
+        default: L("没译出")
         }
     }
 
     private static func reason(_ key: String) -> String {
         let parts = key.split(separator: ":").map(String.init)
-        let who = parts.first.map { $0 == "ling" ? "Ling" : $0 == "google" ? "Google" : $0 == "notes" ? "纪要" : $0 == "ming" ? "Ming 语音" : "本机" } ?? ""
+        let who = parts.first.map { $0 == "ling" ? "Ling" : $0 == "google" ? "Google" : $0 == "notes" ? L("纪要") : $0 == "ming" ? L("Ming 语音") : L("本机") } ?? ""
         let why: String
         switch parts.last ?? "" {
-        case "hijacked": why = "被搜索劫持"
-        case "rateLimited", "429": why = "限流"
-        case "timeout": why = "超时"
-        case "unparsed": why = "回复格式不对"
-        case "network": why = "网络错误"
-        case "unavailable": why = "未安装语言包"
+        case "hijacked": why = L("被搜索劫持")
+        case "rateLimited", "429": why = L("限流")
+        case "timeout": why = L("超时")
+        case "unparsed": why = L("回复格式不对")
+        case "network": why = L("网络错误")
+        case "unavailable": why = L("未安装语言包")
         default: why = parts.last ?? ""
         }
         return "\(who) \(why)"
@@ -304,14 +309,14 @@ struct DiagnosticsView: View {
         let _ = tick
         let t = diagnostics.tokens
         return SettingsCard {
-            SettingsRow(title: "Ling 请求速度", detail: "账号上限约每秒 2 次") {
-                Text(String(format: "%.1f / 2 次每秒", diagnostics.lingRate)).font(.system(size: 12).monospacedDigit())
+            SettingsRow(title: L("Ling 请求速度"), detail: L("账号上限约每秒 2 次")) {
+                Text(String(format: L("%.1f / 2 次每秒"), diagnostics.lingRate)).font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(Palette.secondary)
             }
-            SettingsRow(title: "排队最久") {
+            SettingsRow(title: L("排队最久")) {
                 Text(String(format: "%.1fs", diagnostics.maxQueue)).font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary)
             }
-            SettingsRow(title: "本场用量", divider: false) {
+            SettingsRow(title: L("本场用量"), divider: false) {
                 Text("\(diagnostics.calls.count) 次 · \(t.0 + t.1) token").font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(Palette.secondary)
             }
@@ -329,8 +334,8 @@ struct DiagnosticsView: View {
             ForEach(rows) { s in
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("\(Self.clock.string(from: s.at)) \(s.side == "me" ? "你" : "对方")").font(.system(size: 12).monospacedDigit())
-                        Text(s.fallbacks.isEmpty ? "\(Self.name(s.via)) · \(s.chars) 字" : s.fallbacks.map(Self.reason).joined(separator: "、") + " → " + Self.name(s.via))
+                        Text("\(Self.clock.string(from: s.at)) \(s.side == "me" ? L("你") : L("对方"))").font(.system(size: 12).monospacedDigit())
+                        Text(s.fallbacks.isEmpty ? L("\(Self.name(s.via)) · \(s.chars) 字") : s.fallbacks.map(Self.reason).joined(separator: "、") + " → " + Self.name(s.via))
                             .font(.system(size: 10)).foregroundStyle(s.fallbacks.isEmpty ? Palette.tertiary : Palette.accentInk).lineLimit(1)
                     }
                     .frame(width: 150, alignment: .leading)

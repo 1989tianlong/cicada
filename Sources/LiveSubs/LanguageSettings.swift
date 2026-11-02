@@ -10,39 +10,39 @@ struct LanguageSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             route
-            group("听对方") {
-                SettingsRow(title: "对方说的语言", detail: heardDetail) {
-                    PillMenu(value: heardValue, options: [("auto", "自动识别")] + sourceLanguages.map { ($0.locale, $0.name) }) {
+            group(L("听对方")) {
+                SettingsRow(title: L("对方说的语言"), detail: heardDetail) {
+                    PillMenu(value: heardValue, options: [("auto", L("自动识别"))] + sourceLanguages.map { ($0.locale, $0.name) }) {
                         model.sourceSelection = $0
                     }
                 }
-                SettingsRow(title: "字幕", detail: "只看原文时不翻译，也不用 Ling 额度") {
+                SettingsRow(title: L("字幕"), detail: L("只看原文时不翻译，也不用 Ling 额度")) {
                     Segments(options: subtitleOptions, value: settings.subtitles) { model.setSubtitles($0) }
                 }
-                SettingsRow(title: "翻译成", detail: targetDetail, divider: false) {
-                    PillMenu(value: settings.target == "system" ? "跟随系统（\(targetName(model.listen.resolvedTarget))）"
+                SettingsRow(title: L("翻译成"), detail: targetDetail, divider: false) {
+                    PillMenu(value: settings.target == "system" ? L("跟随系统（\(targetName(model.listen.resolvedTarget))）")
                                                                 : targetName(settings.target),
-                             options: [("system", "跟随系统")] + targetLanguages.map { ($0.code, $0.name) }) {
+                             options: [("system", L("跟随系统"))] + targetLanguages.map { ($0.code, $0.name) }) {
                         model.targetSelection = $0
                     }
                 }
             }
-            group("纪要") {
-                SettingsRow(title: "纪要语言", detail: "实时纪要和完整版同一种语言", divider: false) {
-                    Segments(options: [("mine", "我的语言 · \(targetName(settings.myLanguage))"), ("source", sourceTitle)],
+            group(L("纪要")) {
+                SettingsRow(title: L("纪要语言"), detail: L("实时纪要和完整版同一种语言"), divider: false) {
+                    Segments(options: [("mine", L("我的语言 · \(targetName(settings.myLanguage))")), ("source", sourceTitle)],
                              value: settings.notesLanguage) { model.setNotesLanguage($0) }
                 }
             }
-            group("同声传译") {
-                SettingsRow(title: "我说", detail: settings.speakEnabled ? nil : "同声传译还没打开") {
+            group(L("同声传译")) {
+                SettingsRow(title: L("我说"), detail: settings.speakEnabled ? nil : L("同声传译还没打开")) {
                     PillMenu(value: settings.speakFromLang.name, options: sourceLanguages.map { ($0.locale, $0.name) }) {
                         settings.speakFrom = $0
                         model.speakFromChanged()
                     }
                 }
-                SettingsRow(title: "对方听到", detail: "跟随对方时，对方说什么语言就翻成什么", divider: false) {
-                    PillMenu(value: settings.speakTo == "room" ? "跟随对方（\(targetName(model.speak.targetCode))）" : targetName(settings.speakTo),
-                             options: [("room", "跟随对方")] + targetLanguages.map { ($0.code, $0.name) }) {
+                SettingsRow(title: L("对方听到"), detail: L("跟随对方时，对方说什么语言就翻成什么"), divider: false) {
+                    PillMenu(value: settings.speakTo == "room" ? L("跟随对方（\(targetName(model.speak.targetCode))）") : targetName(settings.speakTo),
+                             options: [("room", L("跟随对方"))] + targetLanguages.map { ($0.code, $0.name) }) {
                         settings.speakTo = $0
                         model.objectWillChange.send()
                     }
@@ -56,18 +56,19 @@ struct LanguageSettings: View {
     /// 对方说 English → 字幕 简体中文 · 纪要 简体中文 / 你说 中文 → 对方听到 English
     private var route: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                label("对方说")
-                chip(heardNow, accent: false)
-                arrow
-                Text("字幕").font(.system(size: 13)).foregroundStyle(.white)
-                chip(settings.subtitles == "original" ? "原文" : targetName(model.listen.resolvedTarget), accent: true)
-                Text("·").foregroundStyle(Color(white: 0.55))
-                Text("纪要").font(.system(size: 13)).foregroundStyle(.white)
-                chip(notesNow, accent: true)
+            // English runs wider than the card: the notes get a line of their own.
+            if uiIsChinese {
+                HStack(spacing: 8) {
+                    heardRoute
+                    Text("·").foregroundStyle(Color(white: 0.55))
+                    notesRoute
+                }
+            } else {
+                HStack(spacing: 8) { heardRoute }
+                HStack(spacing: 8) { label(""); notesRoute }
             }
             HStack(spacing: 8) {
-                label("你说")
+                label(L("你说"))
                 chip(settings.speakFromLang.name, accent: false)
                 arrow
                 Text("对方听到").font(.system(size: 13)).foregroundStyle(.white)
@@ -83,8 +84,21 @@ struct LanguageSettings: View {
         .accessibilityElement(children: .combine)
     }
 
+    @ViewBuilder private var heardRoute: some View {
+        label(L("对方说"))
+        chip(heardNow, accent: false)
+        arrow
+        Text("字幕").font(.system(size: 13)).foregroundStyle(.white)
+        chip(settings.subtitles == "original" ? L("原文") : targetName(model.listen.resolvedTarget), accent: true)
+    }
+
+    @ViewBuilder private var notesRoute: some View {
+        Text("纪要").font(.system(size: 13)).foregroundStyle(.white)
+        chip(notesNow, accent: true)
+    }
+
     private func label(_ t: String) -> some View {
-        Text(t).font(.system(size: 13)).foregroundStyle(Color(white: 0.72)).frame(width: 46, alignment: .leading)
+        Text(t).font(.system(size: 13)).foregroundStyle(Color(white: 0.72)).frame(width: uiIsChinese ? 46 : 64, alignment: .leading)
     }
 
     private func chip(_ t: String, accent: Bool) -> some View {
@@ -108,29 +122,29 @@ struct LanguageSettings: View {
 
     private var heardValue: String {
         if case .fixed(let l) = settings.sourceMode { return l.name }
-        return "自动识别"
+        return L("自动识别")
     }
 
     private var heardNow: String {
         if case .fixed(let l) = settings.sourceMode { return l.name }
-        return model.listen.activeLang?.name ?? "自动识别"
+        return model.listen.activeLang?.name ?? L("自动识别")
     }
 
     private var heardDetail: String {
-        if case .fixed = settings.sourceMode { return "只按这种语言识别" }
-        return model.listen.activeLang.map { "现在听出是 \($0.name)" } ?? "从已安装的语音模型里挑最有把握的"
+        if case .fixed = settings.sourceMode { return L("只按这种语言识别") }
+        return model.listen.activeLang.map { L("现在听出是 \($0.name)") } ?? L("从已安装的语音模型里挑最有把握的")
     }
 
     private var targetDetail: String {
-        settings.target == "system" ? "对方说的正是系统语言时，翻成系统里的另一种" : "对方说的就是这种语言时不翻译"
+        settings.target == "system" ? L("对方说的正是系统语言时，翻成系统里的另一种") : L("对方说的就是这种语言时不翻译")
     }
 
     private var sourceTitle: String {
-        model.listen.activeLang.map { "会议原文 · \($0.name)" } ?? "会议原文"
+        model.listen.activeLang.map { L("会议原文 · \($0.name)") } ?? L("会议原文")
     }
 
     private var notesNow: String {
-        if settings.notesLanguage == "source" { return model.listen.activeLang?.name ?? "会议原文" }
+        if settings.notesLanguage == "source" { return model.listen.activeLang?.name ?? L("会议原文") }
         return targetName(settings.myLanguage)
     }
 }

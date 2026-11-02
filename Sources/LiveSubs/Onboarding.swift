@@ -284,7 +284,7 @@ struct OnboardingView: View {
                     if step < 3 { step += 1 } else { onFinish() }
                 } label: {
                     HStack(spacing: 8) {
-                        Text(step < 3 ? "继续" : "开始使用")
+                        Text(step < 3 ? L("继续") : L("开始使用"))
                         if step < 3 { Image(systemName: "arrow.right") }
                     }
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
@@ -361,17 +361,17 @@ struct OnboardingView: View {
 
     private var permissions: some View {
         VStack(alignment: .leading, spacing: 24) {
-            title("先打开两个开关", "去系统设置打开，回来会自动识别。")
+            title(L("先打开两个开关"), L("去系统设置打开，回来会自动识别。"))
             VStack(spacing: 0) {
-                row(icon: "speaker.wave.2", title: "听电脑里的声音", tag: "必需", tagAccent: true, detail: "用于生成字幕，不会录制屏幕画面") {
-                    if model.systemAudioOK { done("已打开") } else { primary("去开启") { model.requestSystemAudio() } }
+                row(icon: "speaker.wave.2", title: L("听电脑里的声音"), tag: L("必需"), tagAccent: true, detail: L("用于生成字幕，不会录制屏幕画面")) {
+                    if model.systemAudioOK { done(L("已打开")) } else { primary(L("去开启")) { model.requestSystemAudio() } }
                 }
                 Divider().padding(.horizontal, 22)
-                row(icon: "mic", title: "麦克风", tag: "可选", detail: "仅在同声传译时使用") {
+                row(icon: "mic", title: L("麦克风"), tag: L("可选"), detail: L("仅在同声传译时使用")) {
                     switch model.micStatus {
-                    case .authorized: done("已允许")
-                    case .notDetermined: secondary("允许") { model.requestMicrophone() }
-                    default: secondary("去打开") { model.openMicrophoneSettings() }
+                    case .authorized: done(L("已允许"))
+                    case .notDetermined: secondary(L("允许")) { model.requestMicrophone() }
+                    default: secondary(L("去打开")) { model.openMicrophoneSettings() }
                     }
                 }
             }
@@ -386,7 +386,7 @@ struct OnboardingView: View {
 
     private var tryIt: some View {
         VStack(alignment: .leading, spacing: 22) {
-            title("放一段视频试试", "点击播放，看看实时字幕效果。")
+            title(L("放一段视频试试"), L("点击播放，看看实时字幕效果。"))
             ZStack {
                 PlayerSurface(player: sample.player)
                 if !sample.playing {
@@ -396,7 +396,7 @@ struct OnboardingView: View {
                             .overlay(Image(systemName: "play.fill").font(.system(size: 22)).foregroundStyle(Palette.ink).offset(x: 2))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("播放示例视频")
+                    .accessibilityLabel(L("播放示例视频"))
                     VStack {
                         Spacer()
                         HStack {
@@ -416,7 +416,7 @@ struct OnboardingView: View {
                         .frame(height: 3)
                         Spacer()
                         VStack(spacing: 4) {
-                            Text(model.liveSource.isEmpty ? "正在听…" : model.liveSource)
+                            Text(model.liveSource.isEmpty ? L("正在听…") : model.liveSource)
                                 .font(.system(size: 13)).foregroundStyle(.white.opacity(0.65)).lineLimit(1).truncationMode(.head)
                             Text(model.liveTranslation)
                                 .font(.system(size: 19, weight: .semibold)).foregroundStyle(.white).lineLimit(2).truncationMode(.head)
@@ -434,9 +434,9 @@ struct OnboardingView: View {
             .background(RoundedRectangle(cornerRadius: 18).fill(Color(red: 0.1, green: 0.11, blue: 0.13)))
 
             HStack(spacing: 12) {
-                ChoiceRow(label: "听到", value: heardName, badge: nil, options: sourceOptions) { model.sourceSelection = $0 }
-                ChoiceRow(label: "翻译成", value: targetName(model.listen.resolvedTarget),
-                          badge: settings.target == "system" ? "跟随系统" : nil, options: targetOptions) { model.targetSelection = $0 }
+                ChoiceRow(label: L("听到"), value: heardName, badge: nil, options: sourceOptions) { model.sourceSelection = $0 }
+                ChoiceRow(label: L("翻译成"), value: targetName(model.listen.resolvedTarget),
+                          badge: settings.target == "system" ? L("跟随系统") : nil, options: targetOptions) { model.targetSelection = $0 }
             }
             Text("字幕条可任意拖动，拖拽右下角可调整大小。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
@@ -444,13 +444,13 @@ struct OnboardingView: View {
 
     private var heardName: String {
         if case .fixed(let l) = settings.sourceMode { return l.name }
-        return model.listen.activeLang.map { "自动 · \($0.name)" } ?? "自动识别"
+        return model.listen.activeLang.map { L("自动 · \($0.name)") } ?? L("自动识别")
     }
     private var sourceOptions: [(id: String, title: String)] {
-        [("auto", "自动识别")] + sourceLanguages.map { ($0.locale, $0.name) }
+        [("auto", L("自动识别"))] + sourceLanguages.map { ($0.locale, $0.name) }
     }
     private var targetOptions: [(id: String, title: String)] {
-        [("system", "跟随系统")] + targetLanguages.map { ($0.code, $0.name) }
+        [("system", L("跟随系统"))] + targetLanguages.map { ($0.code, $0.name) }
     }
 
     // MARK: Step 3
@@ -458,12 +458,12 @@ struct OnboardingView: View {
     private var speaking: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .top, spacing: 24) {
-                title("想让对方听懂你？", "按住说\(settings.speakFromLang.name)，对方听到翻译后的语音。")
+                title(L("想让对方听懂你？"), L("按住说\(settings.speakFromLang.name)，对方听到翻译后的语音。"))
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
                     HStack(alignment: .bottom, spacing: 6) {
                         if settings.talkKey.isRightOption {
-                            key("⌥", "右侧 option", width: 96)
+                            key("⌥", L("右侧 option"), width: 96)
                         } else {
                             ForEach(Array(settings.talkKey.keys.enumerated()), id: \.offset) {
                                 key($0.element, "", width: $0.element.count > 2 ? 96 : 52)

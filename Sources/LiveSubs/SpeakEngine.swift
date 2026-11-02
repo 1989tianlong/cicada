@@ -143,7 +143,7 @@ final class SpeakEngine {
         do {
             if await AssetInventory.status(forModules: [t]) != .installed,
                let req = try await AssetInventory.assetInstallationRequest(supporting: [t]) {
-                onStatus?("正在下载 \(lang.name) 语音模型…")
+                onStatus?(L("正在下载 \(lang.name) 语音模型…"))
                 try await req.downloadAndInstall()
             }
             analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t])
@@ -152,7 +152,7 @@ final class SpeakEngine {
             debugLog("speak transcriber ready locale=\(lang.locale)")
         } catch {
             debugLog("speak transcriber failed: \(error)")
-            onStatus?("无法准备语音识别：\(error.localizedDescription)")
+            onStatus?(L("无法准备语音识别：\(error.localizedDescription)"))
         }
     }
 
@@ -220,7 +220,7 @@ final class SpeakEngine {
         guard settings.speakEnabled, phase == .idle || phase == .speaking else { return }
         guard let format = analyzerFormat, let input = beginUtterance() else {
             Task { await prepare() }
-            onStatus?("语音识别仍在准备中，请再按一次")
+            onStatus?(L("语音识别仍在准备中，请再按一次"))
             return
         }
         debugLog("speak: press began")
@@ -281,7 +281,7 @@ final class SpeakEngine {
         let inputNode = mic.inputNode
         let inFormat = inputNode.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0 else {
-            onStatus?("没有可用的麦克风")
+            onStatus?(L("没有可用的麦克风"))
             phase = .idle
             return
         }
@@ -303,7 +303,7 @@ final class SpeakEngine {
             try mic.start()
         } catch {
             debugLog("mic start failed: \(error)")
-            onStatus?("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风")
+            onStatus?(L("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风"))
             phase = .idle
         }
     }
@@ -336,7 +336,7 @@ final class SpeakEngine {
 
     private nonisolated func recordMic(_ buffer: AVAudioPCMBuffer) {
         guard let url = micRecordURL else { return }
-        if micRecorder == nil { micRecorder = AudioFileWriter.open(url, format: buffer.format) }
+        if micRecorder == nil { micRecorder = AudioFileWriter.open(AudioFileWriter.partial(url), format: buffer.format) }
         try? micRecorder?.write(from: buffer)
     }
 
@@ -398,7 +398,7 @@ final class SpeakEngine {
                 debugLog("speak: translation failed, nothing sent")
                 onTiming?(timing(voice: nil))
                 phase = .idle
-                onLive?(.idle, text, "翻译失败，这句话未发送")
+                onLive?(.idle, text, L("翻译失败，这句话未发送"))
                 return
             }
             contentLog("SPEAK [\(from)→\(to)] via=\(trace.via) \(text) => \(translated)")

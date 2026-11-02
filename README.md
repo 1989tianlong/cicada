@@ -44,7 +44,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 ### Live subtitles and language detection
 
 - **Detects the language within half a second.** Every installed on-device speech model listens to the same audio at once, and the most confident one wins. Speech recognition runs on your Mac via Apple SpeechAnalyzer.
-- **Translates into your language.** Follows your system languages by default (if the speaker is already using your primary language, Cicada translates into your next system language), or lets you pick a target language manually. Settings › 语言 shows the whole route in one line and lets subtitles show both lines, only the translation, or only the original (nothing is translated). An `EN → 中` chip in the notes window changes the languages for one meeting.
+- **Translates into your language.** Follows your system languages by default (if the speaker is already using your primary language, Cicada translates into your next system language), or lets you pick a target language manually. Settings › Language shows the whole route in one line and lets subtitles show both lines, only the translation, or only the original (nothing is translated). A language chip in the notes window (`EN → 中`, or `EN → ZH` in the English UI) changes the languages for one meeting.
 - **A subtitle bar that stays out of the way.** Press `⌃⌥S` to cycle between the notes window, the classic subtitle bar, and hidden. The bar appears only when someone speaks, shrinks to a dot when it is quiet, and turns see-through under your pointer so you can click right through it. Rest the pointer on it for 0.6 seconds to drag or resize, or double-click to reset. Each display remembers its own position and size.
 
 ### Speak back in their language
@@ -55,7 +55,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 ### Meeting records
 
 - **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side (individual remote speakers are not separated yet).
-- **Export anywhere.** Export to Markdown or Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **生成纪要** afterward to generate them.
+- **Export anywhere.** Export to Markdown or Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **Generate Notes** afterward to generate them.
 
 <p align="center">
   <img src="docs/panel.png" width="300" alt="The menu bar panel">
@@ -83,10 +83,12 @@ On first launch, a three-step guide helps you grant system audio capture permiss
 
 ## Usage
 
+The app is in English or Chinese, following your macOS language (Settings › General › Language & Region, or per app).
+
 1. Play any video, livestream or call. The live notes window opens by default, and pressing `⌃⌥S` switches between the notes window, the subtitle bar and hidden.
 2. Click the Cicada icon in the menu bar to change the spoken language (auto by default), the target translation language, or the display mode.
 3. To use live notes, paste your [Ling API key](https://chat.ant-ling.com/open) in **Settings › AI 服务** or in the notes window prompt.
-4. To speak back in another language, turn on **同声传译** in the menu bar panel, set your meeting app's microphone to **BlackHole 2ch**, and hold the right `⌥` key while speaking (macOS will ask for Input Monitoring permission the first time).
+4. To speak back in another language, turn on **Interpreting** in the menu bar panel, set your meeting app's microphone to **BlackHole 2ch**, and hold the right `⌥` key while speaking (macOS will ask for Input Monitoring permission the first time).
 5. Open **会议记录** from the menu bar panel to search past transcripts (`⌘F`), generate notes for older sessions, or export to Markdown, Word or SRT.
 
 ## Uninstall

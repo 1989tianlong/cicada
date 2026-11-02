@@ -73,7 +73,7 @@ final class VirtualMicInstaller: ObservableObject {
             state = .installing
             try? await Task.sleep(nanoseconds: 200_000_000) // let "安装中" show before the dialog
             let cmd = "/usr/sbin/installer -pkg " + shellQuote(pkg.path) + " -target / && " + Self.restartAudio
-            guard runPrivileged(cmd, prompt: "\(appDisplayName)要安装虚拟麦克风，让会议里的人听到你的翻译。") else { return }
+            guard runPrivileged(cmd, prompt: L("\(appDisplayName)要安装虚拟麦克风，让会议里的人听到你的翻译。")) else { return }
             state = .reloading
             await waitForDevice(onLoaded: onInstalled)
         }
@@ -85,7 +85,7 @@ final class VirtualMicInstaller: ObservableObject {
         Task {
             state = .reloading
             try? await Task.sleep(nanoseconds: 200_000_000)
-            guard runPrivileged(Self.restartAudio, prompt: "\(appDisplayName)要让系统认出虚拟麦克风，声音会断约 1 秒。") else { return }
+            guard runPrivileged(Self.restartAudio, prompt: L("\(appDisplayName)要让系统认出虚拟麦克风，声音会断约 1 秒。")) else { return }
             await waitForDevice(onLoaded: nil)
         }
     }
@@ -99,7 +99,7 @@ final class VirtualMicInstaller: ObservableObject {
                 _ = await AVCaptureDevice.requestAccess(for: .audio)
             }
             guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
-                test = .init(heard: false, text: "", levels: [], problem: "试音要用麦克风权限，请在系统设置里允许\(appDisplayName)")
+                test = .init(heard: false, text: "", levels: [], problem: L("试音要用麦克风权限，请在系统设置里允许\(appDisplayName)"))
                 state = .idle
                 return
             }
@@ -122,13 +122,13 @@ final class VirtualMicInstaller: ObservableObject {
         do {
             let (tmp, response) = try await URLSession.shared.download(from: Self.packageURL)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                state = .failed("下载失败，请检查网络")
+                state = .failed(L("下载失败，请检查网络"))
                 return nil
             }
             let digest = SHA256.hash(data: try Data(contentsOf: tmp)).map { String(format: "%02x", $0) }.joined()
             guard digest == Self.packageSHA256 else {
                 debugLog("virtual mic: checksum mismatch \(digest)")
-                state = .failed("安装包校验未通过，已中止安装")
+                state = .failed(L("安装包校验未通过，已中止安装"))
                 return nil
             }
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("LiveSubsMic", isDirectory: true)
@@ -140,7 +140,7 @@ final class VirtualMicInstaller: ObservableObject {
             return pkg
         } catch {
             debugLog("virtual mic: download error \(error)")
-            state = .failed("下载失败，请检查网络")
+            state = .failed(L("下载失败，请检查网络"))
             return nil
         }
     }
@@ -153,7 +153,7 @@ final class VirtualMicInstaller: ObservableObject {
         guard let errorInfo else { return true }
         let code = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
         debugLog("virtual mic: privileged command error \(errorInfo)")
-        state = code == -128 ? .idle : .failed("安装未完成，请再试一次")
+        state = code == -128 ? .idle : .failed(L("安装未完成，请再试一次"))
         return false
     }
 
@@ -163,7 +163,7 @@ final class VirtualMicInstaller: ObservableObject {
         }
         generation += 1
         guard isLoaded else {
-            state = .failed(isOnDisk ? "系统还没认出它，点“让系统认出它”再试一次" : "安装未完成，请再试一次")
+            state = .failed(isOnDisk ? L("系统还没认出它，点“让系统认出它”再试一次") : L("安装未完成，请再试一次"))
             return
         }
         debugLog("virtual mic: loaded")
@@ -190,7 +190,7 @@ enum LoopbackTest {
     static func run(device: OutputDevice, phrase: String, play: @escaping () async -> Void) async -> VirtualMicInstaller.TestResult {
         let recorder = LoopbackRecorder()
         guard recorder.start(deviceID: device.id) else {
-            return .init(heard: false, text: "", levels: [], problem: "打不开虚拟麦克风，点“让系统认出它”后再试")
+            return .init(heard: false, text: "", levels: [], problem: L("打不开虚拟麦克风，点“让系统认出它”后再试"))
         }
         try? await Task.sleep(nanoseconds: 150_000_000)
         await play()
@@ -202,7 +202,7 @@ enum LoopbackTest {
         let text = loud ? await transcribe(buffers, locale: "en-US") : ""
         // Any real signal counts; the transcript is shown so people can judge it themselves.
         return .init(heard: loud, text: text, levels: levels,
-                     problem: loud ? nil : buffers.isEmpty ? "虚拟麦克风未收到声音，请再试一次" : nil)
+                     problem: loud ? nil : buffers.isEmpty ? L("虚拟麦克风未收到声音，请再试一次") : nil)
     }
 
     static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> String {

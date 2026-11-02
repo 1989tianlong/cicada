@@ -111,7 +111,7 @@ final class AudioRouter: @unchecked Sendable {
     private func record(_ buffer: AVAudioPCMBuffer) {
         guard let url = recordURL else { return }
         if recorder == nil {
-            recorder = AudioFileWriter.open(url, format: buffer.format)
+            recorder = AudioFileWriter.open(AudioFileWriter.partial(url), format: buffer.format)
             if recorder == nil { recordURL = nil; return }
         }
         try? recorder?.write(from: buffer)
@@ -204,5 +204,27 @@ enum AudioFileWriter {
         ]
         return try? AVAudioFile(forWriting: url, settings: settings,
                                 commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+    }
+
+    /// Meetings are recorded as ADTS (`system.aac`), which stays readable up to the last packet
+    /// if the app is killed; an .m4a is unreadable until it is closed. `finish` turns it into
+    /// the .m4a afterwards (and at launch, for a meeting the app didn't get to close).
+    static func partial(_ url: URL) -> URL { url.deletingPathExtension().appendingPathExtension("aac") }
+
+    /// Rewraps `partial(url)` into `url` without re-encoding, then removes the partial file.
+    /// A partial file next to an .m4a means the last rewrap was cut short: it is done again.
+    nonisolated static func finish(_ url: URL) async {
+        let src = partial(url)
+        guard FileManager.default.fileExists(atPath: src.path) else { return }
+        try? FileManager.default.removeItem(at: url)
+        let asset = AVURLAsset(url: src)
+        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else { return }
+        do {
+            try await export.export(to: url, as: .m4a)
+            try? FileManager.default.removeItem(at: src)
+        } catch {
+            debugLog("audio rewrap failed \(url.lastPathComponent): \(error)")
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }

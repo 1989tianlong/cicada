@@ -44,11 +44,12 @@ struct ChoiceRow: View {
             }
         } label: {
             HStack(spacing: 10) {
-                Text(label).font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(width: 44, alignment: .leading)
+                Text(label).font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(width: uiIsChinese ? 44 : 72, alignment: .leading)
                 Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
                 if let badge {
                     Text(badge)
                         .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1).fixedSize()
                         .foregroundStyle(Palette.accentInk)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(Capsule().fill(Palette.accentPale))
@@ -75,20 +76,33 @@ struct MenuPanelView: View {
 
     private var sourceOptions: [(id: String, title: String)] {
         let auto = model.candidates.map(\.name).joined(separator: "、")
-        return [("auto", auto.isEmpty ? "自动识别" : "自动识别（\(auto)）")] + sourceLanguages.map {
-            ($0.locale, model.installed.isEmpty || model.installed.contains($0.locale) ? $0.name : "\($0.name)（需下载）")
+        return [("auto", auto.isEmpty ? L("自动识别") : L("自动识别（\(auto)）"))] + sourceLanguages.map {
+            ($0.locale, model.installed.isEmpty || model.installed.contains($0.locale) ? $0.name : L("\($0.name)（需下载）"))
         }
     }
 
     private var targetOptions: [(id: String, title: String)] {
-        [("system", "跟随系统（\(settings.systemTargetDescription())）")] + targetLanguages.map { ($0.code, $0.name) }
+        [("system", L("跟随系统（\(settings.systemTargetDescription())）"))] + targetLanguages.map { ($0.code, $0.name) }
     }
 
     private var heardValue: (String, String?) {
         switch settings.sourceMode {
         case .fixed(let l): return (l.name, nil)
-        case .auto: return (model.listen.activeLang?.name ?? "自动", "自动识别")
+        case .auto: return (model.listen.activeLang?.name ?? L("自动"), L("自动识别"))
         }
+    }
+
+    private var displayTitle: some View {
+        Text("显示").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+    }
+
+    private var displayPicker: some View {
+        Picker("显示", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
+            Text("实时纪要").tag("notes")
+            Text("字幕条").tag("bar")
+            Text("不显示").tag("none")
+        }
+        .pickerStyle(.segmented).labelsHidden()
     }
 
     var body: some View {
@@ -110,7 +124,7 @@ struct MenuPanelView: View {
                     }
                     HStack(spacing: 6) {
                         Circle().fill(model.running ? Palette.accent : Color.gray.opacity(0.5)).frame(width: 7, height: 7)
-                        Text(model.running ? model.summary : "已暂停")
+                        Text(model.running ? model.summary : L("已暂停"))
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
                     }
                 }
@@ -120,17 +134,18 @@ struct MenuPanelView: View {
             }
 
             VStack(spacing: 8) {
-                ChoiceRow(label: "听到", value: heardValue.0, badge: heardValue.1, options: sourceOptions) {
+                ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, options: sourceOptions) {
                     model.sourceSelection = $0
                 }
-                ChoiceRow(label: "翻译成",
+                ChoiceRow(label: L("翻译成"),
                           value: targetName(model.listen.resolvedTarget),
-                          badge: settings.target == "system" ? "跟随系统" : nil,
+                          // "Follow system" leaves no room for the language name in the panel.
+                          badge: settings.target == "system" ? (uiIsChinese ? L("跟随系统") : L("系统")) : nil,
                           options: targetOptions) {
                     model.targetSelection = $0
                 }
-                ChoiceRow(label: "字幕", value: subtitleOptions.first { $0.id == model.subtitles }?.title ?? "原文 + 译文",
-                          badge: model.meetingSubtitles != nil ? "仅本场" : nil, options: subtitleOptions) {
+                ChoiceRow(label: L("字幕"), value: subtitleOptions.first { $0.id == model.subtitles }?.title ?? L("原文 + 译文"),
+                          badge: model.meetingSubtitles != nil ? L("仅本场") : nil, options: subtitleOptions) {
                     model.setSubtitles($0)
                 }
             }
@@ -156,7 +171,7 @@ struct MenuPanelView: View {
                 HStack {
                     Text("虚拟麦克风尚未设置好，对方听不到你的声音").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
                     Spacer()
-                    SoftButton("设置") { model.openSettings(.speak) }
+                    SoftButton(L("设置")) { model.openSettings(.speak) }
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
@@ -165,22 +180,26 @@ struct MenuPanelView: View {
             Divider()
 
             VStack(spacing: 10) {
-                HStack {
-                    Text("显示").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
-                    Spacer()
-                    Picker("显示", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
-                        Text("实时纪要").tag("notes")
-                        Text("字幕条").tag("bar")
-                        Text("不显示").tag("none")
+                // English labels are wider than the 210 pt the Chinese ones fit in: the picker gets its own row.
+                if uiIsChinese {
+                    HStack {
+                        displayTitle
+                        Spacer()
+                        displayPicker.frame(width: 210)
                     }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 210)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        displayTitle
+                        displayPicker
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if settings.displayMode == "notes" {
                     HStack {
-                        Text(model.ling.hasKey ? "纪要、文字记录和字幕都在一个窗口里" : "填入 API key 后可生成纪要；文字记录照常保存")
+                        Text(model.ling.hasKey ? L("纪要、文字记录和字幕都在一个窗口里") : L("填入 API key 后可生成纪要；文字记录照常保存"))
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                         Spacer()
-                        SoftButton("打开") { model.openNotesWindow() }
+                        SoftButton(L("打开")) { model.openNotesWindow() }
                     }
                 }
                 if settings.displayMode == "bar" {
@@ -334,17 +353,15 @@ struct MainWindowView: View {
     /// 今天 / 昨天 / 本周 / then one group per month, newest first.
     private var groups: [(title: String, sessions: [Session])] {
         let cal = Calendar.current
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
         var out: [(title: String, sessions: [Session])] = []
         for s in filtered {
             let d = s.startedAt
             let title: String
-            if cal.isDateInToday(d) { title = "今天" }
-            else if cal.isDateInYesterday(d) { title = "昨天" }
-            else if cal.isDate(d, equalTo: Date(), toGranularity: .weekOfYear) { title = "本周" }
-            else if cal.isDate(d, equalTo: Date(), toGranularity: .year) { f.dateFormat = "M月"; title = f.string(from: d) }
-            else { f.dateFormat = "yyyy年M月"; title = f.string(from: d) }
+            if cal.isDateInToday(d) { title = L("今天") }
+            else if cal.isDateInYesterday(d) { title = L("昨天") }
+            else if cal.isDate(d, equalTo: Date(), toGranularity: .weekOfYear) { title = L("本周") }
+            else if cal.isDate(d, equalTo: Date(), toGranularity: .year) { title = dateText(d, "MMMM") }
+            else { title = dateText(d, "yMMMM") }
             if out.last?.title == title { out[out.count - 1].sessions.append(s) } else { out.append((title, [s])) }
         }
         return out
@@ -384,19 +401,17 @@ struct MainWindowView: View {
     }
 
     private func meta(_ s: Session, live: Bool) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
         let cal = Calendar.current
-        f.dateFormat = cal.isDateInToday(s.startedAt) || cal.isDateInYesterday(s.startedAt) ? "HH:mm"
-            : cal.isDate(s.startedAt, equalTo: Date(), toGranularity: .weekOfYear) ? "EEE HH:mm" : "M月d日 HH:mm"
-        if live { return "正在记录 · \(f.string(from: s.startedAt)) 起 · \(s.lines.count) 句" }
-        return [f.string(from: s.startedAt), Self.length(s), Self.pair(s, short: true)].compactMap { $0 }.joined(separator: " · ")
+        let when = dateText(s.startedAt, cal.isDateInToday(s.startedAt) || cal.isDateInYesterday(s.startedAt) ? "HHmm"
+            : cal.isDate(s.startedAt, equalTo: Date(), toGranularity: .weekOfYear) ? "EEEHHmm" : "MMMdHHmm")
+        if live { return L("正在记录 · \(when) 起 · \(s.lines.count) 句") }
+        return [when, Self.length(s), Self.pair(s, short: true)].compactMap { $0 }.joined(separator: " · ")
     }
 
     static func length(_ s: Session) -> String {
         let mins = Int(s.duration / 60)
-        if mins < 1 { return "不到 1 分钟" }
-        return mins < 60 ? "\(mins) 分钟" : mins % 60 == 0 ? "\(mins / 60) 小时" : "\(mins / 60) 小时 \(mins % 60) 分"
+        if mins < 1 { return L("不到 1 分钟") }
+        return mins < 60 ? L("\(mins) 分钟") : mins % 60 == 0 ? L("\(mins / 60) 小时") : L("\(mins / 60) 小时 \(mins % 60) 分")
     }
 
     /// "英 → 中" (short) or "英语 → 中文", from the most common pair among the lines.
@@ -406,10 +421,11 @@ struct MainWindowView: View {
         let p = top.split(separator: "|").map(String.init)
         guard p.count == 2, p[0] != p[1] else { return nil }
         func name(_ c: String) -> String {
-            let names = ["en": "英语", "ja": "日语", "zh-CN": "中文", "zh-TW": "繁中", "ko": "韩语",
-                         "es": "西语", "fr": "法语", "de": "德语", "pt": "葡语"]
+            let names = ["en": L("英语"), "ja": L("日语"), "zh-CN": L("中文"), "zh-TW": L("繁中"), "ko": L("韩语"),
+                         "es": L("西语"), "fr": L("法语"), "de": L("德语"), "pt": L("葡语")]
             guard let n = names[c] else { return c.uppercased() }
-            return short ? String(n.prefix(1)) : n
+            guard short else { return n }
+            return uiIsChinese ? String(n.prefix(1)) : c == "zh-TW" ? "ZH-TW" : String(c.prefix(2)).uppercased()
         }
         return "\(name(p[0])) → \(name(p[1]))"
     }
@@ -424,8 +440,8 @@ struct MainWindowView: View {
         HStack(spacing: 10) {
             LogoTile(size: 28).opacity(model.running ? 1 : 0.5)
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.running ? "正在听" : "已暂停").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
-                Text(model.running ? model.summary : "打开开关开始听").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                Text(model.running ? L("正在听") : L("已暂停")).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text(model.running ? model.summary : L("打开开关开始听")).font(.system(size: 11)).foregroundStyle(Palette.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
@@ -455,7 +471,7 @@ struct MainWindowView: View {
                             .frame(maxWidth: .infinity)
                     }
                         .overlay {
-                            Text(s.id == store.liveID ? "正在听，说话的内容会出现在这里" : "这场会议没有记录到内容")
+                            Text(s.id == store.liveID ? L("正在听，说话的内容会出现在这里") : L("这场会议没有记录到内容"))
                                 .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         }
                 } else if tab == "notes" {
@@ -482,8 +498,8 @@ struct MainWindowView: View {
 
     private func toolbar(_ s: Session) -> some View {
         HStack(spacing: 4) {
-            tabButton("纪要", id: "notes")
-            tabButton("文字记录", id: "transcript", count: s.lines.count)
+            tabButton(L("纪要"), id: "notes")
+            tabButton(L("文字记录"), id: "transcript", count: s.lines.count)
             Spacer()
             if tab == "transcript" {
                 Picker("显示", selection: $view) {
@@ -550,12 +566,12 @@ struct MainWindowView: View {
                 titleDraft = ""
             }
             HStack(spacing: 8) {
-                if live { Tag("正在记录", live: true) }
+                if live { Tag(L("正在记录"), live: true) }
                 chip(Self.length(s))
-                chip("\(s.lines.count) 句")
+                chip(L("\(s.lines.count) 句"))
                 if let p = Self.pair(s, short: false) { chip(p) }
                 if let n = (live ? model.notes.notes : s.notes), !n.isEmpty {
-                    if n.final { Tag("完整版纪要", live: true) } else { chip("速记版纪要") }
+                    if n.final { Tag(L("完整版纪要"), live: true) } else { chip(L("速记版纪要")) }
                 }
             }
         }
@@ -570,13 +586,9 @@ struct MainWindowView: View {
     }
 
     private func dateLine(_ s: Session, live: Bool) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "M月d日 EEE HH:mm"
-        let start = f.string(from: s.startedAt)
-        guard !live, let end = s.endedAt else { return live ? "\(start) 起" : start }
-        f.dateFormat = "HH:mm"
-        return "\(start) – \(f.string(from: end))"
+        let start = dateText(s.startedAt, "MMMdEEEHHmm")
+        guard !live, let end = s.endedAt else { return live ? L("\(start) 起") : start }
+        return "\(start) – \(dateText(end, "HHmm"))"
     }
 
     private func transcript(_ s: Session) -> some View {
@@ -612,7 +624,7 @@ struct MainWindowView: View {
                 .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
                 .frame(width: 52, alignment: .leading).padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                Text(me ? "你" : "对方").font(.system(size: 11, weight: .semibold))
+                Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
                 if view != "dst" {
                     Text(l.src)
@@ -622,7 +634,7 @@ struct MainWindowView: View {
                         .textSelection(.enabled)
                 }
                 if view != "src" {
-                    Text(l.dst ?? "翻译中…")
+                    Text(l.dst ?? L("翻译中…"))
                         .font(.system(size: 15)).lineSpacing(3)
                         .foregroundStyle(l.dst == nil ? Palette.tertiary : Palette.ink)
                         .textSelection(.enabled)
@@ -661,20 +673,20 @@ struct SessionNotesView: View {
                     NotesGeneratingView(heard: session.lines.count)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(generating ? "正在整理纪要…" : live ? "纪要会在会议进行中自动生成" : "这场会议还没有纪要")
+                        Text(generating ? L("正在整理纪要…") : live ? L("纪要会在会议进行中自动生成") : L("这场会议还没有纪要"))
                             .font(.system(size: 15, weight: .bold))
-                        Text(ling.hasKey ? "使用 Ling 将文字记录整理为总结、议题、结论和人名，约需半分钟。"
-                                         : "前往 设置 › AI 服务 填入 Ling 的 API key 后即可生成。")
+                        Text(ling.hasKey ? L("使用 Ling 将文字记录整理为总结、议题、结论和人名，约需半分钟。")
+                                         : L("前往 设置 › AI 服务 填入 Ling 的 API key 后即可生成。"))
                             .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         if !live {
                             HStack(spacing: 8) {
                                 if ling.hasKey {
-                                    SoftButton(generating ? "正在生成…" : "生成纪要", dark: true) {
+                                    SoftButton(generating ? L("正在生成…") : L("生成纪要"), dark: true) {
                                         engine.generate(for: session.id)
                                     }
                                     .disabled(generating)
                                 } else {
-                                    SoftButton("去填 key", dark: true) { model.openSettings(.ai) }
+                                    SoftButton(L("去填 key"), dark: true) { model.openSettings(.ai) }
                                 }
                             }
                         }

@@ -3,10 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>zh_CN</string>
+	<string>en</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>zh-Hans</string>
+		<string>zh-Hant</string>
 		<string>en</string>
 	</array>
 	<key>LSHasLocalizedDisplayName</key>
@@ -40,10 +41,10 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 知了 Cicada</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>知了需要读取系统正在播放的声音，用于生成实时字幕。</string>
+	<string>Cicada reads the sound your Mac is playing to make live subtitles.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>按住快捷键说话时，知了需要麦克风把你的话翻译成对方的语言。</string>
+	<string>While you hold the talk key, Cicada uses the microphone to translate what you say into the other side's language.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>知了需要语音识别权限，把音频转成文字。</string>
+	<string>Cicada uses speech recognition to turn audio into text.</string>
 </dict>
 </plist>

@@ -78,6 +78,12 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
         panel?.orderOut(nil)
     }
 
+    /// Closed with its close button (hide() doesn't come here): the meeting goes on in the
+    /// records window, so the notes stay one click away.
+    func windowWillClose(_ notification: Notification) {
+        model?.notesWindowClosed()
+    }
+
     var frame: NSRect? { panel?.frame }
 
     /// Card ⇄ sidebar ⇄ wide, keeping the window's top-right corner where it is.
@@ -93,6 +99,9 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
     }
 
     func place(_ r: NSRect) { panel?.setFrame(r, display: true) }
+
+    /// Debug control only: what the close button does.
+    func performClose() { panel?.performClose(nil) }
 
     /// Debug control only: let screenshots capture the window.
     func setCapturable(_ on: Bool) { panel?.sharingType = on ? .readOnly : .none }
@@ -221,10 +230,12 @@ struct NotesWindowView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 4) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(live || session == nil ? "实时纪要" : "会议纪要").font(.system(size: 24, weight: .bold))
+                    Text(live || session == nil ? L("实时纪要") : L("会议纪要")).font(.system(size: 24, weight: .bold))
                     HStack(spacing: 6) {
                         if live { LiveDot() }
-                        Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(1)
+                        // Wraps rather than cut off "· 纪要已更新至 …" when the buttons leave little room.
+                        Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
@@ -241,15 +252,15 @@ struct NotesWindowView: View {
                     }
                     .buttonStyle(.plain).help("结束这场会议").padding(.trailing, 4)
                 }
-                iconButton(wide ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", help: wide ? "收窄" : "纪要和原话并排") {
+                iconButton(wide ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", help: wide ? L("收窄") : L("纪要和原话并排")) {
                     setWidth(wide ? 460 : 820, nil)
                 }
-                iconButton("minus", help: "收成小卡") { collapse() }
+                iconButton("minus", help: L("收成小卡")) { collapse() }
             }
             if !wide {
                 HStack(spacing: 0) {
-                    segment("纪要", "notes")
-                    segment(engine.notes.isEmpty && heard > 0 ? "文字记录 · \(heard)" : "文字记录", "transcript")
+                    segment(L("纪要"), "notes")
+                    segment(engine.notes.isEmpty && heard > 0 ? L("文字记录 · \(heard)") : L("文字记录"), "transcript")
                 }
                 .padding(4)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Palette.fill))
@@ -269,11 +280,11 @@ struct NotesWindowView: View {
                 .onSubmit { step(1) }
                 .onChange(of: query) { _, _ in matchIndex = 0 }
             if !query.isEmpty {
-                Text(matches.isEmpty ? "无结果" : "\(currentIndex + 1) / \(matches.count)")
+                Text(matches.isEmpty ? L("无结果") : "\(currentIndex + 1) / \(matches.count)")
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
-                iconButton("chevron.up", help: "上一个") { step(-1) }.disabled(matches.isEmpty)
-                iconButton("chevron.down", help: "下一个") { step(1) }.disabled(matches.isEmpty)
-                iconButton("xmark", help: "清除") { query = "" }
+                iconButton("chevron.up", help: L("上一个")) { step(-1) }.disabled(matches.isEmpty)
+                iconButton("chevron.down", help: L("下一个")) { step(1) }.disabled(matches.isEmpty)
+                iconButton("xmark", help: L("清除")) { query = "" }
             }
         }
         .padding(.leading, 12).padding(.trailing, 2).frame(height: 34)
@@ -334,15 +345,15 @@ struct NotesWindowView: View {
 
     private var statusLine: String {
         if live {
-            var parts = [(heard == 0 ? "正在听 · " : "正在记录 · ") + NotesEngine.clock(elapsed)]
-            if heard > 0 { parts.append("\(heard) 句") }
-            if !engine.notes.isEmpty, lastCovered > 0 { parts.append("纪要已更新至 \(NotesEngine.clock(lastCovered))") }
+            var parts = [(heard == 0 ? L("正在听 · ") : L("正在记录 · ")) + NotesEngine.clock(elapsed)]
+            if heard > 0 { parts.append(L("\(heard) 句")) }
+            if !engine.notes.isEmpty, lastCovered > 0 { parts.append(L("纪要已更新至 \(NotesEngine.clock(lastCovered))")) }
             return parts.joined(separator: " · ")
         }
-        let clock = session.map { "已结束 · " + TranscriptExport.header($0) } ?? "没有在记录"
+        let clock = session.map { L("已结束 · ") + TranscriptExport.header($0) } ?? L("没有在记录")
         guard let at = engine.notes.updatedAt, engine.state != .updating else { return clock }
         let ago = Int(now.timeIntervalSince(at))
-        return clock + " · " + (ago < 10 ? "刚刚更新" : ago < 60 ? "\(ago) 秒前更新" : "\(ago / 60) 分钟前更新")
+        return clock + " · " + (ago < 10 ? L("刚刚更新") : ago < 60 ? L("\(ago) 秒前更新") : L("\(ago / 60) 分钟前更新"))
     }
 
     // MARK: This meeting's languages
@@ -352,7 +363,7 @@ struct NotesWindowView: View {
     /// an inactive app closes as soon as it opens); the defaults live in 设置 › 语言.
     private var languageChip: some View {
         let id = session?.id ?? ""
-        let from = model.meetingLanguage(store.liveID).map(Self.short) ?? "自动"
+        let from = model.meetingLanguage(store.liveID).map(Self.short) ?? L("自动")
         return Button { languageOpen.toggle() } label: {
             HStack(spacing: 4) {
                 Text(from)
@@ -364,7 +375,7 @@ struct NotesWindowView: View {
             .background(RoundedRectangle(cornerRadius: 7).fill(Palette.accentPale))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).help("这场会议的语言").accessibilityLabel("这场会议的语言")
+        .buttonStyle(.plain).help("这场会议的语言").accessibilityLabel(L("这场会议的语言"))
     }
 
     private func languageCard(_ id: String) -> some View {
@@ -377,20 +388,20 @@ struct NotesWindowView: View {
                     Text("只改这一场，默认值在 设置 › 语言").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
                 }
                 Spacer()
-                iconButton("xmark", help: "收起") { languageOpen = false }
+                iconButton("xmark", help: L("收起")) { languageOpen = false }
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("对方说").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
-                Text(source.map(targetName) ?? "还没听出来").font(.system(size: 13))
+                Text(source.map(targetName) ?? L("还没听出来")).font(.system(size: 13))
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("字幕").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
-                Segments(options: [("both", "双语"), ("translation", "只看译文"), ("original", "只看原文")],
+                Segments(options: [("both", L("双语")), ("translation", L("只看译文")), ("original", L("只看原文"))],
                          value: model.subtitles, fill: true) { model.setSubtitles($0, meetingOnly: true) }
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("纪要").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
-                Segments(options: [("mine", targetName(mine)), ("source", source.map { "\(targetName($0))（原文）" } ?? "会议原文")],
+                Segments(options: [("mine", targetName(mine)), ("source", source.map { L("\(targetName($0))（原文）") } ?? L("会议原文"))],
                          value: model.notesChoice(id), fill: true) { model.setNotesLanguage($0, meetingOnly: true) }
                 Text("换了以后会马上用新语言重写纪要").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
             }
@@ -408,10 +419,10 @@ struct NotesWindowView: View {
 
     static func short(_ code: String) -> String {
         switch code {
-        case "zh-CN": "中"
-        case "zh-TW": "繁"
-        case "ja": "日"
-        case "ko": "韩"
+        case "zh-CN": L("中")
+        case "zh-TW": L("繁")
+        case "ja": L("日")
+        case "ko": L("韩")
         default: code.prefix(2).uppercased()
         }
     }
@@ -436,8 +447,8 @@ struct NotesWindowView: View {
                         .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
-                        SoftButton("继续记录") { confirmEnd = false }
-                        SoftButton("结束会议", dark: true) {
+                        SoftButton(L("继续记录")) { confirmEnd = false }
+                        SoftButton(L("结束会议"), dark: true) {
                             confirmEnd = false
                             model.stop()
                         }
@@ -460,17 +471,17 @@ struct NotesWindowView: View {
                 }
                 HStack(spacing: 8) {
                     if let id = session?.id, let other = otherNotesLanguage(id) {
-                        SoftButton("改用\(targetName(other.code))重新整理") { model.regenerateNotes(id, choice: other.choice) }
+                        SoftButton(L("改用\(targetName(other.code))重新整理")) { model.regenerateNotes(id, choice: other.choice) }
                             .disabled(engine.state == .updating)
                     }
                     if let id = session?.id {
-                        SoftButton("在会议记录中查看") {
+                        SoftButton(L("在会议记录中查看")) {
                             model.mainShow = nil
                             model.mainShow = "\(id),notes"
                             model.openMainWindow?()
                         }
                     }
-                    SoftButton(session == nil ? "开始记录" : "开始新会议", dark: true) { model.start() }
+                    SoftButton(session == nil ? L("开始记录") : L("开始新会议"), dark: true) { model.start() }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -486,10 +497,10 @@ struct NotesWindowView: View {
     }
 
     private var endedText: String {
-        guard session != nil else { return "现在没有在记录" }
-        if engine.state == .updating { return "会议已结束，正在整理完整版纪要…" }
-        if engine.state == .noKey || engine.notes.isEmpty { return "会议已结束，文字记录已保存" }
-        return "会议已结束，完整版纪要已整理好 · " + targetName(model.notesLanguageCode(session?.id ?? ""))
+        guard session != nil else { return L("现在没有在记录") }
+        if engine.state == .updating { return L("会议已结束，正在整理完整版纪要…") }
+        if engine.state == .noKey || engine.notes.isEmpty { return L("会议已结束，文字记录已保存") }
+        return L("会议已结束，完整版纪要已整理好 · ") + targetName(model.notesLanguageCode(session?.id ?? ""))
     }
 
     // MARK: Banners (key and service states)
@@ -500,13 +511,13 @@ struct NotesWindowView: View {
         case .noKey where session?.lines.isEmpty == false || live:
             keyEntry
         case .invalidKey:
-            notice("key 已失效（令牌被删或免费额度用尽），纪要停留在 \(NotesEngine.clock(lastCovered))。", tint: Palette.errorPale) {
-                SoftButton("更换 key", dark: true) { model.openSettings(.ai) }
+            notice(L("key 已失效（令牌被删或免费额度用尽），纪要停留在 \(NotesEngine.clock(lastCovered))。"), tint: Palette.errorPale) {
+                SoftButton(L("更换 key"), dark: true) { model.openSettings(.ai) }
             }
         case .rateLimited:
-            notice("请求过于频繁，稍后会自动重试。纪要停留在 \(NotesEngine.clock(lastCovered))。", tint: Palette.fill) { EmptyView() }
+            notice(L("请求过于频繁，稍后会自动重试。纪要停留在 \(NotesEngine.clock(lastCovered))。"), tint: Palette.fill) { EmptyView() }
         case .failed:
-            notice("这轮没整理好，下一轮会自动重试。", tint: Palette.fill) { EmptyView() }
+            notice(L("这轮没整理好，下一轮会自动重试。"), tint: Palette.fill) { EmptyView() }
         default:
             EmptyView()
         }
@@ -538,7 +549,7 @@ struct NotesWindowView: View {
                     .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.line, lineWidth: 1))
                     .onSubmit(saveKey)
-                SoftButton("保存并开始", dark: true, action: saveKey)
+                SoftButton(L("保存并开始"), dark: true, action: saveKey)
             }
             Button("获取 Ling key ↗") {
                 if let url = URL(string: "https://chat.ant-ling.com/open") { NSWorkspace.shared.open(url) }
@@ -582,7 +593,7 @@ struct NotesWindowView: View {
         } else {
             VStack {
                 Spacer()
-                Text(session == nil ? "没有进行中的会议" : "这场会议还没有纪要")
+                Text(session == nil ? L("没有进行中的会议") : L("这场会议还没有纪要"))
                     .font(.system(size: 13)).foregroundStyle(Palette.tertiary)
                 Spacer()
                 Spacer()
@@ -639,11 +650,11 @@ struct NotesWindowView: View {
                         .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
                 } else {
                     if live { LiveDot() }
-                    Text(currentTopic.map { (live ? "正在讲 · " : "最后一个议题 · ") + "\(NotesEngine.clock($0.start)) 起" } ?? (live ? "正在记录" : "实时纪要"))
+                    Text(currentTopic.map { (live ? L("正在讲 · ") : L("最后一个议题 · ")) + L("\(NotesEngine.clock($0.start)) 起") } ?? (live ? L("正在记录") : L("实时纪要")))
                         .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
                 }
                 Spacer()
-                iconButton("arrow.up.left.and.arrow.down.right", help: "展开纪要") { setWidth(460, 760) }
+                iconButton("arrow.up.left.and.arrow.down.right", help: L("展开纪要")) { setWidth(460, 760) }
             }
             if catchUp {
                 Text("这 \(span) 讲了").font(.system(size: 17, weight: .bold))
@@ -670,8 +681,8 @@ struct NotesWindowView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(spacing: 8) {
-                    SoftButton("展开纪要", dark: true) { setWidth(460, 760) }
-                    SoftButton("看过了") {
+                    SoftButton(L("展开纪要"), dark: true) { setWidth(460, 760) }
+                    SoftButton(L("看过了")) {
                         catchUp = false
                         collapsedAt = elapsed
                         seenItems = items(before: .infinity)
@@ -679,7 +690,7 @@ struct NotesWindowView: View {
                     }
                 }
             } else {
-                Text(currentTopic?.title ?? (!live ? "还没有纪要" : heard == 0 ? "正在听" : "正在生成纪要…"))
+                Text(currentTopic?.title ?? (!live ? L("还没有纪要") : heard == 0 ? L("正在听") : L("正在生成纪要…")))
                     .font(.system(size: 17, weight: .bold)).lineLimit(2)
                 if addedCount.points == 0 && addedCount.topics == 0, let last = currentTopic?.points.last {
                     Text(last).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(2)
@@ -700,7 +711,7 @@ struct NotesWindowView: View {
                     }
                     .buttonStyle(.plain)
                 } else if collapsedAt > 0 || live {
-                    Text("收起 \(span) · " + (live ? "还在讲这个" : "没有新内容"))
+                    Text(L("收起 \(span) · ") + (live ? L("还在讲这个") : L("没有新内容")))
                         .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
                 }
             }
@@ -726,14 +737,14 @@ struct NotesWindowView: View {
     private var addedLabel: String {
         let c = addedCount
         var parts: [String] = []
-        if c.topics > 0 { parts.append("\(c.topics) 个议题") }
-        if c.points > 0 { parts.append("\(c.points) 条要点") }
-        return "收起后新增 " + parts.joined(separator: "、")
+        if c.topics > 0 { parts.append(L("\(c.topics) 个议题")) }
+        if c.points > 0 { parts.append(L("\(c.points) 条要点")) }
+        return L("收起后新增 ") + parts.joined(separator: uiIsChinese ? "、" : ", ")
     }
 
     private var span: String {
         let s = max(0, Int(elapsed - collapsedAt))
-        return s < 60 ? "\(s) 秒" : "\(s / 60) 分钟"
+        return s < 60 ? L("\(s) 秒") : L("\(s / 60) 分钟")
     }
 }
 

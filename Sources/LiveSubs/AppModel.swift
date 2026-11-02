@@ -17,7 +17,7 @@ final class AppModel: ObservableObject {
     lazy var speak = SpeakEngine(settings: settings)
 
     @Published var running = false
-    @Published var status = "准备就绪"
+    @Published var status = L("准备就绪")
     @Published var summary = ""
     @Published var installed: Set<String> = []
     @Published var candidates: [Lang] = []
@@ -115,7 +115,7 @@ final class AppModel: ObservableObject {
             guard self.settings.displayMode == "bar" else {
                 // The notes window's caption line shows what you are saying.
                 if phase != .idle || !src.isEmpty {
-                    self.liveSource = src.isEmpty ? "你正在说…" : "你：\(src)"
+                    self.liveSource = src.isEmpty ? L("你正在说…") : L("你：\(src)")
                     self.liveTranslation = dst
                 }
                 return
@@ -173,7 +173,8 @@ final class AppModel: ObservableObject {
 
     func refresh() {
         running = listen.isRunning
-        systemAudioOK = listen.isRunning
+        // Once the tap has run, the permission is there: pausing doesn't take it away.
+        systemAudioOK = systemAudioOK || listen.isRunning
         summary = listen.languageSummary()
         candidates = listen.candidates
         installed = listen.installedLocales
@@ -193,7 +194,7 @@ final class AppModel: ObservableObject {
         if mic != micStatus { micStatus = mic }
         let devices = AudioDevices.outputs()
         if devices.map(\.uid) != outputs.map(\.uid) { outputs = devices }
-        if systemAudioOK != listen.isRunning { systemAudioOK = listen.isRunning }
+        if listen.isRunning && !systemAudioOK { systemAudioOK = true }
     }
 
     /// Starting the tap triggers the system prompt; if it still fails, open the pane.
@@ -263,6 +264,7 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
+        diagnostics.end()
         listen.stop()
         listen.router.setRecording(nil)
         speak.setRecording(nil)
@@ -280,10 +282,10 @@ final class AppModel: ObservableObject {
         guard listen.isRunning, let id = store.liveID, let s = store.session(id), !s.lines.isEmpty else { stop(); return }
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = "结束这场会议？"
-        alert.informativeText = "已记录 \(NotesEngine.clock(Date().timeIntervalSince(s.startedAt))) · \(s.lines.count) 句。结束后停止收听，并整理一份完整版纪要。"
-        let end = alert.addButton(withTitle: "结束会议")
-        let keep = alert.addButton(withTitle: "继续记录")
+        alert.messageText = L("结束这场会议？")
+        alert.informativeText = L("已记录 \(NotesEngine.clock(Date().timeIntervalSince(s.startedAt))) · \(s.lines.count) 句。结束后停止收听，并整理一份完整版纪要。")
+        let end = alert.addButton(withTitle: L("结束会议"))
+        let keep = alert.addButton(withTitle: L("继续记录"))
         end.hasDestructiveAction = true
         end.keyEquivalent = ""
         keep.keyEquivalent = "\r"
@@ -394,6 +396,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The user closed the notes window: show the same meeting in the records window.
+    func notesWindowClosed() {
+        let id = store.liveID ?? notes.shownID
+        openMainWindow?()
+        if let id {
+            mainShow = nil
+            mainShow = "\(id),notes"
+        }
+    }
+
     func openNotesWindow() {
         if settings.displayMode != "notes" { setDisplayMode("notes") }
         notesWindow.show()
@@ -495,17 +507,19 @@ final class AppModel: ObservableObject {
 
     /// Validates and saves a new shortcut. Returns why it was refused, or nil.
     func setShortcut(_ s: Shortcut, for role: ShortcutRole) -> String? {
-        if role == .toggle && s.isRightOption { return "右 ⌥ 只能用于“按住说话”" }
+        if role == .toggle && s.isRightOption { return L("右 ⌥ 只能用于“按住说话”") }
         if let p = s.typingProblem { return p }
         let other = role == .talk ? settings.toggleKey : settings.talkKey
-        if s == other { return "与另一个快捷键冲突" }
-        if s.isSystemShortcut { return "\(s.display) 是系统快捷键，换一个吧" }
-        if !s.isRightOption {
+        if s == other { return L("与另一个快捷键冲突") }
+        if s.isSystemShortcut { return L("\(s.display) 是系统快捷键，换一个吧") }
+        // The one already in use is registered by us: probing it would always fail.
+        let current = role == .talk ? settings.talkKey : settings.toggleKey
+        if !s.isRightOption && s != current {
             // Probe: Carbon refuses a combo another app already registered.
             let probe = HotKey(id: 9, shortcut: s)
             let free = probe.register()
             probe.unregister()
-            if !free { return "\(s.display) 已被其他应用占用，换一个吧" }
+            if !free { return L("\(s.display) 已被其他应用占用，换一个吧") }
         }
         switch role {
         case .talk:
@@ -717,6 +731,7 @@ final class AppModel: ObservableObject {
         case "notesReplay": Task { await notes.replay(arg) }
         case "notesShow": notes.show(arg)
         case "notesCapturable": notesWindow.setCapturable(arg != "off")
+        case "notesClose": notesWindow.performClose()
         case "notesRender":
             // The whole notes column as a PNG, for checking what is below the fold.
             let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil,
@@ -742,6 +757,26 @@ final class AppModel: ObservableObject {
                 if let img = r.nsImage, let tiff = img.tiffRepresentation, let full = NSBitmapImageRep(data: tiff) {
                     try? full.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg + ".notes.png"))
                 }
+            }
+        case "settingsRender":
+            // settingsRender:<section>=<png>: one settings page in full, scroll view or not.
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            guard p.count == 2, let section = SettingsSection(rawValue: p[0]) else { break }
+            settingsSection = section
+            let r = ImageRenderer(content: SettingsView(model: self, settings: settings, installer: installer).page
+                .frame(width: 530).background(Color(red: 0.965, green: 0.969, blue: 0.976)))
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: p[1]))
+            }
+        case "windowsRender":
+            // Every visible window as drawn (<dir>/<n>-<class>.png), without Screen Recording permission.
+            for (i, w) in NSApp.windows.enumerated() where w.isVisible {
+                guard let view = w.contentView, view.bounds.width > 40,
+                      let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let name = "\(i)-\(String(describing: type(of: w)).prefix(24)).png"
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg).appendingPathComponent(name))
             }
         case "notesState": debugLog("notes state=\(notes.state) topics=\(notes.notes.topics.count) covered=\(notes.notes.covered) glossary=\(notes.glossary.count) timedPoints=\(notes.notes.topics.reduce(0) { $0 + ($1.pointTimes?.compactMap { $0 }.count ?? 0) })/\(notes.notes.topics.reduce(0) { $0 + $1.points.count }) fresh=\(notes.fresh.count)")
         case "lingSimulate":
@@ -851,10 +886,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard model.running, let id = model.store.liveID, !(model.store.session(id)?.lines.isEmpty ?? true) else { return .terminateNow }
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = "正在记录会议"
-        alert.informativeText = "退出会结束这场记录，已记下的内容会保存。"
-        alert.addButton(withTitle: "退出")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L("正在记录会议")
+        alert.informativeText = L("退出会结束这场记录，已记下的内容会保存。")
+        alert.addButton(withTitle: L("退出"))
+        alert.addButton(withTitle: L("取消"))
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
@@ -877,9 +912,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         popover.behavior = .transient
         popover.animates = false
-        popover.contentViewController = NSHostingController(
-            rootView: MenuPanelView(model: model, settings: model.settings)
-        )
+        let panel = NSHostingController(rootView: MenuPanelView(model: model, settings: model.settings))
+        // The popover follows the panel's height as it changes (a status line, the virtual-mic
+        // warning). Without this the hosting view resized the popover window from its bottom
+        // edge, pushing the top of the panel above the screen.
+        panel.sizingOptions = .preferredContentSize
+        popover.contentViewController = panel
     }
 
     @objc private func togglePopover() {
@@ -924,7 +962,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 600),
                              styleMask: [.titled, .closable, .fullSizeContentView],
                              backing: .buffered, defer: false)
-            w.title = "设置"
+            w.title = L("设置")
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.isReleasedWhenClosed = false
@@ -946,7 +984,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
                              styleMask: [.titled, .closable, .fullSizeContentView],
                              backing: .buffered, defer: false)
-            w.title = "欢迎使用\(appDisplayName)"
+            w.title = L("欢迎使用\(appDisplayName)")
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.isReleasedWhenClosed = false

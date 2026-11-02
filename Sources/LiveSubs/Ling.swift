@@ -190,7 +190,7 @@ final class LingClient: ObservableObject {
         } catch Failure.rateLimited {
             keyState = .ok(seconds: Date().timeIntervalSince(started))
         } catch {
-            keyState = .unreachable("连不上 Ling，检查网络或代理")
+            keyState = .unreachable(L("连不上 Ling，检查网络或代理"))
         }
         debugLog("ling: key check → \(keyState)")
     }

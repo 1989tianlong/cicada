@@ -5,6 +5,15 @@ the release workflow publishes it as the release notes.
 
 ## Unreleased
 
+- Fixed: with the heard language on 自动识别, the first sentences of a meeting (everything said before the language was confirmed, usually the first 2–5 s) were shown but never saved to the meeting record or the notes. They are now recorded, with their translation and the time they were said, as soon as the language is confirmed.
+- Fixed: if the app was force-quit or crashed during a meeting, its recording (`system.m4a`, `mic.m4a`) could not be opened. Meetings are now recorded in a format that survives that, and turned into .m4a when the meeting ends or, after a crash, the next time the app starts.
+- Fixed: changing the notes language while the notes were being updated kept the notes in the old language. The rewrite now runs right after, and the reply in the old language is dropped.
+- Fixed: a point mentioned again later in a meeting moved its time to the later mention; it now keeps the time it was first said.
+- Fixed: entering a key that Ling refuses left the notes window asking for a key, with no sign it was wrong; it now says the key is invalid.
+- Fixed: recording the shortcut that is already set (or 恢复默认 when it is the default) was refused as "taken by another app".
+- Fixed: the English interface cut off the route line in Settings › Language, the "Follow system" badge and the interpreting line in the menu bar panel, the status line in the notes window, the collapsed card's "New since collapsed" and the own-voice card.
+- Fixed: 诊断 kept counting the meeting's minutes after it ended, and 新手引导 asked for system audio permission again whenever listening was paused.
+- New: the app speaks English. Menus, settings, the panel, the notes and main windows, onboarding, alerts, exports and the permission prompts follow the macOS language: Chinese on Chinese systems (Traditional too), English elsewhere. The notes themselves still follow the notes language.
 - New: meetings name themselves. The notes give each meeting a short name in the notes language, and the records list, the page title and exports show the date and that name ("11月1日 Lumen 发布与结账转化问题讨论") instead of "会议 11月1日 20:16". A title you typed is kept; 恢复自动标题 in the list's right-click menu brings the automatic one back.
 - New: Settings › 语言 puts every language choice in one place, under a line that reads the whole route ("对方说 English → 字幕 简体中文 · 纪要 简体中文 / 你说 中文 → 对方听到 English"): what the other side speaks, what the subtitles show (原文 + 译文 / 只看译文 / 只看原文 — the last translates nothing and uses no Ling quota; also in the menu bar panel), what to translate into, the notes language (你的语言 or the meeting's own), and the speak-back pair. 显示 and 同声传译 no longer hold these.
 - New: an "EN → 中" chip in the live notes window changes the subtitles and notes language for this meeting only; a new notes language rewrites the notes right away. After a meeting, "改用 English 重新整理" writes its notes again in the other language.

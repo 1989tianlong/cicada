@@ -38,7 +38,7 @@ struct Shortcut: Equatable {
 
     /// Key caps in display order, e.g. ["⌃", "⌥", "S"].
     var keys: [String] {
-        if isRightOption { return ["右 ⌥"] }
+        if isRightOption { return [L("右 ⌥")] }
         var k: [String] = []
         if modifiers & controlKey != 0 { k.append("⌃") }
         if modifiers & optionKey != 0 { k.append("⌥") }
@@ -59,7 +59,7 @@ struct Shortcut: Equatable {
     private static let named: [Int: String] = [
         kVK_Space: "Space", kVK_Return: "↩", kVK_Tab: "⇥", kVK_Delete: "⌫", kVK_ForwardDelete: "⌦",
         kVK_Escape: "esc", kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓",
-        kVK_Home: "↖", kVK_End: "↘", kVK_PageUp: "⇞", kVK_PageDown: "⇟", kVK_RightOption: "右 ⌥",
+        kVK_Home: "↖", kVK_End: "↘", kVK_PageUp: "⇞", kVK_PageDown: "⇟", kVK_RightOption: L("右 ⌥"),
     ]
 
     /// The character the key types on the current layout (US letters on non-Latin layouts).
@@ -86,7 +86,7 @@ struct Shortcut: Equatable {
     /// most Mac keyboards. So a combination needs ⌃ or ⌘.
     var typingProblem: String? {
         if isRightOption { return nil }
-        if modifiers & (controlKey | cmdKey) == 0 { return "请包含 ⌃ 或 ⌘，否则会影响正常打字" }
+        if modifiers & (controlKey | cmdKey) == 0 { return L("请包含 ⌃ 或 ⌘，否则会影响正常打字") }
         return nil
     }
 

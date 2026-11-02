@@ -32,10 +32,10 @@ struct NotesContentView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text("总结").font(.system(size: 15, weight: .bold))
-                        if summaryJustChanged { Tag("刚更新", live: true) }
+                        if summaryJustChanged { Tag(L("刚更新"), live: true) }
                         Spacer()
-                        if notes.final { Tag("完整版") } else if live {
-                            Tag(coveredUntil.map { "速记版 · 到 \(NotesEngine.clock($0))" } ?? "速记版")
+                        if notes.final { Tag(L("完整版")) } else if live {
+                            Tag(coveredUntil.map { L("速记版 · 到 \(NotesEngine.clock($0))") } ?? L("速记版"))
                         }
                     }
                     Text(notes.summary).font(.system(size: 14)).lineSpacing(4).textSelection(.enabled)
@@ -47,7 +47,7 @@ struct NotesContentView: View {
 
             if !notes.topics.isEmpty {
                 VStack(alignment: .leading, spacing: document ? 0 : 14) {
-                    title("议题")
+                    title(L("议题"))
                     ForEach(Array(notes.topics.enumerated()), id: \.element.id) { i, topic in
                         if document { Divider() }
                         TopicView(topic: topic,
@@ -61,7 +61,7 @@ struct NotesContentView: View {
 
             if !notes.conclusions.isEmpty || !notes.todos.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    title(notes.todos.isEmpty ? "结论" : "结论和待办")
+                    title(notes.todos.isEmpty ? L("结论") : L("结论和待办"))
                     if document {
                         VStack(alignment: .leading, spacing: 0) { items }
                     } else {
@@ -72,11 +72,11 @@ struct NotesContentView: View {
 
             if !notes.terms.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    title("人名和术语")
+                    title(L("人名和术语"))
                     FlowLayout(spacing: 6) {
                         ForEach(notes.terms) { t in
                             (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)")
-                                + Text(t.heard.isEmpty ? "" : " · 原识别 \(t.heard.prefix(2).joined(separator: "、"))")
+                                + Text(t.heard.isEmpty ? "" : L(" · 原识别 \(t.heard.prefix(2).joined(separator: "、"))"))
                                 .foregroundColor(Palette.tertiary))
                                 .font(.system(size: 12))
                                 .padding(.horizontal, 9).padding(.vertical, 5)
@@ -116,11 +116,11 @@ struct NotesContentView: View {
                     .foregroundStyle(item.support == 0 ? Palette.tertiary : Palette.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if item.support == 0 {
-                    Tag("依据较少")
+                    Tag(L("依据较少"))
                 } else if let t = item.t {
-                    TimeLink(text: "\(NotesEngine.clock(t)) · \(item.support) 句", t: t, onJump: onJump)
+                    TimeLink(text: L("\(NotesEngine.clock(t)) · \(item.support) 句"), t: t, onJump: onJump)
                 } else {
-                    Tag("依据 \(item.support) 句")
+                    Tag(L("依据 \(item.support) 句"))
                 }
             }
             .padding(.horizontal, document ? 0 : 16).padding(.vertical, 11)
@@ -149,8 +149,8 @@ private struct TopicView: View {
                 }
                 .buttonStyle(.plain).help("看原话")
                 Text(topic.title).font(.system(size: 15, weight: .bold))
-                if current { Tag("正在讲", live: true) }
-                if fresh.contains(topic.title) && !current { Tag("新", live: true) }
+                if current { Tag(L("正在讲"), live: true) }
+                if fresh.contains(topic.title) && !current { Tag(L("新"), live: true) }
             }
             VStack(alignment: .leading, spacing: 6) {
                 if !topic.summary.isEmpty {
@@ -163,7 +163,7 @@ private struct TopicView: View {
                             .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
                         Text(p).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
-                        if fresh.contains(p) { Tag("新", live: true) }
+                        if fresh.contains(p) { Tag(L("新"), live: true) }
                         Spacer(minLength: 4)
                         if let t = topic.pointTime(i) { TimeLink(text: NotesEngine.clock(t), t: t, onJump: onJump) }
                     }
@@ -187,7 +187,7 @@ private struct TopicView: View {
     /// "01:04–02:02", or "02:03 起" for the topic being discussed.
     private var range: String {
         let from = NotesEngine.clock(topic.start)
-        guard let end, end > topic.start + 1 else { return current ? "\(from) 起" : from }
+        guard let end, end > topic.start + 1 else { return current ? L("\(from) 起") : from }
         return "\(from)–\(NotesEngine.clock(end))"
     }
 
@@ -225,7 +225,7 @@ struct FishboneView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                Text(fishbone.question.isEmpty ? "为什么" : fishbone.question).font(.system(size: 13, weight: .bold))
+                Text(fishbone.question.isEmpty ? L("为什么") : fishbone.question).font(.system(size: 13, weight: .bold))
                 Spacer()
                 Text("鱼骨图").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
             }
@@ -276,7 +276,7 @@ struct FishboneView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(weak ? "依据较少，仅供参考" : "看原话")
+        .help(weak ? L("依据较少，仅供参考") : L("看原话"))
     }
 }
 

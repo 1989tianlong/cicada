@@ -48,13 +48,13 @@ enum VoiceCatalog {
         }
         switch key(for: language) {
         case "en":
-            return [v("US_Emma", "Emma", ["女", "美式", "自然对话"]), v("UK_George", "George", ["男", "英式", "稳重"]),
-                    v("UK_Charlotte", "Charlotte", ["女", "英式", "平稳"])]
+            return [v("US_Emma", "Emma", [L("女"), L("美式"), L("自然对话")]), v("UK_George", "George", [L("男"), L("英式"), L("稳重")]),
+                    v("UK_Charlotte", "Charlotte", [L("女"), L("英式"), L("平稳")])]
         case "zh":
-            return [v("灵小雅", "小雅", ["女", "清亮", "播报"]), v("灵小棠", "小棠", ["女", "温和", "沉稳"]),
-                    v("灵小锋", "小锋", ["男", "温暖", "亲切"]), v("灵卓然", "卓然", ["男", "沉着", "清楚"])]
+            return [v("灵小雅", "小雅", [L("女"), L("清亮"), L("播报")]), v("灵小棠", "小棠", [L("女"), L("温和"), L("沉稳")]),
+                    v("灵小锋", "小锋", [L("男"), L("温暖"), L("亲切")]), v("灵卓然", "卓然", [L("男"), L("沉着"), L("清楚")])]
         case "ja", "ko", "de", "fr", "es":
-            return [v("US_Emma", "Emma", ["女", "Ming"]), v("UK_George", "George", ["男", "Ming"])]
+            return [v("US_Emma", "Emma", [L("女"), "Ming"]), v("UK_George", "George", [L("男"), "Ming"])]
         default:
             return []
         }
@@ -71,9 +71,9 @@ enum VoiceCatalog {
         var out: [VoiceOption] = []
         for gender in [AVSpeechSynthesisVoiceGender.female, .male] {
             guard let best = all.filter({ $0.gender == gender }).max(by: { $0.quality.rawValue < $1.quality.rawValue }) else { continue }
-            let quality = best.quality == .premium ? "高品质" : best.quality == .enhanced ? "增强" : "标准"
+            let quality = best.quality == .premium ? L("高品质") : best.quality == .enhanced ? L("增强") : L("标准")
             out.append(VoiceOption(id: "system:\(best.identifier)", name: best.name,
-                                   tags: [gender == .female ? "女" : "男", "本机", quality], kind: .system(best.identifier)))
+                                   tags: [gender == .female ? L("女") : L("男"), L("本机"), quality], kind: .system(best.identifier)))
         }
         return out
     }
@@ -85,7 +85,7 @@ enum VoiceCatalog {
         (hasKey ? ming(for: language).first : nil)?.id ?? system(for: language).first?.id
     }
 
-    static let cloneOption = VoiceOption(id: "clone", name: "我自己的声音", tags: [], kind: .clone)
+    static let cloneOption = VoiceOption(id: "clone", name: L("我自己的声音"), tags: [], kind: .clone)
 
     /// A short line to try a voice with, in the language it will speak.
     static func sample(for language: String) -> String {
@@ -195,7 +195,7 @@ final class VoiceRecorder: ObservableObject {
         guard inFormat.sampleRate > 0,
               let f = try? AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatInt16, interleaved: true),
               let conv = AVAudioConverter(from: inFormat, to: format) else {
-            phase = .failed("麦克风没收到声音，请检查麦克风权限")
+            phase = .failed(L("麦克风没收到声音，请检查麦克风权限"))
             return
         }
         file = f
@@ -223,7 +223,7 @@ final class VoiceRecorder: ObservableObject {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
-            phase = .failed("无法打开麦克风：\(error.localizedDescription)")
+            phase = .failed(L("无法打开麦克风：\(error.localizedDescription)"))
             return
         }
         started = Date()
@@ -246,7 +246,7 @@ final class VoiceRecorder: ObservableObject {
         guard phase == .recording else { return }
         stopEngine()
         guard seconds >= Self.minSeconds else {
-            phase = .failed("录音太短了，请至少朗读 \(Int(Self.minSeconds)) 秒")
+            phase = .failed(L("录音太短了，请至少朗读 \(Int(Self.minSeconds)) 秒"))
             return
         }
         phase = .checking
@@ -254,7 +254,7 @@ final class VoiceRecorder: ObservableObject {
         Task {
             let text = await Self.transcribe(url, locale: locale)
             self.transcript = text
-            self.phase = text.count >= 6 ? .ready : .failed("没听清录音内容，请换个安静的地方再录一次")
+            self.phase = text.count >= 6 ? .ready : .failed(L("没听清录音内容，请换个安静的地方再录一次"))
         }
     }
 

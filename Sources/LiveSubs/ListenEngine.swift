@@ -28,7 +28,7 @@ final class ListenEngine {
     let router = AudioRouter()
 
     private(set) var isRunning = false
-    private(set) var statusText = "准备就绪"
+    private(set) var statusText = L("准备就绪")
     private(set) var activeLang: Lang?
     private(set) var languageConfirmed = false
     private(set) var detecting = false
@@ -44,6 +44,10 @@ final class ListenEngine {
     private var nextPeriodicDetection = 30.0
     private var lastDetectionAt = Date.distantPast
     private var ambiguousDetections = 0
+    /// Sentences finished before detection settled the language: recorded once it confirms the
+    /// language they were heard in, dropped on a switch (the replay into the new model redoes them).
+    private var unconfirmed: [(seg: Segment, at: Date, duration: Double)] = []
+    private var recordable: Bool { settings.sourceMode != .auto || languageConfirmed || ambiguousDetections >= 2 }
     private var failureStreak = 0
 
     private var segments: [Segment] = []
@@ -69,8 +73,8 @@ final class ListenEngine {
         case .fixed(let lang):
             return "\(lang.name) → \(target)"
         case .auto:
-            guard let lang = activeLang else { return "自动识别 → \(target)" }
-            if detecting || !languageConfirmed { return "\(lang.name)（识别中…）→ \(target)" }
+            guard let lang = activeLang else { return L("自动识别 → \(target)") }
+            if detecting || !languageConfirmed { return L("\(lang.name)（识别中…）→ \(target)") }
             return "\(lang.name) → \(target)"
         }
     }
@@ -96,7 +100,7 @@ final class ListenEngine {
     func start() {
         guard !isRunning else { return }
         guard SpeechTranscriber.isAvailable else {
-            setStatus("此 Mac 不支持本机语音识别")
+            setStatus(L("此 Mac 不支持本机语音识别"))
             return
         }
         languageConfirmed = false
@@ -104,6 +108,7 @@ final class ListenEngine {
         needsDetection = true
         nextPeriodicDetection = 30
         ambiguousDetections = 0
+        unconfirmed = []
         lastDetectionAt = .distantPast
         debugLog("listen start mode=\(settings.sourceMode) target=\(resolvedTarget)")
 
@@ -119,7 +124,7 @@ final class ListenEngine {
             let last = UserDefaults.standard.string(forKey: "lastDetected")
             initial = candidates.first(where: { $0.locale == last }) ?? candidates.first ?? sourceLanguages[0]
         }
-        setStatus("正在听")
+        setStatus(L("正在听"))
         Task { await switchTranscriber(to: initial) }
     }
 
@@ -143,7 +148,7 @@ final class ListenEngine {
         lastVolatileSent = ""
         volatileInFlight = false
         detecting = false
-        setStatus("已暂停")
+        setStatus(L("已暂停"))
     }
 
     func reconnectAudio() {
@@ -153,7 +158,7 @@ final class ListenEngine {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.isRunning else { return }
-                if self.startTap() { self.setStatus("正在听") }
+                if self.startTap() { self.setStatus(L("正在听")) }
             }
         }
     }
@@ -171,7 +176,7 @@ final class ListenEngine {
         } catch {
             debugLog("audio tap start failed: \(error)")
             isRunning = false
-            setStatus("无法读取系统音频，请在系统设置里允许“系统音频录制”")
+            setStatus(L("无法读取系统音频，请在系统设置里允许“系统音频录制”"))
             return false
         }
     }
@@ -183,6 +188,8 @@ final class ListenEngine {
         pendingSwitch = nil
         needsDetection = true
         if isRunning, case .fixed(let lang) = settings.sourceMode {
+            // Chosen by hand: what was held back in that language is now confirmed.
+            if lang == activeLang { flushUnconfirmed() }
             Task { await switchTranscriber(to: lang) }
         }
         onStateChange?()
@@ -211,10 +218,10 @@ final class ListenEngine {
         debugLog("model status for \(lang.locale): \(status)")
         guard status != .unsupported else {
             throw NSError(domain: "LiveSubsSpeech", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "本机不支持\(lang.name)识别"])
+                          userInfo: [NSLocalizedDescriptionKey: L("本机不支持\(lang.name)识别")])
         }
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-            setStatus("正在下载 \(lang.name) 语音模型…")
+            setStatus(L("正在下载 \(lang.name) 语音模型…"))
             try await request.downloadAndInstall()
             await refreshInstalledLocales()
         }
@@ -234,6 +241,7 @@ final class ListenEngine {
 
         if activeLang != lang {
             segments.removeAll()
+            unconfirmed = []
         }
         activeLang = lang
         volatileText = ""
@@ -271,7 +279,7 @@ final class ListenEngine {
             }
             try await analyzer.start(inputSequence: stream)
             debugLog("transcriber started locale=\(lang.locale) format=\(format)")
-            setStatus("正在听")
+            setStatus(L("正在听"))
         } catch {
             debugLog("transcriber start failed locale=\(lang.locale): \(error)")
             recognitionFailed(error, generation: gen)
@@ -283,7 +291,7 @@ final class ListenEngine {
         debugLog("recognition error: \(error)")
         failureStreak += 1
         let delay = min(30.0, 2.0 * pow(2.0, Double(failureStreak - 1)))
-        setStatus("识别出错，\(Int(delay)) 秒后重试")
+        setStatus(L("识别出错，\(Int(delay)) 秒后重试"))
         guard let lang = activeLang else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             MainActor.assumeIsolated {
@@ -324,9 +332,12 @@ final class ListenEngine {
             lastVolatileSent = ""
             contentLog(String(format: "FINAL conf=%.2f [%@] %@", conf, activeLang?.locale ?? "?", text))
             let duration = max(0, CMTimeGetSeconds(result.range.duration))
-            // Only confirmed-language sentences go into the meeting record.
-            if settings.sourceMode != .auto || languageConfirmed {
-                onFinal?(seg, duration.isFinite ? duration : 0)
+            // Only confirmed-language sentences go into the meeting record; earlier ones wait.
+            let spoken = duration.isFinite ? duration : 0
+            if recordable {
+                onFinal?(seg, spoken)
+            } else {
+                unconfirmed.append((seg, Date(), spoken))
             }
             translateSegment(id: seg.id)
             if settings.sourceMode == .auto, conf < 0.6, text.count >= 4 {
@@ -344,7 +355,7 @@ final class ListenEngine {
         let source = [segments.last?.text ?? "", volatileText].filter { !$0.isEmpty }
             .joined(separator: srcJoin.isEmpty ? " " : srcJoin)
         if settings.sourceMode == .auto, !languageConfirmed, ambiguousDetections < 2 {
-            onSubtitle?(source, "正在识别语言…")
+            onSubtitle?(source, L("正在识别语言…"))
             return
         }
         let tgtJoin = joiner(for: resolvedTarget)
@@ -393,11 +404,13 @@ final class ListenEngine {
             debugLog("detect: ambiguous, keeping \(activeLang?.locale ?? "-")")
             ambiguousDetections += 1
             if !languageConfirmed { needsDetection = true }
+            if recordable { flushUnconfirmed() }
             renderSubtitles()
             return
         }
         if best.lang == activeLang {
             languageConfirmed = true
+            flushUnconfirmed()
             pendingSwitch = nil
             UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected")
             renderSubtitles()
@@ -408,12 +421,25 @@ final class ListenEngine {
         if !languageConfirmed || overwhelming || pendingSwitch == best.lang {
             debugLog("detect: switching \(activeLang?.locale ?? "-") → \(best.lang.locale)")
             languageConfirmed = true
+            unconfirmed = []
             pendingSwitch = nil
             UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected")
             Task { await switchTranscriber(to: best.lang, replaySeconds: 8) }
         } else {
             pendingSwitch = best.lang
             needsDetection = true
+        }
+    }
+
+    /// Records the sentences held back before the language was confirmed, with the translation
+    /// they got meanwhile and their time of speaking.
+    private func flushUnconfirmed() {
+        let held = unconfirmed
+        unconfirmed = []
+        for h in held {
+            var seg = h.seg
+            if let now = segments.first(where: { $0.id == seg.id }) { seg.translation = now.translation }
+            onFinal?(seg, h.duration + Date().timeIntervalSince(h.at))
         }
     }
 
@@ -442,7 +468,7 @@ final class ListenEngine {
         if source == target { return text }
         let out = await translator?.translate(text, source: source, target: target, kind: kind, trace: trace)
         if out == nil, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
-            onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, "翻译暂不可用")
+            onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, L("翻译暂不可用"))
         }
         return out
     }

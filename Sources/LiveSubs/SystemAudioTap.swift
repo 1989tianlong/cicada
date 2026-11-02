@@ -80,10 +80,10 @@ final class SystemAudioTap {
 
         var tap = AudioObjectID(kAudioObjectUnknown)
         var status = AudioHardwareCreateProcessTap(desc, &tap)
-        guard status == noErr else { throw fail(Int(status), "无法创建系统音频 Tap（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法创建系统音频 Tap（\(status)）")) }
         tapID = tap
 
-        guard let outputUID = Self.defaultOutputUID() else { throw fail(-1, "找不到默认输出设备") }
+        guard let outputUID = Self.defaultOutputUID() else { throw fail(-1, L("找不到默认输出设备")) }
 
         let aggregateUID = "com.wquguru.cicada.\(UUID().uuidString)"
         let aggregate: [String: Any] = [
@@ -101,7 +101,7 @@ final class SystemAudioTap {
         ]
         var aggregateID = AudioObjectID(kAudioObjectUnknown)
         status = AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &aggregateID)
-        guard status == noErr else { throw fail(Int(status), "无法创建音频聚合设备（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法创建音频聚合设备（\(status)）")) }
         self.aggregateID = aggregateID
 
         var component = AudioComponentDescription(
@@ -111,10 +111,10 @@ final class SystemAudioTap {
             componentFlags: 0,
             componentFlagsMask: 0
         )
-        guard let found = AudioComponentFindNext(nil, &component) else { throw fail(-2, "找不到 HAL 音频组件") }
+        guard let found = AudioComponentFindNext(nil, &component) else { throw fail(-2, L("找不到 HAL 音频组件")) }
         var unit: AudioUnit?
         status = AudioComponentInstanceNew(found, &unit)
-        guard status == noErr, let unit else { throw fail(Int(status), "无法创建音频单元（\(status)）") }
+        guard status == noErr, let unit else { throw fail(Int(status), L("无法创建音频单元（\(status)）")) }
         audioUnit = unit
 
         var disableOutput: UInt32 = 0
@@ -127,7 +127,7 @@ final class SystemAudioTap {
         var device = aggregateID
         status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                                       &device, UInt32(MemoryLayout<AudioObjectID>.size))
-        guard status == noErr else { throw fail(Int(status), "无法连接音频聚合设备（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法连接音频聚合设备（\(status)）")) }
 
         var asbd = AudioStreamBasicDescription(
             mSampleRate: 48_000,
@@ -140,7 +140,7 @@ final class SystemAudioTap {
             mBitsPerChannel: 32,
             mReserved: 0
         )
-        guard let clientFormat = AVAudioFormat(streamDescription: &asbd) else { throw fail(-3, "无法创建音频格式") }
+        guard let clientFormat = AVAudioFormat(streamDescription: &asbd) else { throw fail(-3, L("无法创建音频格式")) }
         self.clientFormat = clientFormat
         self.monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)
         // Pre-allocate so the real-time callback normally doesn't allocate.
@@ -148,7 +148,7 @@ final class SystemAudioTap {
 
         status = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
                                       &asbd, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
-        guard status == noErr else { throw fail(Int(status), "无法设置音频格式（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法设置音频格式（\(status)）")) }
 
         var callback = AURenderCallbackStruct(
             inputProc: { refCon, _, timestamp, bus, frames, _ in
@@ -159,12 +159,12 @@ final class SystemAudioTap {
         )
         status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
                                       &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
-        guard status == noErr else { throw fail(Int(status), "无法设置音频回调（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法设置音频回调（\(status)）")) }
 
         status = AudioUnitInitialize(unit)
-        guard status == noErr else { throw fail(Int(status), "无法初始化音频单元（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法初始化音频单元（\(status)）")) }
         status = AudioOutputUnitStart(unit)
-        guard status == noErr else { throw fail(Int(status), "无法启动音频采集（\(status)）") }
+        guard status == noErr else { throw fail(Int(status), L("无法启动音频采集（\(status)）")) }
     }
 
     private func render(timestamp: UnsafePointer<AudioTimeStamp>, bus: UInt32, frames: UInt32) -> OSStatus {

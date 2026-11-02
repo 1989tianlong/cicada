@@ -102,6 +102,8 @@ final class NotesEngine: ObservableObject {
     private var inFlight = false
     /// A final pass asked for while another call was running; it runs right after.
     private var pendingFinal: String?
+    /// A language change that arrived while another update was running: rewrite after it.
+    private var pendingRewrite: String?
     private var lastAttempt = Date.distantPast
     private var freshGeneration = 0
     static let interval: TimeInterval = 45
@@ -182,6 +184,8 @@ final class NotesEngine: ObservableObject {
         // A key was added or replaced since the last failure.
         if (state == .noKey || state == .invalidKey), ling.usable, ling.keyState != .checking { state = .idle }
         if state == .idle, !ling.hasKey { state = .noKey }
+        // A key that was just checked and refused says so, rather than asking for a key again.
+        if state == .noKey || state == .idle, ling.hasKey, ling.keyState == .invalid { state = .invalidKey }
         guard let id = sessionID, !inFlight else { return }
         guard let s = store.session(id), s.lines.count > notes.covered else { return }
         // First notes as soon as there is something to say, then every 45 s.
@@ -195,6 +199,7 @@ final class NotesEngine: ObservableObject {
         if inFlight {
             // Never drop the end-of-meeting pass or a "生成纪要" request: queue it.
             if final { pendingFinal = id; generatingID = id }
+            if fresh { pendingRewrite = id }
             return
         }
         guard let session = store.session(id), !session.lines.isEmpty else { return }
@@ -208,7 +213,11 @@ final class NotesEngine: ObservableObject {
             if final, generatingID == id { generatingID = nil }
             if let next = pendingFinal {
                 pendingFinal = nil
+                pendingRewrite = nil // the final pass starts from nothing anyway
                 Task { await update(next, final: true) }
+            } else if let next = pendingRewrite {
+                pendingRewrite = nil
+                Task { await update(next, final: false, fresh: true) }
             }
         }
 
@@ -233,6 +242,12 @@ final class NotesEngine: ObservableObject {
             guard var next else {
                 debugLog("notes: no usable reply, kept the previous notes")
                 state = .failed
+                return
+            }
+            // The notes language changed while this was running: the queued rewrite replaces it.
+            guard language(id) == lang else {
+                debugLog("notes: language changed during the update, reply dropped")
+                state = .idle
                 return
             }
             Self.carryTimes(from: base, into: &next)
@@ -281,12 +296,14 @@ final class NotesEngine: ObservableObject {
         var known: [String: Double] = [:]
         for t in old.topics { for (i, p) in t.points.enumerated() { if let x = t.pointTime(i) { known[p] = x } } }
         for (ti, t) in new.topics.enumerated() {
-            let times = t.points.enumerated().map { i, p in t.pointTime(i) ?? known[p] }
+            // A point keeps the time it was first heard: a later mention never moves it later.
+            let times = t.points.enumerated().map { i, p in [t.pointTime(i), known[p]].compactMap { $0 }.min() }
             new.topics[ti].pointTimes = times.contains { $0 != nil } ? times : nil
         }
         let items = Dictionary((old.conclusions + old.todos).compactMap { i in i.t.map { (i.text, $0) } }, uniquingKeysWith: { a, _ in a })
-        for i in new.conclusions.indices where new.conclusions[i].t == nil { new.conclusions[i].t = items[new.conclusions[i].text] }
-        for i in new.todos.indices where new.todos[i].t == nil { new.todos[i].t = items[new.todos[i].text] }
+        func earliest(_ a: Double?, _ b: Double?) -> Double? { [a, b].compactMap { $0 }.min() }
+        for i in new.conclusions.indices { new.conclusions[i].t = earliest(new.conclusions[i].t, items[new.conclusions[i].text]) }
+        for i in new.todos.indices { new.todos[i].t = earliest(new.todos[i].t, items[new.todos[i].text]) }
     }
 
     // MARK: Prompt

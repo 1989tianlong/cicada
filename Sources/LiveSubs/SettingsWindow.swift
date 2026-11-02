@@ -7,12 +7,12 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .overlay: "显示"
-        case .language: "语言"
-        case .speak: "同声传译"
-        case .records: "会议记录"
-        case .ai: "AI 服务"
-        case .diagnostics: "诊断"
+        case .overlay: L("显示")
+        case .language: L("语言")
+        case .speak: L("同声传译")
+        case .records: L("会议记录")
+        case .ai: L("AI 服务")
+        case .diagnostics: L("诊断")
         }
     }
     var icon: String {
@@ -92,7 +92,7 @@ struct Segments: View {
 }
 
 /// The 字幕 choices.
-let subtitleOptions: [(id: String, title: String)] = [("both", "原文 + 译文"), ("translation", "只看译文"), ("original", "只看原文")]
+let subtitleOptions: [(id: String, title: String)] = [("both", L("原文 + 译文")), ("translation", L("只看译文")), ("original", L("只看原文"))]
 
 /// A grey pill that opens a menu: the value and a small chevron.
 struct PillMenu: View {
@@ -165,7 +165,7 @@ struct ShortcutField: View {
                 Button { recording ? stop() : start() } label: {
                     HStack(spacing: 4) {
                         if recording {
-                            Text(role == .talk ? "按下组合键，或单按右 ⌥" : "按下新的组合键")
+                            Text(role == .talk ? L("按下组合键，或单按右 ⌥") : L("按下新的组合键"))
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.accentInk)
                         } else {
                             ForEach(Array(current.keys.enumerated()), id: \.offset) { KeyCap($0.element) }
@@ -177,7 +177,7 @@ struct ShortcutField: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(recording ? "按 esc 取消" : "点击更换按键")
+                .help(recording ? L("按 esc 取消") : L("点击更换按键"))
             }
             if let error {
                 Text(error).font(.system(size: 11)).foregroundStyle(Palette.accentInk)
@@ -235,14 +235,14 @@ struct ShortcutField: View {
 struct TalkKeyPermissionRow: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        SettingsRow(title: "还差一步：允许“输入监控”",
-                    detail: "“按住右 ⌥ 说话”需要此权限。请在系统设置中勾选 \(appDisplayName)，返回此处即可生效") {
-            SoftButton("去允许", dark: true) { model.allowTalkKey() }
+        SettingsRow(title: L("还差一步：允许“输入监控”"),
+                    detail: L("“按住右 ⌥ 说话”需要此权限。请在系统设置中勾选 \(appDisplayName)，返回此处即可生效")) {
+            SoftButton(L("去允许"), dark: true) { model.allowTalkKey() }
         }
     }
 }
 
-let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "知了"
+let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? L("知了")
 
 // MARK: - Virtual microphone checklist
 
@@ -274,7 +274,7 @@ struct MicSetupCard: View {
                     Text("\(deviceName ?? "BlackHole 2ch") · 试音通过，对方听得到").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
                 Spacer()
-                SoftButton("再试一次") { installer.runTest() }
+                SoftButton(L("再试一次")) { installer.runTest() }
             }
             if let t = installer.test { TestResultView(result: t) }
         }
@@ -289,13 +289,13 @@ struct MicSetupCard: View {
                 Text(statusTag).font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(installer.busy ? Palette.accentInk : Palette.tertiary)
             }
-            step(1, "安装", "输一次电脑密码", done: onDisk,
+            step(1, L("安装"), L("输一次电脑密码"), done: onDisk,
                  active: installer.state == .downloading || installer.state == .installing,
-                 activeText: installer.state == .downloading ? "正在下载…" : "正在安装…")
-            step(2, "让系统认出它", "声音会短暂中断约 1 秒", done: loaded,
-                 active: installer.state == .reloading, activeText: "正在让系统认出它…")
-            step(3, "试音", "自动播一句，确认对方听得到", done: installer.passed,
-                 active: installer.state == .testing, activeText: "正在试音…")
+                 activeText: installer.state == .downloading ? L("正在下载…") : L("正在安装…"))
+            step(2, L("让系统认出它"), L("声音会短暂中断约 1 秒"), done: loaded,
+                 active: installer.state == .reloading, activeText: L("正在让系统认出它…"))
+            step(3, L("试音"), L("自动播一句，确认对方听得到"), done: installer.passed,
+                 active: installer.state == .testing, activeText: L("正在试音…"))
             if let t = installer.test, !t.heard, installer.state != .testing {
                 TestResultView(result: t)
             }
@@ -310,16 +310,16 @@ struct MicSetupCard: View {
     }
 
     private var statusTag: String {
-        if installer.busy { return "进行中" }
-        if !onDisk { return "没装" }
-        if !loaded { return "系统还没认出" }
-        return installer.test == nil ? "还没试音" : "没听到声音"
+        if installer.busy { return L("进行中") }
+        if !onDisk { return L("没装") }
+        if !loaded { return L("系统还没认出") }
+        return installer.test == nil ? L("还没试音") : L("没听到声音")
     }
 
     private var buttonTitle: String {
-        if !onDisk { return "一键安装" }
-        if !loaded { return "让系统认出它" }
-        return installer.test == nil ? "试音" : "再试一次"
+        if !onDisk { return L("一键安装") }
+        if !loaded { return L("让系统认出它") }
+        return installer.test == nil ? L("试音") : L("再试一次")
     }
 
     private func step(_ n: Int, _ title: String, _ detail: String, done: Bool, active: Bool, activeText: String) -> some View {
@@ -359,10 +359,10 @@ struct TestResultView: View {
             }
             .frame(height: 24) }
             if result.heard {
-                (Text("对方会听到：") + Text(result.text.isEmpty ? "一段声音" : "“\(result.text)”").bold())
+                (Text("对方会听到：") + Text(result.text.isEmpty ? L("一段声音") : "“\(result.text)”").bold())
                     .font(.system(size: 12)).foregroundStyle(Palette.ink)
             } else {
-                Text(result.problem ?? "虚拟麦克风未收到声音，请再试一次").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                Text(result.problem ?? L("虚拟麦克风未收到声音，请再试一次")).font(.system(size: 12)).foregroundStyle(Palette.accentInk)
             }
             Spacer(minLength: 0)
         }
@@ -381,24 +381,27 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar.frame(width: 190)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(model.settingsSection.title).font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.ink)
-                    switch model.settingsSection {
-                    case .speak: speak
-                    case .overlay: overlay
-                    case .language: LanguageSettings(model: model, settings: settings)
-                    case .records: records
-                    case .ai: AISettingsView(model: model, ling: model.ling, settings: settings)
-                    case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, model: settings.aiModel)
-                    }
-                }
-                .padding(.leading, 12).padding(.trailing, 28).padding(.top, 40).padding(.bottom, 28)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            ScrollView { page }
         }
         .frame(width: 720, height: 600)
         .background(Color(red: 0.965, green: 0.969, blue: 0.976))
+    }
+
+    /// The current section without the scroll view (also drawn by the `settingsRender` debug command).
+    var page: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(model.settingsSection.title).font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.ink)
+            switch model.settingsSection {
+            case .speak: speak
+            case .overlay: overlay
+            case .language: LanguageSettings(model: model, settings: settings)
+            case .records: records
+            case .ai: AISettingsView(model: model, ling: model.ling, settings: settings)
+            case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, model: settings.aiModel)
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, 28).padding(.top, 40).padding(.bottom, 28)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sidebar: some View {
@@ -429,10 +432,11 @@ struct SettingsView: View {
             // Diagnostics is for chasing slowness: off it leaves no trace in the sidebar.
             HStack(spacing: 8) {
                 Text("诊断").font(.system(size: 12)).foregroundStyle(settings.diagnostics ? Palette.ink : Palette.secondary)
+                    .fixedSize()
                 Toggle("诊断", isOn: Binding(get: { settings.diagnostics }, set: { model.setDiagnostics($0) }))
                     .toggleStyle(.switch).labelsHidden().controlSize(.mini).tint(Palette.ink)
                 Spacer()
-                Text(Self.version).font(.system(size: 11).monospacedDigit()).foregroundStyle(Palette.tertiary)
+                Text(Self.version).font(.system(size: 11).monospacedDigit()).foregroundStyle(Palette.tertiary).fixedSize()
             }
             .padding(.horizontal, 10).padding(.top, 10)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
@@ -450,21 +454,21 @@ struct SettingsView: View {
                 .padding(.top, -8)
             SettingsCard { MicSetupCard(installer: installer, deviceName: model.virtualMic?.name) }
             SettingsCard {
-                SettingsRow(title: "把我的话翻译给对方听") {
+                SettingsRow(title: L("把我的话翻译给对方听")) {
                     Toggle("把我说的翻译给对方", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
                         .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
                 }
-                SettingsRow(title: "按住说话",
-                            detail: settings.talkKey.isRightOption ? "单独按住右侧 ⌥；与其他键同时按不会触发" : nil) {
+                SettingsRow(title: L("按住说话"),
+                            detail: settings.talkKey.isRightOption ? L("单独按住右侧 ⌥；与其他键同时按不会触发") : nil) {
                     ShortcutField(model: model, role: .talk)
                 }
                 if settings.speakEnabled && model.talkNeedsPermission { TalkKeyPermissionRow(model: model) }
-                SettingsRow(title: "语言", detail: "说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))") {
-                    SoftButton("修改") { model.settingsSection = .language }
+                SettingsRow(title: L("语言"), detail: L("说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))")) {
+                    SoftButton(L("修改")) { model.settingsSection = .language }
                 }
-                SettingsRow(title: "声音输出到", divider: false) {
+                SettingsRow(title: L("声音输出到"), divider: false) {
                     PillMenu(value: outputName,
-                             options: [("", "虚拟麦克风（自动）")] + model.outputs.map { ($0.uid, $0.name) }) {
+                             options: [("", L("虚拟麦克风（自动）"))] + model.outputs.map { ($0.uid, $0.name) }) {
                         settings.speakOutput = $0
                     }
                 }
@@ -476,14 +480,14 @@ struct SettingsView: View {
     }
 
     private var outputName: String {
-        if settings.speakOutput.isEmpty { return "虚拟麦克风（自动）" }
-        return model.outputs.first { $0.uid == settings.speakOutput }?.name ?? "虚拟麦克风（自动）"
+        if settings.speakOutput.isEmpty { return L("虚拟麦克风（自动）") }
+        return model.outputs.first { $0.uid == settings.speakOutput }?.name ?? L("虚拟麦克风（自动）")
     }
 
     private var overlay: some View {
         VStack(alignment: .leading, spacing: 14) {
             SettingsCard {
-                SettingsRow(title: "听的时候显示", detail: "选择任意模式都会正常保存记录、生成纪要") {
+                SettingsRow(title: L("听的时候显示"), detail: L("选择任意模式都会正常保存记录、生成纪要")) {
                     Picker("显示方式", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
                         Text("实时纪要").tag("notes")
                         Text("字幕条").tag("bar")
@@ -491,13 +495,13 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 210)
                 }
-                SettingsRow(title: "切换显示方式", detail: model.toggleKeyTaken ? "被其他应用占用了，点右边换一个" : "实时纪要 → 字幕条 → 不显示", divider: false) {
+                SettingsRow(title: L("切换显示方式"), detail: model.toggleKeyTaken ? L("被其他应用占用了，点右边换一个") : L("实时纪要 → 字幕条 → 不显示"), divider: false) {
                     ShortcutField(model: model, role: .toggle)
                 }
             }
             Text("字幕条").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
             SettingsCard {
-                SettingsRow(title: "字幕条显示时机") {
+                SettingsRow(title: L("字幕条显示时机")) {
                     Picker("显示", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
                         Text("有人说话时").tag(true)
                         Text("始终显示").tag(false)
@@ -505,7 +509,7 @@ struct SettingsView: View {
                     .pickerStyle(.segmented).labelsHidden().frame(width: 140)
                 }
                 if settings.overlayAuto {
-                    SettingsRow(title: "安静多久后收起") {
+                    SettingsRow(title: L("安静多久后收起")) {
                         Picker("收起", selection: $settings.overlayHideAfter) {
                             Text("2 秒").tag(2.0)
                             Text("4 秒").tag(4.0)
@@ -514,8 +518,8 @@ struct SettingsView: View {
                         .pickerStyle(.segmented).labelsHidden().frame(width: 140)
                     }
                 }
-                SettingsRow(title: "位置和大小", detail: "鼠标悬停可拖动位置，拖拽右下角可缩放大小", divider: false) {
-                    SoftButton("恢复默认") { model.overlay.resetPosition() }
+                SettingsRow(title: L("位置和大小"), detail: L("鼠标悬停可拖动位置，拖拽右下角可缩放大小"), divider: false) {
+                    SoftButton(L("恢复默认")) { model.overlay.resetPosition() }
                 }
             }
         }
@@ -523,15 +527,15 @@ struct SettingsView: View {
 
     private var records: some View {
         SettingsCard {
-            SettingsRow(title: "保存会议录音", detail: "只存在这台 Mac 上") {
+            SettingsRow(title: L("保存会议录音"), detail: L("只存在这台 Mac 上")) {
                 Toggle("保存会议录音", isOn: $settings.recordAudio)
                     .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
             }
-            SettingsRow(title: "记录文件夹") {
-                SoftButton("打开") { NSWorkspace.shared.open(model.store.root) }
+            SettingsRow(title: L("记录文件夹")) {
+                SoftButton(L("打开")) { NSWorkspace.shared.open(model.store.root) }
             }
-            SettingsRow(title: "首次引导", divider: false) {
-                SoftButton("重新看") { model.onboardingStep = 1; model.openOnboarding?() }
+            SettingsRow(title: L("首次引导"), divider: false) {
+                SoftButton(L("重新看")) { model.onboardingStep = 1; model.openOnboarding?() }
             }
         }
     }

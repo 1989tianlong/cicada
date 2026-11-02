@@ -55,7 +55,7 @@ struct VoiceSection: View {
                     Button(l.title) { tab = l.key }
                 }
             } label: {
-                Text(Self.mainTabs.contains(current) ? "更多…" : title(current))
+                Text(Self.mainTabs.contains(current) ? L("更多…") : title(current))
                     .font(.system(size: 12, weight: Self.mainTabs.contains(current) ? .regular : .semibold))
                     .foregroundStyle(Self.mainTabs.contains(current) ? Palette.secondary : Palette.ink)
                     .padding(.horizontal, 10).frame(height: 24)
@@ -95,7 +95,7 @@ struct VoiceSection: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(v.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
                     HStack(spacing: 4) {
-                        ForEach(usable ? v.tags : [v.tags.first ?? "", "需要 Ling key"], id: \.self) { tagView($0) }
+                        ForEach(usable ? v.tags : [v.tags.first ?? "", L("需要 Ling key")], id: \.self) { tagView($0) }
                     }
                 }
                 Spacer(minLength: 0)
@@ -134,7 +134,7 @@ struct VoiceSection: View {
         .buttonStyle(.plain)
         .disabled(!enabled || playing)
         .help("试听")
-        .accessibilityLabel("试听")
+        .accessibilityLabel(L("试听"))
     }
 
     @ViewBuilder
@@ -153,14 +153,15 @@ struct VoiceSection: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text("我自己的声音").font(.system(size: 13, weight: .semibold))
-                Text(has ? "已录好 · \(Int(VoiceReference.duration.rounded())) 秒 · \(cloneNote)"
-                         : "录制 15 秒原声，让对方听到你的音色；说外语时会保留你的口音，延迟约 3 秒")
+                Text(has ? L("已录好 · \(Int(VoiceReference.duration.rounded())) 秒 · \(cloneNote)")
+                         : L("录制 15 秒原声，让对方听到你的音色；说外语时会保留你的口音，延迟约 3 秒"))
                     .font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 6)
             if has {
                 if !selected {
-                    SoftButton("用这个") { model.setVoice("clone", for: language) }.disabled(!ling.usable)
+                    SoftButton(L("用这个")) { model.setVoice("clone", for: language) }.disabled(!ling.usable)
                 }
                 Button("重录") { recording = true }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
                 Button("删除") {
@@ -170,7 +171,7 @@ struct VoiceSection: View {
                 }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
             } else {
-                SoftButton("录制") { recording = true }
+                SoftButton(L("录制")) { recording = true }
             }
         }
         .padding(12)
@@ -180,13 +181,13 @@ struct VoiceSection: View {
 
     private var cloneNote: String {
         let own = VoiceCatalog.key(for: settings.speakFromLang.locale)
-        return own == current ? "说\(title(current))最像你，晚约 3 秒" : "说\(title(current))会带你的口音，晚约 3 秒"
+        return own == current ? L("说\(title(current))最像你，晚约 3 秒") : L("说\(title(current))会带你的口音，晚约 3 秒")
     }
 
     private var footnote: String {
-        if !ling.usable { return "未填写 Ling key 时仅可使用系统声音；填入 key 后可使用 Ming 语音或克隆你自己的声音。" }
-        if chosen == "clone" { return "录音仅保存在本机，每次发言时随文字发送给 Ling 合成语音；Ling 不可用时自动切回系统声音。" }
-        return "Ming 语音需使用 Ling key，延迟约 1.5 秒；Ling 不可用时自动切回系统声音。"
+        if !ling.usable { return L("未填写 Ling key 时仅可使用系统声音；填入 key 后可使用 Ming 语音或克隆你自己的声音。") }
+        if chosen == "clone" { return L("录音仅保存在本机，每次发言时随文字发送给 Ling 合成语音；Ling 不可用时自动切回系统声音。") }
+        return L("Ming 语音需使用 Ling key，延迟约 1.5 秒；Ling 不可用时自动切回系统声音。")
     }
 }
 
@@ -242,16 +243,16 @@ struct VoiceCloneSheet: View {
             .toggleStyle(.checkbox)
             .disabled(recorder.phase == .recording)
             HStack {
-                SoftButton("取消") { recorder.cancel(); onDone(false) }
+                SoftButton(L("取消")) { recorder.cancel(); onDone(false) }
                 Spacer()
                 switch recorder.phase {
                 case .recording:
-                    SoftButton("读完了", dark: true) { recorder.finish() }
+                    SoftButton(L("读完了"), dark: true) { recorder.finish() }
                         .disabled(recorder.seconds < VoiceRecorder.minSeconds)
                 case .checking:
                     HStack(spacing: 8) { Spinner(size: 14); Text("正在听写…").font(.system(size: 12)).foregroundStyle(Palette.secondary) }
                 default:
-                    SoftButton(recorder.phase == .idle ? "开始录" : "再录一次", dark: true) {
+                    SoftButton(recorder.phase == .idle ? L("开始录") : L("再录一次"), dark: true) {
                         recorder.start(locale: ownLocale)
                     }
                     .disabled(!consent)
@@ -291,12 +292,12 @@ struct VoiceCloneSheet: View {
                     .font(.system(size: 13)).foregroundStyle(Palette.secondary)
             }
             VStack(spacing: 0) {
-                row(icon: playing ? "stop.fill" : "play.fill", accent: false, title: "你的原声", detail: recorder.transcript) {
+                row(icon: playing ? "stop.fill" : "play.fill", accent: false, title: L("你的原声"), detail: recorder.transcript) {
                     togglePlayOriginal()
                 }
                 Divider()
                 row(icon: clonePlaying ? nil : "play.fill", accent: true,
-                    title: "用你的声音说\(targetTitle)", detail: VoiceCatalog.sample(for: language), tag: "对方会听到这个") {
+                    title: L("用你的声音说\(targetTitle)"), detail: VoiceCatalog.sample(for: language), tag: L("对方会听到这个")) {
                     playClone()
                 }
             }
@@ -307,9 +308,9 @@ struct VoiceCloneSheet: View {
             Text("听起来不像或有杂音？换个安静的地方重录一次。录音仅保存在本机，可随时删除。")
                 .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
             HStack {
-                SoftButton("重录") { player?.stop(); recorder.start(locale: ownLocale) }
+                SoftButton(L("重录")) { player?.stop(); recorder.start(locale: ownLocale) }
                 Spacer()
-                SoftButton("用这个声音", dark: true) { save() }
+                SoftButton(L("用这个声音"), dark: true) { save() }
             }
         }
     }

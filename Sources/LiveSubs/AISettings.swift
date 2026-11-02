@@ -15,18 +15,18 @@ struct AISettingsView: View {
             Text("用在哪里").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
                 .padding(.top, 4)
             SettingsCard {
-                usageRow("实时纪要", tag: ling.usable ? "用 Ling" : "需要 key", on: ling.usable,
-                         note: ling.usable ? "会中每 45 秒更新" : "填好 key 后可用")
-                usageRow("翻译", tag: ling.usable ? "用 Ling" : "Google", on: ling.usable,
-                         note: ling.usable ? "整句用 Ling；不行时换 Google、本机" : "没有 key 时照常可用")
-                usageRow("语音识别", tag: "本机", on: false, note: "更快，不花钱")
-                SettingsRow(title: "同声传译的声音", detail: ling.usable ? "Ming 的声音或你自己的声音" : "没有 key 时用本机声音",
+                usageRow(L("实时纪要"), tag: ling.usable ? L("用 Ling") : L("需要 key"), on: ling.usable,
+                         note: ling.usable ? L("会中每 45 秒更新") : L("填好 key 后可用"))
+                usageRow(L("翻译"), tag: ling.usable ? L("用 Ling") : "Google", on: ling.usable,
+                         note: ling.usable ? L("整句用 Ling；不行时换 Google、本机") : L("没有 key 时照常可用"))
+                usageRow(L("语音识别"), tag: L("本机"), on: false, note: L("更快，不花钱"))
+                SettingsRow(title: L("同声传译的声音"), detail: ling.usable ? L("Ming 的声音或你自己的声音") : L("没有 key 时用本机声音"),
                             divider: false) {
-                    SoftButton("去选声音") { model.settingsSection = .speak }
+                    SoftButton(L("去选声音")) { model.settingsSection = .speak }
                 }
             }
             SettingsCard {
-                SettingsRow(title: "模型", detail: "3.1 更准；3.0 更快、更省", divider: false) {
+                SettingsRow(title: L("模型"), detail: L("3.1 更准；3.0 更快、更省"), divider: false) {
                     PillMenu(value: settings.aiModel, options: LingClient.models.map { ($0, $0) }) { settings.aiModel = $0 }
                 }
             }
@@ -53,9 +53,9 @@ struct AISettingsView: View {
                         .padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line, lineWidth: 1))
-                    SoftButton("更换") { draft = ""; editing = true }
+                    SoftButton(L("更换")) { draft = ""; editing = true }
                     if case .invalid = ling.keyState {} else if case .unreachable = ling.keyState {
-                        SoftButton("重试") { Task { await ling.check() } }
+                        SoftButton(L("重试")) { Task { await ling.check() } }
                     }
                 }
             } else {
@@ -70,8 +70,8 @@ struct AISettingsView: View {
                         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.ink.opacity(0.6), lineWidth: 1))
                         .onSubmit(save)
-                    SoftButton("保存并检查", dark: true, action: save)
-                    if editing { SoftButton("取消") { editing = false } }
+                    SoftButton(L("保存并检查"), dark: true, action: save)
+                    if editing { SoftButton(L("取消")) { editing = false } }
                 }
                 Button("打开 Ling 开放平台 ↗") {
                     if let url = URL(string: "https://chat.ant-ling.com/open") { NSWorkspace.shared.open(url) }
@@ -112,20 +112,20 @@ struct AISettingsView: View {
 
     private var statusTitle: String {
         switch ling.keyState {
-        case .none: "还没填 API key"
-        case .unchecked, .checking: "正在检查…"
-        case .ok: "已连接"
-        case .invalid: "这个 key 用不了"
-        case .unreachable: "暂时连不上"
+        case .none: L("还没填 API key")
+        case .unchecked, .checking: L("正在检查…")
+        case .ok: L("已连接")
+        case .invalid: L("这个 key 用不了")
+        case .unreachable: L("暂时连不上")
         }
     }
 
     private var statusDetail: String? {
         switch ling.keyState {
-        case .ok(let s): "\(settings.aiModel) · 响应约 \(String(format: "%.1f", s)) 秒"
-        case .invalid: "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个"
+        case .ok(let s): L("\(settings.aiModel) · 响应约 \(String(format: "%.1f", s)) 秒")
+        case .invalid: L("Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个")
         case .unreachable(let why): why
-        case .none: "不填 key 时，字幕和翻译仍可正常使用"
+        case .none: L("不填 key 时，字幕和翻译仍可正常使用")
         default: nil
         }
     }

@@ -19,6 +19,8 @@ cp "$BIN/LiveSubs" "$APP/Contents/MacOS/Cicada"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/sample/sample.mp4 Resources/sample/sample.m4a "$APP/Contents/Resources/"
 cp -R Resources/zh-Hans.lproj Resources/en.lproj "$APP/Contents/Resources/"
+# Traditional Chinese systems get the Chinese UI rather than English (there is no zh-Hant translation).
+cp -R Resources/zh-Hans.lproj "$APP/Contents/Resources/zh-Hant.lproj"
 
 PLIST="$APP/Contents/Info.plist"
 if [[ "${RELEASE:-}" != 1 ]]; then
@@ -27,8 +29,9 @@ if [[ "${RELEASE:-}" != 1 ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.wquguru.cicada.dev" \
     -c "Set :CFBundleName Cicada Dev" -c "Set :CFBundleDisplayName Cicada Dev" \
     -c "Add :LiveSubsDev string $STAMP" "$PLIST"
-  printf 'CFBundleName = "知了 Dev";\nCFBundleDisplayName = "知了 Dev";\n' > "$APP/Contents/Resources/zh-Hans.lproj/InfoPlist.strings"
-  printf 'CFBundleName = "Cicada Dev";\nCFBundleDisplayName = "Cicada Dev";\n' > "$APP/Contents/Resources/en.lproj/InfoPlist.strings"
+  # Only the two name lines change: the usage descriptions in the same files stay.
+  sed -i '' -E 's/^(CFBundle(Display)?Name = ")([^"]*)";/\1\3 Dev";/' \
+    "$APP"/Contents/Resources/*.lproj/InfoPlist.strings
 fi
 if [[ -n "${BUILD_NUMBER:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$PLIST"

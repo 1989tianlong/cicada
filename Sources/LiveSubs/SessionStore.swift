@@ -31,11 +31,10 @@ struct Session: Codable, Identifiable, Equatable {
     /// ("11月1日 产品路线评审", in the notes' language), else "会议 11月1日 14:30".
     var displayTitle: String {
         if renamed ?? !title.hasPrefix("会议 ") { return title }
-        guard let name = notes?.title, !name.isEmpty else { return title }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = Calendar.current.isDate(startedAt, equalTo: Date(), toGranularity: .year) ? "M月d日" : "yyyy年M月d日"
-        return "\(f.string(from: startedAt)) \(name)"
+        // The stored default title is Chinese ("会议 11月1日 14:30"); shown in the UI language.
+        guard let name = notes?.title, !name.isEmpty else { return L("会议 \(dateText(startedAt, "MMMdHHmm"))") }
+        let thisYear = Calendar.current.isDate(startedAt, equalTo: Date(), toGranularity: .year)
+        return "\(dateText(startedAt, thisYear ? "MMMd" : "yMMMd")) \(name)"
     }
 
     static func defaultTitle(_ date: Date) -> String {
@@ -76,6 +75,11 @@ final class SessionStore: ObservableObject {
             if let data = try? Data(contentsOf: dir.appendingPathComponent("session.json")),
                var s = try? decoder.decode(Session.self, from: data) {
                 if s.endedAt == nil { s.endedAt = s.lines.last.map { s.startedAt.addingTimeInterval($0.t + 5) } ?? s.startedAt }
+                // The app quit mid-meeting: its recording is still in the partial file.
+                if s.id != liveID, hasPartialAudio(s.id) {
+                    s.hasAudio = true
+                    finishAudio(s.id)
+                }
                 out.append(s)
             }
         }
@@ -107,9 +111,21 @@ final class SessionStore: ObservableObject {
             sessions.remove(at: i)
             return
         }
-        sessions[i].hasAudio = FileManager.default.fileExists(atPath: systemAudioURL(id).path)
-            || FileManager.default.fileExists(atPath: micAudioURL(id).path)
+        sessions[i].hasAudio = [systemAudioURL(id), micAudioURL(id)].contains {
+            FileManager.default.fileExists(atPath: $0.path) || FileManager.default.fileExists(atPath: AudioFileWriter.partial($0).path)
+        }
         saveNow(id)
+        finishAudio(id)
+    }
+
+    private func hasPartialAudio(_ id: String) -> Bool {
+        [systemAudioURL(id), micAudioURL(id)].contains { FileManager.default.fileExists(atPath: AudioFileWriter.partial($0).path) }
+    }
+
+    /// Turns the meeting's recordings into .m4a files (call after the recorders are closed).
+    func finishAudio(_ id: String) {
+        let urls = [systemAudioURL(id), micAudioURL(id)]
+        Task.detached(priority: .utility) { for u in urls { await AudioFileWriter.finish(u) } }
     }
 
     var liveStart: Date? { liveID.flatMap { index($0) }.map { sessions[$0].startedAt } }
@@ -189,20 +205,17 @@ enum TranscriptExport {
                          : String(format: "%02d:%02d", s / 60, s % 60)
     }
 
-    static func speakerName(_ line: TranscriptLine) -> String { line.speaker == "me" ? "你" : "对方" }
+    static func speakerName(_ line: TranscriptLine) -> String { line.speaker == "me" ? L("你") : L("对方") }
 
     static func header(_ s: Session) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "yyyy年M月d日 HH:mm"
         let mins = Int(s.duration / 60)
-        return "\(f.string(from: s.startedAt)) · " + (mins < 1 ? "不到 1 分钟" : "\(mins) 分钟")
+        return "\(dateText(s.startedAt, "yMMMdHHmm")) · " + (mins < 1 ? L("不到 1 分钟") : L("\(mins) 分钟"))
     }
 
     /// The notes as Markdown (empty when there are none).
     static func notesMarkdown(_ n: MeetingNotes?) -> String {
         guard let n, !n.isEmpty else { return "" }
-        var out = "## 纪要\n\n\(n.summary)\n\n"
+        var out = "## \(L("纪要"))\n\n\(n.summary)\n\n"
         for t in n.topics {
             out += "### \(clock(t.start)) \(t.title)\n\n"
             if !t.summary.isEmpty { out += "\(t.summary)\n\n" }
@@ -213,12 +226,12 @@ enum TranscriptExport {
             }
             out += "\n"
         }
-        if !n.conclusions.isEmpty { out += "### 结论\n\n" + n.conclusions.map { "- \($0.text)\n" }.joined() + "\n" }
+        if !n.conclusions.isEmpty { out += "### \(L("结论"))\n\n" + n.conclusions.map { "- \($0.text)\n" }.joined() + "\n" }
         if !n.todos.isEmpty {
-            out += "### 待办\n\n" + n.todos.map { "- [ ] \($0.text)" + ($0.owner.map { "（\($0)）" } ?? "") + "\n" }.joined() + "\n"
+            out += "### \(L("待办"))\n\n" + n.todos.map { "- [ ] \($0.text)" + ($0.owner.map { "（\($0)）" } ?? "") + "\n" }.joined() + "\n"
         }
         if !n.terms.isEmpty {
-            out += "### 人名和术语\n\n" + n.terms.map { "- **\($0.name)** \($0.note)\n" }.joined() + "\n"
+            out += "### \(L("人名和术语"))\n\n" + n.terms.map { "- **\($0.name)** \($0.note)\n" }.joined() + "\n"
         }
         return out
     }
@@ -226,7 +239,7 @@ enum TranscriptExport {
     static func markdown(_ s: Session) -> String {
         var out = "# \(s.displayTitle)\n\n\(header(s))\n\n"
         let notes = notesMarkdown(s.notes)
-        if !notes.isEmpty { out += notes + "## 文字记录\n\n" }
+        if !notes.isEmpty { out += notes + "## \(L("文字记录"))\n\n" }
         for l in s.lines {
             out += "**[\(clock(l.t))] \(speakerName(l))**  \n\(l.src)\n"
             if let d = l.dst, d != l.src { out += "> \(d)\n" }
@@ -265,7 +278,7 @@ enum TranscriptExport {
         add(s.displayTitle, size: 20, weight: .bold, after: 6)
         add(header(s), size: 10, color: .darkGray, after: 14)
         if let n = s.notes, !n.isEmpty {
-            add("纪要", size: 15, weight: .bold, after: 6)
+            add(L("纪要"), size: 15, weight: .bold, after: 6)
             add(n.summary, size: 11, after: 10)
             for t in n.topics {
                 add("\(clock(t.start))  \(t.title)", size: 12, weight: .semibold, after: 3)
@@ -278,14 +291,14 @@ enum TranscriptExport {
                 add("", size: 6, after: 4)
             }
             if !n.conclusions.isEmpty {
-                add("结论", size: 12, weight: .semibold, after: 3)
+                add(L("结论"), size: 12, weight: .semibold, after: 3)
                 for c in n.conclusions { add("• \(c.text)", size: 11, after: 2) }
             }
             if !n.todos.isEmpty {
-                add("待办", size: 12, weight: .semibold, after: 3)
+                add(L("待办"), size: 12, weight: .semibold, after: 3)
                 for t in n.todos { add("☐ \(t.text)" + (t.owner.map { "（\($0)）" } ?? ""), size: 11, after: 2) }
             }
-            add("文字记录", size: 15, weight: .bold, after: 6)
+            add(L("文字记录"), size: 15, weight: .bold, after: 6)
         }
         for l in s.lines {
             add("[\(clock(l.t))] \(speakerName(l))", size: 9, weight: .semibold, color: .darkGray, after: 2)
