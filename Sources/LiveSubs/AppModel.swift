@@ -827,6 +827,10 @@ final class AppModel: ObservableObject {
             ling.simulate = ["429": .rateLimited, "hijack": .hijacked, "timeout": .timeout][arg]
             debugLog("ling simulate=\(String(describing: ling.simulate))")
         case "aiRemove": ling.removeKey()
+        case "aiHide":
+            // aiHide:<on|off>: the key file stays; the app behaves as if there were none (for screenshots).
+            ling.hideKey = arg != "off"
+            Task { await ling.check() }
         case "aiState": debugLog("ai state=\(ling.keyState) hasKey=\(ling.hasKey) model=\(settings.aiModel)")
         case "subtitles": setSubtitles(arg)
         case "meetingSubtitles": setSubtitles(arg, meetingOnly: true)

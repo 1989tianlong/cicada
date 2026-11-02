@@ -148,8 +148,11 @@ final class LingClient: ObservableObject {
     /// Debug control only: make every chat call fail this way.
     var simulate: Failure?
 
+    /// Debug control only: act as if there were no key, without touching the key file.
+    var hideKey = false
+
     var hasKey: Bool { key != nil }
-    var key: String? { AIKey.read() }
+    var key: String? { hideKey ? nil : AIKey.read() }
     /// The key is known to work (or at least not known to be bad).
     var usable: Bool { hasKey && keyState != .invalid }
 
@@ -163,6 +166,7 @@ final class LingClient: ObservableObject {
     func setKey(_ raw: String) async {
         let k = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !k.isEmpty else { return }
+        if hideKey { debugLog("ai key: not saved while hidden (debug)"); keyState = .invalid; return }
         AIKey.save(k)
         await check()
     }

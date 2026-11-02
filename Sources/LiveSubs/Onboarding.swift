@@ -244,6 +244,9 @@ struct OnboardingView: View {
         nonmutating set { model.onboardingStep = newValue }
     }
     var onFinish: () -> Void
+    /// Permissions, Ling key, sample video, speaking.
+    static let steps = 4
+
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -252,7 +255,8 @@ struct OnboardingView: View {
             Group {
                 switch step {
                 case 1: permissions
-                case 2: tryIt
+                case 2: OnboardingKeyStep(ling: model.ling, settings: settings)
+                case 3: tryIt
                 default: speaking
                 }
             }
@@ -273,11 +277,11 @@ struct OnboardingView: View {
         HStack(spacing: 14) {
             BrandMark(size: 34)
             HStack(spacing: 6) {
-                ForEach(1...3, id: \.self) { i in
+                ForEach(1...Self.steps, id: \.self) { i in
                     Capsule().fill(i <= step ? Palette.ink : Color(white: 0.87)).frame(height: 4)
                 }
             }
-            Text("\(step) / 3").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            Text("\(step) / \(Self.steps)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
     }
 
@@ -289,18 +293,20 @@ struct OnboardingView: View {
                 Button("上一步") { step -= 1 }.buttonStyle(.plain).foregroundStyle(Palette.secondary)
             }
             Spacer()
-            if step == 1 && !model.systemAudioOK {
+            if step == 2 {
+                OnboardingKeyFooter(ling: model.ling, skip: { step = 3 }, next: { step = 3 })
+            } else if step == 1 && !model.systemAudioOK {
                 Text("先打开“听电脑里的声音”")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.secondary)
                     .padding(.horizontal, 24).frame(height: 44)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.87)))
             } else {
                 Button {
-                    if step < 3 { step += 1 } else { onFinish() }
+                    if step < Self.steps { step += 1 } else { onFinish() }
                 } label: {
                     HStack(spacing: 8) {
-                        Text(step < 3 ? L("继续") : L("开始使用"))
-                        if step < 3 { Image(systemName: "arrow.right") }
+                        Text(step < Self.steps ? L("继续") : L("开始使用"))
+                        if step < Self.steps { Image(systemName: "arrow.right") }
                     }
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                     .padding(.horizontal, 28).frame(height: 44)
@@ -397,7 +403,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 2
+    // MARK: Step 3
 
     private var tryIt: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -468,7 +474,7 @@ struct OnboardingView: View {
         [("system", L("跟随系统"))] + targetLanguages.map { ($0.code, $0.name) }
     }
 
-    // MARK: Step 3
+    // MARK: Step 4
 
     private var speaking: some View {
         VStack(alignment: .leading, spacing: 22) {
