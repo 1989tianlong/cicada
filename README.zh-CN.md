@@ -25,9 +25,8 @@
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <a href="docs/demo.mp4"><img src="docs/demo.gif" width="800" alt="英文会议进行时，知了左边写中文纪要，右边是逐句双语文字记录"></a>
+  <img src="docs/demo.gif" width="800" alt="英文会议进行时，知了左边写中文纪要，右边是逐句双语文字记录">
 </p>
-<p align="center"><a href="docs/demo.mp4">▶ 看 52 秒完整演示（有声音）</a></p>
 
 知了（Cicada，原名 Live Subs）是一个常驻 Mac 菜单栏的工具，直接听电脑正在播放的声音。开英文产品会时，左边窗口边听边整理中文纪要，右边同步滚动逐句的英中双语文字记录。它不用派机器人进会，对方也不用装任何东西。平时看直播、看视频或者进语音房，你还可以切到轻巧的字幕条，或者按住快捷键说话，让对方直接听到翻译后的语音。
 

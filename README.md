@@ -25,9 +25,8 @@
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <a href="docs/demo.mp4"><img src="docs/demo.gif" width="800" alt="An English meeting plays while Cicada writes Chinese notes on the left and a bilingual transcript on the right"></a>
+  <img src="docs/demo.gif" width="800" alt="An English meeting plays while Cicada writes Chinese notes on the left and a bilingual transcript on the right">
 </p>
-<p align="center"><a href="docs/demo.mp4">▶ Watch the 52-second demo with sound</a></p>
 
 Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what your Mac is playing. During a call, livestream, video or voice room, it writes structured meeting notes on the left while a line-by-line bilingual transcript scrolls on the right. No bot joins the call, and the other side installs nothing. You can also switch to a compact subtitle bar, or hold a key to speak and have the room hear you in their language.
 
