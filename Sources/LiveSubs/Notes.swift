@@ -333,6 +333,16 @@ final class NotesEngine: ObservableObject {
         }
         p += "\(final ? "Transcript" : "New lines") (id, mm:ss, speaker 对方=the other side / 你=me, text). Speech recognition makes mistakes, often in names: correct them from context.\n"
         p += (from..<lines.count).map(line).joined(separator: "\n")
+        // The model splits too eagerly when only told how long a topic should be: say plainly
+        // whether this update may start one.
+        if final, let first = lines.first?.t, let last = lines.last?.t {
+            let most = max(1, min(8, Int((last - first) / 180) + 1))
+            p += "\n\nThis meeting ran \(clock(last - first)): use at most \(most) topic\(most == 1 ? "" : "s")."
+        } else if !final, let current = notes.topics.last, let newest = lines.last?.t, newest - current.start < 120 {
+            p += "\n\nThe current topic \"\(current.title)\" started at \(clock(current.start)), under 2 minutes ago: do not start a new topic in this update; add the new lines to it."
+        } else if !final, notes.topics.isEmpty {
+            p += "\n\nThese are the first lines: make one topic."
+        }
         p += """
 
 
@@ -347,7 +357,7 @@ final class NotesEngine: ObservableObject {
         Rules (be brief: these notes are read at a glance during the meeting):
         - title: a name for the whole meeting, like a calendar entry (at most 12 Chinese characters or 6 words; no date, no quotes, not "会议" alone). Keep the current title unless the meeting's subject has clearly changed.
         - summary: at most 3 short sentences.
-        - Topics in time order, at most 8 in total. Start a new topic only when the subject clearly changes (usually every few minutes); otherwise add to the current one, and merge small neighbouring topics. Keep earlier topics as they are unless new lines correct them. The last topic is the one being discussed now.
+        - Topics in time order, at most 8 in total. A topic is a stretch of the meeting, usually 3-10 minutes, not a single remark: start a new one only when the subject clearly changes and the current topic started at least 2 minutes before the newest line\(final ? "" : "; add at most one new topic per update"). Otherwise add to the current one, and merge small neighbouring topics. Keep earlier topics as they are unless new lines correct them. The last topic is the one being discussed now.
         - At most 4 points per topic, each one short phrase. Merge rather than repeat.
         - At most 5 conclusions and only real to-dos (often none).
         - Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.

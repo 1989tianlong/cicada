@@ -138,6 +138,9 @@ struct NotesWindowView: View {
     /// "结束" was clicked during a meeting with lines: the confirmation strip is showing.
     @State private var confirmEnd = false
     @State private var languageOpen = false
+    /// When the reader last scrolled the notes: a live update only brings the current topic into
+    /// view when they haven't just been reading something else.
+    @State private var notesScrolledAt = Date.distantPast
     @FocusState private var searchFocused: Bool
 
     private var session: Session? { store.session(store.liveID ?? engine.shownID) }
@@ -169,6 +172,8 @@ struct NotesWindowView: View {
                         // The transcript shows what is being said in place; the caption is for the notes tab.
                         if geo.size.width < 760 && tab == "notes" { caption }
                     }
+                    // The title bar is transparent: start the header beside its buttons, not below a blank band.
+                    .ignoresSafeArea(.container, edges: .top)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -586,7 +591,7 @@ struct NotesWindowView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-        } else if live || engine.generatingID == session?.id {
+        } else if live || (session != nil && engine.generatingID == session?.id) {  // nil == nil is not "generating"
             ScrollView {
                 NotesGeneratingView(heard: heard).padding(.horizontal, 24).padding(.vertical, 12)
             }
@@ -603,15 +608,36 @@ struct NotesWindowView: View {
     }
 
     private var notesScroll: some View {
-        ScrollView {
-            NotesContentView(notes: engine.notes, fresh: engine.fresh, live: live,
-                             updating: engine.state == .updating,
-                             summaryJustChanged: engine.summaryChangedAt.map { now.timeIntervalSince($0) < 20 } ?? false,
-                             coveredUntil: lastCovered > 0 ? lastCovered : nil,
-                             endedAt: session?.lines.last?.t,
-                             onJump: { t in jumpTo = t; tab = "transcript" })
-                .padding(.horizontal, 24).padding(.vertical, 12)
+        ScrollViewReader { proxy in
+            ScrollView {
+                NotesContentView(notes: engine.notes, fresh: engine.fresh, live: live,
+                                 updating: engine.state == .updating,
+                                 summaryJustChanged: engine.summaryChangedAt.map { now.timeIntervalSince($0) < 20 } ?? false,
+                                 coveredUntil: lastCovered > 0 ? lastCovered : nil,
+                                 endedAt: session?.lines.last?.t,
+                                 onJump: { t in jumpTo = t; tab = "transcript" })
+                    .padding(.horizontal, 24).padding(.vertical, 12)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, _ in
+                if UserScroll.recent { notesScrolledAt = Date() }
+            }
+            // Each live update lands on the topic being discussed now, which is the last one and
+            // soon below the fold; 20 s after the reader's own scroll, follow it again.
+            .onChange(of: engine.notes.updatedAt) { _, _ in
+                guard live, Date().timeIntervalSince(notesScrolledAt) > 20 else { return }
+                showCurrentTopic(proxy, animated: true)
+            }
+            .onAppear {
+                UserScroll.install()
+                if live { showCurrentTopic(proxy, animated: false) }
+            }
         }
+    }
+
+    private func showCurrentTopic(_ proxy: ScrollViewProxy, animated: Bool) {
+        guard let current = engine.notes.topics.last, engine.notes.topics.count > 1 else { return }
+        let id = NotesContentView.topicID(current)
+        if animated { withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(id, anchor: .top) } } else { proxy.scrollTo(id, anchor: .top) }
     }
 
     private var transcript: some View {

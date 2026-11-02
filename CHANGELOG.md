@@ -3,6 +3,15 @@
 One section per release, newest first. `scripts/release.sh` needs the section, dated today;
 the release workflow publishes it as the release notes.
 
+## Unreleased
+
+- Fixed: with no meeting running, the live notes window could show "正在生成纪要…" and an empty skeleton under "现在没有在记录"; it now says there is no meeting in progress.
+- Changed: the live notes window starts its title beside the window buttons instead of below a blank band, so more of the notes fit.
+- Fixed: in a quick conversation, especially Japanese, a sentence could stay unfinished for 15–20 s: the subtitle stayed a draft and the notes waited for it. A long line now ends at the next short pause (or when no new words come for a moment), so sentences finish every 5–9 s and get their real translation sooner.
+- Fixed: the live notes split the first minutes into many small topics and then put everything after into the last one. A topic now runs at least 2 minutes before a new one starts, and the full notes use about one topic per 3 minutes.
+- Fixed: the live notes window stayed at the top while new topics were added below. Each update now scrolls to the topic being discussed, unless you scrolled yourself in the last 20 s.
+- Fixed: with 翻译成 on 跟随系统, subtitles and notes could come out in different languages. On a Mac whose language list starts with English and also has Chinese, subtitles were translated into English while the notes were in Chinese. Subtitles, notes and the language you speak now start from the same choice (Chinese when the system list has it, otherwise the first system language), and only when the other side speaks that language do subtitles go into the next one. The 跟随系统 option now lists them in that order (简体中文 / English).
+
 ## 2.1.0 — 2026-11-01
 
 - New: the first-run guide has a Ling key step right after the permissions: open the Ling platform, then "Paste and Check" in one click; 继续 waits for a working key, and "Later, in Settings" skips it. It shows what the key unlocks and that Ling gives ¥10 of credit every month.

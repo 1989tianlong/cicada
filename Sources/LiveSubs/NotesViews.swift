@@ -55,6 +55,7 @@ struct NotesContentView: View {
                                   current: live && i == notes.topics.count - 1,
                                   updating: updating && i == notes.topics.count - 1, fresh: fresh, onJump: onJump)
                             .padding(.vertical, document ? 14 : 0)
+                            .id(Self.topicID(topic))
                     }
                 }
             }
@@ -87,6 +88,9 @@ struct NotesContentView: View {
             }
         }
     }
+
+    /// Scroll target for a topic (the live notes window keeps the current one in view).
+    static func topicID(_ topic: NoteTopic) -> String { "topic-\(topic.id)" }
 
     @ViewBuilder
     private func title(_ text: String) -> some View {
