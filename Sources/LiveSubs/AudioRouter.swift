@@ -59,6 +59,8 @@ final class AudioRouter: @unchecked Sendable {
     private var voicedTotal = 0.0
     private var silenceRun = 0.0
     private var sinceGap = 0.0
+    /// The last short pause between words, on the analyzer's clock: where it ended and how long it was.
+    private var pause: (end: Double, length: Double) = (0, 0)
 
     private var recordURL: URL?
     private var recorder: AVAudioFile?
@@ -79,6 +81,7 @@ final class AudioRouter: @unchecked Sendable {
         let seconds = Double(n) / mono.format.sampleRate
         let voiced = rms >= voiceThreshold
         if voiced {
+            if silenceRun >= 0.12, continuation != nil { pause = (fed, silenceRun) }
             if silenceRun >= Self.gapSeconds { sinceGap = 0 }
             voicedTotal += seconds
             silenceRun = 0
@@ -121,10 +124,15 @@ final class AudioRouter: @unchecked Sendable {
     /// result ending at t was spoken (fed − t) seconds ago, since the tap runs in real time.
     private var fed = 0.0
     func fedSeconds() -> Double { queue.sync { fed } }
+    /// Analyzer clock now, the silence running at the end of it, and the last pause before that.
+    func clock() -> (fed: Double, silence: Double, pause: (end: Double, length: Double)) {
+        queue.sync { (fed, silenceRun, pause) }
+    }
 
     func attach(format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation, replaySeconds: Double = 0) {
         queue.sync {
             fed = 0
+            pause = (0, 0)
             if self.format != format {
                 ring.removeAll()
                 ringSeconds = 0

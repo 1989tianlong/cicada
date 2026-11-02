@@ -58,6 +58,14 @@ final class ListenEngine {
     private var volatileInFlight = false
     private var volatileEpoch = 0
     private var tickTimer: Timer?
+    private var ticks = 0
+    /// When the line in progress started and last grew, for cutting long ones at a pause.
+    private var volatileStartedAt = Date()
+    private var volatileStartClock = 0.0
+    private var volatileChangedAt = Date()
+    private var cutting = false
+    private var lastCut = ""
+    private var lastCutThrough = 0.0
     /// Final transcript time and how long after the last word it came, per segment, until its translation lands.
     private var finalTiming: [Int: (at: Date, recognize: Double?)] = [:]
 
@@ -344,6 +352,8 @@ final class ListenEngine {
                 needsDetection = true
             }
         } else {
+            if volatileText.isEmpty { volatileStartedAt = Date(); volatileStartClock = router.fedSeconds() }
+            if text != volatileText { volatileChangedAt = Date() }
             volatileText = text
         }
         renderSubtitles()
@@ -447,10 +457,15 @@ final class ListenEngine {
 
     private func startTickTimer() {
         tickTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        // Pauses are short: look for one four times a second; the rest runs once a second.
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.translateVolatile()
-                self?.maybeDetectLanguage()
+                guard let self else { return }
+                self.maybeCutSentence()
+                self.ticks += 1
+                guard self.ticks % 4 == 0 else { return }
+                self.translateVolatile()
+                self.maybeDetectLanguage()
             }
         }
         tickTimer = timer
@@ -494,6 +509,45 @@ final class ListenEngine {
             contentLog("TRANSLATE [\(seg.sourceCode)→\(self.resolvedTarget)] \(seg.text) => \(out)")
             self.onTranslated?(id, out)
             self.renderSubtitles()
+        }
+    }
+
+    /// SpeechTranscriber ends a sentence only at a clear pause; in a quick conversation that can
+    /// take 15–20 s, and the subtitle stays a draft that long (the notes wait for it too). A long
+    /// line in progress is ended at the next small pause: a dip in the sound, or no new words for
+    /// a moment.
+    private func maybeCutSentence() {
+        guard isRunning, !cutting, let analyzer, !volatileText.isEmpty, volatileText != lastCut else { return }
+        let cjk = joiner(for: activeLang?.code ?? "") == ""
+        let long = cjk ? volatileText.count >= 24 : volatileText.split(separator: " ").count >= 10
+        guard long else { return }
+        // The longer the line has run, the smaller the pause that may end it.
+        let held = Date().timeIntervalSince(volatileStartedAt)
+        let needed = held >= 8 ? 0.15 : 0.3
+        let c = router.clock()
+        let mid = c.pause.end - c.pause.length / 2
+        let through: Double, why: String
+        if c.silence >= needed {
+            (through, why) = (c.fed, "quiet")
+        } else if c.pause.length >= needed, mid > volatileStartClock + 1.5, mid > lastCutThrough, c.pause.end <= c.fed {
+            (through, why) = (mid, "pause")  // a pause already behind us: end the line there
+        } else if Date().timeIntervalSince(volatileChangedAt) >= (held >= 8 ? 0.6 : 1.2) {
+            (through, why) = (c.fed, "stalled")
+        } else {
+            return
+        }
+        cutting = true
+        lastCut = volatileText
+        lastCutThrough = through
+        let chars = volatileText.count
+        Task { [weak self] in
+            do {
+                try await analyzer.finalize(through: CMTime(seconds: through, preferredTimescale: 1000))
+                debugLog(String(format: "cut: line of %d chars ended after %.1f s (%@)", chars, held, why))
+            } catch {
+                debugLog("cut: finalize failed \(error)")
+            }
+            self?.cutting = false
         }
     }
 
