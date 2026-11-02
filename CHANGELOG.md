@@ -5,6 +5,7 @@ the release workflow publishes it as the release notes.
 
 ## Unreleased
 
+- New: meetings name themselves. The notes give each meeting a short name in the notes language, and the records list, the page title and exports show the date and that name ("11月1日 Lumen 发布与结账转化问题讨论") instead of "会议 11月1日 20:16". A title you typed is kept; 恢复自动标题 in the list's right-click menu brings the automatic one back.
 - New: Settings › 语言 puts every language choice in one place, under a line that reads the whole route ("对方说 English → 字幕 简体中文 · 纪要 简体中文 / 你说 中文 → 对方听到 English"): what the other side speaks, what the subtitles show (原文 + 译文 / 只看译文 / 只看原文 — the last translates nothing and uses no Ling quota; also in the menu bar panel), what to translate into, the notes language (你的语言 or the meeting's own), and the speak-back pair. 显示 and 同声传译 no longer hold these.
 - New: an "EN → 中" chip in the live notes window changes the subtitles and notes language for this meeting only; a new notes language rewrites the notes right away. After a meeting, "改用 English 重新整理" writes its notes again in the other language.
 - Fixed: the full notes written when a long meeting in another language ended came out in that language (English) instead of yours, while the live notes were right. The notes language is now stated where the model reads it last, and a reply in the wrong language is retried once, then dropped in favour of the live notes.

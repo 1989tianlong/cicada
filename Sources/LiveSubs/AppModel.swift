@@ -611,7 +611,7 @@ final class AppModel: ObservableObject {
         }
         let panel = NSSavePanel()
         let ext = kind == "word" ? "docx" : kind == "srt" ? "srt" : "md"
-        panel.nameFieldStringValue = "\(session.title).\(ext)"
+        panel.nameFieldStringValue = "\(session.displayTitle.replacingOccurrences(of: "/", with: "-")).\(ext)"
         panel.canCreateDirectories = true
         if let w = NSApp.keyWindow, !(w is NSPanel), w.isVisible {
             panel.beginSheetModal(for: w) { [weak self] r in

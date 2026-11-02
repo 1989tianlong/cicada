@@ -261,7 +261,7 @@ struct MainWindowView: View {
     private var filtered: [Session] {
         guard !query.isEmpty else { return store.sessions }
         return store.sessions.filter { s in
-            s.title.localizedCaseInsensitiveContains(query)
+            s.displayTitle.localizedCaseInsensitiveContains(query)
                 || s.lines.contains { $0.src.localizedCaseInsensitiveContains(query) || ($0.dst ?? "").localizedCaseInsensitiveContains(query) }
         }
     }
@@ -355,12 +355,12 @@ struct MainWindowView: View {
         let live = s.id == store.liveID
         return Button {
             selection = s.id
-            titleDraft = s.title
+            titleDraft = ""
         } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {
                     if live { Circle().fill(Palette.accent).frame(width: 7, height: 7) }
-                    Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
+                    Text(s.displayTitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
                 }
                 Text(meta(s, live: live)).font(.system(size: 11))
                     .foregroundStyle(live ? Palette.accentInk : Palette.secondary).lineLimit(1)
@@ -376,6 +376,9 @@ struct MainWindowView: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) }
+            if s.renamed ?? !s.title.hasPrefix("会议 "), s.notes?.title != nil {
+                Button("恢复自动标题") { store.rename(s.id, to: "") }
+            }
             Button("删除", role: .destructive) { store.delete(s.id) }.disabled(live)
         }
     }
@@ -537,12 +540,15 @@ struct MainWindowView: View {
         return VStack(alignment: .leading, spacing: 12) {
             Text(dateLine(s, live: live)).font(.system(size: 12)).foregroundStyle(Palette.secondary)
             TextField("标题", text: Binding(
-                get: { titleDraft.isEmpty ? s.title : titleDraft },
+                get: { titleDraft.isEmpty ? s.displayTitle : titleDraft },
                 set: { titleDraft = $0 }
             ), axis: .vertical)
             .textFieldStyle(.plain)
             .font(.system(size: 28, weight: .bold))
-            .onSubmit { store.rename(s.id, to: titleDraft) }
+            .onSubmit {
+                if !titleDraft.isEmpty { store.rename(s.id, to: titleDraft) }
+                titleDraft = ""
+            }
             HStack(spacing: 8) {
                 if live { Tag("正在记录", live: true) }
                 chip(Self.length(s))

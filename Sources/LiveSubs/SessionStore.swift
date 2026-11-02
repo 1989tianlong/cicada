@@ -22,8 +22,28 @@ struct Session: Codable, Identifiable, Equatable {
     var hasAudio: Bool
     /// AI notes (absent in older sessions and without an API key).
     var notes: MeetingNotes?
+    /// The user renamed it; nil in older sessions, where any title but the default counts as renamed.
+    var renamed: Bool?
 
     var duration: TimeInterval { (endedAt ?? Date()).timeIntervalSince(startedAt) }
+
+    /// The user's own title, else the date and the name the notes gave the meeting
+    /// ("11月1日 产品路线评审", in the notes' language), else "会议 11月1日 14:30".
+    var displayTitle: String {
+        if renamed ?? !title.hasPrefix("会议 ") { return title }
+        guard let name = notes?.title, !name.isEmpty else { return title }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = Calendar.current.isDate(startedAt, equalTo: Date(), toGranularity: .year) ? "M月d日" : "yyyy年M月d日"
+        return "\(f.string(from: startedAt)) \(name)"
+    }
+
+    static func defaultTitle(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日 HH:mm"
+        return "会议 \(f.string(from: date))"
+    }
 }
 
 /// One folder per meeting under ~/Library/Application Support/LiveSubs/Sessions/<id>/:
@@ -67,12 +87,9 @@ final class SessionStore: ObservableObject {
     @discardableResult
     func begin() -> Session {
         let now = Date()
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "M月d日 HH:mm"
         let fid = DateFormatter()
         fid.dateFormat = "yyyyMMdd-HHmmss"
-        let s = Session(id: fid.string(from: now), title: "会议 \(f.string(from: now))",
+        let s = Session(id: fid.string(from: now), title: Session.defaultTitle(now),
                         startedAt: now, endedAt: nil, lines: [], hasAudio: false)
         sessions.insert(s, at: 0)
         liveID = s.id
@@ -118,12 +135,19 @@ final class SessionStore: ObservableObject {
 
     // MARK: Editing
 
+    /// An empty title, or the one shown already, goes back to the automatic one.
     func rename(_ id: String, to title: String) {
         guard let i = index(id) else { return }
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        sessions[i].title = t
-        saveNow(id)
+        guard t != sessions[i].displayTitle else { return }
+        if t.isEmpty {
+            sessions[i].title = Session.defaultTitle(sessions[i].startedAt)
+            sessions[i].renamed = false
+        } else {
+            sessions[i].title = t
+            sessions[i].renamed = true
+        }
+        id == liveID ? scheduleSave(id) : saveNow(id)
     }
 
     func delete(_ id: String) {
@@ -200,7 +224,7 @@ enum TranscriptExport {
     }
 
     static func markdown(_ s: Session) -> String {
-        var out = "# \(s.title)\n\n\(header(s))\n\n"
+        var out = "# \(s.displayTitle)\n\n\(header(s))\n\n"
         let notes = notesMarkdown(s.notes)
         if !notes.isEmpty { out += notes + "## 文字记录\n\n" }
         for l in s.lines {
@@ -238,7 +262,7 @@ enum TranscriptExport {
                 .paragraphStyle: p,
             ]))
         }
-        add(s.title, size: 20, weight: .bold, after: 6)
+        add(s.displayTitle, size: 20, weight: .bold, after: 6)
         add(header(s), size: 10, color: .darkGray, after: 14)
         if let n = s.notes, !n.isEmpty {
             add("纪要", size: 15, weight: .bold, after: 6)

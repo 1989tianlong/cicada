@@ -5,6 +5,8 @@ import Foundation
 /// Meeting notes kept with the session (`session.json` › `notes`). Written by Ling while the
 /// meeting runs ("速记版") and rewritten once over the whole transcript when it ends ("完整版").
 struct MeetingNotes: Codable, Equatable {
+    /// A short name for the meeting in the notes' language (absent in older notes).
+    var title: String?
     var summary = ""
     var topics: [NoteTopic] = []
     var conclusions: [NoteItem] = []
@@ -234,6 +236,8 @@ final class NotesEngine: ObservableObject {
                 return
             }
             Self.carryTimes(from: base, into: &next)
+            // A reply without a name keeps the last one (not after a language change).
+            if next.title == nil, !fresh { next.title = (id == shownID ? notes : session.notes)?.title }
             next.covered = lines.count
             next.updatedAt = Date()
             next.final = final
@@ -316,13 +320,15 @@ final class NotesEngine: ObservableObject {
 
 
         Return the full notes as one JSON object with exactly these keys:
-        {"summary": "2-3 sentences on the whole meeting so far",
+        {"title": "the meeting's name: what it is about, a few words",
+         "summary": "2-3 sentences on the whole meeting so far",
          "topics": [{"start": seconds, "title": "short title", "summary": "one sentence", "points": [{"text": "key point", "evidence": ["L4"]}], "evidence": ["L3"],
                      "fishbone": null or {"question": "the problem or question", "branches": [{"label": "2-6 words", "detail": "one short line", "t": seconds, "evidence": ["L5"]}]}}],
          "conclusions": [{"text": "...", "evidence": ["L7", "L8"]}],
          "todos": [{"text": "...", "owner": "对方" or "你" or null, "evidence": ["L9"]}],
          "terms": [{"name": "correct spelling", "note": "who or what, a few words", "heard": ["how it was misrecognised"]}]}
         Rules (be brief: these notes are read at a glance during the meeting):
+        - title: a name for the whole meeting, like a calendar entry (at most 12 Chinese characters or 6 words; no date, no quotes, not "会议" alone). Keep the current title unless the meeting's subject has clearly changed.
         - summary: at most 3 short sentences.
         - Topics in time order, at most 8 in total. Start a new topic only when the subject clearly changes (usually every few minutes); otherwise add to the current one, and merge small neighbouring topics. Keep earlier topics as they are unless new lines correct them. The last topic is the one being discussed now.
         - At most 4 points per topic, each one short phrase. Merge rather than repeat.
@@ -330,7 +336,7 @@ final class NotesEngine: ObservableObject {
         - Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.
         - Every topic, point, branch, conclusion and to-do needs evidence: the ids of the lines that say it. Never state anything the transcript does not say.
         - terms: at most 10 people, places or jargon words that matter. name is the correct spelling in the transcript's language (no translation in brackets); heard lists only the wrong forms the transcript used; note is a few words.
-        - Write every summary, title, point, branch, conclusion and to-do in \(language), even when the transcript is in another language. Only term names keep the transcript's spelling.
+        - Write the meeting title and every summary, title, point, branch, conclusion and to-do in \(language), even when the transcript is in another language. Only term names keep the transcript's spelling.
         - Write about what was said, never about the transcript or recognition quality.
         - Use empty arrays when there is nothing. No markdown, no text outside the JSON.
         """
@@ -350,6 +356,7 @@ final class NotesEngine: ObservableObject {
 
     /// The current notes as sent back to the model (no bookkeeping fields).
     private struct Compact: Encodable {
+        let title: String?
         let summary: String
         let topics: [Topic]
         let conclusions: [String]
@@ -363,6 +370,7 @@ final class NotesEngine: ObservableObject {
             let fishbone: Fishbone?
         }
         init(_ n: MeetingNotes) {
+            title = n.title
             summary = n.summary
             topics = n.topics.map { Topic(start: $0.start, title: $0.title, summary: $0.summary, points: $0.points, fishbone: $0.fishbone) }
             conclusions = n.conclusions.map(\.text)
@@ -394,6 +402,8 @@ final class NotesEngine: ObservableObject {
         func time(_ v: Any?) -> Double? { lineNumbers(v).min().map { times[$0 - 1] } }
         var n = MeetingNotes()
         n.summary = str(root["summary"])
+        let title = str(root["title"]).trimmingCharacters(in: CharacterSet(charactersIn: "\"“”「」《》"))
+        n.title = title.isEmpty ? nil : title
         n.topics = (root["topics"] as? [[String: Any]] ?? []).compactMap { t in
             let title = str(t["title"])
             guard !title.isEmpty else { return nil }
