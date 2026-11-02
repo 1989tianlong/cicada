@@ -95,8 +95,8 @@ final class AppSettings: ObservableObject {
         subtitles = defaults.string(forKey: "subtitles") ?? "both"
         notesLanguage = defaults.string(forKey: "notesLanguage") ?? "mine"
         speakEnabled = defaults.bool(forKey: "speakEnabled")
-        let prefersChinese = Locale.preferredLanguages.contains { $0.hasPrefix("zh") }
-        speakFrom = defaults.string(forKey: "speakFrom") ?? (prefersChinese ? "zh-CN" : "en-US")
+        speakFrom = defaults.string(forKey: "speakFrom")
+            ?? speakLocale(forLanguage: LiveSubs.myLanguage(systemLanguages: Locale.preferredLanguages))
         speakTo = defaults.string(forKey: "speakTo") ?? "room"
         speakOutput = defaults.string(forKey: "speakOutput") ?? ""
         recordAudio = defaults.object(forKey: "recordAudio") as? Bool ?? true
@@ -133,28 +133,23 @@ final class AppSettings: ObservableObject {
         defaults.set(diagnostics, forKey: "diagnostics")
     }
 
-    /// Target language. "Follow system" uses the first system language that
-    /// differs from what is being spoken.
+    /// Target language. "Follow system" translates into my language, or into the next system
+    /// language when they speak mine.
     func resolvedTarget(source: String?) -> String {
-        if target != "system" { return target }
-        let prefs = Locale.preferredLanguages.map(translationCode(forSystemLanguage:))
-        if let src = source, let other = prefs.first(where: { $0 != src }) { return other }
-        return prefs.first ?? "zh-CN"
+        target == "system" ? followSystemTarget(source: source, systemLanguages: Locale.preferredLanguages) : target
     }
 
-    /// The reader's own language: the translate-to choice, or with "follow system" the first
-    /// system language (Chinese first when it is there: the app speaks Chinese).
+    /// The reader's own language: the translate-to choice, or with "follow system" the one
+    /// `myLanguage(systemLanguages:)` picks. Notes in 我的语言 use it too.
     var myLanguage: String {
-        if target != "system" { return target }
-        let prefs = Locale.preferredLanguages
-        return translationCode(forSystemLanguage: prefs.first(where: { $0.hasPrefix("zh") }) ?? prefs.first ?? "zh-Hans")
+        target == "system" ? LiveSubs.myLanguage(systemLanguages: Locale.preferredLanguages) : target
     }
 
+    /// "简体中文 / English": my language, then what it translates into when they speak mine.
     func systemTargetDescription() -> String {
-        let prefs = Locale.preferredLanguages.map(translationCode(forSystemLanguage:))
-        var seen: [String] = []
-        for p in prefs where !seen.contains(p) { seen.append(p) }
-        return seen.prefix(2).map(targetName).joined(separator: " / ")
+        let prefs = Locale.preferredLanguages
+        let mine = LiveSubs.myLanguage(systemLanguages: prefs)
+        return [mine, followSystemTarget(source: mine, systemLanguages: prefs)].map(targetName).joined(separator: " / ")
     }
 
     var speakFromLang: Lang {

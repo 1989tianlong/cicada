@@ -37,3 +37,35 @@ import Testing
         #expect(LanguageDetector.score(conf: 0.8, chars: native.count, text: native, lang: japanese) == 0.8)
     }
 }
+
+@Suite struct FollowSystemTests {
+    @Test(arguments: [
+        (["zh-Hans-CN"], "zh-CN"), (["en-US"], "en"), (["en-CA", "zh-Hans-CA"], "zh-CN"),
+        (["ja-JP", "zh-Hant-TW"], "zh-TW"), (["ja-JP", "en-US"], "ja"), ([String](), "zh-CN"),
+    ])
+    func myLanguageIsChineseWhenListed(prefs: [String], mine: String) {
+        #expect(myLanguage(systemLanguages: prefs) == mine)
+    }
+
+    /// Subtitles and notes agree: unless they speak my language, subtitles are in it.
+    @Test(arguments: [["en-CA", "zh-Hans-CA"], ["zh-Hans-CN", "en-US"], ["ja-JP", "en-US"], ["en-US"]])
+    func subtitlesFollowMyLanguage(prefs: [String]) {
+        let mine = myLanguage(systemLanguages: prefs)
+        for source in ["en", "ja", "ko", "zh-CN", nil] as [String?] where source != mine {
+            #expect(followSystemTarget(source: source, systemLanguages: prefs) == mine)
+        }
+    }
+
+    @Test func speakingMyLanguageTranslatesIntoTheNextOne() {
+        #expect(followSystemTarget(source: "zh-CN", systemLanguages: ["en-CA", "zh-Hans-CA"]) == "en")
+        #expect(followSystemTarget(source: "ja", systemLanguages: ["ja-JP", "en-US"]) == "en")
+        #expect(followSystemTarget(source: "zh-CN", systemLanguages: ["zh-Hans-CN"]) == "en")
+        #expect(followSystemTarget(source: "en", systemLanguages: ["en-US"]) == "zh-CN")
+    }
+
+    @Test func speakLocaleComesFromMyLanguage() {
+        #expect(speakLocale(forLanguage: "zh-TW") == "zh-CN")
+        #expect(speakLocale(forLanguage: "ja") == "ja-JP")
+        #expect(speakLocale(forLanguage: "it") == "en-US")
+    }
+}

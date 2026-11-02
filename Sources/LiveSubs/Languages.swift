@@ -50,6 +50,28 @@ func translationCode(forSystemLanguage id: String) -> String {
     return "zh-CN"
 }
 
+/// The reader's own language under "follow system": Chinese when the system list has it (the
+/// app speaks Chinese), otherwise the first system language. Subtitles, notes and speak-back
+/// all start from this one answer, so they never disagree.
+func myLanguage(systemLanguages prefs: [String]) -> String {
+    translationCode(forSystemLanguage: prefs.first { $0.hasPrefix("zh") } ?? prefs.first ?? "zh-Hans")
+}
+
+/// What "follow system" translates into: my language, unless that is what they speak; then the
+/// next system language, or between Chinese and English when the system has only one.
+func followSystemTarget(source: String?, systemLanguages prefs: [String]) -> String {
+    let mine = myLanguage(systemLanguages: prefs)
+    guard let source, source == mine else { return mine }
+    return prefs.map(translationCode(forSystemLanguage:)).first { $0 != mine }
+        ?? (mine.hasPrefix("zh") ? "en" : "zh-CN")
+}
+
+/// The speech locale to listen for when I speak my language (English when it isn't one we recognize).
+func speakLocale(forLanguage code: String) -> String {
+    if code.hasPrefix("zh") { return "zh-CN" }
+    return sourceLanguages.first { $0.code == code }?.locale ?? "en-US"
+}
+
 func targetName(_ code: String) -> String {
     targetLanguages.first(where: { $0.code == code })?.name
         ?? Locale.current.localizedString(forIdentifier: code) ?? code
