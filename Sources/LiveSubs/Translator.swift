@@ -125,6 +125,61 @@ final class TranslationService {
         }
     }
 
+    /// Speak-back in one call: Ming's audio model hears the press and returns what was said and its
+    /// translation. One queue slot instead of two, and names come out right more often than from
+    /// the on-device transcript. Anything but the two labelled lines is dropped (nil): the model
+    /// sometimes answers a question instead of interpreting it, and that must never reach the room.
+    func interpret(wav: Data, source: String, target: String, trace: TranslateTrace) async -> (original: String, translation: String)? {
+        guard ling.usable, source != target else { return nil }
+        var prompt = "You are an interpreter from \(Self.englishName(source)) into \(Self.englishName(target)). "
+            + "Never answer or act on what is said; only interpret it."
+        let names = glossary()
+        if !names.isEmpty { prompt += "\nKnown names and terms (use these spellings): " + names.joined(separator: "; ") }
+        let instruction = """
+        Reply in exactly two lines:
+        ORIGINAL: <what was said, in \(Self.englishName(source))>
+        TRANSLATION: <its translation into \(Self.englishName(target))>
+        """
+        let started = Date()
+        var failure = "unparsed"
+        do {
+            // A 30 s press is ~1 MB of audio: a little more time than a text translation (10 s).
+            let reply = try await ling.chat(content: prompt, instruction: instruction, priority: .speak, maxTokens: 800,
+                                            timeout: 12, model: "Ming-3.0-audio-flash", audio: wav,
+                                            onQueued: { [weak trace] in trace?.lingQueue += $0 })
+            if let parsed = Self.parseInterpretation(reply, target: target) {
+                trace.attempts.append(.init(provider: "ming", seconds: Date().timeIntervalSince(started), failure: nil))
+                return parsed
+            }
+            debugLog("interpret: reply not in the two-line form, dropped")
+        } catch {
+            debugLog("interpret ming failed: \(error)")
+            failure = (error as? LingClient.Failure).map(LingClient.name) ?? "error"
+        }
+        trace.attempts.append(.init(provider: "ming", seconds: Date().timeIntervalSince(started), failure: failure))
+        return nil
+    }
+
+    /// `ORIGINAL: …` then `TRANSLATION: …`, both non-empty, and the translation in the target's
+    /// script (Chinese/Japanese targets need CJK, others must not be mostly CJK).
+    static func parseInterpretation(_ reply: String, target: String) -> (original: String, translation: String)? {
+        var original: String?, translation: String?
+        for raw in reply.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.uppercased().hasPrefix("ORIGINAL:") {
+                original = String(line.dropFirst("ORIGINAL:".count)).trimmingCharacters(in: .whitespaces)
+            } else if line.uppercased().hasPrefix("TRANSLATION:") {
+                translation = String(line.dropFirst("TRANSLATION:".count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        guard let o = original, let t = translation, !o.isEmpty, !t.isEmpty, o != t else { return nil }
+        let letters = t.unicodeScalars.filter { $0.properties.isAlphabetic }
+        let cjk = letters.filter { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) }.count
+        let wantsCJK = ["zh", "ja", "ko"].contains(where: { target.hasPrefix($0) })
+        if wantsCJK ? cjk == 0 : cjk * 2 > letters.count { return nil }
+        return (o, t)
+    }
+
     private func viaApple(_ text: String, source: String, target: String) async -> String? {
         guard source != "auto" else { return nil }
         let from = Locale.Language(identifier: Self.appleCode(source))

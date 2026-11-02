@@ -102,6 +102,9 @@ final class AppModel: ObservableObject {
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
         applyVoice()
+        speak.interpret = { [weak self] wav, from, to, trace in
+            await self?.translator.interpret(wav: wav, source: from, target: to, trace: trace)
+        }
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }

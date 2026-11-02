@@ -62,8 +62,10 @@ enum AudioDevices {
 
 // MARK: - Speak engine
 
-/// Hold to talk: microphone → on-device transcription → translation →
-/// system voice → chosen output device (a virtual microphone for the call).
+/// Hold to talk: microphone → Ming's audio model (what was said + its translation in one call),
+/// or on-device transcription → translation when that fails → voice → chosen output device
+/// (a virtual microphone for the call). The on-device transcriber always runs: it shows the words
+/// while the key is held and is the fallback transcript.
 @MainActor
 final class SpeakEngine {
     enum Phase { case idle, listening, translating, speaking }
@@ -74,6 +76,8 @@ final class SpeakEngine {
     var onStatus: ((String) -> Void)?
     /// Translator shared with the listening side.
     var translate: ((_ text: String, _ from: String, _ to: String, _ trace: TranslateTrace) async -> String?)?
+    /// The press as a WAV → (what was said, translation); nil when Ming is unavailable or its reply is unusable.
+    var interpret: ((_ wav: Data, _ from: String, _ to: String, _ trace: TranslateTrace) async -> (original: String, translation: String)?)?
     /// Diagnostics: key released → transcript → translation → voice finished.
     var onTiming: ((SentenceTiming) -> Void)?
     private var releasedAt: Date?
@@ -94,6 +98,12 @@ final class SpeakEngine {
     private var pressStarted = Date()
     private nonisolated(unsafe) var micRecorder: AVAudioFile?
     private nonisolated(unsafe) var micRecordURL: URL?
+    /// This press's audio as 16 kHz mono 16-bit samples for Ming; only touched on `micQueue`.
+    private nonisolated(unsafe) var pressSamples: [Int16] = []
+    private nonisolated(unsafe) var pressConverter = PCMConverter()
+    private nonisolated static let pressFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
+    /// Ming takes at most this much of a press (the talk key is meant for a sentence or two).
+    private nonisolated static let pressLimit = 16_000 * 60
 
     private let synth = AVSpeechSynthesizer()
     private let out = AVAudioEngine()
@@ -166,6 +176,7 @@ final class SpeakEngine {
         let (stream, cont) = AsyncStream.makeStream(of: AnalyzerInput.self)
         finals = []
         volatile = ""
+        micQueue.sync { pressSamples = []; pressConverter = PCMConverter() }
         let task = Task { [weak self] () -> String in
             let collector = Task { [weak self] in
                 do {
@@ -225,6 +236,7 @@ final class SpeakEngine {
         stopMic()
         utterance?.input.finish()
         utterance = nil
+        micQueue.sync { pressSamples = [] }
         finals = []
         volatile = ""
         phase = .idle
@@ -257,7 +269,10 @@ final class SpeakEngine {
         while true {
             guard let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 4096),
                   (try? file.read(into: buf)) != nil, buf.frameLength > 0 else { break }
-            if let c = conv.convert(buf, to: format) { input.yield(AnalyzerInput(buffer: c)) }
+            if let c = conv.convert(buf, to: format) {
+                input.yield(AnalyzerInput(buffer: c))
+                micQueue.sync { keepForMing(c) }
+            }
         }
         finishUtterance()
     }
@@ -280,6 +295,7 @@ final class SpeakEngine {
                 if let c = conv.convert(buf, to: format) {
                     cont.yield(AnalyzerInput(buffer: c))
                     self.recordMic(c)
+                    self.keepForMing(c)
                 }
             }
         }
@@ -290,6 +306,32 @@ final class SpeakEngine {
             onStatus?("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风")
             phase = .idle
         }
+    }
+
+    private nonisolated func keepForMing(_ buffer: AVAudioPCMBuffer) {
+        guard pressSamples.count < Self.pressLimit,
+              let c = pressConverter.convert(buffer, to: Self.pressFormat), let p = c.int16ChannelData else { return }
+        pressSamples.append(contentsOf: UnsafeBufferPointer(start: p[0], count: Int(c.frameLength)))
+    }
+
+    /// The press as a WAV file in memory (44-byte RIFF header + little-endian samples).
+    private func takePressWAV() -> Data? {
+        let samples = micQueue.sync { () -> [Int16] in
+            defer { pressSamples = [] }
+            return pressSamples
+        }
+        guard samples.count >= 16_000 / 4 else { return nil }
+        var d = Data()
+        func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+        func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+        let bytes = UInt32(samples.count * 2)
+        d.append(contentsOf: Array("RIFF".utf8)); u32(36 + bytes); d.append(contentsOf: Array("WAVE".utf8))
+        d.append(contentsOf: Array("fmt ".utf8)); u32(16); u16(1); u16(1); u32(16_000); u32(32_000); u16(2); u16(16)
+        d.append(contentsOf: Array("data".utf8)); u32(bytes)
+        samples.withUnsafeBufferPointer { buf in
+            for s in buf { withUnsafeBytes(of: s.littleEndian) { d.append(contentsOf: $0) } }
+        }
+        return d
     }
 
     private nonisolated func recordMic(_ buffer: AVAudioPCMBuffer) {
@@ -314,23 +356,38 @@ final class SpeakEngine {
         u.input.finish()
         let released = releasedAt ?? Date()
         releasedAt = nil
+        let wav = takePressWAV()
+        let from = settings.speakFromLang.code
+        let to = targetCode
+        let trace = TranslateTrace()
+        // Ming hears the audio while the on-device transcriber finishes, so its fallback costs nothing.
+        let ming = Task { () -> (original: String, translation: String)? in
+            guard let wav, let interpret else { return nil }
+            return await interpret(wav, from, to, trace)
+        }
         Task {
-            let text = await u.text.value
-            let textAt = Date()
+            var text = await u.text.value
             finals = []
             volatile = ""
+            if !text.isEmpty { onLive?(.translating, text, "") }
+            let heard = await ming.value
+            if let heard { text = heard.original }
+            // Ming answers recognition and translation together: its whole call counts as `recognize`.
+            let textAt = Date()
             guard !text.isEmpty else {
                 phase = .idle
                 onLive?(.idle, "", "")
                 return
             }
-            let from = settings.speakFromLang.code
-            let to = targetCode
             onLive?(.translating, text, "")
             // Never speak the untranslated original into the room: if translation
             // fails, say so on the bar and send nothing.
-            let trace = TranslateTrace()
-            let result = await translate?(text, from, to, trace)
+            let result: String?
+            if let heard {
+                result = heard.translation
+            } else {
+                result = await translate?(text, from, to, trace)
+            }
             let translatedAt = Date()
             @MainActor func timing(voice: Double?) -> SentenceTiming {
                 SentenceTiming(at: textAt, side: "me", chars: text.count, recognize: textAt.timeIntervalSince(released),
@@ -344,7 +401,8 @@ final class SpeakEngine {
                 onLive?(.idle, text, "翻译失败，这句话未发送")
                 return
             }
-            contentLog("SPEAK [\(from)→\(to)] \(text) => \(translated)")
+            contentLog("SPEAK [\(from)→\(to)] via=\(trace.via) \(text) => \(translated)")
+            debugLog("speak: via=\(trace.via) recognize \(String(format: "%.2f", textAt.timeIntervalSince(released))) s translate \(String(format: "%.2f", translatedAt.timeIntervalSince(textAt))) s fallbacks=\(trace.fallbacks)")
             onUtterance?(text, translated, from, to, Date().timeIntervalSince(pressStarted))
             phase = .speaking
             onLive?(.speaking, text, translated)

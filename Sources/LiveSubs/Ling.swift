@@ -199,9 +199,10 @@ final class LingClient: ObservableObject {
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
     /// message. Notes retry 429s with backoff; translation and speak-back fail fast so the caller
-    /// can fall back to another translator.
+    /// can fall back to another translator. `audio` (a WAV) goes in the user message before the
+    /// instruction, for Ming's audio model.
     func chat(content: String, instruction: String, priority: Priority, json: Bool = false,
-              maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil,
+              maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil, audio: Data? = nil,
               onQueued: ((Double) -> Void)? = nil) async throws -> String {
         guard let key else { throw Failure.noKey }
         guard keyState != .invalid else { throw Failure.invalidKey }
@@ -213,7 +214,10 @@ final class LingClient: ObservableObject {
             "model": model ?? self.model(),
             "messages": [
                 ["role": "system", "content": content],
-                ["role": "user", "content": instruction],
+                ["role": "user", "content": audio.map { wav -> Any in
+                    [["type": "audio_url", "audio_url": ["url": "data:audio/wav;base64," + wav.base64EncodedString()]],
+                     ["type": "text", "text": instruction]]
+                } ?? instruction],
             ],
             "max_tokens": maxTokens,
             "temperature": 0.2,

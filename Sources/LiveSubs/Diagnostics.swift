@@ -225,6 +225,7 @@ struct DiagnosticsView: View {
         switch via {
         case "ling": Palette.ink
         case "google": Palette.accent
+        case "ming": Palette.accentInk
         default: Color(red: 0.72, green: 0.74, blue: 0.78)
         }
     }
@@ -234,18 +235,20 @@ struct DiagnosticsView: View {
         case "ling": "Ling"
         case "google": "Google"
         case "apple": "本机"
+        case "ming": "Ming 语音"
         default: "没译出"
         }
     }
 
     private static func reason(_ key: String) -> String {
         let parts = key.split(separator: ":").map(String.init)
-        let who = parts.first.map { $0 == "ling" ? "Ling" : $0 == "google" ? "Google" : $0 == "notes" ? "纪要" : "本机" } ?? ""
+        let who = parts.first.map { $0 == "ling" ? "Ling" : $0 == "google" ? "Google" : $0 == "notes" ? "纪要" : $0 == "ming" ? "Ming 语音" : "本机" } ?? ""
         let why: String
         switch parts.last ?? "" {
         case "hijacked": why = "被搜索劫持"
         case "rateLimited", "429": why = "限流"
         case "timeout": why = "超时"
+        case "unparsed": why = "回复格式不对"
         case "network": why = "网络错误"
         case "unavailable": why = "未安装语言包"
         default: why = parts.last ?? ""

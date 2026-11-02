@@ -36,9 +36,9 @@ Cicada (知了, “cicada” in Chinese, formerly Live Subs) listens to what you
 - **Translates into your language** — follows your system languages by default (English audio on an English Mac goes to your next language), or pick one.
 - **Stays out of the way** — the subtitle bar appears only while someone talks, tucks into a small dot when it's quiet, and turns see-through when your pointer passes over it, so you can still click what's underneath. Rest the pointer on it to drag or resize; ⌃⌥S hides it.
 - **Live meeting notes** — with your own [Ling](https://chat.ant-ling.com/open) API key (Settings › AI 服务, kept only on your Mac in a file only your account can read), a floating notes window fills in while the meeting runs: a summary, topics with key points, a fishbone diagram where causes are discussed, conclusions and to-dos, and names spelled consistently. Drag it anywhere, shrink it to a card (it tells you when something new was said since) or widen it to read notes beside the transcript; it never shows up when you share your screen. While it is open the app's menus are in the top left (stop recording ⌘R, what was added since collapsing ⌘J, search ⌘F, sizes ⌘1–⌘3). A full version is written when the meeting ends. The same key makes translation more accurate and lets the room hear a natural Ming voice, or your own voice cloned from a 15 s recording (Settings › 同声传译); without a key everything else works as before.
-- **Speak back** — hold the right ⌥ key and talk; the room hears your words translated, through a virtual microphone you install from the app.
+- **Speak back** — hold the right ⌥ key and talk; the room hears your words translated, through a virtual microphone you install from the app. With a Ling key, Ming's audio model hears and translates what you said in one step, so names come out right.
 - **Meeting records** — every session is saved as a bilingual transcript (with the audio, on your Mac only) and exports to Markdown, Word or SRT.
-- **Private by design** — audio capture, language detection and speech recognition all run on-device.
+- **Private by design** — audio capture, language detection and speech recognition all run on-device. The only audio that leaves your Mac is what you say while holding the talk key, and only with a Ling key.
 
 <p align="center">
   <img src="docs/panel.png" width="300" alt="The menu bar panel">
