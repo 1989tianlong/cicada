@@ -156,6 +156,17 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .ucard strong { font-size: 19px; line-height: 1.45; font-weight: 800; }
 .ucard span.d { font-size: 14px; line-height: 1.6; color: var(--grey); }
 
+/* Roadmap */
+.roadmap { padding-bottom: 96px; }
+.roadmap .head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 24px; }
+.roadmap h2 { margin: 0; font-size: clamp(26px, 2.8vw, 36px); font-weight: 900; letter-spacing: -0.02em; }
+.roadmap .head a { font-size: 15px; font-weight: 600; text-decoration: none; }
+.stage-card { flex: 1 1 280px; min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+.stage-card small { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; color: var(--grey); }
+.stage-card small.now { color: var(--orange-text); }
+.stage-card h3 { margin: 0; font-size: 19px; line-height: 1.4; font-weight: 800; }
+.stage-card p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--grey); }
+
 /* CTA */
 .cta { padding-bottom: 80px; }
 .cta-box { border-radius: 28px; background: var(--orange); color: #FFFFFF; padding: 52px 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 28px; }

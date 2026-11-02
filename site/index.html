@@ -91,21 +91,37 @@
 
   <section class="wrap why" id="why">
     <h2 class="big rv">飞书、Teams 有字幕？<br><span class="strike">只在它们自己的 app 里。</span></h2>
-    <p class="lead rv">X Space、YouTube 直播、Discord、播客没有。知了听的是整台 Mac 的声音，不用机器人进会，对方什么都不用装。</p>
+    <p class="lead rv">遇到 X Space、YouTube 直播、Discord 或播客就用不上了。知了直接听整台 Mac 的声音，不用派机器人进会，对方也不用装任何东西。</p>
     <div class="rows">
-      <div class="card compare rv"><h3>能在哪里用</h3><div><b>内置字幕</b>只在自家 app 的会议里</div><div class="us"><b>知了</b>任何 app、任何网页、任何直播</div></div>
-      <div class="card compare rv"><h3>需要谁同意</h3><div><b>内置字幕</b>主持人开启，常常还要付费版</div><div class="us"><b>知了</b>你自己打开就行，不影响别人</div></div>
-      <div class="card compare rv"><h3>你能开口吗</h3><div><b>内置字幕</b>大多只给字幕，不替你说</div><div class="us"><b>知了</b>按住右 ⌥ 说中文，对方听到他们的语言</div></div>
+      <div class="card compare rv"><h3>能在哪里用</h3><div><b>内置字幕</b>限自家 app 的会议内</div><div class="us"><b>知了</b>电脑上放得出声音的 app、网页和直播都能用</div></div>
+      <div class="card compare rv"><h3>需要谁同意</h3><div><b>内置字幕</b>要主持人开启，往往还得买付费版</div><div class="us"><b>知了</b>自己打开就能用，不影响别人</div></div>
+      <div class="card compare rv"><h3>你能开口吗</h3><div><b>内置字幕</b>大多只能看字幕，不能替你说话</div><div class="us"><b>知了</b>按住右 ⌥ 说中文，对方听到他们的语言</div></div>
     </div>
   </section>
 
   <section class="wrap verbs" id="how" aria-label="能做什么">
-    <article class="verb rv" id="subtitles"><small>01 · 实时字幕</small><h3>听得懂</h3><p>别人说的话，实时变成中文字幕。对方说的是哪种语言，它自己听得出来；语音识别完全在你的 Mac 上完成。</p></article>
-    <article class="verb rv" id="interpreting"><small>02 · 同声传译</small><h3>说得出</h3><p>按住右 ⌥ 说话，松开后自动译成对方的语言，通过虚拟麦克风说给对方听。任何能发言的 app 都支持。</p></article>
-    <article class="verb rv" id="notes"><small>03 · 会议纪要</small><h3>记得住</h3><p>边开会边整理：要点、结论、待办和“我错过了什么”。会后留一份双语记录，可导出 Markdown、Word、SRT。</p></article>
-    <p class="fine">字幕处处可用；同声传译需要你能发言的场合，比如开会，或在 Space 连麦发言；AI 纪要需要你自己的 Ling key。</p>
+    <article class="verb rv" id="subtitles"><small>01 · 实时字幕</small><h3>听得懂</h3><p>把别人说的话实时转成中文字幕。对方说哪种语言会自动听出来，语音识别全在你的 Mac 本地完成。</p></article>
+    <article class="verb rv" id="interpreting"><small>02 · 同声传译</small><h3>说得出</h3><p>按住右 ⌥ 说话，松开后自动译成对方的语言，通过虚拟麦克风说给对方听。只要是能连麦说话的 app 都支持。</p></article>
+    <article class="verb rv" id="notes"><small>03 · 会议纪要</small><h3>记得住</h3><p>边开会边整理要点、结论、待办和“我错过了什么”。散会后留下一份双语记录，支持导出 Markdown、Word 和 SRT。</p></article>
+    <p class="fine">字幕在任何有声音的地方都能用。同声传译需要你能开麦说话的场合，比如线上会议或 X Space 连麦。AI 纪要需要填入你自己的 Ling key。</p>
   </section>
 
+  <section class="wrap roadmap" id="privacy" aria-labelledby="privacy-t">
+    <div class="head rv"><h2 id="privacy-t">权限与隐私</h2><a href="https://github.com/wquguru/cicada/blob/main/README.zh-CN.md#隐私与权限">每项权限的说明 →</a></div>
+    <div class="rows">
+      <div class="card stage-card rv"><small class="now">本机</small><h3>声音在 Mac 本地转成文字</h3><p>录音和会议记录只存在你自己的硬盘里。会发出去的只有识别出来的文字（用来翻译和写纪要），以及用同声传译时你按住按键说的那几句。</p></div>
+      <div class="card stage-card rv"><small>权限</small><h3>用到才问，不给也能用</h3><p>系统声音权限用来出字幕，麦克风只在按住说话键时才录，输入监控只看右 ⌥ 有没有按下（换成组合键就不用这个权限）。共享屏幕时别人看不到纪要窗口。</p></div>
+      <div class="card stage-card rv"><small>透明</small><h3>没有埋点，代码开源</h3><p>只连接翻译服务、你自己的 Ling key、BlackHole 官方下载和 GitHub。没有任何统计埋点，也没有我们自己的服务器。安装包可以用 SHA-256 校验。</p></div>
+    </div>
+  </section>
+
+  <section class="wrap roadmap" id="roadmap" aria-labelledby="roadmap-t">
+    <div class="head rv"><h2 id="roadmap-t">接下来</h2><a href="https://github.com/wquguru/cicada/issues">想要什么，告诉我们 →</a></div>
+    <div class="rows">
+      <div class="card stage-card rv"><small class="now">接下来 · Mac</small><h3>记录我的发言、区分说话人</h3><p>你在会上说的话也记进纪要。支持到 macOS 14.4。加上正式签名，省去首次打开点“仍要打开”。区分对面的多位说话人，待办事项标出是谁说的。支持用本机模型写纪要，不用填 key。</p></div>
+      <div class="card stage-card rv"><small>更远</small><h3>声纹识别、Windows 和 Android</h3><p>记住常开会同事的声音，下次自动认出是谁，声纹只存在本机。Windows 会做完整版。Android 受系统限制拿不到通话声音，先做能听视频和直播的字幕、面对面模式和会议记录查看端。</p></div>
+    </div>
+  </section>
   <section class="wrap latest" aria-labelledby="latest-t">
     <div class="head rv"><h2 id="latest-t">最近更新</h2><a href="{{ROOT}}changelog/">全部更新日志 →</a></div>
     <div class="rows">{{LATEST}}</div>
