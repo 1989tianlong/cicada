@@ -51,6 +51,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 
 - **Push-to-talk interpreting.** Hold the right `⌥` key (or a shortcut you choose) and speak. The room hears your words translated through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click.
 - **Natural voices or your own voice.** With a Ling API key, the Ming audio model listens and translates in one step in about 2 seconds, keeping names accurate. The other side can hear natural Ming voices (Emma, George, Charlotte for English; 小雅, 小棠, 小锋, 卓然 for Chinese; plus Japanese, Korean, German, French and Spanish), macOS system voices, or a clone of your own voice from an 8 to 30 second sample. Without a key, Cicada uses macOS system voices.
+- **Test before the meeting.** "试一句" in Settings runs one sentence through the full pipeline into the virtual microphone and plays back exactly what the other side receives. It also shows the time each step took and checks that the audio can be heard and understood.
 
 ### Meeting records
 

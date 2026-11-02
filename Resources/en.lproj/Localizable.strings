@@ -35,8 +35,14 @@
 "只存在这台 Mac 上（只有你的账户能读），只发给 Ling（ant-ling.com）" = "Stored only on this Mac, sent only to Ling (ant-ling.com)";
 "移除" = "Remove";
 
+/* AboutPanel */
+"把 Mac 正在播放的声音变成实时双语字幕和会议纪要" = "Live bilingual subtitles and meeting notes from whatever your Mac is playing";
+"网站" = "Website";
+"反馈问题" = "Report an Issue";
+
 /* AppMenu */
 "关于 %@" = "About %@";
+"检查更新…" = "Check for Updates…";
 "设置…" = "Settings…";
 "AI 服务…" = "AI Service…";
 "隐藏 %@" = "Hide %@";
@@ -71,7 +77,19 @@
 "关闭" = "Close";
 "帮助" = "Help";
 "新手引导" = "Getting Started";
+"%@ 网站" = "%@ Website";
+"反馈问题…" = "Report an Issue…";
 "开始记录" = "Start Recording";
+"安装 %@ 并重新打开" = "Install %@ and Reopen";
+"有新版本 %@" = "Version %@ is available";
+"当前版本 %@。安装后会自动重新打开。" = "You have %@. The app reopens after installing.";
+"安装并重新打开" = "Install and Reopen";
+"更新说明" = "Release Notes";
+"稍后" = "Later";
+"已是最新版本" = "You’re up to date";
+"当前版本 %@。" = "You have %@.";
+"暂时无法检查更新" = "Couldn’t check for updates";
+"连不上 GitHub，请稍后再试。" = "GitHub can’t be reached. Try again later.";
 
 /* AppModel */
 "准备就绪" = "Ready";
@@ -290,6 +308,7 @@
 "收起后新增 " = "New: ";
 
 /* Onboarding */
+"%@（有新版本）" = "%@ (update available)";
 "先打开“听电脑里的声音”" = "Turn on “Hear the Mac's audio” first";
 "以后再说" = "Later";
 "上一步" = "Back";
@@ -336,6 +355,7 @@
 
 /* SettingsWindow */
 "语言" = "Language";
+"通用" = "General";
 "AI 服务" = "AI Service";
 "诊断" = "Diagnostics";
 "原文 + 译文" = "Both";
@@ -371,15 +391,21 @@
 "对方会听到：" = "They will hear: ";
 "一段声音" = "a sound";
 "虚拟麦克风未收到声音，请再试一次" = "The virtual microphone got no sound; try again";
-"按住说话，松开后约 2 秒，对方听到译文" = "Hold to talk; about 2 s after you let go, they hear the translation";
-"在会议软件中，将麦克风选为「%@」。" = "In your meeting app, set the microphone to “%@”.";
-"把我的话翻译给对方听" = "Translate what I say for them";
-"单独按住右侧 ⌥；与其他键同时按不会触发" = "Hold right ⌥ alone; it doesn't trigger with other keys";
-"说%@，对方听到%@" = "Speak %1$@, they hear %2$@";
-"声音输出到" = "Send voice to";
+"说一句话，听对方听到的声音，看每一步花了多久" = "Say one sentence, hear what they hear, and see how long each step takes";
 "把我说的翻译给对方" = "Translate what I say for them";
-"修改" = "Change";
+"上次发言：松开后 %@ 秒，对方听到译文" = "Last time: they heard the translation %@ s after you let go";
+"按住说话，松开后约 1 秒，对方听到译文" = "Hold to talk; about 1 s after you let go, they hear the translation";
+"按住说话，松开后约 3 秒，对方听到译文" = "Hold to talk; about 3 s after you let go, they hear the translation";
+"试一句" = "Try it";
+"单独按住右侧 ⌥；和别的键一起按不触发" = "Hold the right ⌥ alone; it does nothing with other keys";
+"按住快捷键说话，松开发送" = "Hold the shortcut to talk, let go to send";
+"声音输出到" = "Send voice to";
+"对方只能听到虚拟麦克风里的声音" = "They only hear what goes into the virtual microphone";
 "虚拟麦克风（自动）" = "Virtual microphone (auto)";
+"高级：声音输出到 · %@" = "Advanced: voice goes to · %@";
+"在会议软件里把麦克风选成「%@」" = "In your meeting app, choose “%@” as the microphone";
+"试音通过" = "Sound test passed";
+"已装好" = "Installed";
 "听的时候显示" = "While listening, show";
 "选择任意模式都会正常保存记录、生成纪要" = "Every mode still saves the meeting and writes notes";
 "切换显示方式" = "Switch display";
@@ -399,9 +425,7 @@
 "保存会议录音" = "Save meeting audio";
 "只存在这台 Mac 上" = "Stored only on this Mac";
 "记录文件夹" = "Records folder";
-"首次引导" = "Getting started";
 "打开" = "Open";
-"重新看" = "Show Again";
 
 /* Shortcuts */
 "右 ⌥" = "Right ⌥";
@@ -413,6 +437,92 @@
 "没有可用的麦克风" = "No microphone available";
 "麦克风无法启动，请在系统设置里允许%@使用麦克风" = "The microphone won't start. Allow %@ to use it in System Settings";
 "翻译失败，这句话未发送" = "Translation failed; this sentence wasn't sent";
+
+/* SpeakTest */
+"语音识别还没准备好，请稍后再试" = "Speech recognition isn't ready yet; try again shortly";
+"打不开虚拟麦克风，点“让系统认出它”后再试" = "Can't open the virtual microphone; click “Load it” and try again";
+"还没有虚拟麦克风，先在上面装好它" = "No virtual microphone yet; set it up above first";
+"试音要用麦克风权限，请在系统设置里允许%@" = "The sound test needs microphone access; allow %@ in System Settings";
+"默认输出" = "Default output";
+"麦克风几乎没收到声音：检查系统设置里的输入设备" = "The microphone heard almost nothing: check the input device in System Settings";
+"没听出说了什么：靠近麦克风再说一次" = "Couldn't make out the words: move closer to the mic and try again";
+"翻译没有成功：检查网络，或稍后再试" = "Translation failed: check your network or try again later";
+"没有合成出声音：换一个声音再试" = "No voice came out: try another voice";
+"声音没进虚拟麦克风：点“再试音”或重新让系统认出它" = "Nothing reached the virtual microphone: have the system load it again";
+"「声音输出到」是「%@」，对方只能听到虚拟麦克风里的声音" = "The voice goes to “%@”; they only hear the virtual microphone";
+"声音有削波，对方可能听到破音" = "The audio clips; they may hear distortion";
+"对方那边听写出来差别较大，可能听不清" = "Transcribed on their side it differs a lot; they may not catch it";
+"意思可能走样了" = "The meaning may have drifted";
+
+/* SpeakTestView */
+"对方听得到，也听得懂" = "They can hear it, and understand it";
+"对方听不到" = "They can't hear it";
+"这句话没送出去" = "This sentence wasn't sent";
+"对方听得到，但可能听不清" = "They can hear it, but may not catch it";
+"走一遍真实流程，录下对方会听到的声音，再放给你听" = "Runs the real chain, records what they'll hear, and plays it back to you";
+"下面是对方那边收到的原样声音" = "Below is exactly what their side received";
+"试音会真的送进虚拟麦克风：开会时对方也会听到。" = "The test really goes into the virtual microphone: in a meeting, they'll hear it too.";
+"我说一句" = "I'll say it";
+"用示例句子" = "Use a sample";
+"点开始后按住按钮，说一句话再松开" = "After Start, hold the button, say a sentence, then let go";
+"点开始后按住按钮或右侧 ⌥，说一句话再松开" = "After Start, hold the button or the right ⌥, say a sentence, then let go";
+"点开始后按住按钮或说话快捷键，说一句话再松开" = "After Start, hold the button or the talk shortcut, say a sentence, then let go";
+"用本机声音读一句%@：「%@」" = "The Mac reads a %@ sentence: “%@”";
+"或按住右侧 ⌥" = "or hold the right ⌥";
+"或按住说话快捷键" = "or hold the talk shortcut";
+"松开就发送" = "Let go to send";
+"你的话" = "Your words";
+"识别 + 翻译" = "Recognize + translate";
+"识别" = "Recognize";
+"合成声音" = "Voice";
+"示例句子" = "Sample sentence";
+"麦克风峰值 %lld dB" = "Mic peak %lld dB";
+"本机转写定稿" = "Final transcript on this Mac";
+"没有译文" = "No translation";
+"本机（Ming 未成功）" = "This Mac (Ming failed)";
+"本机声音" = "Mac voice";
+"只录到静音" = "Only silence recorded";
+"录到 %@ 秒声音" = "Recorded %@ s of sound";
+"正在重新听写对方收到的声音…" = "Transcribing what they received…";
+"同时录下对方那一侧" = "Recording their side at the same time";
+"停" = "Stop";
+"听" = "Play";
+"%@ 秒" = "%@ s";
+"合成首音" = "First audio";
+"到达虚拟麦克风" = "Into the virtual mic";
+"没有 Ling key 时用 Google 翻译，需要能访问 Google。" = "Without a Ling key, translation uses Google, which must be reachable.";
+"换个声音" = "Choose another voice";
+"播放对方听到的声音" = "Play what they heard";
+"听我的原声" = "Play my original";
+"听对方听到的" = "Hear what they heard";
+"从虚拟麦克风录下的原样声音 · %@ 秒" = "Recorded as-is from the virtual mic · %@ s";
+"送出的译文" = "Translation sent";
+"对方那边听写" = "Transcribed on their side";
+"（没听写出来）" = "(nothing transcribed)";
+"再译回来" = "Translated back";
+"有声" = "Audible";
+"有削波" = "Clipping";
+"音量正常" = "Level OK";
+"听得清" = "Clear";
+"本机重新听写" = "Re-transcribed here";
+"意思对" = "Meaning";
+"一致 %lld" = "Matches %lld";
+"走样 %lld" = "Drifted %lld";
+"Ling 比对原话" = "Checked by Ling";
+"请看上面" = "See above";
+"已译回你的语言" = "Translated back into your language";
+"未检查" = "Not checked";
+"需要 Ling key" = "Needs Ling key";
+"%lld%% 词对上" = "%lld%% of words match";
+"松开后" = "After release";
+"对方听到第一个字" = "until they hear the first word";
+"改回虚拟麦克风并重试" = "Switch back to the virtual mic and retry";
+"正在播放…" = "Playing…";
+"在扬声器上听译文" = "Play the translation on my speakers";
+"开始" = "Start";
+"再试一句" = "Try again";
+"复制报告" = "Copy report";
+"完成" = "Done";
 
 /* SystemAudioTap */
 "无法启动音频采集（%d）" = "Can't start audio capture (%d)";
@@ -426,6 +536,36 @@
 "无法创建音频聚合设备（%d）" = "Can't create the aggregate audio device (%d)";
 "找不到默认输出设备" = "Can't find the default output device";
 "无法创建系统音频 Tap（%d）" = "Can't create the system audio tap (%d)";
+
+/* UpdateViews */
+"下载进度" = "Download progress";
+"新版本 %@" = "Version %@";
+"正在下载 %lld%%，完成后自动重新打开" = "Downloading %lld%%, reopens when done";
+"没能自动更新：%@。已打开下载页" = "Couldn’t update automatically: %@. Opened the download page";
+"安装后自动重新打开" = "Reopens after installing";
+"登录时打开" = "Open at Login";
+"版本 %@" = "Version %@";
+"首次引导" = "Getting started";
+"请在“系统设置 › 通用 › 登录项”中允许" = "Allow it in System Settings › General › Login Items";
+"开机后在菜单栏待命，不弹窗口" = "Waits in the menu bar, no windows";
+"正在下载 %@：%lld%%" = "Downloading %@: %lld%%";
+"没能自动更新：%@" = "Couldn’t update automatically: %@";
+"连不上 GitHub，请稍后再试" = "GitHub can’t be reached; try again later";
+"检查更新" = "Check for Updates";
+"重新看" = "Show Again";
+
+/* Updater */
+"下载的不是预期的版本" = "The download isn’t the expected version";
+"下载的文件校验不通过" = "The download didn’t match its checksum";
+"请先把应用拖进“应用程序”文件夹" = "Move the app to Applications first";
+"这个版本没有可安装的文件" = "This release has nothing to install";
+"下载失败（HTTP %lld）" = "The download failed (HTTP %lld)";
+"下载失败" = "The download failed";
+"更新包无效" = "The update package is invalid";
+
+/* Updates */
+"安装更新会结束这场记录，已记下的内容会保存。" = "Installing the update ends this recording. What has been recorded is kept.";
+"结束并更新" = "End and Update";
 
 /* Views */
 "自动识别（%@）" = "Auto-detect (%@)";
@@ -489,26 +629,31 @@
 "安装未完成，请再试一次" = "Installation didn't finish; try again";
 "系统还没认出它，点“让系统认出它”再试一次" = "macOS hasn't loaded it yet; click “Load it” and try again";
 "%@要让系统认出虚拟麦克风，声音会断约 1 秒。" = "%@ needs to load the virtual microphone; audio will cut out for about 1 second.";
-"试音要用麦克风权限，请在系统设置里允许%@" = "The sound test needs microphone access; allow %@ in System Settings";
-"打不开虚拟麦克风，点“让系统认出它”后再试" = "Can't open the virtual microphone; click “Load it” and try again";
 
 /* VoicePicker */
-"每种语言会记住你选的声音。对方当前在说%@。" = "Each language remembers its voice. They're speaking %@ now.";
-"对方听到的声音" = "The voice they hear";
-"未填写 Ling key 时仅可使用系统声音；填入 key 后可使用 Ming 语音或克隆你自己的声音。" = "Without a Ling key only the Mac's voices are available; with one you can use Ming voices or clone your own.";
-"录音仅保存在本机，每次发言时随文字发送给 Ling 合成语音；Ling 不可用时自动切回系统声音。" = "The recording stays on this Mac and is sent to Ling with each sentence to synthesize speech; falls back to the Mac's voice when Ling is unavailable.";
-"Ming 语音需使用 Ling key，延迟约 1.5 秒；Ling 不可用时自动切回系统声音。" = "Ming voices need a Ling key and add about 1.5 s; falls back to the Mac's voice when Ling is unavailable.";
-"更多…" = "More…";
+"你说%@，对方听到%@" = "You speak %@, they hear %@";
+"改语言" = "Change";
+"选择对方听到的声音" = "Choose the voice they hear";
 "试听" = "Preview";
-"需要 Ling key" = "Needs Ling key";
-"用这个" = "Use";
-"重录" = "Re-record";
+"系统声音" = "System voice";
+"你的音色" = "Your voice";
+"填入 Ling key：声音更自然，还能用你自己的声音" = "Add a Ling key for more natural voices, including your own";
+"去填写" = "Add key";
+"每种语言各记一个声音" = "Each language remembers its voice";
+"对方说%@时用" = "Used when they speak %@";
+"（当前）" = " (now)";
+"Ling 不可用时自动换成本机声音" = "Falls back to the Mac's voice when Ling is unavailable";
+"填入 Ling key 后可用 Ming 声音和你自己的声音" = "With a Ling key you can use Ming voices and your own voice";
+"慢约 1 秒" = "~1 s slower";
+"最快" = "Fastest";
+"用我自己的声音" = "Use my own voice";
 "录制" = "Record";
 "我自己的声音" = "My own voice";
-"已录好 · %lld 秒 · %@" = "Recorded · %lld s · %@";
-"录制 15 秒原声，让对方听到你的音色；说外语时会保留你的口音，延迟约 3 秒" = "Record 15 s so they hear your own voice; in a foreign language it keeps your accent, about 3 s delay";
-"说%@最像你，晚约 3 秒" = "Sounds most like you in %@, about 3 s later";
-"说%@会带你的口音，晚约 3 秒" = "Keeps your accent in %@, about 3 s later";
+"录 15 秒原声，对方听到你的音色，晚约 3 秒" = "Record 15 s so they hear your own voice, about 3 s later";
+"已录 %lld 秒 · %@" = "Recorded %lld s · %@";
+"重录" = "Re-record";
+"最像你" = "sounds most like you";
+"会带你的口音" = "keeps your accent";
 "录制你的声音" = "Record your voice";
 "请用平时开会的自然语气朗读以下段落，约 15 秒，在安静环境下录制效果最佳。" = "Read this passage aloud the way you talk in meetings, about 15 s. A quiet room works best.";
 "这是我自己的声音。只在我说话时用它替我翻译。" = "This is my own voice. Use it only to translate for me when I speak.";
@@ -549,45 +694,3 @@
 "无法打开麦克风：%@" = "Can't open the microphone: %@";
 "录音太短了，请至少朗读 %lld 秒" = "Too short; read for at least %lld seconds";
 "没听清录音内容，请换个安静的地方再录一次" = "Couldn't make out the recording; try again somewhere quiet";
-
-/* Updates, login item, About */
-"把 Mac 正在播放的声音变成实时双语字幕和会议纪要" = "Live bilingual subtitles and meeting notes from whatever your Mac is playing";
-"网站" = "Website";
-"反馈问题" = "Report an Issue";
-"检查更新…" = "Check for Updates…";
-"%@ 网站" = "%@ Website";
-"反馈问题…" = "Report an Issue…";
-"安装 %@ 并重新打开" = "Install %@ and Reopen";
-"有新版本 %@" = "Version %@ is available";
-"当前版本 %@。安装后会自动重新打开。" = "You have %@. The app reopens after installing.";
-"安装并重新打开" = "Install and Reopen";
-"更新说明" = "Release Notes";
-"稍后" = "Later";
-"已是最新版本" = "You’re up to date";
-"当前版本 %@。" = "You have %@.";
-"暂时无法检查更新" = "Couldn’t check for updates";
-"连不上 GitHub，请稍后再试。" = "GitHub can’t be reached. Try again later.";
-"%@（有新版本）" = "%@ (update available)";
-"通用" = "General";
-"下载进度" = "Download progress";
-"新版本 %@" = "Version %@";
-"正在下载 %lld%%，完成后自动重新打开" = "Downloading %lld%%, reopens when done";
-"没能自动更新：%@。已打开下载页" = "Couldn’t update automatically: %@. Opened the download page";
-"安装后自动重新打开" = "Reopens after installing";
-"登录时打开" = "Open at Login";
-"版本 %@" = "Version %@";
-"请在“系统设置 › 通用 › 登录项”中允许" = "Allow it in System Settings › General › Login Items";
-"开机后在菜单栏待命，不弹窗口" = "Waits in the menu bar, no windows";
-"正在下载 %@：%lld%%" = "Downloading %@: %lld%%";
-"没能自动更新：%@" = "Couldn’t update automatically: %@";
-"连不上 GitHub，请稍后再试" = "GitHub can’t be reached; try again later";
-"检查更新" = "Check for Updates";
-"下载的不是预期的版本" = "The download isn’t the expected version";
-"下载的文件校验不通过" = "The download didn’t match its checksum";
-"请先把应用拖进“应用程序”文件夹" = "Move the app to Applications first";
-"这个版本没有可安装的文件" = "This release has nothing to install";
-"下载失败（HTTP %lld）" = "The download failed (HTTP %lld)";
-"下载失败" = "The download failed";
-"更新包无效" = "The update package is invalid";
-"安装更新会结束这场记录，已记下的内容会保存。" = "Installing the update ends this recording. What has been recorded is kept.";
-"结束并更新" = "End and Update";
