@@ -12,6 +12,9 @@ struct NotesContentView: View {
     var fresh: Set<String> = []
     /// The meeting is still going: the last topic is "正在讲".
     var live = false
+    /// The main window's page: the summary as a lead paragraph, quiet section labels, rules
+    /// between rows instead of cards.
+    var document = false
     var updating = false
     var summaryJustChanged = false
     /// The time of the last line the notes cover ("到 03:52").
@@ -21,8 +24,11 @@ struct NotesContentView: View {
     var onJump: (Double) -> Void = { _ in }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            if !notes.summary.isEmpty {
+        VStack(alignment: .leading, spacing: document ? 32 : 18) {
+            if document && !notes.summary.isEmpty {
+                Text(notes.summary).font(.system(size: 17)).lineSpacing(7).foregroundStyle(Palette.ink.opacity(0.9))
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            } else if !notes.summary.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text("总结").font(.system(size: 15, weight: .bold))
@@ -40,49 +46,33 @@ struct NotesContentView: View {
             }
 
             if !notes.topics.isEmpty {
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionTitle("议题")
+                VStack(alignment: .leading, spacing: document ? 0 : 14) {
+                    title("议题")
                     ForEach(Array(notes.topics.enumerated()), id: \.element.id) { i, topic in
+                        if document { Divider() }
                         TopicView(topic: topic,
                                   end: i + 1 < notes.topics.count ? notes.topics[i + 1].start : (live ? nil : endedAt),
                                   current: live && i == notes.topics.count - 1,
                                   updating: updating && i == notes.topics.count - 1, fresh: fresh, onJump: onJump)
+                            .padding(.vertical, document ? 14 : 0)
                     }
                 }
             }
 
             if !notes.conclusions.isEmpty || !notes.todos.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(notes.todos.isEmpty ? "结论" : "结论和待办")
-                    FramedList {
-                        ForEach(Array((notes.conclusions + notes.todos).enumerated()), id: \.offset) { i, item in
-                            let todo = i >= notes.conclusions.count
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                if todo {
-                                    Image(systemName: "circle").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-                                }
-                                Text(item.text + (item.owner.map { "（\($0)）" } ?? ""))
-                                    .font(.system(size: 14)).lineSpacing(2)
-                                    .foregroundStyle(item.support == 0 ? Palette.tertiary : Palette.ink)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                if item.support == 0 {
-                                    Tag("依据较少")
-                                } else if let t = item.t {
-                                    TimeLink(text: "\(NotesEngine.clock(t)) · \(item.support) 句", t: t, onJump: onJump)
-                                } else {
-                                    Tag("依据 \(item.support) 句")
-                                }
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 11)
-                            if i < notes.conclusions.count + notes.todos.count - 1 { Divider() }
-                        }
+                    title(notes.todos.isEmpty ? "结论" : "结论和待办")
+                    if document {
+                        VStack(alignment: .leading, spacing: 0) { items }
+                    } else {
+                        FramedList { items }
                     }
                 }
             }
 
             if !notes.terms.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle("人名和术语")
+                    title("人名和术语")
                     FlowLayout(spacing: 6) {
                         ForEach(notes.terms) { t in
                             (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)")
@@ -95,6 +85,46 @@ struct NotesContentView: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func title(_ text: String) -> some View {
+        if document {
+            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.bottom, 2)
+        } else {
+            SectionTitle(text)
+        }
+    }
+
+    @ViewBuilder
+    private var items: some View {
+        let all = notes.conclusions + notes.todos
+        ForEach(Array(all.enumerated()), id: \.offset) { i, item in
+            let todo = i >= notes.conclusions.count
+            if document && i > 0 { Divider() }
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if todo {
+                    Image(systemName: "circle").font(.system(size: document ? 13 : 11)).foregroundStyle(Palette.tertiary)
+                } else if document {
+                    Circle().fill(Palette.ink.opacity(0.55)).frame(width: 5, height: 5)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
+                        .frame(width: 13)
+                }
+                Text(item.text + (item.owner.map { "（\($0)）" } ?? ""))
+                    .font(.system(size: 14)).lineSpacing(2)
+                    .foregroundStyle(item.support == 0 ? Palette.tertiary : Palette.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if item.support == 0 {
+                    Tag("依据较少")
+                } else if let t = item.t {
+                    TimeLink(text: "\(NotesEngine.clock(t)) · \(item.support) 句", t: t, onJump: onJump)
+                } else {
+                    Tag("依据 \(item.support) 句")
+                }
+            }
+            .padding(.horizontal, document ? 0 : 16).padding(.vertical, 11)
+            if !document && i < all.count - 1 { Divider() }
         }
     }
 }

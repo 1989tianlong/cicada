@@ -252,6 +252,7 @@ struct MainWindowView: View {
     @State private var titleDraft = ""
     @State private var tab = "notes"
     @State private var jumpTo: Double?
+    @FocusState private var searchFocused: Bool
 
     private var filtered: [Session] {
         guard !query.isEmpty else { return store.sessions }
@@ -266,56 +267,83 @@ struct MainWindowView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 270)
+                .frame(width: 264)
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.line, lineWidth: 1))
-                .padding(.trailing, 14).padding(.bottom, 14).padding(.top, 38)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line, lineWidth: 1))
+                .padding(.trailing, 10).padding(.vertical, 10)
         }
         .background(Palette.ground)
+        .background(Button("") { searchFocused = true }.keyboardShortcut("f").opacity(0))
+        .onChange(of: model.mainShow) { _, show in
+            guard let parts = show?.split(separator: ",").map(String.init), let id = parts.first else { return }
+            selection = id
+            tab = parts.count > 1 ? parts[1] : "notes"
+            if parts.count > 2 { view = parts[2] }
+        }
     }
 
     // MARK: Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                LogoTile(size: 28)
-                Text("会议记录").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.ink)
-                Spacer()
-                Button { model.openSettings() } label: {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 14)).frame(width: 32, height: 32)
-                }
-                .buttonStyle(.plain).foregroundStyle(Palette.secondary).help("设置")
-            }
-            .padding(.top, 38)
-
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Palette.tertiary)
-                TextField("搜索会议内容", text: $query).textFieldStyle(.plain)
+                TextField("搜索标题和原话", text: $query).textFieldStyle(.plain).focused($searchFocused)
+                if query.isEmpty {
+                    Text("⌘F").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                } else {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(Palette.tertiary).help("清除")
+                }
             }
             .font(.system(size: 13))
             .padding(.horizontal, 10).frame(height: 34)
-            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.line, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.914, green: 0.922, blue: 0.937)))
+            .padding(.top, 40)
 
             ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(filtered) { s in
-                        sessionRow(s)
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(groups, id: \.title) { g in
+                        Text(g.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.tertiary)
+                            .padding(.horizontal, 10).padding(.top, g.title == groups.first?.title ? 0 : 12).padding(.bottom, 4)
+                        ForEach(g.sessions) { sessionRow($0) }
+                    }
+                    if store.sessions.isEmpty {
+                        Text("开启字幕后，每场会议都会自动保存在这里。")
+                            .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                            .padding(.horizontal, 10)
+                    } else if filtered.isEmpty {
+                        Text("没有找到“\(query)”").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                            .padding(.horizontal, 10)
                     }
                 }
             }
-            if store.sessions.isEmpty {
-                Text("开启字幕后，每场会议都会自动保存在这里。")
-                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                    .padding(.top, 8)
-                Spacer()
-            }
+            .scrollIndicators(.never)
+
+            statusCard
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 14)
+        .padding(.leading, 14).padding(.trailing, 12).padding(.bottom, 14)
+    }
+
+    /// 今天 / 昨天 / 本周 / then one group per month, newest first.
+    private var groups: [(title: String, sessions: [Session])] {
+        let cal = Calendar.current
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        var out: [(title: String, sessions: [Session])] = []
+        for s in filtered {
+            let d = s.startedAt
+            let title: String
+            if cal.isDateInToday(d) { title = "今天" }
+            else if cal.isDateInYesterday(d) { title = "昨天" }
+            else if cal.isDate(d, equalTo: Date(), toGranularity: .weekOfYear) { title = "本周" }
+            else if cal.isDate(d, equalTo: Date(), toGranularity: .year) { f.dateFormat = "M月"; title = f.string(from: d) }
+            else { f.dateFormat = "yyyy年M月"; title = f.string(from: d) }
+            if out.last?.title == title { out[out.count - 1].sessions.append(s) } else { out.append((title, [s])) }
+        }
+        return out
     }
 
     private func sessionRow(_ s: Session) -> some View {
@@ -325,17 +353,20 @@ struct MainWindowView: View {
             selection = s.id
             titleDraft = s.title
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
                     if live { Circle().fill(Palette.accent).frame(width: 7, height: 7) }
                     Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
                 }
-                Text(meta(s, live: live)).font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1)
+                Text(meta(s, live: live)).font(.system(size: 11))
+                    .foregroundStyle(live ? Palette.accentInk : Palette.secondary).lineLimit(1)
+                    .padding(.leading, live ? 14 : 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.white : Color.clear))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Palette.line : Color.clear, lineWidth: 1))
+            .padding(.horizontal, 10).padding(.vertical, 9)
+            .background(RoundedRectangle(cornerRadius: 9).fill(selected ? Color.white : Color.clear)
+                .shadow(color: selected ? Palette.ink.opacity(0.06) : .clear, radius: 1, y: 1))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(selected ? Palette.line : Color.clear, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -348,10 +379,59 @@ struct MainWindowView: View {
     private func meta(_ s: Session, live: Bool) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = Calendar.current.isDateInToday(s.startedAt) ? "今天 HH:mm" : "M月d日 HH:mm"
+        let cal = Calendar.current
+        f.dateFormat = cal.isDateInToday(s.startedAt) || cal.isDateInYesterday(s.startedAt) ? "HH:mm"
+            : cal.isDate(s.startedAt, equalTo: Date(), toGranularity: .weekOfYear) ? "EEE HH:mm" : "M月d日 HH:mm"
+        if live { return "正在记录 · \(f.string(from: s.startedAt)) 起 · \(s.lines.count) 句" }
+        return [f.string(from: s.startedAt), Self.length(s), Self.pair(s, short: true)].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    static func length(_ s: Session) -> String {
         let mins = Int(s.duration / 60)
-        let length = mins < 1 ? "不到 1 分钟" : "\(mins) 分钟"
-        return live ? "进行中 · \(s.lines.count) 句" : "\(f.string(from: s.startedAt)) · \(length) · \(s.lines.count) 句"
+        if mins < 1 { return "不到 1 分钟" }
+        return mins < 60 ? "\(mins) 分钟" : mins % 60 == 0 ? "\(mins / 60) 小时" : "\(mins / 60) 小时 \(mins % 60) 分"
+    }
+
+    /// "英 → 中" (short) or "英语 → 中文", from the most common pair among the lines.
+    static func pair(_ s: Session, short: Bool) -> String? {
+        let pairs = Dictionary(grouping: s.lines.filter { $0.speaker != "me" }, by: { "\(lang($0.srcLang))|\(lang($0.dstLang))" })
+        guard let top = pairs.max(by: { $0.value.count < $1.value.count })?.key else { return nil }
+        let p = top.split(separator: "|").map(String.init)
+        guard p.count == 2, p[0] != p[1] else { return nil }
+        func name(_ c: String) -> String {
+            let names = ["en": "英语", "ja": "日语", "zh-CN": "中文", "zh-TW": "繁中", "ko": "韩语",
+                         "es": "西语", "fr": "法语", "de": "德语", "pt": "葡语"]
+            guard let n = names[c] else { return c.uppercased() }
+            return short ? String(n.prefix(1)) : n
+        }
+        return "\(name(p[0])) → \(name(p[1]))"
+    }
+
+    private static func lang(_ code: String) -> String {
+        let base = String(code.split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? "")
+        return base == "zh" ? (code.contains("Hant") || code.hasSuffix("TW") || code.hasSuffix("HK") ? "zh-TW" : "zh-CN") : base
+    }
+
+    /// What is listening right now, with the switch and settings at hand.
+    private var statusCard: some View {
+        HStack(spacing: 10) {
+            LogoTile(size: 28).opacity(model.running ? 1 : 0.5)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.running ? "正在听" : "已暂停").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text(model.running ? model.summary : "打开开关开始听").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Toggle("字幕", isOn: Binding(get: { model.running }, set: { model.setRunning($0) }))
+                .toggleStyle(.switch).labelsHidden().controlSize(.mini).tint(Palette.ink)
+            Button { model.openSettings() } label: {
+                Image(systemName: "slider.horizontal.3").font(.system(size: 13)).frame(width: 28, height: 28).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).foregroundStyle(Palette.secondary).help("设置")
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line, lineWidth: 1))
     }
 
     // MARK: Detail
@@ -359,90 +439,29 @@ struct MainWindowView: View {
     @ViewBuilder
     private var detail: some View {
         if let s = current {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .center, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("标题", text: Binding(
-                            get: { titleDraft.isEmpty ? s.title : titleDraft },
-                            set: { titleDraft = $0 }
-                        ))
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 20, weight: .bold))
-                        .onSubmit { store.rename(s.id, to: titleDraft) }
-                        Text(TranscriptExport.header(s) + " · \(s.lines.count) 句")
-                            .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            VStack(spacing: 0) {
+                toolbar(s)
+                Divider()
+                if s.lines.isEmpty {
+                    ScrollView {
+                        header(s).frame(maxWidth: 680).padding(.horizontal, 32).padding(.vertical, 36)
+                            .frame(maxWidth: .infinity)
                     }
-                    Spacer()
-                    Picker("内容", selection: $tab) {
-                        Text("纪要").tag("notes")
-                        Text("文字记录").tag("transcript")
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 150)
-                    if tab == "transcript" {
-                        Picker("显示", selection: $view) {
-                            Text("双语").tag("both")
-                            Text("原文").tag("src")
-                            Text("译文").tag("dst")
+                        .overlay {
+                            Text(s.id == store.liveID ? "正在听，说话的内容会出现在这里" : "这场会议没有记录到内容")
+                                .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         }
-                        .pickerStyle(.segmented).labelsHidden().frame(width: 150)
-                    }
-                    Menu {
-                        Button("复制为 Markdown") { model.export(s, kind: "copy") }
-                        Divider()
-                        Button("导出 Markdown…") { model.export(s, kind: "md") }
-                        Button("导出 Word…") { model.export(s, kind: "word") }
-                        Button("导出字幕 SRT…") { model.export(s, kind: "srt") }
-                        Divider()
-                        Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) }
-                    } label: {
-                        Text("导出").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                            .padding(.horizontal, 16).frame(height: 32)
-                            .background(RoundedRectangle(cornerRadius: 9).fill(Palette.ink))
-                    }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
-                    .disabled(s.lines.isEmpty)
-                }
-                .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
-                .onChange(of: s.id) { _, _ in titleDraft = "" }
-
-                Divider().padding(.horizontal, 28)
-
-                if tab == "notes" && !s.lines.isEmpty {
-                    SessionNotesView(model: model, engine: model.notes, ling: model.ling, session: s) { t in
+                } else if tab == "notes" {
+                    SessionNotesView(model: model, engine: model.notes, ling: model.ling, session: s,
+                                     header: AnyView(header(s))) { t in
                         jumpTo = t
                         tab = "transcript"
                     }
-                } else if s.lines.isEmpty {
-                    VStack(spacing: 8) {
-                        Spacer()
-                        Text(s.id == store.liveID ? "正在听，说话的内容会出现在这里" : "这场会议没有记录到内容")
-                            .font(.system(size: 13)).foregroundStyle(Palette.secondary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
                 } else {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(s.lines) { l in
-                                    lineRow(l).id(l.id)
-                                    Divider()
-                                }
-                            }
-                            .padding(.horizontal, 28)
-                        }
-                        .onChange(of: s.lines.count) { _, _ in
-                            if s.id == store.liveID, let last = s.lines.last {
-                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                            }
-                        }
-                        .onAppear {
-                            if let t = jumpTo, let l = s.lines.first(where: { $0.t >= t - 1 }) { proxy.scrollTo(l.id, anchor: .top) }
-                            jumpTo = nil
-                        }
-                    }
+                    transcript(s)
                 }
             }
+            .onChange(of: s.id) { _, _ in titleDraft = "" }
         } else {
             VStack(spacing: 10) {
                 LogoTile(size: 44)
@@ -454,33 +473,154 @@ struct MainWindowView: View {
         }
     }
 
+    private func toolbar(_ s: Session) -> some View {
+        HStack(spacing: 4) {
+            tabButton("纪要", id: "notes")
+            tabButton("文字记录", id: "transcript", count: s.lines.count)
+            Spacer()
+            if tab == "transcript" {
+                Picker("显示", selection: $view) {
+                    Text("双语").tag("both")
+                    Text("原文").tag("src")
+                    Text("译文").tag("dst")
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 150).padding(.trailing, 6)
+            }
+            Button { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) } label: {
+                Image(systemName: "folder").font(.system(size: 14)).frame(width: 32, height: 32).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).foregroundStyle(Palette.secondary).help("在 Finder 中显示")
+            Menu {
+                Button("复制为 Markdown") { model.export(s, kind: "copy") }
+                Divider()
+                Button("导出 Markdown…") { model.export(s, kind: "md") }
+                Button("导出 Word…") { model.export(s, kind: "word") }
+                Button("导出字幕 SRT…") { model.export(s, kind: "srt") }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("导出").font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Palette.ink))
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .disabled(s.lines.isEmpty)
+        }
+        .padding(.leading, 16).padding(.trailing, 14)
+        .frame(height: 52)
+    }
+
+    private func tabButton(_ title: String, id: String, count: Int? = nil) -> some View {
+        let on = tab == id
+        return Button { tab = id } label: {
+            HStack(spacing: 5) {
+                Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
+                    .foregroundStyle(on ? Palette.ink : Palette.secondary)
+                if let count { Text("\(count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary) }
+            }
+            .padding(.horizontal, 12).frame(height: 52)
+            .overlay(alignment: .bottom) { Rectangle().fill(on ? Palette.ink : .clear).frame(height: 2) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Date, the editable title and a row of facts: the top of the page, scrolling with it.
+    private func header(_ s: Session) -> some View {
+        let live = s.id == store.liveID
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(dateLine(s, live: live)).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            TextField("标题", text: Binding(
+                get: { titleDraft.isEmpty ? s.title : titleDraft },
+                set: { titleDraft = $0 }
+            ), axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.system(size: 28, weight: .bold))
+            .onSubmit { store.rename(s.id, to: titleDraft) }
+            HStack(spacing: 8) {
+                if live { Tag("正在记录", live: true) }
+                chip(Self.length(s))
+                chip("\(s.lines.count) 句")
+                if let p = Self.pair(s, short: false) { chip(p) }
+                if let n = (live ? model.notes.notes : s.notes), !n.isEmpty {
+                    if n.final { Tag("完整版纪要", live: true) } else { chip("速记版纪要") }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chip(_ text: String) -> some View {
+        Text(text).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Palette.fill))
+            .fixedSize()
+    }
+
+    private func dateLine(_ s: Session, live: Bool) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日 EEE HH:mm"
+        let start = f.string(from: s.startedAt)
+        guard !live, let end = s.endedAt else { return live ? "\(start) 起" : start }
+        f.dateFormat = "HH:mm"
+        return "\(start) – \(f.string(from: end))"
+    }
+
+    private func transcript(_ s: Session) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    header(s).padding(.bottom, 20)
+                    ForEach(s.lines) { l in
+                        Divider()
+                        lineRow(l).id(l.id)
+                    }
+                }
+                .frame(maxWidth: 680)
+                .padding(.horizontal, 32).padding(.vertical, 36)
+                .frame(maxWidth: .infinity)
+            }
+            .onChange(of: s.lines.count) { _, _ in
+                if s.id == store.liveID, let last = s.lines.last {
+                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+            }
+            .onAppear {
+                if let t = jumpTo, let l = s.lines.first(where: { $0.t >= t - 1 }) { proxy.scrollTo(l.id, anchor: .top) }
+                jumpTo = nil
+            }
+        }
+    }
+
     private func lineRow(_ l: TranscriptLine) -> some View {
         let me = l.speaker == "me"
         return HStack(alignment: .top, spacing: 16) {
             Text(TranscriptExport.clock(l.t))
-                .font(.system(size: 11).monospacedDigit()).foregroundStyle(Palette.tertiary)
-                .frame(width: 44, alignment: .leading).padding(.top, 2)
+                .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
+                .frame(width: 52, alignment: .leading).padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Circle().fill(me ? Palette.accent : Palette.ink.opacity(0.35)).frame(width: 7, height: 7)
-                    Text(me ? "你" : "对方").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.secondary)
-                }
+                Text(me ? "你" : "对方").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
                 if view != "dst" {
                     Text(l.src)
-                        .font(.system(size: view == "src" ? 14 : 13))
+                        .font(.system(size: view == "src" ? 15 : 13))
                         .foregroundStyle(view == "src" ? Palette.ink : Palette.tertiary)
+                        .lineSpacing(2)
                         .textSelection(.enabled)
                 }
                 if view != "src" {
                     Text(l.dst ?? "翻译中…")
-                        .font(.system(size: 14))
+                        .font(.system(size: 15)).lineSpacing(3)
                         .foregroundStyle(l.dst == nil ? Palette.tertiary : Palette.ink)
                         .textSelection(.enabled)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
     }
 }
 
@@ -492,6 +632,8 @@ struct SessionNotesView: View {
     @ObservedObject var engine: NotesEngine
     @ObservedObject var ling: LingClient
     let session: Session
+    /// The page's title block, scrolling with the notes.
+    var header: AnyView = AnyView(EmptyView())
     let onJump: (Double) -> Void
 
     private var live: Bool { session.id == model.store.liveID }
@@ -500,9 +642,11 @@ struct SessionNotesView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 30) {
+                header
                 if let notes, !notes.isEmpty {
-                    NotesContentView(notes: notes, fresh: live ? engine.fresh : [], live: live, onJump: onJump)
+                    NotesContentView(notes: notes, fresh: live ? engine.fresh : [], live: live, document: true,
+                                     endedAt: session.lines.last?.t, onJump: onJump)
                 } else if generating || (live && ling.hasKey && !session.lines.isEmpty) {
                     NotesGeneratingView(heard: session.lines.count)
                 } else {
@@ -529,8 +673,9 @@ struct SessionNotesView: View {
                     .background(RoundedRectangle(cornerRadius: 18).fill(Palette.raised))
                 }
             }
-            .padding(.horizontal, 28).padding(.vertical, 20)
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: 680, alignment: .leading)
+            .padding(.horizontal, 32).padding(.vertical, 36)
+            .frame(maxWidth: .infinity)
         }
     }
 }

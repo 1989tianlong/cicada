@@ -32,6 +32,8 @@ final class AppModel: ObservableObject {
     @Published var liveSource = ""
     @Published var liveTranslation = ""
     @Published var onboardingStep = 1
+    /// Debug: which meeting and tab the main window shows ("<id>" or "<id>,transcript").
+    @Published var mainShow: String?
     /// Hold right ⌥ is chosen but "输入监控" isn't allowed yet.
     @Published var talkNeedsPermission = false
     @Published var toggleKeyTaken = false
@@ -638,6 +640,21 @@ final class AppModel: ObservableObject {
             if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
                let png = rep.representation(using: .png, properties: [:]) {
                 try? png.write(to: URL(fileURLWithPath: arg))
+            }
+        case "mainShow": mainShow = arg
+        case "mainRender":
+            // The main window as drawn, for checking it without Screen Recording permission.
+            guard let view = NSApp.windows.first(where: { $0.contentView is NSHostingView<MainWindowView> })?.contentView,
+                  let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { break }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg))
+            // And the shown meeting's whole notes page beside it, for what is below the fold.
+            if let id = mainShow?.split(separator: ",").first.map(String.init), let n = store.session(id)?.notes {
+                let r = ImageRenderer(content: NotesContentView(notes: n, document: true).padding(32).frame(width: 744).background(Color.white))
+                r.scale = 2
+                if let img = r.nsImage, let tiff = img.tiffRepresentation, let full = NSBitmapImageRep(data: tiff) {
+                    try? full.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg + ".notes.png"))
+                }
             }
         case "notesState": debugLog("notes state=\(notes.state) topics=\(notes.notes.topics.count) covered=\(notes.notes.covered) glossary=\(notes.glossary.count) timedPoints=\(notes.notes.topics.reduce(0) { $0 + ($1.pointTimes?.compactMap { $0 }.count ?? 0) })/\(notes.notes.topics.reduce(0) { $0 + $1.points.count }) fresh=\(notes.fresh.count)")
         case "lingSimulate":
