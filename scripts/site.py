@@ -7,7 +7,7 @@ Also writes changelog/index.html, feed.xml (Atom), sitemap.xml and robots.txt.
 
     python3 scripts/site.py                 # → build/site
     python3 -m http.server -d build/site    # preview at http://localhost:8000/
-SITE_URL overrides the public address (default: the repo's GitHub Pages address).
+SITE_URL overrides the public address (default: https://cicada.indaloop.app/).
 """
 import html
 import json
@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT_DIR, "site")
 OUT = os.path.join(ROOT_DIR, "build", "site")
-SITE = (os.environ.get("SITE_URL") or "https://wquguru.github.io/cicada/").rstrip("/") + "/"
+SITE = (os.environ.get("SITE_URL") or "https://cicada.indaloop.app/").rstrip("/") + "/"
 REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
 STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img"]
