@@ -3,7 +3,7 @@
 One section per release, newest first. `scripts/release.sh` needs the section, dated today;
 the release workflow publishes it as the release notes.
 
-## Unreleased
+## 2.1.0 — 2026-11-01
 
 - New: the first-run guide has a Ling key step right after the permissions: open the Ling platform, then "Paste and Check" in one click; 继续 waits for a working key, and "Later, in Settings" skips it. It shows what the key unlocks and that Ling gives ¥10 of credit every month.
 - New: the website comes in English, Japanese and Korean (`/en/`, `/ja/`, `/ko/`) with a language menu and a suggestion bar for visitors whose browser prefers another language, and a three-step setup page (download, Ling key, follow the guide) with screenshots in each language.
