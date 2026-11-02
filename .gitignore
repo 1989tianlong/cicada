@@ -15,3 +15,8 @@ test-shots/
 
 .DS_Store
 !Resources/dmg/DS_Store
+
+# Compiled test helpers (build from tools/*.swift)
+tools/*
+!tools/*.swift
+!tools/README.md
