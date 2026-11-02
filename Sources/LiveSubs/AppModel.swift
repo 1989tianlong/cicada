@@ -59,9 +59,11 @@ final class AppModel: ObservableObject {
         listen.onSubtitle = { [weak self] src, dst in
             self?.liveSource = src
             self?.liveTranslation = dst
-            guard self?.settings.displayMode == "bar" else { return }
-            self?.overlay.clearStatus()
-            self?.overlay.setSubtitle(source: src, translation: dst)
+            if !src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self?.heardSpeech() }
+            guard let self, self.settings.displayMode == "bar" else { return }
+            self.overlay.clearStatus()
+            let shown = self.displayed(src, dst)
+            self.overlay.setSubtitle(source: shown.source, translation: shown.translation)
         }
         listen.onStatus = { [weak self] text in
             self?.status = text
@@ -86,12 +88,10 @@ final class AppModel: ObservableObject {
         ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
         listen.translator = translator
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
-        notes.language = {
-            // The app speaks Chinese, so notes do too when Chinese is among the system languages.
-            let prefs = Locale.preferredLanguages
-            let pick = prefs.first(where: { $0.hasPrefix("zh") }) ?? prefs.first ?? "zh-Hans"
-            return TranslationService.englishName(translationCode(forSystemLanguage: pick))
+        notes.language = { [weak self] id in
+            TranslationService.englishName(self?.notesLanguageCode(id) ?? "zh-CN")
         }
+        listen.translationOff = { [weak self] in self?.subtitles == "original" }
         if ling.hasKey { Task { await ling.check() } }
 
         installer.speakThrough = { [weak self] text, lang, device in
@@ -102,15 +102,16 @@ final class AppModel: ObservableObject {
         speak.translate = { [weak self] text, from, to, trace in
             await self?.listen.translate(text, source: from, target: to, kind: .speak, trace: trace)
         }
-        speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
-        applyVoice()
         speak.interpret = { [weak self] wav, from, to, trace in
             await self?.translator.interpret(wav: wav, source: from, target: to, trace: trace)
         }
+        speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
+        applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
             self.speakPhase = phase
+            if phase == .listening && !src.isEmpty { self.heardSpeech() }
             guard self.settings.displayMode == "bar" else {
                 // The notes window's caption line shows what you are saying.
                 if phase != .idle || !src.isEmpty {
@@ -245,6 +246,8 @@ final class AppModel: ObservableObject {
         let session = store.begin()
         diagnostics.begin()
         lineForSegment = [:]
+        speechHeard = false
+        meetingSubtitles = nil
         if settings.recordAudio {
             listen.router.setRecording(store.systemAudioURL(session.id))
             speak.setRecording(store.micAudioURL(session.id))
@@ -269,7 +272,23 @@ final class AppModel: ObservableObject {
         refresh()
     }
 
-    func setRunning(_ on: Bool) { on ? start() : stop() }
+    func setRunning(_ on: Bool) { on ? start() : requestStop() }
+
+    /// The menu (⌘R) and the panel switch: a meeting with lines is ended only after asking, with
+    /// "继续记录" as the default so a stray Return keeps it going. An empty one just stops.
+    func requestStop() {
+        guard listen.isRunning, let id = store.liveID, let s = store.session(id), !s.lines.isEmpty else { stop(); return }
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "结束这场会议？"
+        alert.informativeText = "已记录 \(NotesEngine.clock(Date().timeIntervalSince(s.startedAt))) · \(s.lines.count) 句。结束后停止收听，并整理一份完整版纪要。"
+        let end = alert.addButton(withTitle: "结束会议")
+        let keep = alert.addButton(withTitle: "继续记录")
+        end.hasDestructiveAction = true
+        end.keyEquivalent = ""
+        keep.keyEquivalent = "\r"
+        if alert.runModal() == .alertFirstButtonReturn { stop() }
+    }
 
     /// The bottom-left 诊断 switch in settings: shows or hides the 诊断 tab.
     func setDiagnostics(_ on: Bool) {
@@ -278,12 +297,68 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
+    // MARK: Languages
+
+    /// This meeting's 字幕 choice from the notes window's language chip (nil: the settings').
+    @Published var meetingSubtitles: String?
+    /// Notes language chosen for one meeting (the chip during it, 重新整理 after it).
+    @Published private(set) var notesLanguageFor: [String: String] = [:]
+
+    var subtitles: String { meetingSubtitles ?? settings.subtitles }
+
+    func notesChoice(_ id: String) -> String { notesLanguageFor[id] ?? settings.notesLanguage }
+
+    /// The language the other side spoke most in a meeting (the detected one while nothing is recorded yet).
+    func meetingLanguage(_ id: String?) -> String? {
+        let heard = id.flatMap { store.session($0) }?.lines.filter { $0.speaker != "me" }.map(\.srcLang) ?? []
+        let counts = Dictionary(heard.map { ($0, 1) }, uniquingKeysWith: +)
+        return counts.max { $0.value < $1.value }?.key ?? (id == store.liveID ? listen.activeLang?.code : nil)
+    }
+
+    func notesLanguageCode(_ id: String) -> String {
+        notesChoice(id) == "source" ? (meetingLanguage(id) ?? settings.myLanguage) : settings.myLanguage
+    }
+
+    /// The subtitle as the 字幕 choice shows it: both lines, the translation alone, or the
+    /// original alone as the main line.
+    func displayed(_ src: String, _ dst: String) -> (source: String, translation: String) {
+        switch subtitles {
+        case "original": return ("", src)
+        case "translation": return dst.isEmpty ? (src, "") : ("", dst)
+        default: return (src, dst)
+        }
+    }
+
+    func setSubtitles(_ mode: String, meetingOnly: Bool = false) {
+        let wasOff = subtitles == "original"
+        if meetingOnly { meetingSubtitles = mode } else { settings.subtitles = mode; meetingSubtitles = nil }
+        if wasOff && subtitles != "original" { listen.translationResumed() }
+        debugLog("subtitles=\(subtitles) meetingOnly=\(meetingOnly)")
+        objectWillChange.send()
+    }
+
+    /// A different notes language during a meeting rewrites the notes in it right away.
+    func setNotesLanguage(_ choice: String, meetingOnly: Bool = false) {
+        let live = store.liveID
+        let before = live.map(notesLanguageCode)
+        if meetingOnly, let live { notesLanguageFor[live] = choice } else { settings.notesLanguage = choice }
+        if let live, notesLanguageCode(live) != before { notes.rewrite() }
+        debugLog("notesLanguage=\(live.map(notesLanguageCode) ?? settings.notesLanguage) meetingOnly=\(meetingOnly)")
+        objectWillChange.send()
+    }
+
+    /// After a meeting: write its notes again in the other language.
+    func regenerateNotes(_ id: String, choice: String) {
+        notesLanguageFor[id] = choice
+        notes.generate(for: id)
+    }
+
     // MARK: Display (live notes / subtitle bar / nothing)
 
     func setDisplayMode(_ mode: String) {
         settings.displayMode = mode
         objectWillChange.send()
-        showDisplay()
+        showDisplay(force: true)
     }
 
     /// ⌃⌥S: notes → subtitle bar → nothing → notes.
@@ -293,7 +368,17 @@ final class AppModel: ObservableObject {
         setDisplayMode(order[(i + 1) % order.count])
     }
 
-    private func showDisplay() {
+    /// Set at the first words of a meeting: until then listening stays out of sight.
+    private var speechHeard = false
+
+    private func heardSpeech() {
+        guard !speechHeard, listen.isRunning else { return }
+        speechHeard = true
+        if settings.displayMode == "notes" { notesWindow.show() }
+    }
+
+    /// `force`: the user asked for this mode, show it even before anyone speaks.
+    private func showDisplay(force: Bool = false) {
         switch settings.displayMode {
         case "bar":
             notesWindow.hide()
@@ -303,7 +388,9 @@ final class AppModel: ObservableObject {
             overlay.hide()
         default:
             overlay.hide()
-            if listen.isRunning { notesWindow.show() }
+            // The notes window waits for someone to speak, so launching or a silent tab
+            // doesn't put an empty window on screen.
+            if listen.isRunning && (speechHeard || force) { notesWindow.show() }
         }
     }
 
@@ -662,6 +749,13 @@ final class AppModel: ObservableObject {
             debugLog("ling simulate=\(String(describing: ling.simulate))")
         case "aiRemove": ling.removeKey()
         case "aiState": debugLog("ai state=\(ling.keyState) hasKey=\(ling.hasKey) model=\(settings.aiModel)")
+        case "subtitles": setSubtitles(arg)
+        case "meetingSubtitles": setSubtitles(arg, meetingOnly: true)
+        case "notesLang": setNotesLanguage(arg)
+        case "meetingNotesLang": setNotesLanguage(arg, meetingOnly: true)
+        case "notesRegenerate":
+            let p = arg.split(separator: "=").map(String.init)
+            if p.count == 2 { regenerateNotes(p[0], choice: p[1]) }
         case "speakOn": enableSpeaking(true)
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
@@ -725,10 +819,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                 MainActor.assumeIsolated { self?.showOnboarding() }
             }
+        } else if !Self.launchedAsLoginItem {
+            // Opened by hand (Finder, Launchpad, Spotlight): show something, like the Dock icon does.
+            showMainWindow()
         }
         model.installDebugControl()
         installDeviceListener()
         Task { await model.launch() }
+    }
+
+    /// Started by the system at login: stay in the menu bar.
+    private static var launchedAsLoginItem: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
+        return event.eventID == kAEOpenApplication
+            && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 
     func applicationWillTerminate(_ notification: Notification) {

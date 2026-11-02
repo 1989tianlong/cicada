@@ -129,6 +129,10 @@ struct MenuPanelView: View {
                           options: targetOptions) {
                     model.targetSelection = $0
                 }
+                ChoiceRow(label: "字幕", value: subtitleOptions.first { $0.id == model.subtitles }?.title ?? "原文 + 译文",
+                          badge: model.meetingSubtitles != nil ? "仅本场" : nil, options: subtitleOptions) {
+                    model.setSubtitles($0)
+                }
             }
 
             Divider()

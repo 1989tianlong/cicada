@@ -18,6 +18,16 @@ final class AppSettings: ObservableObject {
     @Published var target: String {
         didSet { save() }
     }
+    /// What the subtitles show: "both" (original + translation), "translation", or "original"
+    /// (nothing is translated, so no translator is called).
+    @Published var subtitles: String {
+        didSet { save() }
+    }
+    /// The language notes are written in: "mine" (the translate-to language, or the system's when
+    /// that follows the system) or "source" (the meeting's own language).
+    @Published var notesLanguage: String {
+        didSet { save() }
+    }
     @Published var speakEnabled: Bool {
         didSet { save() }
     }
@@ -82,6 +92,8 @@ final class AppSettings: ObservableObject {
             sourceMode = .auto
         }
         target = defaults.string(forKey: "target") ?? "system"
+        subtitles = defaults.string(forKey: "subtitles") ?? "both"
+        notesLanguage = defaults.string(forKey: "notesLanguage") ?? "mine"
         speakEnabled = defaults.bool(forKey: "speakEnabled")
         let prefersChinese = Locale.preferredLanguages.contains { $0.hasPrefix("zh") }
         speakFrom = defaults.string(forKey: "speakFrom") ?? (prefersChinese ? "zh-CN" : "en-US")
@@ -104,6 +116,8 @@ final class AppSettings: ObservableObject {
         case .fixed(let lang): defaults.set(lang.locale, forKey: "sourceMode")
         }
         defaults.set(target, forKey: "target")
+        defaults.set(subtitles, forKey: "subtitles")
+        defaults.set(notesLanguage, forKey: "notesLanguage")
         defaults.set(speakEnabled, forKey: "speakEnabled")
         defaults.set(speakFrom, forKey: "speakFrom")
         defaults.set(speakTo, forKey: "speakTo")
@@ -126,6 +140,14 @@ final class AppSettings: ObservableObject {
         let prefs = Locale.preferredLanguages.map(translationCode(forSystemLanguage:))
         if let src = source, let other = prefs.first(where: { $0 != src }) { return other }
         return prefs.first ?? "zh-CN"
+    }
+
+    /// The reader's own language: the translate-to choice, or with "follow system" the first
+    /// system language (Chinese first when it is there: the app speaks Chinese).
+    var myLanguage: String {
+        if target != "system" { return target }
+        let prefs = Locale.preferredLanguages
+        return translationCode(forSystemLanguage: prefs.first(where: { $0.hasPrefix("zh") }) ?? prefs.first ?? "zh-Hans")
     }
 
     func systemTargetDescription() -> String {

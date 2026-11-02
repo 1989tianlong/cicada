@@ -282,6 +282,25 @@ struct FishboneView: View {
 
 // MARK: - Transcript
 
+/// When the user last turned a scroll wheel or swiped the trackpad in this app. SwiftUI also moves
+/// a scroll view by itself (rows measured late, text rewrapping after a resize), so only a recent
+/// real scroll may pause following.
+@MainActor
+enum UserScroll {
+    private static var last = Date.distantPast
+    private static var monitor: Any?
+
+    static func install() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            last = Date()
+            return event
+        }
+    }
+
+    static var recent: Bool { Date().timeIntervalSince(last) < 0.6 }
+}
+
 /// The transcript grouped under the notes' topics, oldest first. While live it follows the
 /// newest line; scrolling up pauses that and collects new lines into a "↓ N 句新内容" button.
 /// A search highlights matches in place instead of hiding the lines around them.
@@ -325,6 +344,7 @@ struct TranscriptListView: View {
     private struct Edge: Equatable {
         var distance: CGFloat
         var height: CGFloat
+        var container: CGFloat
     }
 
     var body: some View {
@@ -362,12 +382,18 @@ struct TranscriptListView: View {
                     .padding(.bottom, 12)
                 }
                 .onScrollGeometryChange(for: Edge.self) { g in
-                    Edge(distance: g.contentSize.height - g.contentOffset.y - g.containerSize.height, height: g.contentSize.height)
+                    Edge(distance: g.contentSize.height - g.contentOffset.y - g.containerSize.height,
+                         height: g.contentSize.height, container: g.containerSize.height)
                 } action: { old, new in
-                    if new.distance < 40 {
+                    if new.height != old.height || new.container != old.container {
+                        // Not only new lines move the bottom: a translation arriving under its line,
+                        // topic headers from a notes update, rows the lazy stack only now measured,
+                        // the window resizing. Following means staying on the newest line through all of them.
+                        if new.distance > 1 { follow(proxy) }
+                    } else if new.distance < 40 {
                         if !following { following = true }
-                    } else if following, new.distance > 60, new.height == old.height {
-                        // The reader scrolled up (content growing never pauses following).
+                    } else if following, new.distance > 60, UserScroll.recent {
+                        // The reader scrolled up (content growing or reflowing never pauses following).
                         following = false
                         seenCount = lines.count
                     }
@@ -385,6 +411,7 @@ struct TranscriptListView: View {
                     reveal(target, anchor: .top, proxy)
                 }
                 .onAppear {
+                    UserScroll.install()
                     seenCount = lines.count
                     if let t = jumpTo, let target = lines.first(where: { $0.t >= t - 1 }) {
                         following = false

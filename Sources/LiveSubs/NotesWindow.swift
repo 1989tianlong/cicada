@@ -63,7 +63,7 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             p.minSize = NSSize(width: 300, height: 180)
             p.backgroundColor = .white
-            p.contentView = NSHostingView(rootView: NotesWindowView(
+            p.contentView = FirstClickHostingView(rootView: NotesWindowView(
                 model: model, engine: model.notes, store: model.store, settings: model.settings,
                 commands: commands.eraseToAnyPublisher(),
                 setWidth: { [weak self] w, h in self?.resize(width: w, height: h) }))
@@ -126,6 +126,9 @@ struct NotesWindowView: View {
     @State private var matchIndex = 0
     @State private var now = Date()
     @State private var width: CGFloat = 460
+    /// "结束" was clicked during a meeting with lines: the confirmation strip is showing.
+    @State private var confirmEnd = false
+    @State private var languageOpen = false
     @FocusState private var searchFocused: Bool
 
     private var session: Session? { store.session(store.liveID ?? engine.shownID) }
@@ -141,6 +144,7 @@ struct NotesWindowView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
                         header(wide: geo.size.width >= 760)
+                        meetingBar.padding(.horizontal, 24).padding(.bottom, 4)
                         banner.padding(.horizontal, 24).padding(.bottom, 4)
                         if geo.size.width >= 760 {
                             HStack(alignment: .top, spacing: 0) {
@@ -217,7 +221,7 @@ struct NotesWindowView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 4) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("实时纪要").font(.system(size: 24, weight: .bold))
+                    Text(live || session == nil ? "实时纪要" : "会议纪要").font(.system(size: 24, weight: .bold))
                     HStack(spacing: 6) {
                         if live { LiveDot() }
                         Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(1)
@@ -226,6 +230,16 @@ struct NotesWindowView: View {
                 Spacer()
                 if engine.state == .updating, !engine.notes.isEmpty {
                     UpdatingPill().padding(.top, 4).padding(.trailing, 4)
+                }
+                if live {
+                    languageChip.padding(.trailing, 2)
+                    Button(action: askToEnd) {
+                        Text("结束").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                            .padding(.horizontal, 12).frame(height: 28)
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.line, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("结束这场会议").padding(.trailing, 4)
                 }
                 iconButton(wide ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", help: wide ? "收窄" : "纪要和原话并排") {
                     setWidth(wide ? 460 : 820, nil)
@@ -325,10 +339,157 @@ struct NotesWindowView: View {
             if !engine.notes.isEmpty, lastCovered > 0 { parts.append("纪要已更新至 \(NotesEngine.clock(lastCovered))") }
             return parts.joined(separator: " · ")
         }
-        let clock = session.map { TranscriptExport.header($0) } ?? "没有进行中的会议"
+        let clock = session.map { "已结束 · " + TranscriptExport.header($0) } ?? "没有在记录"
         guard let at = engine.notes.updatedAt, engine.state != .updating else { return clock }
         let ago = Int(now.timeIntervalSince(at))
         return clock + " · " + (ago < 10 ? "刚刚更新" : ago < 60 ? "\(ago) 秒前更新" : "\(ago / 60) 分钟前更新")
+    }
+
+    // MARK: This meeting's languages
+
+    /// "EN → 中": what the meeting speaks → what the notes are written in. Opens this meeting's
+    /// choices below the header (not a popover: the panel never activates the app, and a popover in
+    /// an inactive app closes as soon as it opens); the defaults live in 设置 › 语言.
+    private var languageChip: some View {
+        let id = session?.id ?? ""
+        let from = model.meetingLanguage(store.liveID).map(Self.short) ?? "自动"
+        return Button { languageOpen.toggle() } label: {
+            HStack(spacing: 4) {
+                Text(from)
+                Image(systemName: "arrow.right").font(.system(size: 9, weight: .bold))
+                Text(Self.short(model.notesLanguageCode(id)))
+            }
+            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.accentInk)
+            .padding(.horizontal, 9).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.accentPale))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help("这场会议的语言").accessibilityLabel("这场会议的语言")
+    }
+
+    private func languageCard(_ id: String) -> some View {
+        let source = model.meetingLanguage(store.liveID)
+        let mine = settings.myLanguage
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("这场会议").font(.system(size: 14, weight: .bold))
+                    Text("只改这一场，默认值在 设置 › 语言").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                }
+                Spacer()
+                iconButton("xmark", help: "收起") { languageOpen = false }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("对方说").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
+                Text(source.map(targetName) ?? "还没听出来").font(.system(size: 13))
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("字幕").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
+                Segments(options: [("both", "双语"), ("translation", "只看译文"), ("original", "只看原文")],
+                         value: model.subtitles, fill: true) { model.setSubtitles($0, meetingOnly: true) }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("纪要").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
+                Segments(options: [("mine", targetName(mine)), ("source", source.map { "\(targetName($0))（原文）" } ?? "会议原文")],
+                         value: model.notesChoice(id), fill: true) { model.setNotesLanguage($0, meetingOnly: true) }
+                Text("换了以后会马上用新语言重写纪要").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+            }
+            Button("打开语言设置") {
+                languageOpen = false
+                model.openSettings(.language)
+            }
+            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.fill))
+        .foregroundStyle(Palette.ink)
+    }
+
+    static func short(_ code: String) -> String {
+        switch code {
+        case "zh-CN": "中"
+        case "zh-TW": "繁"
+        case "ja": "日"
+        case "ko": "韩"
+        default: code.prefix(2).uppercased()
+        }
+    }
+
+    // MARK: Ending a meeting
+
+    /// Nothing heard yet: there is nothing to lose, stop at once. Otherwise ask first, below the
+    /// header (away from the button, so a double click can't confirm it).
+    private func askToEnd() {
+        if heard == 0 { model.stop() } else { confirmEnd = true }
+    }
+
+    /// While live: the confirmation, when asked. After the meeting: what happens to it and what next.
+    @ViewBuilder
+    private var meetingBar: some View {
+        if live {
+            if languageOpen && !confirmEnd { languageCard(session?.id ?? "") }
+            if confirmEnd {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("结束这场会议？").font(.system(size: 14, weight: .bold))
+                    Text("已记录 \(NotesEngine.clock(elapsed)) · \(heard) 句。结束后停止收听，并整理一份完整版纪要。")
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        SoftButton("继续记录") { confirmEnd = false }
+                        SoftButton("结束会议", dark: true) {
+                            confirmEnd = false
+                            model.stop()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
+                // No timeout: a strip that vanished under the pointer would let the click land on the notes.
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    if session != nil && engine.state == .updating {
+                        ProgressView().controlSize(.small)
+                    } else if session != nil {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.accent)
+                    }
+                    Text(endedText).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                }
+                HStack(spacing: 8) {
+                    if let id = session?.id, let other = otherNotesLanguage(id) {
+                        SoftButton("改用\(targetName(other.code))重新整理") { model.regenerateNotes(id, choice: other.choice) }
+                            .disabled(engine.state == .updating)
+                    }
+                    if let id = session?.id {
+                        SoftButton("在会议记录中查看") {
+                            model.mainShow = nil
+                            model.mainShow = "\(id),notes"
+                            model.openMainWindow?()
+                        }
+                    }
+                    SoftButton(session == nil ? "开始记录" : "开始新会议", dark: true) { model.start() }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Palette.fill))
+        }
+    }
+
+    /// The notes language this meeting's notes are not in, when the meeting's language differs from mine.
+    private func otherNotesLanguage(_ id: String) -> (choice: String, code: String)? {
+        guard let source = model.meetingLanguage(id), source != settings.myLanguage else { return nil }
+        return model.notesChoice(id) == "source" ? ("mine", settings.myLanguage) : ("source", source)
+    }
+
+    private var endedText: String {
+        guard session != nil else { return "现在没有在记录" }
+        if engine.state == .updating { return "会议已结束，正在整理完整版纪要…" }
+        if engine.state == .noKey || engine.notes.isEmpty { return "会议已结束，文字记录已保存" }
+        return "会议已结束，完整版纪要已整理好 · " + targetName(model.notesLanguageCode(session?.id ?? ""))
     }
 
     // MARK: Banners (key and service states)
@@ -451,13 +612,14 @@ struct NotesWindowView: View {
 
     @ViewBuilder
     private var caption: some View {
-        if live, !model.liveSource.isEmpty || !model.liveTranslation.isEmpty {
+        let shown = model.displayed(model.liveSource, model.liveTranslation)
+        if live, !shown.source.isEmpty || !shown.translation.isEmpty {
             VStack(alignment: .leading, spacing: 3) {
-                if !model.liveSource.isEmpty {
-                    Text(model.liveSource).font(.system(size: 12)).foregroundStyle(Color(white: 0.74)).lineLimit(2)
+                if !shown.source.isEmpty {
+                    Text(shown.source).font(.system(size: 12)).foregroundStyle(Color(white: 0.74)).lineLimit(2)
                 }
-                if !model.liveTranslation.isEmpty {
-                    Text(model.liveTranslation).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(3)
+                if !shown.translation.isEmpty {
+                    Text(shown.translation).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(3)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -573,4 +735,10 @@ struct NotesWindowView: View {
         let s = max(0, Int(elapsed - collapsedAt))
         return s < 60 ? "\(s) 秒" : "\(s / 60) 分钟"
     }
+}
+
+/// The panel never activates the app, so it is almost never the key window when clicked; a plain
+/// hosting view would spend that click on focus and every button would need two.
+final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

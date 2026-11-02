@@ -433,6 +433,8 @@ final class ListenEngine {
 
     /// Set by the app: the shared translation chain.
     var translator: TranslationService?
+    /// Subtitles set to the original only: nothing is translated.
+    var translationOff: () -> Bool = { false }
 
     func translate(_ text: String, source: String, target: String? = nil,
                    kind: TranslationService.Kind = .sentence, trace: TranslateTrace? = nil) async -> String? {
@@ -446,7 +448,7 @@ final class ListenEngine {
     }
 
     private func translateSegment(id: Int) {
-        guard let seg = segments.first(where: { $0.id == id }) else { return }
+        guard !translationOff(), let seg = segments.first(where: { $0.id == id }) else { return }
         let trace = TranslateTrace()
         let asked = Date()
         Task { [weak self] in
@@ -470,7 +472,7 @@ final class ListenEngine {
     }
 
     private func translateVolatile() {
-        guard isRunning, !volatileInFlight, volatileText.count >= 2, volatileText != lastVolatileSent else { return }
+        guard isRunning, !translationOff(), !volatileInFlight, volatileText.count >= 2, volatileText != lastVolatileSent else { return }
         let text = volatileText
         let epoch = volatileEpoch
         let source = activeLang?.code ?? "auto"
@@ -492,6 +494,9 @@ final class ListenEngine {
         volatileTranslation = ""
         lastVolatileSent = ""
     }
+
+    /// Translation switched back on: translate what is on screen now.
+    func translationResumed() { if isRunning { retranslateVisible() } }
 
     private func retranslateVisible() {
         volatileTranslation = ""

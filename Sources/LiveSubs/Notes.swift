@@ -89,8 +89,9 @@ final class NotesEngine: ObservableObject {
 
     let ling: LingClient
     let store: SessionStore
-    /// The language the reader wants notes in (their own system language).
-    var language: () -> String = { "Simplified Chinese" }
+    /// The language a meeting's notes are written in (English name), set by the app from the
+    /// 纪要语言 choice.
+    var language: (_ sessionID: String) -> String = { _ in "Simplified Chinese" }
 
     private var sessionID: String?
     /// The session whose notes `notes` shows (stays set after the meeting ends).
@@ -139,6 +140,12 @@ final class NotesEngine: ObservableObject {
         Task { await update(id, final: true) }
     }
 
+    /// The notes language changed during the meeting: rewrite the whole notes in it now.
+    func rewrite() {
+        guard let id = sessionID else { return }
+        Task { await update(id, final: false, fresh: true) }
+    }
+
     func updateNow() {
         guard let id = sessionID else { return }
         Task { await update(id, final: false) }
@@ -181,7 +188,8 @@ final class NotesEngine: ObservableObject {
         if due { Task { await update(id, final: false) } }
     }
 
-    private func update(_ id: String, final: Bool, upto: Int? = nil) async {
+    /// `fresh`: start from nothing (a new notes language); the final pass always does.
+    private func update(_ id: String, final: Bool, upto: Int? = nil, fresh: Bool = false) async {
         if inFlight {
             // Never drop the end-of-meeting pass or a "生成纪要" request: queue it.
             if final { pendingFinal = id; generatingID = id }
@@ -203,15 +211,25 @@ final class NotesEngine: ObservableObject {
         }
 
         let lines = Array(session.lines.prefix(upto ?? session.lines.count))
-        let base = final ? MeetingNotes() : (id == shownID ? notes : session.notes ?? MeetingNotes())
+        let base = final || fresh ? MeetingNotes() : (id == shownID ? notes : session.notes ?? MeetingNotes())
         let from = final ? 0 : min(base.covered, lines.count)
-        let prompt = Self.prompt(notes: base, lines: lines, from: from, language: language(), final: final)
+        let lang = language(id)
+        let prompt = Self.prompt(notes: base, lines: lines, from: from, language: lang, final: final)
         let started = Date()
         do {
-            let raw = try await ling.chat(content: prompt, instruction: "Update the notes.", priority: .notes,
-                                          json: true, maxTokens: 6000, timeout: 90)
-            guard var next = Self.parse(raw, times: lines.map(\.t), startedAt: session.lines.first?.t ?? 0) else {
-                debugLog("notes: reply was not usable JSON, kept the previous notes")
+            // The final pass sends only the transcript, with no notes in the reader's language to
+            // follow: given a long English meeting the model drifts into English. Say the language
+            // again where it is read last, and try once more if the reply still isn't in it.
+            var next: MeetingNotes?
+            for attempt in 1...(final || fresh ? 2 : 1) {
+                let raw = try await ling.chat(content: prompt, instruction: "Update the notes. Write them in \(lang).",
+                                              priority: .notes, json: true, maxTokens: 6000, timeout: 90)
+                guard let parsed = Self.parse(raw, times: lines.map(\.t), startedAt: session.lines.first?.t ?? 0) else { break }
+                if Self.written(parsed, in: lang) { next = parsed; break }
+                debugLog("notes: \(final ? "final" : "live") reply not in \(lang) (attempt \(attempt)), dropped")
+            }
+            guard var next else {
+                debugLog("notes: no usable reply, kept the previous notes")
                 state = .failed
                 return
             }
@@ -312,10 +330,22 @@ final class NotesEngine: ObservableObject {
         - Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.
         - Every topic, point, branch, conclusion and to-do needs evidence: the ids of the lines that say it. Never state anything the transcript does not say.
         - terms: at most 10 people, places or jargon words that matter. name is the correct spelling in the transcript's language (no translation in brackets); heard lists only the wrong forms the transcript used; note is a few words.
+        - Write every summary, title, point, branch, conclusion and to-do in \(language), even when the transcript is in another language. Only term names keep the transcript's spelling.
         - Write about what was said, never about the transcript or recognition quality.
         - Use empty arrays when there is nothing. No markdown, no text outside the JSON.
         """
         return p
+    }
+
+    /// Whether the notes' own words (summary, titles) are in `language`: Chinese, Japanese and
+    /// Korean need a fair share of CJK (names and numbers stay Latin), other languages must not be mostly CJK.
+    static func written(_ notes: MeetingNotes, in language: String) -> Bool {
+        let text = ([notes.summary] + notes.topics.map(\.title)).joined()
+        let letters = text.unicodeScalars.filter { $0.properties.isAlphabetic }
+        guard !letters.isEmpty else { return true }
+        let cjk = letters.filter { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) }.count
+        let wantsCJK = ["Chinese", "Japanese", "Korean"].contains { language.contains($0) }
+        return wantsCJK ? cjk * 5 >= letters.count : cjk * 2 < letters.count
     }
 
     /// The current notes as sent back to the model (no bookkeeping fields).

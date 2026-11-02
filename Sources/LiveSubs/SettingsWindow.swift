@@ -3,11 +3,12 @@ import Carbon.HIToolbox
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case overlay, speak, records, ai, diagnostics
+    case overlay, language, speak, records, ai, diagnostics
     var id: String { rawValue }
     var title: String {
         switch self {
         case .overlay: "显示"
+        case .language: "语言"
         case .speak: "同声传译"
         case .records: "会议记录"
         case .ai: "AI 服务"
@@ -17,6 +18,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overlay: "captions.bubble"
+        case .language: "globe"
         case .speak: "mic"
         case .records: "doc.text"
         case .ai: "key"
@@ -60,6 +62,37 @@ struct SettingsRow<Trailing: View>: View {
         }
     }
 }
+
+/// A few mutually exclusive choices side by side, the chosen one raised.
+struct Segments: View {
+    let options: [(id: String, title: String)]
+    let value: String
+    var fill = false
+    let onPick: (String) -> Void
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.id) { o in
+                let on = o.id == value
+                Button { onPick(o.id) } label: {
+                    Text(o.title).font(.system(size: 12, weight: on ? .semibold : .regular))
+                        .foregroundStyle(on ? Palette.ink : Palette.secondary).lineLimit(1)
+                        .padding(.horizontal, 10).frame(maxWidth: fill ? .infinity : nil).frame(height: 26)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.white : .clear)
+                            .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 1.5, y: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.fill))
+        .fixedSize(horizontal: !fill, vertical: false)
+    }
+}
+
+/// The 字幕 choices.
+let subtitleOptions: [(id: String, title: String)] = [("both", "原文 + 译文"), ("translation", "只看译文"), ("original", "只看原文")]
 
 /// A grey pill that opens a menu: the value and a small chevron.
 struct PillMenu: View {
@@ -354,6 +387,7 @@ struct SettingsView: View {
                     switch model.settingsSection {
                     case .speak: speak
                     case .overlay: overlay
+                    case .language: LanguageSettings(model: model, settings: settings)
                     case .records: records
                     case .ai: AISettingsView(model: model, ling: model.ling, settings: settings)
                     case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, model: settings.aiModel)
@@ -410,29 +444,6 @@ struct SettingsView: View {
 
     // MARK: Sections
 
-    /// Who is heard and what they're translated into: the top of the 显示 page.
-    private var listen: some View {
-        SettingsCard {
-            SettingsRow(title: "听到") {
-                PillMenu(value: heardValue, options: [("auto", "自动识别")] + sourceLanguages.map { ($0.locale, $0.name) }) {
-                    model.sourceSelection = $0
-                }
-            }
-            SettingsRow(title: "翻译成", divider: false) {
-                PillMenu(value: settings.target == "system" ? "跟随系统（\(targetName(model.listen.resolvedTarget))）"
-                                                            : targetName(settings.target),
-                         options: [("system", "跟随系统")] + targetLanguages.map { ($0.code, $0.name) }) {
-                    model.targetSelection = $0
-                }
-            }
-        }
-    }
-
-    private var heardValue: String {
-        if case .fixed(let l) = settings.sourceMode { return l.name }
-        return "自动识别"
-    }
-
     private var speak: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("按住说话，松开后约 2 秒，对方听到译文").font(.system(size: 12)).foregroundStyle(Palette.secondary)
@@ -448,17 +459,8 @@ struct SettingsView: View {
                     ShortcutField(model: model, role: .talk)
                 }
                 if settings.speakEnabled && model.talkNeedsPermission { TalkKeyPermissionRow(model: model) }
-                SettingsRow(title: "我说的语言") {
-                    PillMenu(value: settings.speakFromLang.name, options: sourceLanguages.map { ($0.locale, $0.name) }) {
-                        settings.speakFrom = $0
-                        model.speakFromChanged()
-                    }
-                }
-                SettingsRow(title: "对方听到") {
-                    PillMenu(value: settings.speakTo == "room" ? "跟随对方的语言" : targetName(settings.speakTo),
-                             options: [("room", "跟随对方的语言")] + targetLanguages.map { ($0.code, $0.name) }) {
-                        settings.speakTo = $0
-                    }
+                SettingsRow(title: "语言", detail: "说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))") {
+                    SoftButton("修改") { model.settingsSection = .language }
                 }
                 SettingsRow(title: "声音输出到", divider: false) {
                     PillMenu(value: outputName,
@@ -480,7 +482,6 @@ struct SettingsView: View {
 
     private var overlay: some View {
         VStack(alignment: .leading, spacing: 14) {
-            listen
             SettingsCard {
                 SettingsRow(title: "听的时候显示", detail: "选择任意模式都会正常保存记录、生成纪要") {
                     Picker("显示方式", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
