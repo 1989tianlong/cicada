@@ -38,6 +38,7 @@ scripts/build.sh && open build/Cicada.app   # dev build: own bundle id, settings
 RELEASE=1 scripts/build.sh             # release build
 scripts/package.sh                     # DMG + zip + checksums
 scripts/release.sh <x.y.z>             # needs a dated CHANGELOG section; CI publishes the tag
+scripts/deploy-site.sh                 # build the site, wrangler deploy to the cicada-site Worker (cicada.indaloop.app)
 ```
 
 ## Verifying
