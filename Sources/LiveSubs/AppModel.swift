@@ -15,6 +15,15 @@ final class AppModel: ObservableObject {
     let toggleKey = HotKey(id: 2, shortcut: .defaultToggle)
     lazy var listen = ListenEngine(settings: settings)
     lazy var speak = SpeakEngine(settings: settings)
+    lazy var speakTester = SpeakTester(speak: speak, ling: ling, settings: settings)
+    /// Key released → the room heard the first sound, from the latest real press or sound test.
+    @Published var lastSpeakLatency: Double? = UserDefaults.standard.object(forKey: "lastSpeakLatency") as? Double {
+        didSet { UserDefaults.standard.set(lastSpeakLatency, forKey: "lastSpeakLatency") }
+    }
+    /// The 试一句 sheet in settings.
+    @Published var speakTestShown = false
+    /// Settings › 同声传译: the voice list under "对方听到" is open.
+    @Published var voicePickerOpen = false
 
     @Published var running = false
     @Published var status = L("准备就绪")
@@ -25,7 +34,11 @@ final class AppModel: ObservableObject {
     @Published var speakPhase: SpeakEngine.Phase = .idle
     @Published var settingsSection: SettingsSection =
         SettingsSection(rawValue: UserDefaults.standard.string(forKey: "settingsSection") ?? "") ?? .speak {
-        didSet { UserDefaults.standard.set(settingsSection.rawValue, forKey: "settingsSection") }
+        didSet {
+            UserDefaults.standard.set(settingsSection.rawValue, forKey: "settingsSection")
+            // People pick a voice and move on: don't greet them with the list still open next time.
+            if settingsSection != oldValue { voicePickerOpen = false }
+        }
     }
     @Published var systemAudioOK = false
     @Published var micStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -85,6 +98,11 @@ final class AppModel: ObservableObject {
         }
         listen.onTiming = { [weak self] in self?.diagnostics.record($0) }
         speak.onTiming = { [weak self] in self?.diagnostics.record($0) }
+        speak.onLatency = { [weak self] in self?.lastSpeakLatency = $0 }
+        speakTester.onLatency = { [weak self] in self?.lastSpeakLatency = $0 }
+        speakTester.translate = { [weak self] text, from, to in
+            await self?.listen.translate(text, source: from, target: to, kind: .speak, trace: TranslateTrace())
+        }
         ling.onCall = { [weak self] in self?.diagnostics.record($0) }
 
         ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
@@ -113,6 +131,8 @@ final class AppModel: ObservableObject {
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
             self.speakPhase = phase
+            // A 试一句 rehearsal shows in its own sheet: no notes window, caption or subtitle bar.
+            if self.speakTester.busy { return }
             if phase == .listening && !src.isEmpty { self.heardSpeech() }
             guard self.settings.displayMode == "bar" else {
                 // The notes window's caption line shows what you are saying.
@@ -662,7 +682,7 @@ final class AppModel: ObservableObject {
     func installDebugControl() {
         guard settings.debug || DevBuild.isDev else { return }
         DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.wquguru.cicada.debug"), object: nil, queue: .main
+            forName: Notification.Name(DevBuild.debugChannel), object: nil, queue: .main
         ) { [weak self] note in
             let cmd = note.object as? String ?? ""
             MainActor.assumeIsolated { self?.debugCommand(cmd) }
@@ -819,6 +839,29 @@ final class AppModel: ObservableObject {
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
         case "speakFile": speak.speakFile(URL(fileURLWithPath: arg))
+        case "speakTest":
+            // speakTest:<sample|voice>: open settings › 同声传译 with the 试一句 sheet and run it.
+            settingsSection = .speak
+            openSettingsWindow?()
+            speakTestShown = true
+            speakTester.start(arg == "voice" ? .voice : .sample)
+        case "speakOutput":
+            // speakOutput:<part of a device name>, or empty for the virtual mic (automatic).
+            settings.speakOutput = arg.isEmpty ? "" : AudioDevices.outputs().first { $0.name.localizedCaseInsensitiveContains(arg) }?.uid ?? ""
+            speak.resetOutput()
+            debugLog("speak output=\(speak.outputDevice()?.name ?? "-")")
+        case "voicePicker": voicePickerOpen = arg != "off"
+        case "speakTestBegin": speakTester.beginTalking()
+        case "speakTestEnd": speakTester.endTalking()
+        case "speakTestClose": speakTester.cancel(); speakTestShown = false
+        case "speakTestState":
+            debugLog("speak test phase=\(speakTester.phase) reached=\(String(describing: speakTester.reached)) result=\(speakTester.result?.report.replacingOccurrences(of: "\n", with: " | ") ?? "-")")
+        case "speakTestRender":
+            let r = ImageRenderer(content: SpeakTestView(model: self, tester: speakTester, close: {}).background(Color.white))
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg))
+            }
         case "place":
             let n = arg.split(separator: ",").compactMap { Double($0) }
             if n.count == 4 { overlay.place(x: n[0], y: n[1], width: n[2], fontSize: n[3]) }

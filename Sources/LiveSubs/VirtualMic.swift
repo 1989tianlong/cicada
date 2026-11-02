@@ -238,6 +238,9 @@ final class LoopbackRecorder: @unchecked Sendable {
     private var device = AudioObjectID(0)
     private var proc: AudioDeviceIOProcID?
     private(set) var sampleRate: Double = 48_000
+    /// When the first recorded sample was captured (the first callback, minus its own length).
+    private var firstAt: Date?
+    var startedAt: Date? { lock.lock(); defer { lock.unlock() }; return firstAt }
     private let queue = DispatchQueue(label: "com.wquguru.cicada.loopback")
 
     func start(deviceID: AudioObjectID) -> Bool {
@@ -256,6 +259,7 @@ final class LoopbackRecorder: @unchecked Sendable {
             let frames = Int(first.mDataByteSize) / MemoryLayout<Float>.size / channels
             let p = data.assumingMemoryBound(to: Float.self)
             self.lock.lock()
+            if self.firstAt == nil { self.firstAt = Date().addingTimeInterval(-Double(frames) / self.sampleRate) }
             for i in 0..<frames { self.samples.append(p[i * channels]) } // first channel is enough
             self.lock.unlock()
         }

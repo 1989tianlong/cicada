@@ -16,5 +16,13 @@ enum DevBuild {
     /// Folder name under ~/Library/Application Support.
     static var supportFolder: String { isDev ? "LiveSubs Dev" : "LiveSubs" }
 
-    static var logPath: String { isDev ? "/tmp/livesubs-dev-debug.log" : "/tmp/livesubs-debug.log" }
+    /// `CICADA_DEBUG_CHANNEL=x` (set with `open --env`, and for `tools/lsctl`) gives one running copy
+    /// its own remote control and log, so two dev builds can be tested side by side.
+    static let channel = ProcessInfo.processInfo.environment["CICADA_DEBUG_CHANNEL"].flatMap { $0.isEmpty ? nil : $0 }
+    static var debugChannel: String { "com.wquguru.cicada.debug" + (channel.map { "." + $0 } ?? "") }
+
+    static var logPath: String {
+        let base = isDev ? "/tmp/livesubs-dev-debug" : "/tmp/livesubs-debug"
+        return base + (channel.map { "-" + $0 } ?? "") + ".log"
+    }
 }

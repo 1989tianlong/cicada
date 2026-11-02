@@ -450,33 +450,101 @@ struct SettingsView: View {
 
     private var speak: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("按住说话，松开后约 2 秒，对方听到译文").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                .padding(.top, -8)
-            SettingsCard { MicSetupCard(installer: installer, deviceName: model.virtualMic?.name) }
-            SettingsCard {
-                SettingsRow(title: L("把我的话翻译给对方听")) {
-                    Toggle("把我说的翻译给对方", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
-                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+            HStack(spacing: 10) {
+                Text(latencyLine).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                Spacer(minLength: 8)
+                Button { model.speakTestShown = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "play.fill").font(.system(size: 9))
+                        Text("试一句").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.white).padding(.horizontal, 12).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Palette.ink))
+                    .contentShape(Rectangle())
                 }
-                SettingsRow(title: L("按住说话"),
-                            detail: settings.talkKey.isRightOption ? L("单独按住右侧 ⌥；与其他键同时按不会触发") : nil) {
+                .buttonStyle(.plain)
+                .disabled(model.virtualMic == nil)
+                .opacity(model.virtualMic == nil ? 0.4 : 1)
+                .help("说一句话，听对方听到的声音，看每一步花了多久")
+                Toggle("把我说的翻译给对方", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
+                    .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+            }
+            .padding(.top, -8)
+            SettingsCard {
+                micStep
+                Divider().padding(.leading, 50)
+                HStack(spacing: 12) {
+                    StepMark(done: !model.talkNeedsPermission, number: 2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("按住说话").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                        Text(settings.talkKey.isRightOption ? L("单独按住右侧 ⌥；和别的键一起按不触发") : L("按住快捷键说话，松开发送"))
+                            .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                    }
+                    Spacer(minLength: 8)
                     ShortcutField(model: model, role: .talk)
                 }
+                .padding(.horizontal, 16).padding(.vertical, 12)
                 if settings.speakEnabled && model.talkNeedsPermission { TalkKeyPermissionRow(model: model) }
-                SettingsRow(title: L("语言"), detail: L("说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))")) {
-                    SoftButton(L("修改")) { model.settingsSection = .language }
-                }
-                SettingsRow(title: L("声音输出到"), divider: false) {
-                    PillMenu(value: outputName,
-                             options: [("", L("虚拟麦克风（自动）"))] + model.outputs.map { ($0.uid, $0.name) }) {
-                        settings.speakOutput = $0
+                Divider().padding(.leading, 50)
+                VoiceSection(model: model, settings: settings, ling: model.ling)
+            }
+            DisclosureGroup {
+                SettingsCard {
+                    SettingsRow(title: L("声音输出到"), detail: L("对方只能听到虚拟麦克风里的声音"), divider: false) {
+                        PillMenu(value: outputName,
+                                 options: [("", L("虚拟麦克风（自动）"))] + model.outputs.map { ($0.uid, $0.name) }) {
+                            settings.speakOutput = $0
+                        }
                     }
                 }
+                .padding(.top, 8)
+            } label: {
+                Text("高级：声音输出到 · \(outputName)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
             }
-            Text("在会议软件中，将麦克风选为「\(model.virtualMic?.name ?? "BlackHole 2ch")」。")
-                .font(.system(size: 12)).foregroundStyle(Palette.secondary).padding(.horizontal, 4)
-            VoiceSection(model: model, settings: settings, ling: model.ling).padding(.top, 6)
+            .padding(.horizontal, 4)
         }
+        .sheet(isPresented: $model.speakTestShown) {
+            SpeakTestView(model: model, tester: model.speakTester) {
+                if model.speakTester.busy { model.speakTester.cancel() }
+                model.speakTestShown = false
+            }
+        }
+    }
+
+    /// The last measured press, else what to expect.
+    private var latencyLine: String {
+        guard let v = model.lastSpeakLatency else {
+            // Measured with 试一句: Ming's voice ~3 s after release, the Mac's ~1 s.
+            let mac = model.voiceID(for: model.speak.targetCode)?.hasPrefix("system:") ?? true
+            return mac ? L("按住说话，松开后约 1 秒，对方听到译文") : L("按住说话，松开后约 3 秒，对方听到译文")
+        }
+        return L("上次发言：松开后 \(String(format: "%.1f", v)) 秒，对方听到译文")
+    }
+
+    /// Step 1: the checklist until the virtual mic is loaded, then one line.
+    @ViewBuilder
+    private var micStep: some View {
+        if let name = model.virtualMic?.name {
+            HStack(spacing: 12) {
+                StepMark(done: true, number: 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("虚拟麦克风").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Text("在会议软件里把麦克风选成「\(name)」").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 6) {
+                    Circle().fill(micTested ? Palette.ok : Palette.placeholder).frame(width: 8, height: 8)
+                    Text(micTested ? L("试音通过") : L("已装好")).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        } else {
+            MicSetupCard(installer: installer, deviceName: nil)
+        }
+    }
+
+    private var micTested: Bool {
+        installer.passed || (model.speakTester.result.map { $0.broken != .room && $0.heardSeconds > 0 } ?? false)
     }
 
     private var outputName: String {

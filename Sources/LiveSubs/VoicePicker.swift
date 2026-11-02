@@ -1,8 +1,9 @@
 import AVFoundation
 import SwiftUI
 
-/// Settings › 同声传译 › 对方听到的声音: one voice per language the room may speak, each playable,
-/// plus the user's own cloned voice.
+/// Settings › 同声传译, third step "对方听到": the voice for the room's current language as one chip,
+/// opening into a list (any language, the Mac's voices, the user's own cloned voice). Each language
+/// remembers its own choice (`speakVoices`).
 struct VoiceSection: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
@@ -17,22 +18,26 @@ struct VoiceSection: View {
     private var current: String { tab ?? roomKey }
     private var language: String { current == "zh" ? "zh-CN" : current }
     private var chosen: String? { model.voiceID(for: language) }
-    private static let mainTabs = ["en", "zh", "ja"]
+    private var roomLanguage: String { roomKey == "zh" ? "zh-CN" : roomKey }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("对方听到的声音").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
-                Spacer()
-                tabs
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                StepMark(done: true, number: 3)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("对方听到").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                    // One line of prose with the link inside, so it wraps instead of truncating in English.
+                    Text(route)
+                        .font(.system(size: 11)).foregroundStyle(Palette.tertiary).tint(Palette.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .environment(\.openURL, OpenURLAction { _ in model.settingsSection = .language; return .handled })
+                }
+                Spacer(minLength: 8)
+                chip
             }
-            Text("每种语言会记住你选的声音。对方当前在说\(title(roomKey))。")
-                .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                ForEach(VoiceCatalog.options(for: language)) { v in card(v) }
-            }
-            cloneCard
-            Text(footnote).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineSpacing(2)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            if !ling.usable { keyNudge }
+            if model.voicePickerOpen { picker.padding(.horizontal, 16).padding(.bottom, 14) }
         }
         .sheet(isPresented: $recording) {
             VoiceCloneSheet(model: model, settings: settings, language: language) { saved in
@@ -45,76 +50,122 @@ struct VoiceSection: View {
         }
     }
 
-    // MARK: Tabs
-
-    private var tabs: some View {
-        HStack(spacing: 2) {
-            ForEach(Self.mainTabs, id: \.self) { k in tabButton(k, title(k)) }
-            Menu {
-                ForEach(VoiceCatalog.languages.filter { !Self.mainTabs.contains($0.key) }, id: \.key) { l in
-                    Button(l.title) { tab = l.key }
-                }
-            } label: {
-                Text(Self.mainTabs.contains(current) ? L("更多…") : title(current))
-                    .font(.system(size: 12, weight: Self.mainTabs.contains(current) ? .regular : .semibold))
-                    .foregroundStyle(Self.mainTabs.contains(current) ? Palette.secondary : Palette.ink)
-                    .padding(.horizontal, 10).frame(height: 24)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Self.mainTabs.contains(current) ? .clear : Color.white))
-            }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Color(white: 0.925)))
+    private var route: AttributedString {
+        var text = AttributedString(L("你说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))") + " · ")
+        var link = AttributedString(L("改语言"))
+        link.link = URL(string: "cicada-settings:language")
+        link.underlineStyle = .single
+        text.append(link)
+        return text
     }
 
-    private func tabButton(_ key: String, _ text: String) -> some View {
-        let on = current == key
-        return Button { tab = key } label: {
-            Text(text).font(.system(size: 12, weight: on ? .semibold : .regular))
-                .foregroundStyle(on ? Palette.ink : Palette.secondary)
-                .padding(.horizontal, 10).frame(height: 24)
-                .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.white : .clear)
-                    .shadow(color: .black.opacity(on ? 0.06 : 0), radius: 1, y: 1))
+    // MARK: Chip
+
+    private var roomOption: VoiceOption? {
+        let id = model.voiceID(for: roomLanguage)
+        if id == "clone" { return VoiceCatalog.cloneOption }
+        return VoiceCatalog.options(for: roomLanguage).first { $0.id == id }
+    }
+
+    private var chip: some View {
+        let v = roomOption
+        return HStack(spacing: 8) {
+            playButton(v?.id ?? "", highlighted: true, enabled: v != nil) {
+                if let v { model.previewVoice(v.id, language: roomLanguage) }
+            }
+            Button { withAnimation(.easeOut(duration: 0.15)) { model.voicePickerOpen.toggle(); tab = nil } } label: {
+                HStack(spacing: 6) {
+                    Text(v?.name ?? L("系统声音")).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                    if let v { Text(summary(v)).font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1) }
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(Palette.tertiary)
+                        .rotationEffect(.degrees(model.voicePickerOpen ? 180 : 0))
+                }
                 .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("选择对方听到的声音"))
         }
-        .buttonStyle(.plain)
+        .padding(.leading, 4).padding(.trailing, 10).frame(height: 36)
+        .background(Capsule().fill(Color.white))
+        .overlay(Capsule().stroke(model.voicePickerOpen ? Palette.accent : Palette.line, lineWidth: 1))
+        .fixedSize()
+    }
+
+    /// "女 · Ming" / "男 · 本机": who it is and where it comes from.
+    private func summary(_ v: VoiceOption) -> String {
+        switch v.kind {
+        case .ming: return [v.tags.first, "Ming"].compactMap { $0 }.joined(separator: " · ")
+        case .system: return [v.tags.first, L("本机")].compactMap { $0 }.joined(separator: " · ")
+        case .clone: return L("你的音色")
+        }
+    }
+
+    private var keyNudge: some View {
+        HStack(spacing: 10) {
+            Text("填入 Ling key：声音更自然，还能用你自己的声音").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            Spacer(minLength: 6)
+            Button("去填写") { model.settingsSection = .ai }.buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.raised))
+        .padding(.leading, 50).padding(.trailing, 16).padding(.bottom, 12)
+    }
+
+    // MARK: Picker
+
+    private var picker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(current == roomKey ? L("每种语言各记一个声音") : L("对方说\(title(current))时用")).font(.system(size: 12))
+                    .foregroundStyle(Palette.tertiary)
+                Spacer()
+                PillMenu(value: title(current) + (current == roomKey ? L("（当前）") : ""),
+                         options: VoiceCatalog.languages.map { ($0.key, $0.title + ($0.key == roomKey ? L("（当前）") : "")) }) {
+                    tab = $0 == roomKey ? nil : $0
+                }
+            }
+            VStack(spacing: 0) {
+                ForEach(VoiceCatalog.options(for: language)) { v in
+                    row(v)
+                    Divider()
+                }
+                cloneRow
+            }
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line, lineWidth: 1))
+            Text(footnote).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+        }
+        .padding(.leading, 34)
     }
 
     private func title(_ key: String) -> String {
         VoiceCatalog.languages.first { $0.key == key }?.title ?? targetName(key)
     }
 
-    // MARK: Cards
-
-    private func card(_ v: VoiceOption) -> some View {
+    private func row(_ v: VoiceOption) -> some View {
         let selected = chosen == v.id
         let usable = !v.needsKey || ling.usable
         return Button { if usable { model.setVoice(v.id, for: language) } } label: {
             HStack(spacing: 10) {
                 playButton(v.id, highlighted: selected, enabled: usable) { model.previewVoice(v.id, language: language) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(v.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
-                    HStack(spacing: 4) {
-                        ForEach(usable ? v.tags : [v.tags.first ?? "", L("需要 Ling key")], id: \.self) { tagView($0) }
-                    }
-                }
-                Spacer(minLength: 0)
+                Text(v.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
+                    .frame(width: 88, alignment: .leading)
+                Text(usable ? v.tags.prefix(2).joined(separator: " · ") + (v.needsKey ? " · Ming" : "") : L("需要 Ling key"))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
+                Spacer(minLength: 6)
+                Text(v.needsKey ? L("慢约 1 秒") : L("最快")).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                Radio(on: selected)
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Palette.accentWash : Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Palette.accent : Palette.line, lineWidth: selected ? 2 : 1))
-            .opacity(usable ? 1 : 0.55)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(selected ? Palette.accentWash : Color.clear)
+            .opacity(usable ? 1 : 0.5)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private func tagView(_ text: String) -> some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(Palette.secondary)
-            .padding(.horizontal, 6).padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 5).fill(Palette.fill))
-            .fixedSize()
     }
 
     private func playButton(_ id: String, highlighted: Bool, enabled: Bool, action: @escaping () -> Void) -> some View {
@@ -123,13 +174,13 @@ struct VoiceSection: View {
             ZStack {
                 Circle().fill(highlighted ? Palette.accent : Palette.fill)
                 if playing {
-                    Spinner(size: 12, track: highlighted ? Color.white.opacity(0.4) : Palette.accentPale)
+                    Spinner(size: 11, track: highlighted ? Color.white.opacity(0.4) : Palette.accentPale)
                 } else {
-                    Image(systemName: "play.fill").font(.system(size: 10))
+                    Image(systemName: "play.fill").font(.system(size: 9))
                         .foregroundStyle(highlighted ? Color.white : Palette.ink)
                 }
             }
-            .frame(width: 30, height: 30)
+            .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
         .disabled(!enabled || playing)
@@ -138,7 +189,7 @@ struct VoiceSection: View {
     }
 
     @ViewBuilder
-    private var cloneCard: some View {
+    private var cloneRow: some View {
         let has = VoiceReference.exists && cloneVersion >= 0
         let selected = chosen == "clone"
         HStack(spacing: 10) {
@@ -147,47 +198,78 @@ struct VoiceSection: View {
             } else {
                 ZStack {
                     Circle().fill(Palette.accentPale)
-                    Image(systemName: "mic").font(.system(size: 13)).foregroundStyle(Palette.accentInk)
+                    Image(systemName: "mic").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
                 }
-                .frame(width: 30, height: 30)
+                .frame(width: 28, height: 28)
             }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("我自己的声音").font(.system(size: 13, weight: .semibold))
-                Text(has ? L("已录好 · \(Int(VoiceReference.duration.rounded())) 秒 · \(cloneNote)")
-                         : L("录制 15 秒原声，让对方听到你的音色；说外语时会保留你的口音，延迟约 3 秒"))
-                    .font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if has {
+                    HStack(spacing: 4) {
+                        Text("已录 \(Int(VoiceReference.duration.rounded())) 秒 · \(cloneNote)")
+                        Text("·")
+                        Button("重录") { recording = true }.buttonStyle(.plain).underline()
+                        Button("删除") {
+                            VoiceReference.remove()
+                            for (k, v) in settings.speakVoices where v == "clone" { settings.speakVoices[k] = nil }
+                            cloneVersion += 1
+                        }
+                        .buttonStyle(.plain).underline()
+                    }
+                    .font(.system(size: 11)).foregroundStyle(Palette.tertiary).lineLimit(1)
+                } else {
+                    Text("录 15 秒原声，对方听到你的音色，晚约 3 秒").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                }
             }
             Spacer(minLength: 6)
             if has {
-                if !selected {
-                    SoftButton(L("用这个")) { model.setVoice("clone", for: language) }.disabled(!ling.usable)
-                }
-                Button("重录") { recording = true }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                Button("删除") {
-                    VoiceReference.remove()
-                    for (k, v) in settings.speakVoices where v == "clone" { settings.speakVoices[k] = nil }
-                    cloneVersion += 1
-                }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                Button { if ling.usable { model.setVoice("clone", for: language) } } label: { Radio(on: selected) }
+                    .buttonStyle(.plain).disabled(!ling.usable)
+                    .accessibilityLabel(L("用我自己的声音"))
             } else {
-                SoftButton(L("录制")) { recording = true }
+                SoftButton(L("录制")) { recording = true }.disabled(!ling.usable)
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Palette.accentWash : Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Palette.accent : Palette.line, lineWidth: selected ? 2 : 1))
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(selected ? Palette.accentWash : Palette.raised)
     }
 
     private var cloneNote: String {
         let own = VoiceCatalog.key(for: settings.speakFromLang.locale)
-        return own == current ? L("说\(title(current))最像你，晚约 3 秒") : L("说\(title(current))会带你的口音，晚约 3 秒")
+        return own == current ? L("最像你") : L("会带你的口音")
     }
 
     private var footnote: String {
-        if !ling.usable { return L("未填写 Ling key 时仅可使用系统声音；填入 key 后可使用 Ming 语音或克隆你自己的声音。") }
-        if chosen == "clone" { return L("录音仅保存在本机，每次发言时随文字发送给 Ling 合成语音；Ling 不可用时自动切回系统声音。") }
-        return L("Ming 语音需使用 Ling key，延迟约 1.5 秒；Ling 不可用时自动切回系统声音。")
+        ling.usable ? L("Ling 不可用时自动换成本机声音") : L("填入 Ling key 后可用 Ming 声音和你自己的声音")
+    }
+}
+
+/// A radio dot for list rows.
+struct Radio: View {
+    let on: Bool
+    var body: some View {
+        ZStack {
+            Circle().stroke(on ? Palette.accent : Palette.placeholder, lineWidth: 1.5)
+            if on { Circle().fill(Palette.accent).frame(width: 8, height: 8) }
+        }
+        .frame(width: 16, height: 16)
+    }
+}
+
+/// The numbered circle of a setup step: a check once done.
+struct StepMark: View {
+    let done: Bool
+    let number: Int
+    var body: some View {
+        ZStack {
+            Circle().fill(done ? Palette.ink : Palette.accentPale)
+            if done {
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+            } else {
+                Text("\(number)").font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.accentInk)
+            }
+        }
+        .frame(width: 22, height: 22)
     }
 }
 
