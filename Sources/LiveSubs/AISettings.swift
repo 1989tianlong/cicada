@@ -74,7 +74,7 @@ struct AISettingsView: View {
                     if editing { SoftButton(L("取消")) { editing = false } }
                 }
                 Button("打开 Ling 开放平台 ↗") {
-                    if let url = URL(string: "https://chat.ant-ling.com/open") { NSWorkspace.shared.open(url) }
+                    if let url = URL(string: "https://chat.ant-ling.com/platform/api") { NSWorkspace.shared.open(url) }
                 }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
             }

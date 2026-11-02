@@ -552,7 +552,7 @@ struct NotesWindowView: View {
                 SoftButton(L("保存并开始"), dark: true, action: saveKey)
             }
             Button("获取 Ling key ↗") {
-                if let url = URL(string: "https://chat.ant-ling.com/open") { NSWorkspace.shared.open(url) }
+                if let url = URL(string: "https://chat.ant-ling.com/platform/api") { NSWorkspace.shared.open(url) }
             }
             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }

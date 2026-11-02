@@ -69,7 +69,31 @@ Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and
 
 Subtitles, translation, meeting records and push-to-talk interpreting work out of the box without any API key (translation uses Google and falls back to Apple on-device translation).
 
-Live meeting notes, higher-accuracy translation, one-step voice translation and voice cloning use your own [Ling API key](https://chat.ant-ling.com/open) (Ant Group's LLM service at `ant-ling.com`). Paste the key in **Settings › AI 服务** or directly inside the notes window. It is saved on your Mac in a file only your user account can read and is excluded from backups. Notes only send recognized text, and an hour of live meeting notes costs roughly ¥0.15 to ¥1 at current Ling pricing.
+Live meeting notes, higher-accuracy translation, one-step voice translation and voice cloning use your own Ling API key (Ant Group's model service at `ant-ling.com`, see [below](#ling-api-key)). The key is saved on your Mac in a file only your user account can read and is excluded from backups. Notes only send recognized text, and an hour of live meeting notes costs roughly ¥0.15 to ¥1 at current Ling pricing.
+
+## Models
+
+Without a Ling key, everything runs on Apple's on-device models plus Google Translate. With a key, Ling and Ming models take over the parts below, and the app falls back down the chain on any failure.
+
+| Feature | With a Ling key | Without a key / fallback |
+|---|---|---|
+| Speech recognition and language detection | Apple `SpeechAnalyzer` / `SpeechTranscriber` (on device) | same |
+| Translating finished sentences | Ling `Ling-3.1-flash` (or `Ling-3.0-flash`, set in Settings › AI Service) | Google Translate → Apple `Translation` (on device) |
+| Translating the sentence still being spoken | Google Translate (saves Ling's rate limit) | Apple `Translation` (on device) |
+| Live notes and the final version | Ling `Ling-3.1-flash` (same setting) | not available |
+| Checking the key | Ling `Ling-3.0-tiny` (one token) | — |
+| Interpreting: hearing and translating what you say | Ming `Ming-3.0-audio-flash`, one step | Apple on-device transcript, then the translation chain above |
+| Interpreting: the voice the room hears, voice cloning | Ming `Ming-3.0-tts-0.5B` | macOS system voices (`AVSpeechSynthesizer`); no cloning |
+
+<a id="ling-api-key"></a>
+## Setting up a Ling API key
+
+1. Sign up or log in on the [Ling open platform](https://chat.ant-ling.com/platform/api).
+2. Click **创建令牌** (create token) and copy the key that starts with `sk-`.
+3. In Cicada, open **Settings › AI Service**, paste the key and click **Save and check** (or paste it in the prompt at the top of the notes window). A one-token request confirms it works.
+4. Optionally pick the model (`Ling-3.1-flash` by default) on the same page, and the Ming voice for each language under **Settings › Interpreting**.
+
+To remove the key, click **Remove** on the same page.
 
 ## Requirements & Installation
 
@@ -87,7 +111,7 @@ The app is in English or Chinese, following your macOS language (Settings › Ge
 
 1. Play any video, livestream or call. The live notes window opens by default, and pressing `⌃⌥S` switches between the notes window, the subtitle bar and hidden.
 2. Click the Cicada icon in the menu bar to change the spoken language (auto by default), the target translation language, or the display mode.
-3. To use live notes, paste your [Ling API key](https://chat.ant-ling.com/open) in **Settings › AI 服务** or in the notes window prompt.
+3. To use live notes, paste your [Ling API key](https://chat.ant-ling.com/platform/api) in **Settings › AI Service** or in the notes window prompt.
 4. To speak back in another language, turn on **Interpreting** in the menu bar panel, set your meeting app's microphone to **BlackHole 2ch**, and hold the right `⌥` key while speaking (macOS will ask for Input Monitoring permission the first time).
 5. Open **会议记录** from the menu bar panel to search past transcripts (`⌘F`), generate notes for older sessions, or export to Markdown, Word or SRT.
 
