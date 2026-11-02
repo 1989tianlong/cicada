@@ -513,12 +513,27 @@ struct OnboardingView: View {
             .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
 
+            // Turns green by itself once a meeting app reads the virtual mic.
             if model.virtualMic != nil && installer.passed {
-                (Text("最后一步：在会议软件中，将麦克风选为 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
-                    .font(.system(size: 13)).foregroundStyle(Palette.ink)
+                if let user = model.micUsers.first(where: { $0.state == .virtualMic }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.ok)
+                        Text("\(user.name)已选虚拟麦克风，对方能听到译文").font(.system(size: 13)).foregroundStyle(Palette.ok)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.okPale))
+                } else {
+                    HStack(spacing: 10) {
+                        (Text("最后一步：在会议软件中，将麦克风选为 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
+                            .font(.system(size: 13)).foregroundStyle(Palette.ink)
+                        Spacer(minLength: 8)
+                        Text("等你选好…").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                    }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
+                }
             }
         }
     }

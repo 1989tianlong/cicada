@@ -17,7 +17,7 @@ struct OutputDevice: Identifiable, Hashable {
 }
 
 enum AudioDevices {
-    private static func string(_ device: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+    static func string(_ device: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
         var value: CFString = "" as CFString
         var size = UInt32(MemoryLayout<CFString>.size)
         var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
@@ -48,6 +48,8 @@ enum AudioDevices {
     }
 
     static var virtualMic: OutputDevice? { outputs().first(where: \.isVirtualMic) }
+
+    static func name(_ device: AudioObjectID) -> String? { string(device, kAudioObjectPropertyName) }
 
     /// The system output (speakers or headphones): voice previews play here, not into the room.
     static var defaultOutput: OutputDevice? {

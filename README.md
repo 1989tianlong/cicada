@@ -44,12 +44,13 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 
 ### Speak back in their language
 
-- **Push-to-talk interpreting.** Hold the right `⌥` key (or a custom shortcut) and speak. The room hears your translated voice through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click.
+- **Push-to-talk interpreting.** Hold the right `⌥` key (or a custom shortcut) and speak. The room hears your translated voice through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click. Settings shows which meeting apps are on it, live, and how to switch the ones that aren't.
 - **Ming voices and voice cloning.** With a Ling API key, the Ming audio model listens and translates in one step in about 2 seconds. The other side can hear natural Ming voices (English, Chinese, Japanese, Korean, German, French, Spanish), macOS system voices, or a clone of your own voice from an 8 to 30 second sample; without a key, Cicada uses macOS system voices.
 
 ### Meeting records
 
 - **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side; "you" covers only what you say while holding the talk key, not what you say into the meeting directly, and individual remote speakers are not separated yet (see [roadmap](#roadmap)).
+- **Ends when the meeting does.** When the meeting app hangs up, or after 10 minutes with no one speaking, Cicada counts down and ends the meeting, trimming the silent tail, so a forgotten one doesn't run on for hours. You can keep it going with one click, or change this in Settings.
 - **Export anywhere.** Export to Markdown, Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **Generate Notes** afterward to create them.
 
 <p align="center">

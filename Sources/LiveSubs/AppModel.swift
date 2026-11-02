@@ -22,10 +22,23 @@ final class AppModel: ObservableObject {
     }
     /// The 试一句 sheet in settings.
     @Published var speakTestShown = false
+    /// Meeting apps and the microphone each reads; refreshed every second once the virtual mic exists.
+    @Published var micUsers: [MicUser] = []
+    /// The app whose "怎么改" sheet is open in Settings.
+    @Published var micGuide: MicUser?
     /// Settings › 同声传译: the voice list under "对方听到" is open.
     @Published var voicePickerOpen = false
 
     @Published var running = false
+    /// The meeting is about to end by itself (a hang-up or a long silence) unless someone keeps it going.
+    @Published private(set) var ending: MeetingEndWatch.Pending?
+    /// The last meeting ended by itself: the menu says so, and the next call in a meeting app starts a new one.
+    @Published private(set) var autoEnded = false
+    private var endWatch: MeetingEndWatch?
+    private var endTimer: Timer?
+    /// Debug: meeting apps in a call instead of what Core Audio says, and shorter waits.
+    private var fakeCalls: [String: String]?
+    private var endTimesOverride: (silence: Double, countdown: Double, grace: Double)?
     @Published var status = L("准备就绪")
     @Published var summary = ""
     @Published var installed: Set<String> = []
@@ -74,7 +87,7 @@ final class AppModel: ObservableObject {
         listen.onSubtitle = { [weak self] src, dst in
             self?.liveSource = src
             self?.liveTranslation = dst
-            if !src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self?.heardSpeech() }
+            if !src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self?.heardSpeech(); self?.heardWords() }
             guard let self, self.settings.displayMode == "bar" else { return }
             self.overlay.clearStatus()
             let shown = self.displayed(src, dst)
@@ -133,7 +146,7 @@ final class AppModel: ObservableObject {
             self.speakPhase = phase
             // A 试一句 rehearsal shows in its own sheet: no notes window, caption or subtitle bar.
             if self.speakTester.busy { return }
-            if phase == .listening && !src.isEmpty { self.heardSpeech() }
+            if phase == .listening && !src.isEmpty { self.heardSpeech(); self.heardWords() }
             guard self.settings.displayMode == "bar" else {
                 // The notes window's caption line shows what you are saying.
                 if phase != .idle || !src.isEmpty {
@@ -178,6 +191,11 @@ final class AppModel: ObservableObject {
         }
         applyToggleKey()
         refreshOutputs()
+        let watch = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.watchEnd() }
+        }
+        endTimer = watch
+        RunLoop.main.add(watch, forMode: .common)
     }
 
     func setOverlayAuto(_ on: Bool) {
@@ -217,6 +235,26 @@ final class AppModel: ObservableObject {
         let devices = AudioDevices.outputs()
         if devices.map(\.uid) != outputs.map(\.uid) { outputs = devices }
         if listen.isRunning && !systemAudioOK { systemAudioOK = true }
+        refreshMicUsers()
+    }
+
+    func refreshMicUsers() {
+        // Compare against where our voice actually goes: 高级 › 声音输出到 can point elsewhere.
+        let target = outputs.first { !settings.speakOutput.isEmpty && $0.uid == settings.speakOutput } ?? virtualMic
+        let users = virtualMic != nil ? target.map { MicUsers.current(virtualMic: $0.id) } ?? [] : []
+        if users != micUsers { micUsers = users }
+    }
+
+    /// Opens the "怎么改" sheet for an app, from the panel or Settings.
+    func showMicGuide(_ user: MicUser) {
+        micGuide = user
+        openSettings(.speak)
+    }
+
+    /// Brings a meeting app forward so the user can change its microphone.
+    func openApp(_ bundleID: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     /// Starting the tap triggers the system prompt; if it still fails, open the pane.
@@ -271,6 +309,9 @@ final class AppModel: ObservableObject {
         lineForSegment = [:]
         speechHeard = false
         meetingSubtitles = nil
+        autoEnded = false
+        endWatch = MeetingEndWatch(config: endConfig, start: Date())
+        setEnding(nil)
         if settings.recordAudio {
             listen.router.setRecording(store.systemAudioURL(session.id))
             speak.setRecording(store.micAudioURL(session.id))
@@ -285,12 +326,16 @@ final class AppModel: ObservableObject {
         refresh()
     }
 
-    func stop() {
+    /// `endedAt`: when a meeting that ends by itself really ended (see `autoEnd`).
+    func stop(endedAt: Date? = nil) {
+        autoEnded = false
+        endWatch = nil
+        setEnding(nil)
         diagnostics.end()
         listen.stop()
         listen.router.setRecording(nil)
         speak.setRecording(nil)
-        store.end()
+        store.end(at: endedAt)
         notes.finish()
         overlay.hide()
         refresh()
@@ -617,6 +662,85 @@ final class AppModel: ObservableObject {
         if settings.speakEnabled { Task { await speak.prepare() } }
     }
 
+    // MARK: Meeting end
+
+    private var endConfig: MeetingEndWatch.Config {
+        var c = MeetingEndWatch.Config()
+        c.followApps = settings.endWithApp
+        c.silence = MeetingEndWatch.Silence(rawValue: settings.silenceEnd) ?? .prompt
+        c.silenceAfter = settings.silenceMinutes * 60
+        if let o = endTimesOverride { (c.silenceAfter, c.countdown, c.appGrace) = (o.silence, o.countdown, o.grace) }
+        return c
+    }
+
+    private func heardWords() {
+        endWatch?.heard(at: Date())
+        setEnding(endWatch?.pending)
+    }
+
+    /// Every 2 s: while listening, whether the meeting is over; after one ended by itself, whether
+    /// a meeting app started the next call.
+    private func watchEnd() {
+        if listen.isRunning, var w = endWatch {
+            w.config = endConfig
+            let said = store.liveID.flatMap { store.session($0) }.map { !$0.lines.isEmpty } ?? false
+            let calls = w.config.followApps ? (fakeCalls ?? MicUsers.currentCalls()) : [:]
+            let reason = w.tick(at: Date(), calls: calls, said: said)
+            endWatch = w
+            setEnding(w.pending)
+            if let reason { autoEnd(reason, watch: w) }
+        } else if !listen.isRunning, autoEnded, settings.endWithApp, !(fakeCalls ?? MicUsers.currentCalls()).isEmpty {
+            debugLog("meeting end: a meeting app started a call, starting a new meeting")
+            start()
+        }
+    }
+
+    private func setEnding(_ p: MeetingEndWatch.Pending?) {
+        guard p != ending else {
+            if p != nil { showEndingOnBar() }
+            return
+        }
+        if let p { debugLog("meeting end: pending \(p.reason), ends in \(Int(p.deadline.timeIntervalSinceNow)) s") }
+        else if ending != nil { debugLog("meeting end: pending cleared"); overlay.clearStatus() }
+        ending = p
+        showEndingOnBar()
+    }
+
+    /// The subtitle bar has no buttons: it says what will happen, and speaking keeps a silent meeting going.
+    private func showEndingOnBar() {
+        guard settings.displayMode == "bar", let p = ending else { return }
+        let left = max(0, Int(p.deadline.timeIntervalSinceNow.rounded()))
+        overlay.notice(endingTitle(p) + " · " + L("\(left) 秒后结束"))
+    }
+
+    func endingTitle(_ p: MeetingEndWatch.Pending) -> String {
+        switch p.reason {
+        case .appLeft(let name): L("\(name) 已挂断")
+        case .silence: L("已经 \(max(1, Int((endConfig.silenceAfter / 60).rounded()))) 分钟没人说话")
+        }
+    }
+
+    func endingDetail(_ p: MeetingEndWatch.Pending, now: Date = Date()) -> String {
+        L("\(max(0, Int(p.deadline.timeIntervalSince(now).rounded()))) 秒后结束会议并整理纪要")
+    }
+
+    /// "继续记录" on the ending prompt.
+    func keepRecording() {
+        endWatch?.keepGoing(at: Date())
+        setEnding(nil)
+        debugLog("meeting end: kept going")
+    }
+
+    /// Ends where the meeting really ended: a little after the last words, or at the hang-up if
+    /// that was later. Never before a line that was kept, or its audio would be cut.
+    private func autoEnd(_ reason: MeetingEndWatch.Reason, watch w: MeetingEndWatch) {
+        var at = w.lastSpeech.addingTimeInterval(5)
+        if case .appLeft = reason { at = max(at, Date().addingTimeInterval(-w.config.appGrace)) }
+        debugLog("meeting end: ended by itself (\(reason)), end time \(Int(Date().timeIntervalSince(at))) s ago")
+        stop(endedAt: at)
+        autoEnded = true
+    }
+
     // MARK: Meeting record
 
     private func recordHeard(_ seg: Segment, duration: Double) {
@@ -627,6 +751,7 @@ final class AppModel: ObservableObject {
         let t = max(0, Date().timeIntervalSince(start) - duration)
         store.append(TranscriptLine(id: id, t: t, speaker: "them", src: seg.text, dst: seg.translation,
                                     srcLang: seg.sourceCode, dstLang: listen.resolvedTarget))
+        heardWords()
     }
 
     private func recordSaid(_ src: String, _ dst: String, from: String, to: String, secondsAgo: Double) {
@@ -635,6 +760,7 @@ final class AppModel: ObservableObject {
         let t = max(0, Date().timeIntervalSince(start) - secondsAgo)
         store.append(TranscriptLine(id: "m\(lineCounter)", t: t, speaker: "me", src: src, dst: dst,
                                     srcLang: from, dstLang: to))
+        heardWords()
     }
 
     // MARK: Export
@@ -713,6 +839,12 @@ final class AppModel: ObservableObject {
             debugLog("diag report:\n" + diagnostics.report(version: "", model: settings.aiModel))
         case "micTest": installer.runTest()
         case "micNext": installer.next()
+        case "micUsers":
+            refreshMicUsers()
+            debugLog("mic users virtual=\(virtualMic?.id ?? 0) readers=\(MicUsers.readers().map { "\($0.bundleID)\($0.inputs)" }) users=\(micUsers.map { "\($0.name)=\($0.state)" })")
+        case "micGuide":
+            refreshMicUsers()
+            if let user = micUsers.first(where: { $0.bundleID == arg || $0.name == arg }) { showMicGuide(user) } else { micGuide = nil }
         case "talkKey", "toggleKey":
             let s = arg == "right" ? Shortcut.rightOption : Shortcut(stored: arg)
             let refusal = s.map { setShortcut($0, for: parts[0] == "talkKey" ? .talk : .toggle) } ?? "bad shortcut"
@@ -744,6 +876,17 @@ final class AppModel: ObservableObject {
             let kv = arg.split(separator: "=", maxSplits: 1).map(String.init)
             if kv.count == 2 { previewVoice(kv[1], language: kv[0]) }
         case "notesNow": notes.updateNow()
+        case "endSim":
+            // endSim:<app name>[,<app name>] pretends those meeting apps are in a call; endSim: none; endSim:off real.
+            fakeCalls = arg == "off" ? nil : Dictionary(arg.split(separator: ",").map { ("sim.\($0)", String($0)) }) { a, _ in a }
+            debugLog("meeting end: simulated calls \(fakeCalls.map { $0.values.sorted().description } ?? "off")")
+        case "endTimes":
+            // endTimes:<silence>,<countdown>,<grace> in seconds; endTimes: back to the settings.
+            let v = arg.split(separator: ",").compactMap { Double($0) }
+            endTimesOverride = v.count == 3 ? (v[0], v[1], v[2]) : nil
+        case "endKeep": keepRecording()
+        case "endState":
+            debugLog("meeting end: running=\(listen.isRunning) autoEnded=\(autoEnded) pending=\(ending.map { "\($0.reason) in \(Int($0.deadline.timeIntervalSinceNow)) s" } ?? "none") inCall=\(endWatch?.inCall.values.sorted() ?? []) silent=\(endWatch.map { Int(Date().timeIntervalSince($0.lastSpeech)) } ?? -1) s config=\(endConfig)")
         case "updateFeed":
             // updateFeed:<release json url>: check a fake release (file:// works), even in a dev build.
             if let url = URL(string: arg) { updates.checker.feed = url }
@@ -860,6 +1003,15 @@ final class AppModel: ObservableObject {
         case "speakTestClose": speakTester.cancel(); speakTestShown = false
         case "speakTestState":
             debugLog("speak test phase=\(speakTester.phase) reached=\(String(describing: speakTester.reached)) result=\(speakTester.result?.report.replacingOccurrences(of: "\n", with: " | ") ?? "-")")
+        case "micGuideRender":
+            // micGuideRender:<bundle id>=<png>: the 怎么改 sheet for an app in the list.
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            guard p.count == 2, let user = micUsers.first(where: { $0.bundleID == p[0] }) else { break }
+            let r = ImageRenderer(content: MicGuideView(model: self, bundleID: user.bundleID, name: user.name, close: {}).background(Color.white))
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: p[1]))
+            }
         case "speakTestRender":
             let r = ImageRenderer(content: SpeakTestView(model: self, tester: speakTester, close: {}).background(Color.white))
             r.scale = 2

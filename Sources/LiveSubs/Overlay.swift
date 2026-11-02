@@ -91,7 +91,17 @@ final class OverlayController {
         if view.isStatus {
             view.translation = ""
             view.isStatus = false
+            view.needsDisplay = true
         }
+    }
+
+    /// A status that has to be seen (the meeting is about to end): brings a tucked-away bar back
+    /// and keeps it up while it is repeated.
+    func notice(_ text: String) {
+        setStatus(text)
+        guard view.isStatus else { return }
+        lastContentAt = Date()
+        expand()
     }
 
     func setSpeaking(_ s: Speaking?) {

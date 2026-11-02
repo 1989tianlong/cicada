@@ -488,6 +488,7 @@ struct SettingsView: View {
                 Divider().padding(.leading, 50)
                 VoiceSection(model: model, settings: settings, ling: model.ling)
             }
+            if model.virtualMic != nil { MicUsersSection(model: model) }
             DisclosureGroup {
                 SettingsCard {
                     SettingsRow(title: L("声音输出到"), detail: L("对方只能听到虚拟麦克风里的声音"), divider: false) {
@@ -602,6 +603,23 @@ struct SettingsView: View {
                 }
                 SettingsRow(title: L("记录文件夹"), divider: false) {
                     SoftButton(L("打开")) { NSWorkspace.shared.open(model.store.root) }
+                }
+            }
+            Text("结束会议").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
+            SettingsCard {
+                SettingsRow(title: L("会议应用挂断后结束"), detail: L("Zoom、腾讯会议、飞书、Teams 等")) {
+                    Toggle("会议应用挂断后结束", isOn: $settings.endWithApp)
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+                }
+                SettingsRow(title: L("没人说话时"), detail: L("按识别出的话算，背景音乐不算"), divider: settings.silenceEnd != "off") {
+                    Segments(options: [("prompt", L("提醒后结束")), ("end", L("直接结束")), ("off", L("一直记录"))],
+                             value: settings.silenceEnd) { settings.silenceEnd = $0 }
+                }
+                if settings.silenceEnd != "off" {
+                    SettingsRow(title: L("多久算没人说话"), divider: false) {
+                        Segments(options: [5.0, 10, 15, 30].map { (String(Int($0)), L("\(Int($0)) 分钟")) },
+                                 value: String(Int(settings.silenceMinutes))) { settings.silenceMinutes = Double($0) ?? 10 }
+                    }
                 }
             }
             AppRows(updates: model.updates, loginItem: model.loginItem, model: model)

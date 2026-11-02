@@ -784,3 +784,31 @@ struct FadeIn: ViewModifier {
             .onAppear { if active { withAnimation(.easeOut(duration: 0.6)) { shown = true } } }
     }
 }
+
+/// "已经 10 分钟没人说话 · 60 秒后结束": the meeting is about to end by itself. In the notes window
+/// and the menu panel; neither takes focus, so a click lands on the buttons at once.
+struct MeetingEndingStrip: View {
+    @ObservedObject var model: AppModel
+    let pending: MeetingEndWatch.Pending
+    var compact = false
+    @State private var now = Date()
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.endingTitle(pending)).font(.system(size: compact ? 13 : 14, weight: .bold)).lineLimit(2)
+                Text(model.endingDetail(pending, now: now)).font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(Palette.secondary).lineLimit(2)
+            }
+            HStack(spacing: 8) {
+                SoftButton(L("继续记录"), dark: true) { model.keepRecording() }
+                SoftButton(L("现在结束")) { model.stop() }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(compact ? 12 : 14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
+        .onReceive(tick) { now = $0 }
+    }
+}

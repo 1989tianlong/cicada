@@ -221,12 +221,14 @@ enum AudioFileWriter {
 
     /// Rewraps `partial(url)` into `url` without re-encoding, then removes the partial file.
     /// A partial file next to an .m4a means the last rewrap was cut short: it is done again.
-    nonisolated static func finish(_ url: URL) async {
+    /// `until`: seconds to keep from the start (the silent tail of a meeting that ended by itself).
+    nonisolated static func finish(_ url: URL, until: Double? = nil) async {
         let src = partial(url)
         guard FileManager.default.fileExists(atPath: src.path) else { return }
         try? FileManager.default.removeItem(at: url)
         let asset = AVURLAsset(url: src)
         guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else { return }
+        if let until { export.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: until, preferredTimescale: 600)) }
         do {
             try await export.export(to: url, as: .m4a)
             try? FileManager.default.removeItem(at: src)

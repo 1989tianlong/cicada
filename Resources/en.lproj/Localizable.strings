@@ -103,6 +103,10 @@
 "与另一个快捷键冲突" = "Conflicts with the other shortcut";
 "%@ 是系统快捷键，换一个吧" = "%@ is a system shortcut; choose another";
 "%@ 已被其他应用占用，换一个吧" = "%@ is taken by another app; choose another";
+"%lld 秒后结束" = "ending in %lld s";
+"%@ 已挂断" = "%@ hung up";
+"已经 %lld 分钟没人说话" = "No one has spoken for %lld min";
+"%lld 秒后结束会议并整理纪要" = "Ending in %lld s and writing up the notes";
 "欢迎使用%@" = "Welcome to %@";
 "设置" = "Settings";
 "正在记录会议" = "A meeting is being recorded";
@@ -202,6 +206,37 @@
 "正在识别语言…" = "Detecting language…";
 "翻译暂不可用" = "Translation unavailable for now";
 
+/* MicUsersView */
+"这里只显示正在用麦克风的会议软件和常见会议软件，麦克风要在各软件里自己换。" = "Shows meeting apps using a mic, plus common ones. Change the mic inside each app.";
+"会议软件的麦克风" = "Meeting app microphones";
+"实时更新" = "Live";
+"还没有会议软件在用麦克风，进会议后这里会显示" = "No meeting app is using a mic yet. Join a meeting and it shows up here";
+"空闲" = "Idle";
+"怎么改" = "How to fix";
+"正在用虚拟麦克风" = "Using the virtual mic";
+"没用虚拟麦克风，对方听不到译文" = "Not on the virtual mic; they can't hear the translation";
+"正在用 %@，对方听不到译文" = "Using %@; they can't hear the translation";
+"没开麦克风" = "Mic not in use";
+"对方能听到" = "They hear you";
+"顺便关掉自动调节麦克风音量和降噪，译文会更清楚" = "Also turn off automatic mic volume and noise suppression so the translation sounds clearer";
+"进会议后，点麦克风图标旁边的 ⌃" = "In the meeting, click the ⌃ next to the microphone icon";
+"在选择麦克风菜单里点 %@" = "Under Select a Microphone, choose %@";
+"在会议网页的音频设置里，把麦克风选为 %@" = "In the meeting page's audio settings, set the microphone to %@";
+"想让所有网页默认用它：Chrome 设置 › 隐私和安全 › 网站设置 › 麦克风" = "To make it the default for every site: Chrome Settings › Privacy and security › Site settings › Microphone";
+"打开%@的音频设置" = "Open %@'s audio settings";
+"把麦克风选为 %@" = "Set the microphone to %@";
+"换用虚拟麦克风后，对方只能听到译文，听不到你说话的原声。" = "With the virtual mic, they hear only the translation, not your own voice.";
+"在%@里使用虚拟麦克风" = "Use the virtual mic in %@";
+"改好一次，下次开会不用再改" = "Change it once and it sticks for your next meetings";
+"好了" = "Done";
+"先不改" = "Not now";
+"打开%@" = "Open %@";
+"%@当前麦克风" = "%@'s microphone now";
+"选对后这里会自动变绿" = "This turns green once it's right";
+"没开麦克风，进会议后这里会显示" = "Mic not in use. It shows here once you join a meeting";
+"%@，对方能听到译文" = "%@: they hear the translation";
+"其他麦克风" = "Another mic";
+
 /* NotesViews */
 "总结" = "Summary";
 "刚更新" = "Just updated";
@@ -232,6 +267,7 @@
 "已听到 %lld 句" = "Heard %lld lines";
 "正在生成纪要" = "Writing notes";
 "正在更新" = "Updating";
+"现在结束" = "End now";
 
 /* NotesWindow */
 "key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。" = "The key stopped working (token deleted or free quota used up). Notes stop at %@.";
@@ -336,12 +372,14 @@
 "正在听…" = "Listening…";
 "听到" = "Hearing";
 "自动 · %@" = "Auto · %@";
-"最后一步：在会议软件中，将麦克风选为 " = "Last step: in your meeting app, set the microphone to ";
 "想让对方听懂你？" = "Want them to understand you?";
 "按住说%@，对方听到翻译后的语音。" = "Hold and speak %@; they hear it translated.";
 "可在设置中更改" = "Change it in Settings";
 "右侧 option" = "Right option";
 "按住说话" = "Hold to talk";
+"%@已选虚拟麦克风，对方能听到译文" = "%@ is on the virtual mic; they hear the translation";
+"最后一步：在会议软件中，将麦克风选为 " = "Last step: in your meeting app, set the microphone to ";
+"等你选好…" = "Waiting for you…";
 
 /* OnboardingKey */
 "接上 Ling，用上完整的知了" = "Connect Ling to get all of Cicada";
@@ -447,6 +485,14 @@
 "只存在这台 Mac 上" = "Stored only on this Mac";
 "记录文件夹" = "Records folder";
 "打开" = "Open";
+"会议应用挂断后结束" = "End when the meeting app hangs up";
+"Zoom、腾讯会议、飞书、Teams 等" = "Zoom, Tencent Meeting, Lark, Teams and others";
+"没人说话时" = "When no one speaks";
+"按识别出的话算，背景音乐不算" = "Counts recognized words, not background music";
+"多久算没人说话" = "Silent for";
+"提醒后结束" = "Ask, then end";
+"直接结束" = "End";
+"一直记录" = "Keep going";
 
 /* Shortcuts */
 "右 ⌥" = "Right ⌥";
@@ -591,10 +637,13 @@
 /* Views */
 "自动识别（%@）" = "Auto-detect (%@)";
 "%@（需下载）" = "%@ (download needed)";
+"会议已自动结束" = "Meeting ended by itself";
 "系统" = "System";
 "仅本场" = "This meeting";
 "按住" = "Hold";
 "说%@ → %@" = "%1$@ → %2$@";
+"%@已选虚拟麦克风" = "%@ is on the virtual mic";
+"%@没选虚拟麦克风，对方听不到译文" = "%@ isn't on the virtual mic, so they can't hear you";
 "虚拟麦克风尚未设置好，对方听不到你的声音" = "The virtual microphone isn't set up; they can't hear you";
 "纪要、文字记录和字幕都在一个窗口里" = "Notes and transcript in one window";
 "填入 API key 后可生成纪要；文字记录照常保存" = "Add an API key for notes; the transcript is saved either way";

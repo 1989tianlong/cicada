@@ -444,6 +444,7 @@ struct NotesWindowView: View {
     @ViewBuilder
     private var meetingBar: some View {
         if live {
+            if let p = model.ending { MeetingEndingStrip(model: model, pending: p).padding(.bottom, confirmEnd ? 8 : 0) }
             if languageOpen && !confirmEnd { languageCard(session?.id ?? "") }
             if confirmEnd {
                 VStack(alignment: .leading, spacing: 10) {
@@ -682,7 +683,10 @@ struct NotesWindowView: View {
                 Spacer()
                 iconButton("arrow.up.left.and.arrow.down.right", help: L("展开纪要")) { setWidth(460, 760) }
             }
-            if catchUp {
+            if live, let p = model.ending {
+                MeetingEndingStrip(model: model, pending: p, compact: true)
+                Spacer(minLength: 0)
+            } else if catchUp {
                 Text("这 \(span) 讲了").font(.system(size: 17, weight: .bold))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {

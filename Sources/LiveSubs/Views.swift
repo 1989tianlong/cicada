@@ -124,7 +124,7 @@ struct MenuPanelView: View {
                     }
                     HStack(spacing: 6) {
                         Circle().fill(model.running ? Palette.accent : Color.gray.opacity(0.5)).frame(width: 7, height: 7)
-                        Text(model.running ? model.summary : L("已暂停"))
+                        Text(model.running ? model.summary : model.autoEnded ? L("会议已自动结束") : L("已暂停"))
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
                     }
                 }
@@ -132,6 +132,8 @@ struct MenuPanelView: View {
                 Toggle("字幕", isOn: Binding(get: { model.running }, set: { model.setRunning($0) }))
                     .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
             }
+
+            if let p = model.ending { MeetingEndingStrip(model: model, pending: p, compact: true) }
 
             VStack(spacing: 8) {
                 ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, options: sourceOptions) {
@@ -162,10 +164,27 @@ struct MenuPanelView: View {
                             .foregroundStyle(Palette.secondary).lineLimit(1)
                     }
                     .font(.system(size: 12))
+                    // Green only when nothing needs fixing; the warning row below covers the rest.
+                    if settings.speakEnabled, !model.micUsers.contains(where: { $0.state.isOther }),
+                       let user = model.micUsers.first(where: { $0.state == .virtualMic }) {
+                        HStack(spacing: 6) {
+                            Circle().fill(Palette.ok).frame(width: 7, height: 7)
+                            Text("\(user.name)已选虚拟麦克风").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                        }
+                    }
                 }
                 Spacer()
                 Toggle("同声传译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
                     .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
+            }
+            if settings.speakEnabled, model.virtualMic != nil, let user = model.micUsers.first(where: { $0.state.isOther }) {
+                HStack {
+                    Text("\(user.name)没选虚拟麦克风，对方听不到译文").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                    Spacer()
+                    SoftButton(L("怎么改")) { model.showMicGuide(user) }
+                }
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
             }
             if settings.speakEnabled && model.virtualMic == nil {
                 HStack {

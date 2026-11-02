@@ -101,9 +101,12 @@ final class SessionStore: ObservableObject {
         return s
     }
 
-    func end() {
+    /// `at`: when the meeting really ended, for one that ended by itself after a hang-up or a
+    /// long silence; the recordings are cut there too.
+    func end(at: Date? = nil) {
         guard let id = liveID, let i = index(id) else { liveID = nil; return }
-        sessions[i].endedAt = Date()
+        let now = Date()
+        sessions[i].endedAt = at.map { min(now, max(sessions[i].startedAt, $0)) } ?? now
         liveID = nil
         if sessions[i].lines.isEmpty {
             // Nothing was said: don't keep an empty meeting around.
@@ -115,7 +118,7 @@ final class SessionStore: ObservableObject {
             FileManager.default.fileExists(atPath: $0.path) || FileManager.default.fileExists(atPath: AudioFileWriter.partial($0).path)
         }
         saveNow(id)
-        finishAudio(id)
+        finishAudio(id, until: at == nil ? nil : sessions[i].duration)
     }
 
     private func hasPartialAudio(_ id: String) -> Bool {
@@ -123,9 +126,9 @@ final class SessionStore: ObservableObject {
     }
 
     /// Turns the meeting's recordings into .m4a files (call after the recorders are closed).
-    func finishAudio(_ id: String) {
+    func finishAudio(_ id: String, until: Double? = nil) {
         let urls = [systemAudioURL(id), micAudioURL(id)]
-        Task.detached(priority: .utility) { for u in urls { await AudioFileWriter.finish(u) } }
+        Task.detached(priority: .utility) { for u in urls { await AudioFileWriter.finish(u, until: until) } }
     }
 
     var liveStart: Date? { liveID.flatMap { index($0) }.map { sessions[$0].startedAt } }

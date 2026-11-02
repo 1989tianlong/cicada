@@ -77,6 +77,19 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// End the meeting when the meeting app it was heard through hangs up.
+    @Published var endWithApp: Bool {
+        didSet { save() }
+    }
+    /// When nobody has said anything for `silenceMinutes`: "prompt" (count down, then end),
+    /// "end" or "off". See `MeetingEndWatch`.
+    @Published var silenceEnd: String {
+        didSet { save() }
+    }
+    @Published var silenceMinutes: Double {
+        didSet { save() }
+    }
+
     /// Record per-sentence timings (never text) and show the 诊断 tab. On by default in dev builds.
     @Published var diagnostics: Bool {
         didSet { save() }
@@ -107,6 +120,9 @@ final class AppSettings: ObservableObject {
         aiModel = defaults.string(forKey: "aiModel") ?? "Ling-3.1-flash"
         displayMode = defaults.string(forKey: "displayMode") ?? "notes"
         speakVoices = defaults.dictionary(forKey: "speakVoices") as? [String: String] ?? [:]
+        endWithApp = defaults.object(forKey: "endWithApp") as? Bool ?? true
+        silenceEnd = defaults.string(forKey: "silenceEnd") ?? "prompt"
+        silenceMinutes = defaults.object(forKey: "silenceMinutes") as? Double ?? 10
         diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
     }
 
@@ -130,6 +146,9 @@ final class AppSettings: ObservableObject {
         defaults.set(aiModel, forKey: "aiModel")
         defaults.set(displayMode, forKey: "displayMode")
         defaults.set(speakVoices, forKey: "speakVoices")
+        defaults.set(endWithApp, forKey: "endWithApp")
+        defaults.set(silenceEnd, forKey: "silenceEnd")
+        defaults.set(silenceMinutes, forKey: "silenceMinutes")
         defaults.set(diagnostics, forKey: "diagnostics")
     }
 
