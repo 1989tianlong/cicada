@@ -132,7 +132,7 @@ enum BrandImage {
     }()
 
     /// Menu bar template glyph: the logo in one colour. Paused draws it at 40%.
-    static func menuBar(live: Bool) -> NSImage {
+    static func menuBar(live: Bool, badge: Bool = false) -> NSImage {
         let img = NSImage(size: NSSize(width: 18, height: 16), flipped: true) { _ in
             guard let c = NSGraphicsContext.current?.cgContext else { return false }
             // Design units 8…92 across and 16…94 down fill the 16 pt height.
@@ -142,7 +142,22 @@ enum BrandImage {
         }
         img.isTemplate = true
         img.accessibilityDescription = appDisplayName
-        return img
+        return badge ? withBadge(img) : img
+    }
+
+    /// The glyph with an orange dot top right, while an update is available. A coloured dot
+    /// can't be part of a template image, so the glyph is filled with the label colour instead.
+    private static func withBadge(_ glyph: NSImage) -> NSImage {
+        let image = NSImage(size: glyph.size, flipped: false) { rect in
+            glyph.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            NSColor.labelColor.setFill()
+            rect.fill(using: .sourceIn)
+            NSColor(red: 0xE8 / 255, green: 0x55 / 255, blue: 0x2B / 255, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSRect(x: rect.maxX - 6, y: rect.maxY - 6, width: 5.5, height: 5.5)).fill()
+            return true
+        }
+        image.accessibilityDescription = L("\(appDisplayName)（有新版本）")
+        return image
     }
 }
 

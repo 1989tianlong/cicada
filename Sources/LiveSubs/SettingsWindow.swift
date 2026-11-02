@@ -10,7 +10,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: L("显示")
         case .language: L("语言")
         case .speak: L("同声传译")
-        case .records: L("会议记录")
+        case .records: L("通用")
         case .ai: L("AI 服务")
         case .diagnostics: L("诊断")
         }
@@ -20,7 +20,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .overlay: "captions.bubble"
         case .language: "globe"
         case .speak: "mic"
-        case .records: "doc.text"
+        case .records: "gearshape"
         case .ai: "key"
         case .diagnostics: "waveform.path.ecg"
         }
@@ -526,17 +526,17 @@ struct SettingsView: View {
     }
 
     private var records: some View {
-        SettingsCard {
-            SettingsRow(title: L("保存会议录音"), detail: L("只存在这台 Mac 上")) {
-                Toggle("保存会议录音", isOn: $settings.recordAudio)
-                    .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+        VStack(alignment: .leading, spacing: 14) {
+            SettingsCard {
+                SettingsRow(title: L("保存会议录音"), detail: L("只存在这台 Mac 上")) {
+                    Toggle("保存会议录音", isOn: $settings.recordAudio)
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+                }
+                SettingsRow(title: L("记录文件夹"), divider: false) {
+                    SoftButton(L("打开")) { NSWorkspace.shared.open(model.store.root) }
+                }
             }
-            SettingsRow(title: L("记录文件夹")) {
-                SoftButton(L("打开")) { NSWorkspace.shared.open(model.store.root) }
-            }
-            SettingsRow(title: L("首次引导"), divider: false) {
-                SoftButton(L("重新看")) { model.onboardingStep = 1; model.openOnboarding?() }
-            }
+            AppRows(updates: model.updates, loginItem: model.loginItem, model: model)
         }
     }
 }

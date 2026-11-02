@@ -20,6 +20,7 @@ final class AppMenu: NSObject, NSMenuItemValidation {
 
         let app = NSMenu(title: name)
         app.addItem(item(L("关于 \(name)"), #selector(about)))
+        app.addItem(item(L("检查更新…"), #selector(checkUpdates)))
         app.addItem(.separator())
         app.addItem(item(L("设置…"), #selector(openSettings), ","))
         app.addItem(item(L("AI 服务…"), #selector(openAI)))
@@ -83,6 +84,9 @@ final class AppMenu: NSObject, NSMenuItemValidation {
 
         let help = NSMenu(title: L("帮助"))
         help.addItem(item(L("新手引导"), #selector(onboarding)))
+        help.addItem(.separator())
+        help.addItem(item(L("\(name) 网站"), #selector(openWebsite)))
+        help.addItem(item(L("反馈问题…"), #selector(reportIssue)))
         add(help, to: main)
 
         NSApp.mainMenu = main
@@ -135,6 +139,14 @@ final class AppMenu: NSObject, NSMenuItemValidation {
             return true
         case #selector(search):
             return notesWindow.isVisible
+        case #selector(checkUpdates):
+            // Becomes the update itself once one is found; greyed while downloading.
+            if let u = model.updates.update {
+                item.title = L("安装 \(u.version) 并重新打开")
+                return model.updates.progress == nil
+            }
+            item.title = L("检查更新…")
+            return model.updates.check != .checking
         default:
             return true
         }
@@ -142,10 +154,41 @@ final class AppMenu: NSObject, NSMenuItemValidation {
 
     // MARK: Actions
 
-    @objc private func about() {
-        NSApp.activate()
-        NSApp.orderFrontStandardAboutPanel(nil)
+    @objc private func about() { AboutPanel.show() }
+
+    @objc private func checkUpdates() {
+        guard let model else { return }
+        if model.updates.update != nil { model.updates.install(model: model); return }
+        Task {
+            model.updates.checkNow()
+            // A manual check from the menu answers in an alert: the panel isn't open to show it.
+            while model.updates.check == .checking { try? await Task.sleep(for: .milliseconds(100)) }
+            let alert = NSAlert()
+            if let u = model.updates.update {
+                alert.messageText = L("有新版本 \(u.version)")
+                alert.informativeText = L("当前版本 \(Updates.current)。安装后会自动重新打开。")
+                alert.addButton(withTitle: L("安装并重新打开"))
+                alert.addButton(withTitle: L("更新说明"))
+                alert.addButton(withTitle: L("稍后"))
+                switch alert.runModal() {
+                case .alertFirstButtonReturn: model.updates.install(model: model)
+                case .alertSecondButtonReturn: NSWorkspace.shared.open(u.url)
+                default: break
+                }
+            } else if model.updates.check == .upToDate {
+                alert.messageText = L("已是最新版本")
+                alert.informativeText = L("当前版本 \(Updates.current)。")
+                alert.runModal()
+            } else {
+                alert.messageText = L("暂时无法检查更新")
+                alert.informativeText = L("连不上 GitHub，请稍后再试。")
+                alert.runModal()
+            }
+        }
     }
+
+    @objc private func openWebsite() { NSWorkspace.shared.open(AboutPanel.website) }
+    @objc private func reportIssue() { NSWorkspace.shared.open(AboutPanel.issues) }
 
     @objc private func openSettings() { model?.openSettings() }
     @objc private func openAI() { model?.openSettings(.ai) }

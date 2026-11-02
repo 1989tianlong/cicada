@@ -65,7 +65,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 
 ## Cost & Privacy
 
-Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key.
+Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Once a day the app also asks GitHub for the latest release (a plain request with nothing about you or your meetings in it).
 
 Subtitles, translation, meeting records and push-to-talk interpreting work out of the box without any API key (translation uses Google and falls back to Apple on-device translation).
 
@@ -102,6 +102,8 @@ Requires **macOS 26 or later** on **Apple silicon**.
 1. Download **`Cicada-<version>-macOS-AppleSilicon.dmg`** from [Releases](https://github.com/wquguru/cicada/releases/latest) (or visit [cicada.indaloop.app](https://cicada.indaloop.app)). A `.zip` archive and `checksums.txt` (SHA-256) are published alongside the DMG.
 2. Open the DMG and drag **Cicada** into **Applications**.
 3. Because the app is ad-hoc signed and not notarized, macOS will block the first launch. Open **System Settings › Privacy & Security** and click **Open Anyway**.
+
+Updates come from inside the app: when a new version is out, an orange dot appears on the menu bar icon; one click downloads it, checks it against the published SHA-256, replaces the app and reopens it, keeping its permissions. To have Cicada waiting in the menu bar after you log in, turn on **Settings › General › Open at Login**.
 
 On first launch, a three-step guide helps you grant system audio capture permission (and optionally microphone access), play a built-in sample video to see live subtitles right away, and optionally install the BlackHole 2ch virtual microphone with one click (requires your Mac administrator password once) with an automatic sound check.
 

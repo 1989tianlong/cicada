@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     let ling = LingClient()
     lazy var translator = TranslationService(ling: ling)
     let diagnostics = Diagnostics()
+    let updates = Updates()
+    let loginItem = LoginItem()
     lazy var notes = NotesEngine(ling: ling, store: store)
     lazy var notesWindow = NotesWindowController(model: self)
     let sample = SamplePlayer()
@@ -722,6 +724,18 @@ final class AppModel: ObservableObject {
             let kv = arg.split(separator: "=", maxSplits: 1).map(String.init)
             if kv.count == 2 { previewVoice(kv[1], language: kv[0]) }
         case "notesNow": notes.updateNow()
+        case "updateFeed":
+            // updateFeed:<release json url>: check a fake release (file:// works), even in a dev build.
+            if let url = URL(string: arg) { updates.checker.feed = url }
+            updates.checkNow()
+        case "updateCheck": updates.checkNow()
+        case "updateInstall": updates.install(model: self)
+        case "updateState": debugLog("update current=\(Updates.current) found=\(updates.update?.version ?? "-") check=\(updates.check) progress=\(updates.progress.map { String($0) } ?? "-") failure=\(updates.failure ?? "-")")
+        case "loginItem":
+            if !arg.isEmpty { loginItem.set(arg == "on") }
+            loginItem.refresh()
+            debugLog("login item enabled=\(loginItem.enabled) needsApproval=\(loginItem.needsApproval)")
+        case "about": AboutPanel.show()
         case "display": setDisplayMode(arg)
         case "notesWindow":
             let v = arg.split(separator: ",").compactMap { Double($0) }
@@ -852,8 +866,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.openSettingsWindow = { [weak self] in self?.showSettingsWindow() }
         model.showPanel = { [weak self] in self?.togglePopover() }
         model.openOnboarding = { [weak self] in self?.showOnboarding() }
-        runningObserver = model.$running.sink { [weak self] live in
-            self?.statusItem.button?.image = BrandImage.menuBar(live: live)
+        runningObserver = model.$running.combineLatest(model.updates.$update).sink { [weak self] live, update in
+            self?.statusItem.button?.image = BrandImage.menuBar(live: live, badge: update != nil)
         }
         let poll = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.model.refreshPermissions() }
@@ -871,6 +885,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.installDebugControl()
         installDeviceListener()
         Task { await model.launch() }
+        model.updates.start()
     }
 
     /// Started by the system at login: stay in the menu bar.
@@ -893,7 +908,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// Quitting ends the meeting being recorded: ask first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard model.running, let id = model.store.liveID, !(model.store.session(id)?.lines.isEmpty ?? true) else { return .terminateNow }
+        guard !model.updates.installing, model.running, let id = model.store.liveID, !(model.store.session(id)?.lines.isEmpty ?? true) else { return .terminateNow }
         NSApp.activate()
         let alert = NSAlert()
         alert.messageText = L("正在记录会议")

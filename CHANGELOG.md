@@ -5,6 +5,10 @@ the release workflow publishes it as the release notes.
 
 ## Unreleased
 
+- New: in-app updates. Once a day the app checks GitHub Releases; when a newer version is out, an orange dot appears on the menu bar icon and the panel offers to install it. Installing downloads the release zip, checks it against `checksums.txt`, the bundle id, the version and its signature, then replaces the app and reopens it, keeping the system-audio and microphone permissions. A meeting being recorded is ended first, after asking. If the app can't replace itself (still in the DMG, or a folder it can't write to), it says why and opens the release page. Also in the app menu (检查更新…) and Settings › 通用.
+- New: 登录时打开 in Settings › 通用: after you log in the app waits in the menu bar without opening any window.
+- New: the About window links to the website, GitHub and the issue tracker; Help has 知了网站 and 反馈问题….
+- Changed: the 会议记录 settings page is now 通用 (meeting audio, records folder, open at login, version, onboarding).
 - Fixed: with the heard language on 自动识别, the first sentences of a meeting (everything said before the language was confirmed, usually the first 2–5 s) were shown but never saved to the meeting record or the notes. They are now recorded, with their translation and the time they were said, as soon as the language is confirmed.
 - Fixed: if the app was force-quit or crashed during a meeting, its recording (`system.m4a`, `mic.m4a`) could not be opened. Meetings are now recorded in a format that survives that, and turned into .m4a when the meeting ends or, after a crash, the next time the app starts.
 - Fixed: changing the notes language while the notes were being updated kept the notes in the old language. The rewrite now runs right after, and the reply in the old language is dropped.

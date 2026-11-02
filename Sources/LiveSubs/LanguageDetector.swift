@@ -71,7 +71,7 @@ enum LanguageDetector {
         }
     }
 
-    private static func score(conf: Double, chars: Int, text: String, lang: Lang) -> Double {
+    static func score(conf: Double, chars: Int, text: String, lang: Lang) -> Double {
         guard chars > 0 else { return 0 }
         // Very short output means the model mostly heard noise.
         let lengthFactor = min(1.0, Double(chars) / 6.0)

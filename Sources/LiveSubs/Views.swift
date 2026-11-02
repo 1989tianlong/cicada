@@ -233,6 +233,8 @@ struct MenuPanelView: View {
                 .font(.system(size: 12))
             }
 
+            UpdateBanner(updates: model.updates, model: model)
+
             Divider()
 
             HStack {
