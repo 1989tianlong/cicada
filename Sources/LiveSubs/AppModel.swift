@@ -732,6 +732,16 @@ final class AppModel: ObservableObject {
         case "notesShow": notes.show(arg)
         case "notesCapturable": notesWindow.setCapturable(arg != "off")
         case "notesClose": notesWindow.performClose()
+        case "closeWindow":
+            // closeWindow:<main|settings|onboarding>: what the window's close button does.
+            let w = NSApp.windows.first { w in
+                switch arg {
+                case "main": w.contentView is NSHostingView<MainWindowView>
+                case "settings": w.contentView is NSHostingView<SettingsView>
+                default: w.contentView is NSHostingView<OnboardingView>
+                }
+            }
+            w?.performClose(nil)
         case "notesRender":
             // The whole notes column as a PNG, for checking what is below the fold.
             let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil,
@@ -1005,11 +1015,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         let w = notification.object as? NSWindow
+        updateActivationPolicy(closing: w)
         if w == onboardingWindow {
             model.sample.stop()
             UserDefaults.standard.set(true, forKey: "onboarded")
+            // Done (or 稍后): land on the records window rather than nothing but the menu bar icon.
+            if mainWindow?.isVisible != true {
+                DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.showMainWindow() } }
+            }
         }
-        updateActivationPolicy(closing: w)
     }
 
     /// A regular app (name and menus top left, Dock icon, ⌘Tab) while the main, settings or

@@ -12,6 +12,8 @@ the release workflow publishes it as the release notes.
 - Fixed: entering a key that Ling refuses left the notes window asking for a key, with no sign it was wrong; it now says the key is invalid.
 - Fixed: recording the shortcut that is already set (or 恢复默认 when it is the default) was refused as "taken by another app".
 - Fixed: the English interface cut off the route line in Settings › Language, the "Follow system" badge and the interpreting line in the menu bar panel, the status line in the notes window, the collapsed card's "New since collapsed" and the own-voice card.
+- Fixed: the menu bar panel could open with its top above the screen (it grew upward as its contents settled); it now stays under the menu bar icon.
+- Changed: closing the notes window shows the meeting records window with that meeting open, and finishing or closing 新手引导 lands on the records window too, instead of leaving only the menu bar icon.
 - Fixed: 诊断 kept counting the meeting's minutes after it ended, and 新手引导 asked for system audio permission again whenever listening was paused.
 - New: the app speaks English. Menus, settings, the panel, the notes and main windows, onboarding, alerts, exports and the permission prompts follow the macOS language: Chinese on Chinese systems (Traditional too), English elsewhere. The notes themselves still follow the notes language.
 - New: meetings name themselves. The notes give each meeting a short name in the notes language, and the records list, the page title and exports show the date and that name ("11月1日 Lumen 发布与结账转化问题讨论") instead of "会议 11月1日 20:16". A title you typed is kept; 恢复自动标题 in the list's right-click menu brings the automatic one back.
