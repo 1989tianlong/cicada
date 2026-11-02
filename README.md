@@ -27,36 +27,31 @@
 <p align="center">
   <a href="docs/demo.mp4"><img src="docs/demo.gif" width="800" alt="An English meeting plays while Cicada writes Chinese notes on the left and a bilingual transcript on the right"></a>
 </p>
-<p align="center"><a href="docs/demo.mp4">▶ Watch the 52-second film with sound</a></p>
+<p align="center"><a href="docs/demo.mp4">▶ Watch the 52-second demo with sound</a></p>
 
-Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what your Mac is playing. During a call, a livestream, a video or a voice room, it writes structured meeting notes on the left while a line-by-line bilingual transcript scrolls on the right. No bot joins the call, and the other side installs nothing. You can also switch to a minimal subtitle bar, or hold a key to speak and have the room hear you in their language.
+Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what your Mac is playing. During a call, livestream, video or voice room, it writes structured meeting notes on the left while a line-by-line bilingual transcript scrolls on the right. No bot joins the call, and the other side installs nothing. You can also switch to a compact subtitle bar, or hold a key to speak and have the room hear you in their language.
 
 ## Features
 
 ### Live notes and bilingual transcript
 
-- **Writes notes while the meeting runs.** A floating window updates roughly every 45 seconds with a summary, up to 8 topics with timestamped key points, a fishbone diagram when people discuss causes, conclusions and to-dos, and a glossary of names and terms. When the meeting ends, Cicada writes a complete final version. Notes are written in your language (Chinese when it is among your system languages) or, if you prefer, the meeting's own; the live and final versions always match.
-- **Every conclusion links back to what was said.** Each conclusion or to-do shows how many lines of the transcript support it. Click to jump straight to that line.
-- **Line-by-line bilingual transcript.** Each sentence appears in the original language with its translation right below, including the sentence still being spoken. Scroll up to read earlier lines without being pulled back; new lines queue up behind a `↓ N new lines` button.
-- **Finds misrecognized names.** Cicada unifies names and terms across the notes and remembers misrecognized spellings. Pressing `⌘F` searches both the canonical spelling and the variants.
-- **Adapts to your screen.** Widen the window past 760 pt to read notes and transcript side by side. Shrink it to a small card and it tells you what was added while collapsed. It stays out of screenshots and screen sharing, and clicking it does not steal focus from your meeting app.
+- **Writes notes while the meeting runs.** A floating window updates roughly every 45 seconds with a summary, up to 8 topics with timestamped key points, conclusions, to-dos, a fishbone diagram when discussing causes, and a glossary of names and terms, then generates a complete final version when the meeting ends. Notes default to your language (or the meeting's own), and every conclusion or to-do clicks straight back to the supporting lines in the transcript.
+- **Line-by-line bilingual transcript and name search.** Each sentence appears in the original language with its translation right below. Cicada unifies names and terms across the notes and remembers misrecognized spellings, so `⌘F` searches both the canonical spelling and the variants.
 
 ### Live subtitles and language detection
 
-- **Detects the language within half a second.** Every installed on-device speech model listens to the same audio at once, and the most confident one wins. Speech recognition runs on your Mac via Apple SpeechAnalyzer.
-- **Translates into your language.** Follows your system languages by default (if the speaker is already using your primary language, Cicada translates into your next system language), or lets you pick a target language manually. Settings › Language shows the whole route in one line and lets subtitles show both lines, only the translation, or only the original (nothing is translated). A language chip in the notes window (`EN → 中`, or `EN → ZH` in the English UI) changes the languages for one meeting.
-- **A subtitle bar that stays out of the way.** Press `⌃⌥S` to cycle between the notes window, the classic subtitle bar, and hidden. The bar appears only when someone speaks, shrinks to a dot when it is quiet, and turns see-through under your pointer so you can click right through it. Rest the pointer on it for 0.6 seconds to drag or resize, or double-click to reset. Each display remembers its own position and size.
+- **On-device language detection.** After someone speaks for about 3 seconds, every installed on-device speech model listens to the same 3 to 6 second audio window at once, and the most confident one wins. Speech recognition runs locally via Apple SpeechAnalyzer.
+- **Translates into your language with a compact subtitle bar.** Follows your system languages by default, and subtitles can show both languages, translation only, or original only. Press `⌃⌥S` to cycle between the notes window, the subtitle bar, and hidden; the bar appears only when someone speaks and turns see-through under your pointer so you can click right through it.
 
 ### Speak back in their language
 
-- **Push-to-talk interpreting.** Hold the right `⌥` key (or a shortcut you choose) and speak. The room hears your words translated through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click.
-- **Natural voices or your own voice.** With a Ling API key, the Ming audio model listens and translates in one step in about 2 seconds, keeping names accurate. The other side can hear natural Ming voices (Emma, George, Charlotte for English; 小雅, 小棠, 小锋, 卓然 for Chinese; plus Japanese, Korean, German, French and Spanish), macOS system voices, or a clone of your own voice from an 8 to 30 second sample. Without a key, Cicada uses macOS system voices.
-- **Test before the meeting.** "试一句" in Settings runs one sentence through the full pipeline into the virtual microphone and plays back exactly what the other side receives. It also shows the time each step took and checks that the audio can be heard and understood.
+- **Push-to-talk interpreting.** Hold the right `⌥` key (or a custom shortcut) and speak. The room hears your translated voice through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click.
+- **Ming voices and voice cloning.** With a Ling API key, the Ming audio model listens and translates in one step in about 2 seconds. The other side can hear natural Ming voices (English, Chinese, Japanese, Korean, German, French, Spanish), macOS system voices, or a clone of your own voice from an 8 to 30 second sample; without a key, Cicada uses macOS system voices.
 
 ### Meeting records
 
-- **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side (individual remote speakers are not separated yet).
-- **Export anywhere.** Export to Markdown or Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **Generate Notes** afterward to generate them.
+- **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side; "you" covers only what you say while holding the talk key, not what you say into the meeting directly, and individual remote speakers are not separated yet (see [roadmap](#roadmap)).
+- **Export anywhere.** Export to Markdown, Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **Generate Notes** afterward to create them.
 
 <p align="center">
   <img src="docs/panel.png" width="300" alt="The menu bar panel">
@@ -64,17 +59,27 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
   <img src="docs/meetings.png" width="520" alt="A meeting record with each line in the original language and in translation">
 </p>
 
-## Cost & Privacy
+## Privacy & Permissions
 
-Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Once a day the app also asks GitHub for the latest release (a plain request with nothing about you or your meetings in it).
+Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google with Apple on-device fallback), meeting records and push-to-talk interpreting all work. Live meeting notes, one-step voice translation and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing.
 
-Subtitles, translation, meeting records and push-to-talk interpreting work out of the box without any API key (translation uses Google and falls back to Apple on-device translation).
+Cicada asks for a permission only when you use the feature that needs it; everything else keeps working if you decline.
 
-Live meeting notes, higher-accuracy translation, one-step voice translation and voice cloning use your own Ling API key (Ant Group's model service at `ant-ling.com`, see [below](#ling-api-key)). The key is saved on your Mac in a file only your user account can read and is excluded from backups. Notes only send recognized text, and an hour of live meeting notes costs roughly ¥0.15 to ¥1 at current Ling pricing.
+| Permission | What it's for | When it's asked | Without it |
+|---|---|---|---|
+| System audio recording (Screen & System Audio Recording) | Hearing what your Mac plays, for subtitles. Never records the screen or its own sound | Onboarding step 1, or the first time it listens | No subtitles or notes |
+| Microphone | Recording only while you hold the talk key, for speak-back | When you turn on speak-back | No speak-back |
+| Input Monitoring | Only to tell whether the right `⌥` was pressed on its own (listen-only; nothing is blocked or logged) | The first time you talk with right `⌥` | Pick a `⌃`/`⌘` combination in Settings instead; it needs no permission |
+| Administrator password | Installing the BlackHole 2ch virtual microphone and restarting the system audio service | When you click Install in onboarding or Settings, once | The room can't hear your translation; everything else works |
+
+- **Network and virtual microphone**: Cicada only connects to Google Translate (`translate.googleapis.com`), Ling / Ming when a key is configured (`api.ant-ling.com`), the official BlackHole download, and GitHub once a day for update checks. BlackHole is downloaded from the official Apple-notarized package and verified against a hardcoded SHA-256 checksum before installing.
+- **No analytics or servers of our own**: There is no analytics, no tracking, and no backend server. Diagnostics only log timings and counts locally in the meeting folder.
+- **Local storage**: Meetings, recordings and notes live in `~/Library/Application Support/LiveSubs`. Your Ling key and voice sample are readable only by your user account, excluded from Time Machine backups, and never written to logs or exports.
+- **Private notes window**: Hidden from screen sharing, screen recording and screenshots.
 
 ## Models
 
-Without a Ling key, everything runs on Apple's on-device models plus Google Translate. With a key, Ling and Ming models take over the parts below, and the app falls back down the chain on any failure.
+Without a Ling key, everything runs on Apple's on-device models plus Google Translate; with a key, Ling and Ming models handle the tasks below and fall back automatically if a request fails.
 
 | Feature | With a Ling key | Without a key / fallback |
 |---|---|---|
@@ -92,37 +97,43 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 1. Sign up or log in on the [Ling open platform](https://chat.ant-ling.com/platform/api).
 2. Click **创建令牌** (create token) and copy the key that starts with `sk-`.
 3. In Cicada, open **Settings › AI Service**, paste the key and click **Save and check** (or paste it in the prompt at the top of the notes window). A one-token request confirms it works.
-4. Optionally pick the model (`Ling-3.1-flash` by default) on the same page, and the Ming voice for each language under **Settings › Interpreting**.
-
-To remove the key, click **Remove** on the same page.
+4. Optionally pick the model (`Ling-3.1-flash` by default) on the same page, and the Ming voice for each language under **Settings › Interpreting**. To remove the key, click **Remove** on the same page.
 
 ## Requirements & Installation
 
 Requires **macOS 26 or later** on **Apple silicon**.
 
-1. Download **`Cicada-<version>-macOS-AppleSilicon.dmg`** from [Releases](https://github.com/wquguru/cicada/releases/latest) (or visit [cicada.indaloop.app](https://cicada.indaloop.app)). A `.zip` archive and `checksums.txt` (SHA-256) are published alongside the DMG.
-2. Open the DMG and drag **Cicada** into **Applications**.
-3. Because the app is ad-hoc signed and not notarized, macOS will block the first launch. Open **System Settings › Privacy & Security** and click **Open Anyway**.
+Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`; verify with `shasum -a 256 Cicada-*.dmg`.
 
-Updates come from inside the app: when a new version is out, an orange dot appears on the menu bar icon; one click downloads it, checks it against the published SHA-256, replaces the app and reopens it, keeping its permissions. To have Cicada waiting in the menu bar after you log in, turn on **Settings › General › Open at Login**.
-
-On first launch, a three-step guide helps you grant system audio capture permission (and optionally microphone access), play a built-in sample video to see live subtitles right away, and optionally install the BlackHole 2ch virtual microphone with one click (requires your Mac administrator password once) with an automatic sound check.
+The first-launch guide walks you through permissions, a sample video and, if you want, the virtual microphone. Later updates show as an orange dot on the menu bar icon; one click installs them and keeps your permissions.
 
 ## Usage
 
-The app is in English, Chinese, Japanese or Korean, following your macOS language (Settings › General › Language & Region, or per app).
+The UI is available in English, Chinese, Japanese and Korean, following your macOS language (or set per app in **System Settings › General › Language & Region**).
 
 1. Play any video, livestream or call. The live notes window opens by default, and pressing `⌃⌥S` switches between the notes window, the subtitle bar and hidden.
 2. Click the Cicada icon in the menu bar to change the spoken language (auto by default), the target translation language, or the display mode.
 3. To use live notes, paste your [Ling API key](https://chat.ant-ling.com/platform/api) in **Settings › AI Service** or in the notes window prompt.
-4. To speak back in another language, turn on **Interpreting** in the menu bar panel, set your meeting app's microphone to **BlackHole 2ch**, and hold the right `⌥` key while speaking (macOS will ask for Input Monitoring permission the first time).
+4. To speak back in another language, turn on **Interpreting** in the menu bar panel, set your meeting app's microphone to **BlackHole 2ch**, and hold the right `⌥` key while speaking.
 5. Open **会议记录** from the menu bar panel to search past transcripts (`⌘F`), generate notes for older sessions, or export to Markdown, Word or SRT.
+
+## Roadmap
+
+In rough order; tell us what you need in Issues.
+
+- **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
+- **Older macOS support (targeting macOS 14.4+)**, falling back to earlier system speech recognition and translation APIs on older versions.
+- **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
+- **Telling speakers apart**, separating and renaming individual remote speakers and tagging conclusions and to-dos with who said them.
+- **Local notes without an API key** using Apple's on-device model on supported Macs, plus **custom AI providers** for any OpenAI-compatible endpoint.
+- **Speaker recognition**, remembering frequent meeting participants by voice on your Mac so you don't have to rename them each call.
+- **Windows and Android**, sharing the same notes and meeting-record formats (iPhone / iPad are not planned due to iOS audio capture restrictions).
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for details and trade-offs on each item.
 
 ## Uninstall
 
-Quit Cicada and drag it from **Applications** to the Trash.
-
-To remove all saved transcripts, notes and audio recordings, delete `~/Library/Application Support/LiveSubs`. To clear preferences, run:
+Quit Cicada and drag it from **Applications** to the Trash. To remove all saved transcripts, notes and audio recordings, delete `~/Library/Application Support/LiveSubs`. To clear preferences, run:
 
 ```bash
 defaults delete com.wquguru.cicada
@@ -130,7 +141,7 @@ defaults delete com.wquguru.cicada
 
 ## Development
 
-Building from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has zero third-party dependencies and builds purely against macOS system frameworks.
+Building from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has no third-party dependencies and builds directly against macOS system frameworks.
 
 ```bash
 scripts/build.sh            # dev build → build/Cicada.app ("Cicada Dev", runs beside the installed app)
@@ -138,7 +149,7 @@ open build/Cicada.app
 scripts/package.sh          # release DMG + zip + checksums
 ```
 
-See [AGENTS.md](AGENTS.md) for architecture details, dev vs. release builds, packaging and release workflows. The website source lives in `site/` and is generated by `scripts/site.py`. Release history is in [CHANGELOG.md](CHANGELOG.md) and on the website at [cicada.indaloop.app/changelog](https://cicada.indaloop.app/changelog/).
+See [AGENTS.md](AGENTS.md) for architecture details and release workflows. The website source lives in `site/` and is generated by `scripts/site.py`. Release history is in [CHANGELOG.md](CHANGELOG.md) and on the website at [cicada.indaloop.app/changelog](https://cicada.indaloop.app/changelog/).
 
 ## License
 

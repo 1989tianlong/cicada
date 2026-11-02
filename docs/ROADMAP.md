@@ -1,0 +1,21 @@
+# Cicada roadmap
+
+English · [简体中文](ROADMAP.zh-CN.md)
+
+In rough order, and subject to change. Tell us what you need in Issues.
+
+**Next (Mac)**
+- **Recording what you say.** Cicada only hears what your Mac plays, so what you say into the meeting isn't captured; only the lines you speak while holding the talk key are recorded as "you". A switch will let it listen to your microphone throughout the meeting, so your proposals and the to-dos you take on make it into the transcript and notes. Without headphones, echo cancellation keeps the other side's voice from being recorded twice. While it's on, the microphone indicator in the menu bar stays lit.
+- **Older macOS support (targeting macOS 14.4+).** Today Cicada requires macOS 26 because `SpeechAnalyzer` and offline translation are new in 26, even though system audio capture works from 14.2. On older versions, Cicada will fall back to the earlier on-device speech recognizer (fewer languages and lower accuracy). Offline translation works on macOS 15+, while macOS 14 will use online translation only.
+- **Developer ID signing and notarization.** Removes the "Open Anyway" prompt on first launch and stores the AI key in the macOS Keychain.
+- **Telling speakers apart.** Today lines are labeled only as "them" or "you". Next, Cicada will separate individual remote speakers (Speaker 1, Speaker 2…, renamable) and tag conclusions and to-dos with who said them.
+- **Local notes without an API key.** Use Apple's on-device model to generate meeting notes on supported Macs, keeping all audio and text local.
+- **Custom AI providers.** Support any OpenAI-compatible API endpoint besides Ling.
+
+**Later**
+- **Speaker recognition.** Remember frequent meeting participants by voice so you don't have to rename speakers every call. Because voiceprints are biometric data, they stay on your Mac, require opt-in, and can be deleted anytime.
+- **Windows.** Per-process audio capture is available on Windows 10 2004+, so the recognition, translation and notes pipeline carries over with a Windows virtual audio driver. This will be a separate codebase sharing the same notes and meeting-record formats.
+- **Android.** Can listen to videos and livestreams (capturing audio from other apps works on Android 10+), but Android blocks capturing phone and meeting call audio, and translated speech cannot be injected into calls. We plan to start with an in-person microphone mode and a viewer for meeting records.
+- **iPhone / iPad.** iOS does not allow capturing audio from other apps; not planned.
+
+Back to the [README](../README.md).
