@@ -3,7 +3,7 @@
 One section per release, newest first. `scripts/release.sh` needs the section, dated today;
 the release workflow publishes it as the release notes.
 
-## Unreleased
+## 2.2.0 — 2026-11-02
 
 - New: a meeting nobody ends now ends by itself. When the meeting app it was heard through (Zoom, 腾讯会议, 飞书, Teams…) hangs up, the live notes window shows "Zoom 已挂断 · 30 秒后结束" with 继续记录 / 现在结束; when nobody has said anything for 10 minutes (and no meeting app is in a call) it counts down 60 s the same way. Silence counts recognized words, so background music doesn't keep a meeting going. The record ends at the last words or the hang-up and the recording drops the silent tail, so a forgotten meeting no longer runs for hours or swallows the next video. After a meeting ends this way, the next call in a meeting app starts a new one. Settings › 通用 › 结束会议 has the switch, 提醒后结束 / 直接结束 / 一直记录 and 5–30 minutes.
 - New: Settings › 同声传译 lists the meeting apps and the microphone each one is using, live. An app that isn't on BlackHole 2ch is flagged (the room can't hear the translation) with a 怎么改 sheet that turns green once it's switched; the menu bar panel shows the same warning, and the last step of the first-run guide turns green by itself when a meeting app picks the virtual mic. macOS doesn't let one app choose another's microphone, so Cicada only checks and shows the way.
