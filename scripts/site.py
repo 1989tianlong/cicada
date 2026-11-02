@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Builds the website (GitHub Pages) from site/ into build/site/.
 
-site/index.html and site/changelog.html are templates; header.html and footer.html are shared.
-site/changelog.json is the Chinese changelog (newest first; "date": null = not released yet).
+Languages: Chinese at /, English, Japanese and Korean under /en/, /ja/, /ko/. Each has the home page
+(site/index.html) and the setup guide (site/start.html → start/); {{t.key}} in a template is filled
+from site/i18n/<lang>.json, and the build stops if a language lacks a key the others have.
+header.html and footer.html are shared. site/changelog.json is the Chinese changelog (newest first;
+"date": null = not released yet) and only exists in Chinese: the other languages link to GitHub Releases.
 Also writes changelog/index.html, feed.xml (Atom), sitemap.xml and robots.txt.
 
     python3 scripts/site.py                 # → build/site
@@ -12,6 +15,7 @@ SITE_URL overrides the public address (default: https://cicada.indaloop.app/).
 import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,8 +28,10 @@ SITE = (os.environ.get("SITE_URL") or "https://cicada.indaloop.app/").rstrip("/"
 REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
 STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img"]
-APPS = ["Zoom", "Microsoft Teams", "飞书", "腾讯会议", "Google Meet", "X Spaces", "YouTube 直播",
-        "Twitch", "Discord", "B 站直播", "钉钉", "播客"]
+# (code, path prefix); the first is the default language, served at the root.
+LANGS = [("zh", ""), ("en", "en/"), ("ja", "ja/"), ("ko", "ko/")]
+FONT_BASE = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Noto+Sans+SC:wght@400;500;700;900"
+FONT_EXTRA = {"ja": "&amp;family=Noto+Sans+JP:wght@400;500;700;900", "ko": "&amp;family=Noto+Sans+KR:wght@400;500;700;900"}
 KINDS = [("new", "新功能"), ("improved", "改进"), ("fixed", "修复")]
 
 e = html.escape
@@ -41,6 +47,29 @@ def write(rel, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
+
+
+def strings():
+    """site/i18n/<lang>.json, checked to have the same keys in every language."""
+    out = {}
+    for code, _ in LANGS:
+        with open(os.path.join(SRC, "i18n", code + ".json"), encoding="utf-8") as f:
+            out[code] = json.load(f)
+    keys = set(out[LANGS[0][0]])
+    for code, t in out.items():
+        if set(t) != keys:
+            sys.exit(f"site.py: i18n/{code}.json differs: missing {sorted(keys - set(t))}, extra {sorted(set(t) - keys)}")
+    return out
+
+
+def translate(text, t):
+    """{{t.key}} → the string (HTML allowed; a bare & is escaped)."""
+    def value(m):
+        v = t.get(m.group(1))
+        if not isinstance(v, str):
+            sys.exit(f"site.py: no string for t.{m.group(1)}")
+        return v.replace("&", "&amp;").replace("&amp;amp;", "&amp;")
+    return re.sub(r"\{\{t\.([a-z0-9_]+)\}\}", value, text)
 
 
 def fill(text, values):
@@ -109,35 +138,80 @@ def main():
         elif os.path.exists(src):
             shutil.copy2(src, OUT)
 
-    def page(template, root, cl_current, extra):
-        v = dict(common, ROOT=root, CL_CURRENT=' aria-current="page"' if cl_current else "")
-        v["HEADER"] = fill(read("header.html"), v)
-        v["FOOTER"] = fill(read("footer.html"), v)
-        v.update(extra)
-        return fill(read(template), v)
+    tr = strings()
+    urls = []  # (absolute url, last modified) for the sitemap
 
-    # Home
-    apps = "".join(f"<li>{e(a)}</li>" for a in APPS)
-    apps += "".join(f'<li aria-hidden="true">{e(a)}</li>' for a in APPS)  # second copy for the seamless loop
-    cards = []
-    for r in log[:2]:
-        when = zh_date(r["date"]) if r["date"] else "即将发布"
-        cards.append(f'<a class="card ucard rv" href="changelog/#{anchor(r["version"])}">'
-                     f'<span class="when"><span class="ver">{r["version"]}</span>{when}</span>'
-                     f'<strong>{e(r["title"])}</strong><span class="d">{e(r["summary"])}</span></a>')
-    app_ld = {
-        "@context": "https://schema.org", "@type": "SoftwareApplication",
-        "name": "知了 Cicada", "alternateName": ["知了", "Cicada"],
-        "description": "Mac 上的实时翻译字幕、同声传译和 AI 会议纪要，任意会议与直播都能用。",
-        "applicationCategory": "BusinessApplication", "operatingSystem": "macOS 26",
-        "softwareVersion": latest["version"], "url": SITE, "downloadUrl": DOWNLOAD,
-        "image": SITE + "icon.png", "license": "https://www.apache.org/licenses/LICENSE-2.0",
-        "isAccessibleForFree": True, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-        "releaseNotes": SITE + "changelog/", "codeRepository": REPO,
-    }
-    write("index.html", page("index.html", "", False, {
-        "APPS": apps, "LATEST": "".join(cards),
-        "JSONLD": json.dumps(app_ld, ensure_ascii=False).replace("</", "<\\/")}))
+    def page(template, code, rel, extra, alternates=True, current=None):
+        """Writes one page: `rel` is its path under the site ("en/start/"), `code` its language."""
+        t = tr[code]
+        prefix = dict(LANGS)[code]
+        depth = rel.count("/")
+        root = "../" * depth
+        kind = rel[len(prefix):]  # "" or "start/" or "changelog/"
+        langs = LANGS if alternates else [(code, prefix)]
+        alts = {c: root + p + kind for c, p in langs}
+        links = "".join(
+            f'<a href="{alts[c]}" hreflang="{tr[c]["html_lang"]}" lang="{tr[c]["html_lang"]}"'
+            + (' aria-current="true"' if c == code else "") + f'><span class="tick" aria-hidden="true"></span>{e(tr[c]["lang_name"])}</a>'
+            for c, _ in langs)
+        foot_links = " · ".join(
+            (f'<b>{e(tr[c]["lang_name"])}</b>' if c == code
+             else f'<a href="{alts[c]}" hreflang="{tr[c]["html_lang"]}" lang="{tr[c]["html_lang"]}">{e(tr[c]["lang_name"])}</a>')
+            for c, _ in langs)
+        hreflang = "\n".join(f'<link rel="alternate" hreflang="{tr[c]["html_lang"]}" href="{SITE}{p}{kind}">' for c, p in langs)
+        if alternates:
+            hreflang += f'\n<link rel="alternate" hreflang="x-default" href="{SITE}en/{kind}">'
+        v = dict(common, ROOT=root, HOME=root + prefix, LANG=code,
+                 CHANGELOG=(root + "changelog/") if code == "zh" else REPO + "/releases",
+                 CL_CURRENT=' aria-current="page"' if current == "changelog" else "",
+                 START_CURRENT=' aria-current="page"' if current == "start" else "",
+                 CANONICAL=SITE + rel, HREFLANG=hreflang, LANG_LINKS=links, LANG_LINKS_FOOT=foot_links,
+                 ALTS_JSON=json.dumps(alts), FONTS=FONT_BASE + FONT_EXTRA.get(code, "") + "&amp;display=swap",
+                 SCENES="".join(f"<span>{e(x)}</span>" for x in t["scenes"]),
+                 SEND_JSON=json.dumps({"title": "知了 Cicada" if code == "zh" else "Cicada",
+                                       "copied": t["send_copied"], "prompt": t["send_prompt"]}, ensure_ascii=False))
+        v["HEADER"] = fill(translate(read("header.html"), t), v)
+        v["FOOTER"] = fill(translate(read("footer.html"), t), v)
+        v.update(extra)
+        write(rel + "index.html", fill(translate(read(template), t), v))
+        urls.append(SITE + rel)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for code, prefix in LANGS:
+        t = tr[code]
+        # Home
+        apps = "".join(f"<li>{e(a)}</li>" for a in t["apps"])
+        apps += "".join(f'<li aria-hidden="true">{e(a)}</li>' for a in t["apps"])  # second copy for the seamless loop
+        latest_section = ""
+        if code == "zh":
+            cards = []
+            for r in log[:2]:
+                when = zh_date(r["date"]) if r["date"] else t["upcoming"]
+                cards.append(f'<a class="card ucard rv" href="changelog/#{anchor(r["version"])}">'
+                             f'<span class="when"><span class="ver">{r["version"]}</span>{when}</span>'
+                             f'<strong>{e(r["title"])}</strong><span class="d">{e(r["summary"])}</span></a>')
+            latest_section = ('  <section class="wrap latest" aria-labelledby="latest-t">\n'
+                              f'    <div class="head rv"><h2 id="latest-t">{t["latest_h"]}</h2><a href="changelog/">{t["latest_all"]}</a></div>\n'
+                              f'    <div class="rows">{"".join(cards)}</div>\n  </section>')
+        app_ld = {
+            "@context": "https://schema.org", "@type": "SoftwareApplication",
+            "name": "知了 Cicada", "alternateName": ["知了", "Cicada"], "inLanguage": t["html_lang"],
+            "description": t["ld_desc"],
+            "applicationCategory": "BusinessApplication", "operatingSystem": "macOS 26",
+            "softwareVersion": latest["version"], "url": SITE + prefix, "downloadUrl": DOWNLOAD,
+            "image": SITE + "icon.png", "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "isAccessibleForFree": True, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+            "releaseNotes": SITE + "changelog/", "codeRepository": REPO,
+        }
+        page("index.html", code, prefix, {
+            "APPS": apps, "LATEST_SECTION": latest_section,
+            "JSONLD": json.dumps(app_ld, ensure_ascii=False).replace("</", "<\\/")})
+        # Setup guide
+        howto = {"@context": "https://schema.org", "@type": "HowTo", "name": t["start_h1"], "inLanguage": t["html_lang"],
+                 "description": t["start_desc"], "totalTime": "PT5M",
+                 "step": [{"@type": "HowToStep", "position": i + 1, "name": t[k]} for i, k in enumerate(["s1_h", "s2_h", "s3_h"])]}
+        page("start.html", code, prefix + "start/", {
+            "JSONLD": json.dumps(howto, ensure_ascii=False).replace("</", "<\\/")}, current="start")
 
     # Changelog
     counts = {k: sum(1 for r in log for i in r["items"] if i["kind"] == k) for k, _ in KINDS}
@@ -149,11 +223,11 @@ def main():
     crumbs_ld = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "知了", "item": SITE},
         {"@type": "ListItem", "position": 2, "name": "更新日志", "item": SITE + "changelog/"}]}
-    write("changelog/index.html", page("changelog.html", "../", True, {
+    page("changelog.html", "zh", "changelog/", {
         "LATEST_VERSION": latest["version"], "LATEST_TITLE": e(latest["title"]),
         "FILTERS": filters, "VERSIONS": versions,
         "RELEASES": "".join(release_html(r, latest["version"]) for r in log),
-        "JSONLD": json.dumps(crumbs_ld, ensure_ascii=False)}))
+        "JSONLD": json.dumps(crumbs_ld, ensure_ascii=False)}, alternates=False, current="changelog")
 
     # Atom feed: released versions only
     entries = []
@@ -173,11 +247,9 @@ def main():
           f'<updated>{latest["date"]}T00:00:00Z</updated><author><name>知了 Cicada</name></author>'
           + "".join(entries) + "</feed>\n")
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     write("sitemap.xml", '<?xml version="1.0" encoding="utf-8"?>\n'
           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-          f"<url><loc>{SITE}</loc><lastmod>{today}</lastmod></url>"
-          f"<url><loc>{SITE}changelog/</loc><lastmod>{today}</lastmod></url></urlset>\n")
+          + "".join(f"<url><loc>{u}</loc><lastmod>{today}</lastmod></url>" for u in urls) + "</urlset>\n")
     write("robots.txt", f"User-agent: *\nAllow: /\nSitemap: {SITE}sitemap.xml\n")
     print("site.py: wrote", os.path.relpath(OUT, ROOT_DIR), "for", SITE)
 

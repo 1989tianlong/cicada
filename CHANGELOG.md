@@ -5,6 +5,8 @@ the release workflow publishes it as the release notes.
 
 ## Unreleased
 
+- New: the first-run guide has a Ling key step right after the permissions: open the Ling platform, then "Paste and Check" in one click; 继续 waits for a working key, and "Later, in Settings" skips it. It shows what the key unlocks and that Ling gives ¥10 of credit every month.
+- New: the website comes in English, Japanese and Korean (`/en/`, `/ja/`, `/ko/`) with a language menu and a suggestion bar for visitors whose browser prefers another language, and a three-step setup page (download, Ling key, follow the guide) with screenshots in each language.
 - New: in-app updates. Once a day the app checks GitHub Releases; when a newer version is out, an orange dot appears on the menu bar icon and the panel offers to install it. Installing downloads the release zip, checks it against `checksums.txt`, the bundle id, the version and its signature, then replaces the app and reopens it, keeping the system-audio and microphone permissions. A meeting being recorded is ended first, after asking. If the app can't replace itself (still in the DMG, or a folder it can't write to), it says why and opens the release page. Also in the app menu (检查更新…) and Settings › 通用.
 - New: 登录时打开 in Settings › 通用: after you log in the app waits in the menu bar without opening any window.
 - New: the About window links to the website, GitHub and the issue tracker; Help has 知了网站 and 反馈问题….

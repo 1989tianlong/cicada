@@ -61,7 +61,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 
 ## Privacy & Permissions
 
-Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google with Apple on-device fallback), meeting records and push-to-talk interpreting all work. Live meeting notes, one-step voice translation and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing.
+Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google with Apple on-device fallback), meeting records and push-to-talk interpreting all work. Live meeting notes, one-step voice translation and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing; Ling gives ¥10 of credit every month, about 10–50 hours of meetings.
 
 Cicada asks for a permission only when you use the feature that needs it; everything else keeps working if you decline.
 
@@ -105,7 +105,7 @@ Requires **macOS 26 or later** on **Apple silicon**.
 
 Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`; verify with `shasum -a 256 Cicada-*.dmg`.
 
-The first-launch guide walks you through permissions, a sample video and, if you want, the virtual microphone. Later updates show as an orange dot on the menu bar icon; one click installs them and keeps your permissions.
+The first-launch guide walks you through permissions, your Ling key (or skip it for now), a sample video and, if you want, the virtual microphone. Later updates show as an orange dot on the menu bar icon; one click installs them and keeps your permissions.
 
 ## Usage
 

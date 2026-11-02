@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="{{t.html_lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{t.start_title}}</title>
+<meta name="description" content="{{t.start_desc}}">
+<link rel="canonical" href="{{CANONICAL}}">
+{{HREFLANG}}
+<link rel="icon" href="{{ROOT}}icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{ROOT}}icon.png">
+<meta name="theme-color" content="#F6F7F9">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="知了 Cicada">
+<meta property="og:title" content="{{t.start_h1}}">
+<meta property="og:description" content="{{t.start_desc}}">
+<meta property="og:url" content="{{CANONICAL}}">
+<meta property="og:image" content="{{SITE}}og.png">
+<meta property="og:locale" content="{{t.og_locale}}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{{FONTS}}">
+<link rel="stylesheet" href="{{ROOT}}style.css?v={{REV}}">
+<script type="application/ld+json">{{JSONLD}}</script>
+</head>
+<body>
+{{HEADER}}
+<main class="start">
+  <section class="wrap start-head">
+    <h1>{{t.start_h1}}</h1>
+    <p class="lead">{{t.start_lead}}</p>
+    <p class="req">{{t.start_req}}</p>
+    <div class="sendcard phone">
+      <div class="head">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
+        {{t.start_mob_h}}
+      </div>
+      <p>{{t.start_mob_p}}</p>
+      <button class="btn btn-dark" type="button" data-send>{{t.send_btn}}</button>
+    </div>
+  </section>
+
+  <ol class="wrap steps">
+    <li class="step">
+      <div class="step-text">
+        <span class="num" aria-hidden="true">1</span>
+        <h2>{{t.s1_h}}</h2>
+        <p>{{t.s1_p}}</p>
+        <a class="btn btn-dark desk" href="{{DOWNLOAD}}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="M6 11l6 6 6-6"/><path d="M5 20h14"/></svg>
+          {{t.download_free}}
+        </a>
+      </div>
+      <div class="step-aside gate">
+        <b>{{t.gate_h}}</b>
+        <p>{{t.gate_p}}</p>
+        <div class="path"><span>{{t.gate_1}}</span><i aria-hidden="true">›</i><span>{{t.gate_2}}</span><i aria-hidden="true">›</i><span class="last">{{t.gate_3}}</span></div>
+      </div>
+    </li>
+
+    <li class="step key">
+      <div class="step-text">
+        <div class="num-row"><span class="num accent" aria-hidden="true">2</span><span class="badge">{{t.s2_badge}}</span></div>
+        <h2>{{t.s2_h}}</h2>
+        <p>{{t.s2_p}}</p>
+        <a class="btn btn-orange" href="https://chat.ant-ling.com/platform/api" target="_blank" rel="noopener">
+          {{t.s2_btn}}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+          <span class="sr">{{t.new_tab}}</span>
+        </a>
+        <div class="offer"><span class="tag">{{t.offer_tag}}</span></div>
+        <p class="hint">{{t.offer_note}}</p>
+      </div>
+      <div class="step-aside gains">
+        <b>{{t.gain_h}}</b>
+        <ul>
+          <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg><span><strong>{{t.gain1_b}}</strong>{{t.gain1_t}}</span></li>
+          <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg><span><strong>{{t.gain2_b}}</strong>{{t.gain2_t}}</span></li>
+          <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg><span><strong>{{t.gain3_b}}</strong>{{t.gain3_t}}</span></li>
+        </ul>
+        <p class="without">{{t.without_key}}</p>
+      </div>
+    </li>
+
+    <li class="step wide">
+      <div class="step-text">
+        <span class="num" aria-hidden="true">3</span>
+        <h2>{{t.s3_h}}</h2>
+        <p>{{t.s3_p}}</p>
+        <ol class="sub">
+          <li>{{t.s3_li1}}</li>
+          <li>{{t.s3_li2}}</li>
+          <li>{{t.s3_li3}}</li>
+        </ol>
+        <p class="hint">{{t.s3_after}}</p>
+      </div>
+      <div class="step-aside shots">
+        <figure>
+          <img src="{{ROOT}}img/start/{{LANG}}-permissions.jpg" width="1100" height="860" alt="{{t.shot_perm_alt}}" loading="lazy">
+          <figcaption>{{t.shot_perm_cap}}</figcaption>
+        </figure>
+        <figure>
+          <img src="{{ROOT}}img/start/{{LANG}}-key.jpg" width="1100" height="860" alt="{{t.shot_key_alt}}" loading="lazy">
+          <figcaption>{{t.shot_key_cap}}</figcaption>
+        </figure>
+      </div>
+    </li>
+  </ol>
+
+  <section class="wrap later" aria-labelledby="later-t">
+    <h2 id="later-t">{{t.later_h}}</h2>
+    <div class="rows">
+      <div class="card"><h3>{{t.later1_h}}</h3><p>{{t.later1_p}}</p></div>
+      <div class="card"><h3>{{t.later2_h}}</h3><p>{{t.later2_p}}</p></div>
+    </div>
+    <p class="more">{{t.more}}</p>
+  </section>
+</main>
+{{FOOTER}}
+</body>
+</html>

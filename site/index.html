@@ -1,26 +1,27 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="{{t.html_lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>知了 Cicada：任意会议与直播的实时字幕、同声传译、会议纪要 | Mac 免费开源</title>
-<meta name="description" content="知了是 Mac 菜单栏里的实时翻译字幕、同声传译和 AI 会议纪要工具。腾讯会议、Zoom、飞书、Teams、X Spaces、YouTube 直播、Discord 里都能用，不用机器人进会，声音不出本机，免费开源。">
-<link rel="canonical" href="{{SITE}}">
+<title>{{t.home_title}}</title>
+<meta name="description" content="{{t.home_desc}}">
+<link rel="canonical" href="{{CANONICAL}}">
+{{HREFLANG}}
 <link rel="icon" href="{{ROOT}}icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="{{ROOT}}icon.png">
-<link rel="alternate" type="application/atom+xml" title="知了更新日志" href="{{SITE}}feed.xml">
+<link rel="alternate" type="application/atom+xml" title="{{t.feed_title}}" href="{{SITE}}feed.xml">
 <meta name="theme-color" content="#F6F7F9">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="知了 Cicada">
-<meta property="og:title" content="知了：任何会议、任何直播，没有语言障碍">
-<meta property="og:description" content="Mac 上的实时字幕、同声传译和 AI 会议纪要。听得懂，说得出，记得住。">
-<meta property="og:url" content="{{SITE}}">
+<meta property="og:title" content="{{t.og_title}}">
+<meta property="og:description" content="{{t.og_desc}}">
+<meta property="og:url" content="{{CANONICAL}}">
 <meta property="og:image" content="{{SITE}}og.png">
-<meta property="og:locale" content="zh_CN">
+<meta property="og:locale" content="{{t.og_locale}}">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Noto+Sans+SC:wght@400;500;700;900&amp;display=swap">
+<link rel="stylesheet" href="{{FONTS}}">
 <link rel="stylesheet" href="{{ROOT}}style.css?v={{REV}}">
 <script type="application/ld+json">{{JSONLD}}</script>
 </head>
@@ -28,131 +29,115 @@
 {{HEADER}}
 <main>
   <section class="wrap hero" id="top">
-    <span class="pill"><span class="dot"></span>免费开源 · macOS 26 · Apple 芯片</span>
+    <span class="pill"><span class="dot"></span>{{t.pill}}</span>
     <h1>
-      <span class="kicker">知了：任意会议与直播的实时字幕、同声传译、会议纪要</span>
-      <span class="slogan">任何会议、任何直播，<br>没有语言障碍。</span>
+      <span class="kicker">{{t.kicker}}</span>
+      <span class="slogan">{{t.slogan}}</span>
     </h1>
-    <p class="sub">听得懂，说得出，记得住。</p>
+    <p class="sub">{{t.sub}}</p>
     <div class="ctas desk" id="download">
       <a class="btn btn-orange" href="{{DOWNLOAD}}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="M6 11l6 6 6-6"/><path d="M5 20h14"/></svg>
-        下载 Mac 版
+        {{t.dl_mac}}
       </a>
-      <a class="btn btn-light" href="{{REPO}}">查看源码</a>
+      <a class="btn btn-light" href="{{HOME}}start/">{{t.how_to_start}}</a>
     </div>
-    <p class="meta desk">版本 {{VERSION}} · <a href="{{ROOT}}changelog/">更新内容</a></p>
+    <p class="meta desk">{{t.version}} {{VERSION}} · <a href="{{CHANGELOG}}">{{t.whats_new}}</a> · <a href="{{REPO}}">{{t.view_source}}</a></p>
     <div class="sendcard phone">
       <div class="head">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
-        知了是 Mac 应用
+        {{t.send_head}}
       </div>
-      <p>在手机上先看看它怎么用。把网页发到 Mac 上打开，就能免费下载。</p>
-      <button class="btn btn-dark" type="button" data-send>发到我的 Mac</button>
+      <p>{{t.send_text}}</p>
+      <button class="btn btn-dark" type="button" data-send>{{t.send_btn}}</button>
     </div>
   </section>
 
-  <section class="wrap stage" aria-label="演示">
+  <section class="wrap stage" aria-label="{{t.demo_label}}">
     <div class="stage-row tilt-in">
       <div class="window" aria-hidden="true">
-        <div class="bar"><i></i><i></i><i></i><span class="title">任意直播 · English</span><span class="live">LIVE</span></div>
+        <div class="bar"><i></i><i></i><i></i><span class="title">{{t.win_title}}</span><span class="live">LIVE</span></div>
         <div class="screen">
-          <div class="speaker"><div class="avatar"></div>主讲人</div>
+          <div class="speaker"><div class="avatar"></div>{{t.speaker}}</div>
           <div class="wave"><span style="height:40px"></span><span style="height:64px;animation-delay:-.3s"></span><span style="height:30px;animation-delay:-.6s"></span><span style="height:56px;animation-delay:-.15s"></span><span style="height:44px;animation-delay:-.8s"></span><span style="height:60px;animation-delay:-.45s"></span><span style="height:34px;animation-delay:-.9s"></span></div>
           <div class="subbar"><div class="lines">
-            <div class="cap"><div class="en"><span class="dot"></span>We’ll ship the beta to everyone next Thursday.</div><div class="zh">下周四，我们会把测试版发给所有人。</div></div>
-            <div class="cap"><div class="en"><span class="dot"></span>The keynote starts right after this break.</div><div class="zh">休息结束后，主题演讲马上开始。</div></div>
-            <div class="cap"><div class="en"><span class="dot"></span>Any questions from the chat before we move on?</div><div class="zh">继续之前，聊天区有什么问题吗？</div></div>
+            <div class="cap"><div class="en"><span class="dot"></span>{{t.cap1_src}}</div><div class="zh">{{t.cap1_dst}}</div></div>
+            <div class="cap"><div class="en"><span class="dot"></span>{{t.cap2_src}}</div><div class="zh">{{t.cap2_dst}}</div></div>
+            <div class="cap"><div class="en"><span class="dot"></span>{{t.cap3_src}}</div><div class="zh">{{t.cap3_dst}}</div></div>
           </div></div>
         </div>
       </div>
       <div class="side">
         <div class="card notes">
-          <div class="head">实时纪要<span class="updating">正在更新</span></div>
-          <div class="note"><b>结论</b> · 测试版下周四全量发布</div>
-          <div class="note"><b>议程</b> · 休息后是主题演讲</div>
-          <div class="note"><b>待办</b> · 整理聊天区的问题</div>
+          <div class="head">{{t.notes_head}}<span class="updating">{{t.updating}}</span></div>
+          <div class="note">{{t.note1}}</div>
+          <div class="note">{{t.note2}}</div>
+          <div class="note">{{t.note3}}</div>
         </div>
         <div class="card speak">
-          <div class="hold">按住 <kbd>右 ⌥</kbd> 说中文</div>
-          <div>“我们可以在周四之前给反馈。”</div>
-          <div class="out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>对方听到：“We can send feedback before Thursday.”</div>
+          <div class="hold">{{t.speak_hold}}</div>
+          <div>{{t.speak_said}}</div>
+          <div class="out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>{{t.speak_heard}}</div>
         </div>
       </div>
     </div>
   </section>
 
   <section class="works" aria-labelledby="works-t">
-    <p id="works-t">这些 app 里都能用，只要 Mac 能出声就行</p>
+    <p id="works-t">{{t.works}}</p>
     <div class="marquee">
       <ul class="track">{{APPS}}</ul>
     </div>
   </section>
 
   <section class="wrap why" id="why">
-    <h2 class="big rv">飞书、Teams 有字幕？<br><span class="strike">只在它们自己的 app 里。</span></h2>
-    <p class="lead rv">遇到 X Space、YouTube 直播、Discord 或播客就用不上了。知了直接听整台 Mac 的声音，不用派机器人进会，对方也不用装任何东西。</p>
+    <h2 class="big rv">{{t.why_h}}</h2>
+    <p class="lead rv">{{t.why_lead}}</p>
     <div class="rows">
-      <div class="card compare rv"><h3>能在哪里用</h3><div><b>内置字幕</b>限自家 app 的会议内</div><div class="us"><b>知了</b>电脑上放得出声音的 app、网页和直播都能用</div></div>
-      <div class="card compare rv"><h3>需要谁同意</h3><div><b>内置字幕</b>要主持人开启，往往还得买付费版</div><div class="us"><b>知了</b>自己打开就能用，不影响别人</div></div>
-      <div class="card compare rv"><h3>你能开口吗</h3><div><b>内置字幕</b>大多只能看字幕，不能替你说话</div><div class="us"><b>知了</b>按住右 ⌥ 说中文，对方听到他们的语言</div></div>
+      <div class="card compare rv"><h3>{{t.c1_h}}</h3><div><b>{{t.builtin}}</b>{{t.c1_b}}</div><div class="us"><b>{{t.us}}</b>{{t.c1_u}}</div></div>
+      <div class="card compare rv"><h3>{{t.c2_h}}</h3><div><b>{{t.builtin}}</b>{{t.c2_b}}</div><div class="us"><b>{{t.us}}</b>{{t.c2_u}}</div></div>
+      <div class="card compare rv"><h3>{{t.c3_h}}</h3><div><b>{{t.builtin}}</b>{{t.c3_b}}</div><div class="us"><b>{{t.us}}</b>{{t.c3_u}}</div></div>
     </div>
   </section>
 
-  <section class="wrap verbs" id="how" aria-label="能做什么">
-    <article class="verb rv" id="subtitles"><small>01 · 实时字幕</small><h3>听得懂</h3><p>把别人说的话实时转成中文字幕。对方说哪种语言会自动听出来，语音识别全在你的 Mac 本地完成。</p></article>
-    <article class="verb rv" id="interpreting"><small>02 · 同声传译</small><h3>说得出</h3><p>按住右 ⌥ 说话，松开后自动译成对方的语言，通过虚拟麦克风说给对方听。只要是能连麦说话的 app 都支持。</p></article>
-    <article class="verb rv" id="notes"><small>03 · 会议纪要</small><h3>记得住</h3><p>边开会边整理要点、结论、待办和“我错过了什么”。散会后留下一份双语记录，支持导出 Markdown、Word 和 SRT。</p></article>
-    <p class="fine">字幕在任何有声音的地方都能用。同声传译需要你能开麦说话的场合，比如线上会议或 X Space 连麦。AI 纪要需要填入你自己的 Ling key。</p>
+  <section class="wrap verbs" id="how" aria-label="{{t.how_label}}">
+    <article class="verb rv" id="subtitles"><small>{{t.v1_small}}</small><h3>{{t.v1_h}}</h3><p>{{t.v1_p}}</p></article>
+    <article class="verb rv" id="interpreting"><small>{{t.v2_small}}</small><h3>{{t.v2_h}}</h3><p>{{t.v2_p}}</p></article>
+    <article class="verb rv" id="notes"><small>{{t.v3_small}}</small><h3>{{t.v3_h}}</h3><p>{{t.v3_p}}</p></article>
+    <p class="fine">{{t.fine}} <a href="{{HOME}}start/">{{t.how_to_start}} →</a></p>
   </section>
 
   <section class="wrap roadmap" id="privacy" aria-labelledby="privacy-t">
-    <div class="head rv"><h2 id="privacy-t">权限与隐私</h2><a href="https://github.com/wquguru/cicada/blob/main/README.zh-CN.md#隐私与权限">每项权限的说明 →</a></div>
+    <div class="head rv"><h2 id="privacy-t">{{t.privacy_h}}</h2><a href="{{t.privacy_url}}">{{t.privacy_link}}</a></div>
     <div class="rows">
-      <div class="card stage-card rv"><small class="now">本机</small><h3>声音在 Mac 本地转成文字</h3><p>录音和会议记录只存在你自己的硬盘里。会发出去的只有识别出来的文字（用来翻译和写纪要），以及用同声传译时你按住按键说的那几句。</p></div>
-      <div class="card stage-card rv"><small>权限</small><h3>用到才问，不给也能用</h3><p>系统声音权限用来出字幕，麦克风只在按住说话键时才录，输入监控只看右 ⌥ 有没有按下（换成组合键就不用这个权限）。共享屏幕时别人看不到纪要窗口。</p></div>
-      <div class="card stage-card rv"><small>透明</small><h3>没有埋点，代码开源</h3><p>只连接翻译服务、你自己的 Ling key、BlackHole 官方下载和 GitHub。没有任何统计埋点，也没有我们自己的服务器。安装包可以用 SHA-256 校验。</p></div>
+      <div class="card stage-card rv"><small class="now">{{t.p1_small}}</small><h3>{{t.p1_h}}</h3><p>{{t.p1_p}}</p></div>
+      <div class="card stage-card rv"><small>{{t.p2_small}}</small><h3>{{t.p2_h}}</h3><p>{{t.p2_p}}</p></div>
+      <div class="card stage-card rv"><small>{{t.p3_small}}</small><h3>{{t.p3_h}}</h3><p>{{t.p3_p}}</p></div>
     </div>
   </section>
 
   <section class="wrap roadmap" id="roadmap" aria-labelledby="roadmap-t">
-    <div class="head rv"><h2 id="roadmap-t">接下来</h2><a href="https://github.com/wquguru/cicada/issues">想要什么，告诉我们 →</a></div>
+    <div class="head rv"><h2 id="roadmap-t">{{t.road_h}}</h2><a href="{{REPO}}/issues">{{t.road_link}}</a></div>
     <div class="rows">
-      <div class="card stage-card rv"><small class="now">接下来 · Mac</small><h3>记录我的发言、区分说话人</h3><p>你在会上说的话也记进纪要。支持到 macOS 14.4。加上正式签名，省去首次打开点“仍要打开”。区分对面的多位说话人，待办事项标出是谁说的。支持用本机模型写纪要，不用填 key。</p></div>
-      <div class="card stage-card rv"><small>更远</small><h3>声纹识别、Windows 和 Android</h3><p>记住常开会同事的声音，下次自动认出是谁，声纹只存在本机。Windows 会做完整版。Android 受系统限制拿不到通话声音，先做能听视频和直播的字幕、面对面模式和会议记录查看端。</p></div>
+      <div class="card stage-card rv"><small class="now">{{t.r1_small}}</small><h3>{{t.r1_h}}</h3><p>{{t.r1_p}}</p></div>
+      <div class="card stage-card rv"><small>{{t.r2_small}}</small><h3>{{t.r2_h}}</h3><p>{{t.r2_p}}</p></div>
     </div>
   </section>
-  <section class="wrap latest" aria-labelledby="latest-t">
-    <div class="head rv"><h2 id="latest-t">最近更新</h2><a href="{{ROOT}}changelog/">全部更新日志 →</a></div>
-    <div class="rows">{{LATEST}}</div>
-  </section>
+
+{{LATEST_SECTION}}
 
   <section class="wrap cta">
     <div class="cta-box rv">
       <svg width="104" height="104" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="23" fill="#FFFFFF" fill-opacity="0.16"/><g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"><path d="M18 36Q26 10 45 20"/><path d="M82 36Q74 10 55 20"/></g><g class="eye"><circle cx="36" cy="46" r="13" fill="#FFFFFF"/><circle cx="39" cy="49" r="6" fill="#15171C"/></g><g class="eye"><circle cx="64" cy="46" r="13" fill="#FFFFFF"/><circle cx="67" cy="49" r="6" fill="#15171C"/></g><rect x="12" y="58" width="76" height="28" rx="9" fill="#15171C"/><path d="M21 68h44" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/><path d="M21 77h26" stroke="#E8552B" stroke-width="5" stroke-linecap="round"/></svg>
       <div class="txt">
-        <h2>下一场会，知了替你<em>听</em>、替你<em>说</em>、替你<em>记</em>。</h2>
-        <p>对方说话，你看到母语字幕；你开口，同声传译用对方的语言说出去；整场会议边开边整理成纪要，会后留一份双语记录。声音只在你的 Mac 上转成文字。</p>
+        <h2>{{t.cta_h}}</h2>
+        <p>{{t.cta_p}}</p>
       </div>
-      <a class="btn btn-dark desk" href="{{DOWNLOAD}}">下载 Mac 版</a>
-      <button class="btn btn-dark phone" type="button" data-send>发到我的 Mac</button>
+      <a class="btn btn-dark desk" href="{{DOWNLOAD}}">{{t.dl_mac}}</a>
+      <button class="btn btn-dark phone" type="button" data-send>{{t.send_btn}}</button>
     </div>
   </section>
 </main>
 {{FOOTER}}
-<script>
-// Phones get no download: share the page (AirDrop / messages to yourself) or copy the link.
-document.querySelectorAll('[data-send]').forEach(function (b) {
-  var label = b.textContent;
-  b.addEventListener('click', function () {
-    var url = location.href.split('#')[0];
-    if (navigator.share) { navigator.share({ title: '知了 Cicada', url: url }).catch(function () {}); return; }
-    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () {
-      b.textContent = '链接已复制，到 Mac 上打开';
-      setTimeout(function () { b.textContent = label; }, 2400);
-    }, function () { prompt('复制这个链接，到 Mac 上打开：', url); });
-  });
-});
-</script>
 </body>
 </html>

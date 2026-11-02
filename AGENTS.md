@@ -4,7 +4,7 @@ Cicada (知了, formerly Live Subs): a macOS menu bar app that turns what the Ma
 
 ## Scope
 
-- Surfaces: menu bar panel, live notes window (default) or subtitle bar while listening, main window (meeting records), settings, three-step onboarding. A request that fits none of them gets pushed back before any UI is added.
+- Surfaces: menu bar panel, live notes window (default) or subtitle bar while listening, main window (meeting records), settings, four-step onboarding (permissions, Ling key, sample video, speaking). A request that fits none of them gets pushed back before any UI is added.
 - Nothing the user does needs the Terminal.
 - Listening: Core Audio process tap → on-device language detection and `SpeechAnalyzer` → translation. Speaking: hold right ⌥ or a shortcut → mic → Ming (with a Ling key) or on-device + translation → voice → BlackHole 2ch virtual mic.
 
@@ -27,7 +27,8 @@ Cicada (知了, formerly Live Subs): a macOS menu bar app that turns what the Ma
 ## Layout
 
 - `Sources/LiveSubs`: the app, one concern per file. Engines are UI-free (`ListenEngine`, `SpeakEngine`, `SpeakTest`, `Notes`, `Translator`, `Ling`, `VirtualMic`, `SessionStore`, `Updates`…); `AppModel` wires them and holds the debug commands. Settings keys: `AppSettings` in `Settings.swift`.
-- `Sources/LiveSubsIcon`: renders the icon set. `site/`: the website, built by `scripts/site.py`. `tools/`: test helpers. `Tests/LiveSubsTests`: unit tests for the pure parts.
+- `Sources/LiveSubsIcon`: renders the icon set. `site/`: the website, built by `scripts/site.py`.
+- The site is Chinese at `/`, English / Japanese / Korean under `/en/` `/ja/` `/ko/`; every `{{t.key}}` comes from `site/i18n/<lang>.json`. `start.html` is the setup page; its `img/start/` screenshots come from the app in each language. `tools/`: test helpers. `Tests/LiveSubsTests`: unit tests for the pure parts.
 
 ## Commands
 
