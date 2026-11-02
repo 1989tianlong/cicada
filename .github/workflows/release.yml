@@ -3,27 +3,45 @@ name: release
 on:
   push:
     tags: ["v*.*.*"]
+  # Rebuild an existing release, e.g. after its tag was moved: Actions › release › Run workflow.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build, e.g. v2.1.0"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   release:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - name: Check the tag matches Info.plist
         run: |
           PLIST=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
-          [[ "v$PLIST" == "$GITHUB_REF_NAME" ]] || { echo "tag $GITHUB_REF_NAME != Info.plist $PLIST"; exit 1; }
+          [[ "v$PLIST" == "$TAG" ]] || { echo "tag $TAG != Info.plist $PLIST"; exit 1; }
       - name: Build and package
         run: scripts/package.sh
         env:
           BUILD_NUMBER: ${{ github.run_number }}
       - name: Publish the release
+        # A tag pushed again (history rewritten, tag moved) must not fail on the existing release:
+        # replace its files and notes instead.
         run: |
-          scripts/release_notes.sh "${GITHUB_REF_NAME#v}" > build/notes.md
-          gh release create "$GITHUB_REF_NAME" build/Cicada-*.dmg build/Cicada-*.zip build/checksums.txt \
-            --title "知了 Cicada ${GITHUB_REF_NAME#v}" --notes-file build/notes.md
+          scripts/release_notes.sh "${TAG#v}" > build/notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/Cicada-*.dmg build/Cicada-*.zip build/checksums.txt --clobber
+            gh release edit "$TAG" --notes-file build/notes.md
+          else
+            gh release create "$TAG" build/Cicada-*.dmg build/Cicada-*.zip build/checksums.txt \
+              --title "知了 Cicada ${TAG#v}" --notes-file build/notes.md
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
