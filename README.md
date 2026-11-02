@@ -44,7 +44,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 
 ### Speak back in their language
 
-- **Push-to-talk interpreting.** Hold the right `⌥` key (or a custom shortcut) and speak. The room hears your translated voice through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click. Settings shows which meeting apps are on it, live, and how to switch the ones that aren't.
+- **Push-to-talk interpreting.** Hold the right `⌥` key (or a custom shortcut) and speak. The room hears your translated voice through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click. While interpreting is on, Cicada makes it the system microphone (and switches back afterwards), so a meeting in Chrome or any app on the default mic needs no setup; Settings shows which meeting apps are on it, live, and how to switch the ones that aren't.
 - **Ming voices and voice cloning.** With a Ling API key, the Ming audio model listens and translates in one step in about 2 seconds. The other side can hear natural Ming voices (English, Chinese, Japanese, Korean, German, French, Spanish), macOS system voices, or a clone of your own voice from an 8 to 30 second sample; without a key, Cicada uses macOS system voices.
 
 ### Meeting records
@@ -114,7 +114,7 @@ The UI is available in English, Chinese, Japanese and Korean, following your mac
 1. Play any video, livestream or call. The live notes window opens by default, and pressing `⌃⌥S` switches between the notes window, the subtitle bar and hidden.
 2. Click the Cicada icon in the menu bar to change the spoken language (auto by default), the target translation language, or the display mode.
 3. To use live notes, paste your [Ling API key](https://chat.ant-ling.com/platform/api) in **Settings › AI Service** or in the notes window prompt.
-4. To speak back in another language, turn on **Interpreting** in the menu bar panel, set your meeting app's microphone to **BlackHole 2ch**, and hold the right `⌥` key while speaking.
+4. To speak back in another language, turn on **Interpreting** in the menu bar panel and hold the right `⌥` key while speaking. Cicada switches the system microphone to **BlackHole 2ch** while it's on; a meeting app set to a specific microphone needs **BlackHole 2ch** (or the default) picked in its audio settings.
 5. Open **会议记录** from the menu bar panel to search past transcripts (`⌘F`), generate notes for older sessions, or export to Markdown, Word or SRT.
 
 ## Roadmap

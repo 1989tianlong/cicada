@@ -56,7 +56,7 @@ struct SettingsRow<Trailing: View>: View {
                 Spacer(minLength: 12)
                 trailing
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 16).padding(.vertical, 6)
             .frame(minHeight: 46)
             if divider { Divider().padding(.leading, 16) }
         }
@@ -488,6 +488,7 @@ struct SettingsView: View {
                 Divider().padding(.leading, 50)
                 VoiceSection(model: model, settings: settings, ling: model.ling)
             }
+            if model.virtualMic != nil { systemMicSection }
             if model.virtualMic != nil { MicUsersSection(model: model) }
             DisclosureGroup {
                 SettingsCard {
@@ -495,6 +496,7 @@ struct SettingsView: View {
                         PillMenu(value: outputName,
                                  options: [("", L("虚拟麦克风（自动）"))] + model.outputs.map { ($0.uid, $0.name) }) {
                             settings.speakOutput = $0
+                            model.applySystemMic()
                         }
                     }
                 }
@@ -530,7 +532,7 @@ struct SettingsView: View {
                 StepMark(done: true, number: 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("虚拟麦克风").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-                    Text("在会议软件里把麦克风选成「\(name)」").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                    Text("\(name) 已装好").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 6) {
@@ -541,6 +543,60 @@ struct SettingsView: View {
             .padding(.horizontal, 16).padding(.vertical, 12)
         } else {
             MicSetupCard(installer: installer, deviceName: nil)
+        }
+    }
+
+    /// 系统麦克风: the virtual mic as the system default while speaking, and the real mic Cicada records from.
+    private var systemMicSection: some View {
+        let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
+        let inputs = model.systemMic.realInputs
+        // A chosen mic that's unplugged reads as 自动 until it's back.
+        let chosen = inputs.first { $0.uid == settings.speakMic }?.name
+        let auto = model.systemMic.recordingDevice?.name
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("系统麦克风").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).padding(.horizontal, 4)
+            SettingsCard {
+                SettingsRow(title: L("自动切换系统麦克风"),
+                            detail: L("同声传译打开时换成 \(virtual)，Chrome 等跟随系统的软件不用再设置")) {
+                    Toggle("自动切换系统麦克风", isOn: Binding(get: { settings.autoSystemMic }, set: { model.setAutoSystemMic($0) }))
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+                }
+                SettingsRow(title: L("\(appDisplayName)听你说话用"), detail: L("固定用这个，不跟着系统切换"),
+                            divider: systemMicStatus != nil) {
+                    PillMenu(value: chosen ?? (auto.map { L("自动（\($0)）") } ?? L("自动")),
+                             options: [("", L("自动"))] + inputs.map { ($0.uid, $0.name) }) {
+                        settings.speakMic = $0
+                    }
+                }
+                if let status = systemMicStatus {
+                    HStack(spacing: 12) {
+                        Circle().fill(status.ok ? Palette.ok : Palette.accent).frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(status.title).font(.system(size: 13)).foregroundStyle(Palette.ink)
+                            Text(status.detail).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                        }
+                        Spacer(minLength: 8)
+                        SoftButton(status.button, dark: !status.ok, action: status.action)
+                    }
+                    .padding(.horizontal, 16).frame(minHeight: 52)
+                }
+            }
+        }
+    }
+
+    /// The status row: what the system mic is now and the one thing to do about it.
+    private var systemMicStatus: (ok: Bool, title: String, detail: String, button: String, action: () -> Void)? {
+        let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
+        switch model.systemMicState {
+        case .switched(let original):
+            return (true, L("现在：\(virtual)"), L("关掉同声传译或退出\(appDisplayName)时，换回 \(original)"), L("立即还原"), model.restoreSystemMic)
+        case .notRestored:
+            return (false, L("现在：\(virtual)"), L("同声传译已关，别的软件听不到你说话"), L("还原"), model.restoreSystemMic)
+        case .moved(let to):
+            return (false, L("现在：\(to)"), L("跟随系统的网页听不到译文"), L("换回"), model.switchSystemMic)
+        case .off:
+            guard model.wantsSystemMic else { return nil }
+            return (false, L("现在：\(AudioDevices.defaultInput?.name ?? "-")"), L("跟随系统的网页听不到译文"), L("切换"), model.switchSystemMic)
         }
     }
 

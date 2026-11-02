@@ -26,7 +26,10 @@ enum AudioDevices {
         return status == noErr ? value as String : nil
     }
 
-    static func outputs() -> [OutputDevice] {
+    static func outputs() -> [OutputDevice] { devices(scope: kAudioObjectPropertyScopeOutput) }
+
+    /// Devices with streams on one side (output or input), minus Cicada's own aggregate devices.
+    static func devices(scope: AudioObjectPropertyScope) -> [OutputDevice] {
         var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                               mScope: kAudioObjectPropertyScopeGlobal,
                                               mElement: kAudioObjectPropertyElementMain)
@@ -36,7 +39,7 @@ enum AudioDevices {
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return [] }
         return ids.compactMap { id in
             var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
-                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mScope: scope,
                                                      mElement: kAudioObjectPropertyElementMain)
             var s: UInt32 = 0
             guard AudioObjectGetPropertyDataSize(id, &streams, 0, nil, &s) == noErr, s > 0,
@@ -91,6 +94,8 @@ final class SpeakEngine {
     /// When the latest `speak` call started sending audio, and how it was voiced.
     private(set) var firstAudioAt: Date?
     private(set) var lastVoice = ""
+    /// The real microphone to record from; the system default may be the virtual mic.
+    var inputDevice: (() -> OutputDevice?)?
     /// Language the room speaks (for "follow the room").
     var roomLanguage: (() -> String?)?
 
@@ -135,6 +140,9 @@ final class SpeakEngine {
         let room = roomLanguage?() ?? "en"
         return room == settings.speakFromLang.code ? "en" : room
     }
+
+    /// Debug: the device the mic engine reads.
+    var micDeviceName: String { AudioDevices.inputDevice(of: mic) }
 
     func setRecording(_ url: URL?) {
         micQueue.sync {
@@ -309,6 +317,7 @@ final class SpeakEngine {
 
     private func startMic(format: AVAudioFormat, input cont: AsyncStream<AnalyzerInput>.Continuation) {
         let inputNode = mic.inputNode
+        AudioDevices.pinInput(mic, to: inputDevice?())
         let inFormat = inputNode.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0 else {
             onStatus?(L("没有可用的麦克风"))

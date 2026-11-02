@@ -27,7 +27,8 @@ struct MicUsersSection: View {
             }
             // The tinted problem row would otherwise square off the card's corners.
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            Text("这里只显示正在用麦克风的会议软件和常见会议软件，麦克风要在各软件里自己换。")
+            Text(model.settings.autoSystemMic ? L("跟随系统的软件会自动换好；在软件里自己选过麦克风的，要在软件里改。")
+                                               : L("这里只显示正在用麦克风的会议软件和常见会议软件，麦克风要在各软件里自己换。"))
                 .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
@@ -119,7 +120,10 @@ struct MicGuideView: View {
             return [L("进会议后，点麦克风图标旁边的 ⌃"), L("在选择麦克风菜单里点 \(micName)"), tune]
         // Browsers: the meeting page picks its own mic; Chrome can also set a default for every site.
         case "com.google.Chrome":
-            return [L("在会议网页的音频设置里，把麦克风选为 \(micName)"),
+            // With the system mic switched, a page left on "default" needs nothing; one set to a
+            // specific mic still has to be changed in the page.
+            return [model.settings.autoSystemMic ? L("在会议网页的音频设置里，把麦克风选为 \(micName) 或“默认”")
+                                                 : L("在会议网页的音频设置里，把麦克风选为 \(micName)"),
                     L("想让所有网页默认用它：Chrome 设置 › 隐私和安全 › 网站设置 › 麦克风"), tune]
         case "com.apple.Safari", "com.microsoft.edgemac", "company.thebrowser.Browser":
             return [L("在会议网页的音频设置里，把麦克风选为 \(micName)"), tune]

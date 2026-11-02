@@ -185,12 +185,14 @@ final class VoiceRecorder: ObservableObject {
     private let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
     private var locale = "zh-CN"
 
-    func start(locale: String) {
+    /// `device`: the real mic; the system default may be the virtual mic while speaking is on.
+    func start(locale: String, device: OutputDevice?) {
         stopEngine()
         self.locale = locale
         transcript = ""
         try? FileManager.default.removeItem(at: url)
         let input = engine.inputNode
+        AudioDevices.pinInput(engine, to: device)
         let inFormat = input.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0,
               let f = try? AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatInt16, interleaved: true),

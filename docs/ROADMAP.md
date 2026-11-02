@@ -11,6 +11,7 @@ In rough order, and subject to change. Tell us what you need in Issues.
 - **Telling speakers apart.** Today lines are labeled only as "them" or "you". Next, Cicada will separate individual remote speakers (Speaker 1, Speaker 2…, renamable) and tag conclusions and to-dos with who said them.
 - **Local notes without an API key.** Use Apple's on-device model to generate meeting notes on supported Macs, keeping all audio and text local.
 - **Custom AI providers.** Support any OpenAI-compatible API endpoint besides Ling.
+- **Live voice changing.** No translation: your voice goes into the meeting as a different voice, changed as you speak, without holding the talk key. Setting "I speak" and "They hear" to the same language already swaps the voice today, but it goes through text, so the room hears it only after you let go and your tone is lost.
 
 **Later**
 - **Speaker recognition.** Remember frequent meeting participants by voice so you don't have to rename speakers every call. Because voiceprints are biometric data, they stay on your Mac, require opt-in, and can be deleted anytime.

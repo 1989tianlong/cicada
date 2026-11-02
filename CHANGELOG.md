@@ -3,6 +3,10 @@
 One section per release, newest first. `scripts/release.sh` needs the section, dated today;
 the release workflow publishes it as the release notes.
 
+## Unreleased
+
+- New: turning on 同声传译 switches the Mac's system microphone to BlackHole 2ch and switches it back when 同声传译 is turned off or Cicada quits, so a meeting page in Chrome (or any app left on the default microphone) hears the translation with no setup. Cicada itself keeps recording from your real microphone (Settings › 同声传译 › 系统麦克风 lets you pin one). If Cicada didn't get to switch back (it crashed), or AirPods or something else took over the system mic while you were speaking, the menu bar panel says so with a 还原 / 换回 button; the panel's ⋯ menu also has 同声传译设置…, 试一句 and 还原系统麦克风. The switch can be turned off in Settings.
+
 ## 2.2.0 — 2026-11-02
 
 - New: a meeting nobody ends now ends by itself. When the meeting app it was heard through (Zoom, 腾讯会议, 飞书, Teams…) hangs up, the live notes window shows "Zoom 已挂断 · 30 秒后结束" with 继续记录 / 现在结束; when nobody has said anything for 10 minutes (and no meeting app is in a call) it counts down 60 s the same way. Silence counts recognized words, so background music doesn't keep a meeting going. The record ends at the last words or the hang-up and the recording drops the silent tail, so a forgotten meeting no longer runs for hours or swallows the next video. After a meeting ends this way, the next call in a meeting app starts a new one. Settings › 通用 › 结束会议 has the switch, 提醒后结束 / 直接结束 / 一直记录 and 5–30 minutes.

@@ -523,6 +523,16 @@ struct OnboardingView: View {
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Palette.okPale))
+                } else if case .switched = model.systemMicState {
+                    // Apps on the default mic already hear it; only ones set to a specific mic need a change.
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.ok)
+                        Text("系统麦克风已换成 \(model.virtualMic?.name ?? "BlackHole 2ch")，用默认麦克风的会议软件不用再选")
+                            .font(.system(size: 13)).foregroundStyle(Palette.ok)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.okPale))
                 } else {
                     HStack(spacing: 10) {
                         (Text("最后一步：在会议软件中，将麦克风选为 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())

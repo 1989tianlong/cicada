@@ -43,6 +43,18 @@ final class AppSettings: ObservableObject {
     @Published var speakOutput: String {
         didSet { save() }
     }
+    /// While speaking, make the virtual mic the system default input (and put it back after).
+    @Published var autoSystemMic: Bool {
+        didSet { save() }
+    }
+    /// The microphone Cicada records my voice from (UID), "" = the real mic the system had.
+    @Published var speakMic: String {
+        didSet { save() }
+    }
+    /// The real system input replaced by the virtual mic, kept until it's put back (survives a crash).
+    @Published var savedSystemInput: String {
+        didSet { save() }
+    }
     @Published var recordAudio: Bool {
         didSet { save() }
     }
@@ -112,6 +124,9 @@ final class AppSettings: ObservableObject {
             ?? speakLocale(forLanguage: LiveSubs.myLanguage(systemLanguages: Locale.preferredLanguages))
         speakTo = defaults.string(forKey: "speakTo") ?? "room"
         speakOutput = defaults.string(forKey: "speakOutput") ?? ""
+        autoSystemMic = defaults.object(forKey: "autoSystemMic") as? Bool ?? true
+        speakMic = defaults.string(forKey: "speakMic") ?? ""
+        savedSystemInput = defaults.string(forKey: "savedSystemInput") ?? ""
         recordAudio = defaults.object(forKey: "recordAudio") as? Bool ?? true
         overlayAuto = defaults.object(forKey: "overlayAuto") as? Bool ?? true
         overlayHideAfter = defaults.object(forKey: "overlayHideAfter") as? Double ?? 4
@@ -138,6 +153,9 @@ final class AppSettings: ObservableObject {
         defaults.set(speakFrom, forKey: "speakFrom")
         defaults.set(speakTo, forKey: "speakTo")
         defaults.set(speakOutput, forKey: "speakOutput")
+        defaults.set(autoSystemMic, forKey: "autoSystemMic")
+        defaults.set(speakMic, forKey: "speakMic")
+        defaults.set(savedSystemInput, forKey: "savedSystemInput")
         defaults.set(recordAudio, forKey: "recordAudio")
         defaults.set(overlayAuto, forKey: "overlayAuto")
         defaults.set(overlayHideAfter, forKey: "overlayHideAfter")

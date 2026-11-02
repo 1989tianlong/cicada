@@ -24,6 +24,9 @@ final class AppModel: ObservableObject {
     @Published var speakTestShown = false
     /// Meeting apps and the microphone each reads; refreshed every second once the virtual mic exists.
     @Published var micUsers: [MicUser] = []
+    lazy var systemMic = SystemMic(settings: settings)
+    /// Whether the system default input is the virtual mic, and anything left to put back.
+    @Published private(set) var systemMicState: SystemMic.State = .off
     /// The app whose "怎么改" sheet is open in Settings.
     @Published var micGuide: MicUser?
     /// Settings › 同声传译: the voice list under "对方听到" is open.
@@ -139,6 +142,7 @@ final class AppModel: ObservableObject {
             await self?.translator.interpret(wav: wav, source: from, target: to, trace: trace)
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
+        speak.inputDevice = { [weak self] in self?.systemMic.recordingDevice }
         applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
@@ -236,6 +240,44 @@ final class AppModel: ObservableObject {
         if devices.map(\.uid) != outputs.map(\.uid) { outputs = devices }
         if listen.isRunning && !systemAudioOK { systemAudioOK = true }
         refreshMicUsers()
+        refreshSystemMic()
+    }
+
+    // MARK: System microphone
+
+    /// Switching the system mic only helps when our voice goes into the virtual mic.
+    var wantsSystemMic: Bool {
+        guard settings.speakEnabled, settings.autoSystemMic, virtualMic != nil else { return false }
+        return settings.speakOutput.isEmpty || (outputs.first { $0.uid == settings.speakOutput }?.isVirtualMic ?? true)
+    }
+
+    func refreshSystemMic() {
+        let state = systemMic.refresh(wanted: wantsSystemMic)
+        if state != systemMicState { systemMicState = state }
+    }
+
+    /// Switches or lets go to match the settings (同声传译, 自动切换, 声音输出到).
+    func applySystemMic() {
+        // Speaking off: turning it off already put the mic back; a crash leftover waits for 还原.
+        if wantsSystemMic { systemMic.engage(wanted: true) } else if settings.speakEnabled { systemMic.release() }
+        refreshSystemMic()
+    }
+
+    /// 还原: the real mic back now. While speaking it stays back until 换回 or the next time speaking starts.
+    func restoreSystemMic() {
+        systemMic.release()
+        refreshSystemMic()
+    }
+
+    /// 换回 / 切换: the virtual mic as the system default again.
+    func switchSystemMic() {
+        systemMic.engage(wanted: true)
+        refreshSystemMic()
+    }
+
+    func setAutoSystemMic(_ on: Bool) {
+        settings.autoSystemMic = on
+        applySystemMic()
     }
 
     func refreshMicUsers() {
@@ -297,6 +339,7 @@ final class AppModel: ObservableObject {
         // system-audio tap and rebuild the voice output.
         speak.resetOutput()
         listen.reconnectAudio()
+        if settings.speakEnabled { applySystemMic() }
         objectWillChange.send()
     }
 
@@ -514,9 +557,11 @@ final class AppModel: ObservableObject {
             if settings.talkKey.isRightOption && !RightOptionKey.allowed { RightOptionKey.requestAccess() }
             applyTalkKey()
             refreshOutputs()
+            applySystemMic()
             Task { await speak.prepare() }
         } else {
             applyTalkKey()
+            restoreSystemMic()
             Task { await speak.teardownAnalyzer() }
         }
     }
@@ -839,6 +884,18 @@ final class AppModel: ObservableObject {
             debugLog("diag report:\n" + diagnostics.report(version: "", model: settings.aiModel))
         case "micTest": installer.runTest()
         case "micNext": installer.next()
+        case "sysMic":
+            refreshSystemMic()
+            debugLog("system mic state=\(systemMicState) default=\(AudioDevices.defaultInput?.name ?? "-") saved=\(AudioDevices.inputs().first { $0.uid == settings.savedSystemInput }?.name ?? "-") recording=\(systemMic.recordingDevice?.name ?? "-") engine=\(speak.micDeviceName) auto=\(settings.autoSystemMic) wanted=\(wantsSystemMic)")
+        case "sysMicSet":
+            // Simulates another app or the user moving the system mic (part of a device name).
+            if let d = AudioDevices.inputs().first(where: { $0.name.localizedCaseInsensitiveContains(arg) }) { AudioDevices.setDefaultInput(d) }
+            refreshSystemMic()
+        case "sysMicRestore": restoreSystemMic()
+        case "sysMicSwitch": switchSystemMic()
+        case "sysMicAuto": setAutoSystemMic(arg != "off")
+        case "speakMic":
+            settings.speakMic = arg.isEmpty ? "" : systemMic.realInputs.first { $0.name.localizedCaseInsensitiveContains(arg) }?.uid ?? ""
         case "micUsers":
             refreshMicUsers()
             debugLog("mic users virtual=\(virtualMic?.id ?? 0) readers=\(MicUsers.readers().map { "\($0.bundleID)\($0.inputs)" }) users=\(micUsers.map { "\($0.name)=\($0.state)" })")
@@ -995,6 +1052,7 @@ final class AppModel: ObservableObject {
         case "speakOutput":
             // speakOutput:<part of a device name>, or empty for the virtual mic (automatic).
             settings.speakOutput = arg.isEmpty ? "" : AudioDevices.outputs().first { $0.name.localizedCaseInsensitiveContains(arg) }?.uid ?? ""
+            applySystemMic()
             speak.resetOutput()
             debugLog("speak output=\(speak.outputDevice()?.name ?? "-")")
         case "voicePicker": voicePickerOpen = arg != "off"
@@ -1096,6 +1154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         model.stop()
+        // Other apps would be left on the virtual mic, hearing nothing.
+        model.systemMic.release()
     }
 
     /// Dock icon or Finder: bring back what is open; the main window only when nothing is.

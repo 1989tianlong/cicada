@@ -207,6 +207,7 @@
 "翻译暂不可用" = "Translation unavailable for now";
 
 /* MicUsersView */
+"跟随系统的软件会自动换好；在软件里自己选过麦克风的，要在软件里改。" = "Apps on the system default switch on their own; apps set to a specific mic need changing there.";
 "这里只显示正在用麦克风的会议软件和常见会议软件，麦克风要在各软件里自己换。" = "Shows meeting apps using a mic, plus common ones. Change the mic inside each app.";
 "会议软件的麦克风" = "Meeting app microphones";
 "实时更新" = "Live";
@@ -221,6 +222,7 @@
 "顺便关掉自动调节麦克风音量和降噪，译文会更清楚" = "Also turn off automatic mic volume and noise suppression so the translation sounds clearer";
 "进会议后，点麦克风图标旁边的 ⌃" = "In the meeting, click the ⌃ next to the microphone icon";
 "在选择麦克风菜单里点 %@" = "Under Select a Microphone, choose %@";
+"在会议网页的音频设置里，把麦克风选为 %@ 或“默认”" = "In the meeting page's audio settings, choose %@ or \"Default\" as the microphone";
 "在会议网页的音频设置里，把麦克风选为 %@" = "In the meeting page's audio settings, set the microphone to %@";
 "想让所有网页默认用它：Chrome 设置 › 隐私和安全 › 网站设置 › 麦克风" = "To make it the default for every site: Chrome Settings › Privacy and security › Site settings › Microphone";
 "打开%@的音频设置" = "Open %@'s audio settings";
@@ -378,6 +380,7 @@
 "右侧 option" = "Right option";
 "按住说话" = "Hold to talk";
 "%@已选虚拟麦克风，对方能听到译文" = "%@ is on the virtual mic; they hear the translation";
+"系统麦克风已换成 %@，用默认麦克风的会议软件不用再选" = "System mic is now %@; meeting apps on the default mic need no change";
 "最后一步：在会议软件中，将麦克风选为 " = "Last step: in your meeting app, set the microphone to ";
 "等你选好…" = "Waiting for you…";
 
@@ -462,9 +465,23 @@
 "对方只能听到虚拟麦克风里的声音" = "They only hear what goes into the virtual microphone";
 "虚拟麦克风（自动）" = "Virtual microphone (auto)";
 "高级：声音输出到 · %@" = "Advanced: voice goes to · %@";
-"在会议软件里把麦克风选成「%@」" = "In your meeting app, choose “%@” as the microphone";
+"%@ 已装好" = "%@ is installed";
 "试音通过" = "Sound test passed";
 "已装好" = "Installed";
+"系统麦克风" = "System microphone";
+"自动切换系统麦克风" = "Switch the system microphone";
+"同声传译打开时换成 %@，Chrome 等跟随系统的软件不用再设置" = "Uses %@ while Interpreting is on, so Chrome and other apps on the default need no setup";
+"%@听你说话用" = "%@ listens through";
+"固定用这个，不跟着系统切换" = "Always this one, whatever the system uses";
+"现在：%@" = "Now: %@";
+"关掉同声传译或退出%@时，换回 %@" = "Switches back to %2$@ when Interpreting is off or %1$@ quits";
+"立即还原" = "Restore now";
+"同声传译已关，别的软件听不到你说话" = "Interpreting is off; other apps can't hear you";
+"还原" = "Restore";
+"跟随系统的网页听不到译文" = "Pages on the default mic won't hear the translation";
+"换回" = "Switch back";
+"切换" = "Switch";
+"自动（%@）" = "Auto (%@)";
 "听的时候显示" = "While listening, show";
 "选择任意模式都会正常保存记录、生成纪要" = "Every mode still saves the meeting and writes notes";
 "切换显示方式" = "Switch display";
@@ -643,12 +660,20 @@
 "按住" = "Hold";
 "说%@ → %@" = "%1$@ → %2$@";
 "%@已选虚拟麦克风" = "%@ is on the virtual mic";
+"系统麦克风已换成 %@" = "System mic is now %@";
+"同声传译选项" = "Interpreting options";
+"系统麦克风还是 %@" = "System mic is still %@";
+"别的软件现在听不到你说话" = "Other apps can't hear you now";
+"系统麦克风被换成了 %@" = "System mic changed to %@";
 "%@没选虚拟麦克风，对方听不到译文" = "%@ isn't on the virtual mic, so they can't hear you";
 "虚拟麦克风尚未设置好，对方听不到你的声音" = "The virtual microphone isn't set up; they can't hear you";
 "纪要、文字记录和字幕都在一个窗口里" = "Notes and transcript in one window";
 "填入 API key 后可生成纪要；文字记录照常保存" = "Add an API key for notes; the transcript is saved either way";
 "有人说话时显示" = "Show while someone talks";
 "收起前等待" = "Wait before tucking away";
+"同声传译设置…" = "Interpreting Settings…";
+"系统麦克风换成 %@" = "Switch System Mic to %@";
+"还原系统麦克风" = "Restore System Mic";
 "搜索标题和原话" = "Search titles and transcripts";
 "开启字幕后，每场会议都会自动保存在这里。" = "Once subtitles are on, every meeting is saved here.";
 "没有找到“%@”" = "Nothing found for “%@”";

@@ -171,11 +171,33 @@ struct MenuPanelView: View {
                             Circle().fill(Palette.ok).frame(width: 7, height: 7)
                             Text("\(user.name)已选虚拟麦克风").font(.system(size: 12)).foregroundStyle(Palette.secondary)
                         }
+                    } else if settings.speakEnabled, !model.micUsers.contains(where: { $0.state.isOther }),
+                              case .switched = model.systemMicState {
+                        HStack(spacing: 6) {
+                            Circle().fill(Palette.ok).frame(width: 7, height: 7)
+                            Text("系统麦克风已换成 \(model.virtualMic?.name ?? "BlackHole 2ch")").font(.system(size: 12))
+                                .foregroundStyle(Palette.secondary).lineLimit(1)
+                        }
                     }
                 }
                 Spacer()
-                Toggle("同声传译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
-                    .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
+                HStack(spacing: 8) {
+                    speakMenu
+                    Toggle("同声传译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
+                        .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
+                }
+            }
+            if let strip = systemMicStrip {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(strip.title).font(.system(size: 12)).foregroundStyle(Palette.accentInk)
+                        Text(strip.detail).font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                    }
+                    Spacer()
+                    SoftButton(strip.button, dark: true, action: strip.action)
+                }
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
             }
             if settings.speakEnabled, model.virtualMic != nil, let user = model.micUsers.first(where: { $0.state.isOther }) {
                 HStack {
@@ -268,6 +290,45 @@ struct MenuPanelView: View {
         .padding(18)
         .frame(width: 320)
         .background(Color.white)
+    }
+}
+
+extension MenuPanelView {
+    /// ⋯ next to the 同声传译 switch: its settings, 试一句, and putting the system mic back by hand.
+    var speakMenu: some View {
+        Menu {
+            Button("同声传译设置…") { model.openSettings(.speak) }
+            Button("试一句") { model.openSettings(.speak); model.speakTestShown = true }
+                .disabled(model.virtualMic == nil)
+            Divider()
+            switch model.systemMicState {
+            case .moved, .off where model.wantsSystemMic:
+                Button("系统麦克风换成 \(model.virtualMic?.name ?? "BlackHole 2ch")") { model.switchSystemMic() }
+            default:
+                Button("还原系统麦克风") { model.restoreSystemMic() }
+                    .disabled(model.systemMicState == .off)
+            }
+        } label: {
+            Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
+                .frame(width: 26, height: 22)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.fill))
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help("同声传译选项")
+    }
+
+    /// Something left the system mic wrong: say what, and the one button that fixes it.
+    var systemMicStrip: (title: String, detail: String, button: String, action: () -> Void)? {
+        let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
+        switch model.systemMicState {
+        case .notRestored:
+            return (L("系统麦克风还是 \(virtual)"), L("别的软件现在听不到你说话"), L("还原"), model.restoreSystemMic)
+        case .moved(let to):
+            return (L("系统麦克风被换成了 \(to)"), L("跟随系统的网页听不到译文"), L("换回"), model.switchSystemMic)
+        default:
+            return nil
+        }
     }
 }
 
