@@ -6,6 +6,7 @@ the release workflow publishes it as the release notes.
 ## Unreleased
 
 - New: turning on 同声传译 switches the Mac's system microphone to BlackHole 2ch and switches it back when 同声传译 is turned off or Cicada quits, so a meeting page in Chrome (or any app left on the default microphone) hears the translation with no setup. Cicada itself keeps recording from your real microphone (Settings › 同声传译 › 系统麦克风 lets you pin one). If Cicada didn't get to switch back (it crashed), or AirPods or something else took over the system mic while you were speaking, the menu bar panel says so with a 还原 / 换回 button; the panel's ⋯ menu also has 同声传译设置…, 试一句 and 还原系统麦克风. The switch can be turned off in Settings.
+- Changed: the installer window explains the first-open warning. While the developer certificate is pending, macOS says Apple can't verify Cicada; the window, now a little taller, says this is expected and shows the three screens to click through in miniature, each with the button ringed: 完成 (not 移到废纸篓), 隐私与安全性 in System Settings, then 仍要打开 under 安全性.
 
 ## 2.2.0 — 2026-11-02
 
