@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""UI strings: Chinese source text is the key, Resources/en.lproj/Localizable.strings has the English.
+"""UI strings: Chinese source text is the key; Resources/<lang>.lproj/Localizable.strings (en, ja, ko)
+hold the translations, and each value must use the same format specifiers as its key.
 
-    python3 scripts/strings.py          # check: every key in the code has an English entry
+    python3 scripts/strings.py          # check: every key in the code has an entry in every language
     python3 scripts/strings.py --write  # also add missing keys (value = TODO) and rewrite zh-Hans
 
 Keys come from the compiler (-emit-localized-strings), so interpolations are exactly the format
@@ -12,10 +13,16 @@ English plurals live in en.lproj/Localizable.stringsdict.
 import glob, json, os, re, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EN = os.path.join(ROOT, "Resources/en.lproj/Localizable.strings")
+LANGS = ["en", "ja", "ko"]
+TABLE = os.path.join(ROOT, "Resources/{}.lproj/Localizable.strings")
 ZH = os.path.join(ROOT, "Resources/zh-Hans.lproj/Localizable.strings")
 DICT = os.path.join(ROOT, "Resources/en.lproj/Localizable.stringsdict")
 CJK = re.compile(r"[\u4e00-\u9fff]")
+SPEC = re.compile(r"%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(lld|ld|d|@|f)")
+
+
+def specs(s):
+    return sorted(SPEC.findall(s))
 
 
 def code_keys():
@@ -54,24 +61,30 @@ def write(path, pairs):
 
 def main():
     keys = code_keys()
-    en = load(EN)
-    plurals = load(DICT)
-    missing = [k for k in keys if k not in en]
-    unused = [k for k in en if k not in keys]
-    todo = [k for k, v in en.items() if v == "TODO"]
-    for k in missing: print(f"missing  {keys[k]}: {k}")
-    for k in unused: print(f"unused   {k}")
-    for k in todo: print(f"todo     {k}")
-    for k in plurals:
+    bad = False
+    for lang in LANGS:
+        path = TABLE.format(lang)
+        table = load(path)
+        missing = [k for k in keys if k not in table]
+        unused = [k for k in table if k not in keys]
+        todo = [k for k, v in table.items() if v == "TODO"]
+        mismatch = [k for k, v in table.items() if v != "TODO" and specs(k) != specs(v)]
+        for k in missing: print(f"{lang} missing   {keys[k]}: {k}")
+        for k in unused: print(f"{lang} unused    {k}")
+        for k in todo: print(f"{lang} todo      {k}")
+        for k in mismatch: print(f"{lang} specifier {k} -> {table[k]}")
+        if "--write" in sys.argv:
+            write(path, [(k, table.get(k, "TODO"), g) for k, g in keys.items()])
+        subprocess.run(["plutil", "-lint", "-s", path], check=True)
+        print(f"{lang}: {len(keys)} keys, {len(missing)} missing, {len(unused)} unused, {len(todo)} TODO, {len(mismatch)} bad specifiers")
+        bad |= bool(missing or todo or mismatch)
+    for k in load(DICT):
         if k not in keys: print(f"unused plural  {k}")
     if "--write" in sys.argv:
-        write(EN, [(k, en.get(k, "TODO"), g) for k, g in keys.items()])
         write(ZH, [(k, k, g) for k, g in keys.items()])
-    for p in (EN, ZH, DICT):
-        if os.path.exists(p):
-            subprocess.run(["plutil", "-lint", "-s", p], check=True)
-    print(f"{len(keys)} keys, {len(missing)} missing, {len(unused)} unused, {len(todo)} TODO")
-    sys.exit(1 if (missing or todo) and "--write" not in sys.argv else 0)
+    for p in (ZH, DICT):
+        subprocess.run(["plutil", "-lint", "-s", p], check=True)
+    sys.exit(1 if bad and "--write" not in sys.argv else 0)
 
 
 main()

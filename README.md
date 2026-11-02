@@ -107,7 +107,7 @@ On first launch, a three-step guide helps you grant system audio capture permiss
 
 ## Usage
 
-The app is in English or Chinese, following your macOS language (Settings › General › Language & Region, or per app).
+The app is in English, Chinese, Japanese or Korean, following your macOS language (Settings › General › Language & Region, or per app).
 
 1. Play any video, livestream or call. The live notes window opens by default, and pressing `⌃⌥S` switches between the notes window, the subtitle bar and hidden.
 2. Click the Cicada icon in the menu bar to change the spoken language (auto by default), the target translation language, or the display mode.
