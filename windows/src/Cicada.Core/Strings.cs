@@ -4,7 +4,8 @@ using System.Text;
 namespace Cicada;
 
 /// UI text. The Chinese text is the key, as on the Mac, and the translations are the Mac's own
-/// `Resources/{en,ja,ko}.lproj/Localizable.strings`, copied next to the app at build time.
+/// `Resources/{en,ja,ko}.lproj/Localizable.strings`, copied next to the app at build time, plus
+/// `windows/src/Cicada/Strings/*.lproj/Windows.strings` for text only the Windows app has.
 /// Placeholders are the Mac's `%@`, filled in order. Never for prompts, logs or stored values.
 public static class Strings
 {
@@ -18,8 +19,14 @@ public static class Strings
         var ui = language ?? CultureInfo.CurrentUICulture.Name;
         var head = ui.Split('-')[0];
         Language = head is "en" or "ja" or "ko" ? head : "zh-Hans";
-        var file = Path.Combine(folder, $"{Language}.lproj", "Localizable.strings");
-        table = File.Exists(file) ? Parse(File.ReadAllText(file, Encoding.UTF8)) : [];
+        // The Mac's table, then the Windows-only strings over it (Windows.strings, same format).
+        table = [];
+        foreach (var name in new[] { "Localizable.strings", "Windows.strings" })
+        {
+            var file = Path.Combine(folder, $"{Language}.lproj", name);
+            if (!File.Exists(file)) continue;
+            foreach (var (k, v) in Parse(File.ReadAllText(file, Encoding.UTF8))) table[k] = v;
+        }
     }
 
     public static string L(string key) => table.TryGetValue(key, out var v) && v.Length > 0 ? v : key;

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Windows app: tray icon, notes window / subtitle bar, records, settings, onboarding.
+       WPF in code (no XAML), WinForms only for the tray icon; no NuGet packages. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Cicada</AssemblyName>
+    <RootNamespace>Cicada.App</RootNamespace>
+    <ApplicationIcon>Assets/cicada.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Self-contained WPF is ~200 MB; compressed ~half. Starts a little slower the first time. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <Product>Cicada</Product>
+    <Company>wquguru</Company>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WinForms is only here for the tray icon: keep its names out of the WPF code. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+    <None Include="../../../Resources/**/Localizable.strings" LinkBase="Resources" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Strings/**/Windows.strings" LinkBase="Resources" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Both made by scripts/build.sh from docs/icon.png and Resources/sample/sample.m4a; committed so CI on Windows needs no Mac tools. -->
+    <Resource Include="Assets/cicada.ico" Link="cicada.ico" />
+    <None Include="Assets/sample.wav" Link="Resources/sample.wav" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../Cicada.Core/Cicada.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -376,16 +376,16 @@ static class Tests
 
     public static async Task ListenEngineEndToEndWithAFakeMing()
     {
-        // Two stretches of "speech"; the fake Ming answers the second faster than the first,
-        // and lines still come out in order.
-        int n = 0;
+        // Two stretches of "speech", told apart by length (1 s, then 1.6 s); the fake Ming
+        // answers the first one slower, and lines still come out in order.
         var fake = new Fake(body =>
         {
             if (body.Contains("Ming-3.0-audio-flash"))
             {
-                int k = Interlocked.Increment(ref n);
-                if (k == 1) Thread.Sleep(400);
-                return Reply(k == 1 ? "LANG: en\nORIGINAL: First one.\nTRANSLATION: 第一句。" : "LANG: en\nORIGINAL: Second one.\nTRANSLATION: 第二句。");
+                var url = JsonNode.Parse(body)!["messages"]![1]!["content"]![0]!["audio_url"]!["url"]!.GetValue<string>();
+                bool first = url.Length < 60_000; // base64 of ~1.3 s at 32 kB/s, with lead-in and tail
+                if (first) Thread.Sleep(400);
+                return Reply(first ? "LANG: en\nORIGINAL: First one.\nTRANSLATION: 第一句。" : "LANG: en\nORIGINAL: Second one.\nTRANSLATION: 第二句。");
             }
             return Reply("{}");
         });
@@ -398,7 +398,7 @@ static class Tests
             var notes = new NotesEngine(ling, store);
             var engine = new ListenEngine(ling, new Translator(ling), store, notes, new AppSettings { Target = "zh-CN" });
             var path = Path.Combine(Path.GetTempPath(), $"cicada-e2e-{Environment.ProcessId}.wav");
-            File.WriteAllBytes(path, Wav.Bytes([.. Tone(1), .. Silence(1), .. Tone(1), .. Silence(1)]));
+            File.WriteAllBytes(path, Wav.Bytes([.. Tone(1), .. Silence(1), .. Tone(1.6), .. Silence(1)]));
             var src = new FileAudioSource(path, speed: 0);
             var ended = new TaskCompletionSource();
             src.Ended += _ => ended.TrySetResult();
