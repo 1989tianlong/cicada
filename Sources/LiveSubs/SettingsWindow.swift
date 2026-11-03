@@ -68,6 +68,8 @@ struct Segments: View {
     let options: [(id: String, title: String)]
     let value: String
     var fill = false
+    /// Darker on a grey card, where `Palette.fill` would vanish.
+    var track = Palette.fill
     let onPick: (String) -> Void
     var body: some View {
         HStack(spacing: 2) {
@@ -76,7 +78,7 @@ struct Segments: View {
                 Button { onPick(o.id) } label: {
                     Text(o.title).font(.system(size: 12, weight: on ? .semibold : .regular))
                         .foregroundStyle(on ? Palette.ink : Palette.secondary).lineLimit(1)
-                        .padding(.horizontal, 10).frame(maxWidth: fill ? .infinity : nil).frame(height: 26)
+                        .padding(.horizontal, fill ? 6 : 10).frame(maxWidth: fill ? .infinity : nil).frame(height: 26)
                         .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.white : .clear)
                             .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 1.5, y: 1))
                         .contentShape(Rectangle())
@@ -86,9 +88,21 @@ struct Segments: View {
             }
         }
         .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.fill))
+        .background(RoundedRectangle(cornerRadius: 9).fill(track))
         .fixedSize(horizontal: !fill, vertical: false)
     }
+}
+
+/// 字幕条: shown while someone talks, or always. Settings and the menu bar panel.
+@MainActor func overlayAutoSegments(model: AppModel, fill: Bool = false, track: Color = Palette.fill) -> some View {
+    Segments(options: [("auto", L("有人说话时")), ("always", L("始终显示"))],
+                    value: model.settings.overlayAuto ? "auto" : "always", fill: fill, track: track) { model.setOverlayAuto($0 == "auto") }
+}
+
+/// 字幕条: how long it waits after the last words before tucking away.
+@MainActor func hideAfterSegments(settings: AppSettings, fill: Bool = false, track: Color = Palette.fill) -> some View {
+    Segments(options: [2.0, 4, 8].map { (String(Int($0)), L("\(Int($0)) 秒")) },
+             value: String(Int(settings.overlayHideAfter)), fill: fill, track: track) { settings.overlayHideAfter = Double($0) ?? 4 }
 }
 
 /// The 字幕 choices.
@@ -119,10 +133,13 @@ struct PillMenu: View {
 struct SoftButton: View {
     let title: String
     var dark = false
+    /// White, for a button sitting on a grey card.
+    var onGrey = false
     let action: () -> Void
-    init(_ title: String, dark: Bool = false, action: @escaping () -> Void) {
+    init(_ title: String, dark: Bool = false, onGrey: Bool = false, action: @escaping () -> Void) {
         self.title = title
         self.dark = dark
+        self.onGrey = onGrey
         self.action = action
     }
     var body: some View {
@@ -130,7 +147,7 @@ struct SoftButton: View {
             Text(title).font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(dark ? Color.white : Palette.ink)
                 .padding(.horizontal, 12).frame(height: 28)
-                .background(RoundedRectangle(cornerRadius: 7).fill(dark ? Palette.ink : Color(white: 0.925)))
+                .background(RoundedRectangle(cornerRadius: 7).fill(dark ? Palette.ink : onGrey ? Color.white : Color(white: 0.925)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -246,7 +263,7 @@ let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as
 
 // MARK: - Virtual microphone checklist
 
-/// The one place the virtual mic is set up: onboarding step 3 and the settings window.
+/// The one place the virtual mic is set up: onboarding step 4 and the settings window.
 /// Not ready → a three-step checklist with one button that does the next step.
 /// Ready → one line with a status dot and the sound test.
 struct MicSetupCard: View {
@@ -613,34 +630,28 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             SettingsCard {
                 SettingsRow(title: L("听的时候显示"), detail: L("选择任意模式都会正常保存记录、生成纪要")) {
-                    Picker("显示方式", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
-                        Text("实时纪要").tag("notes")
-                        Text("字幕条").tag("bar")
-                        Text("不显示").tag("none")
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 210)
+                    Segments(options: [("notes", L("实时纪要")), ("bar", L("字幕条")), ("none", L("不显示"))],
+                             value: settings.displayMode) { model.setDisplayMode($0) }
                 }
                 SettingsRow(title: L("切换显示方式"), detail: model.toggleKeyTaken ? L("被其他应用占用了，点右边换一个") : L("实时纪要 → 字幕条 → 不显示"), divider: false) {
                     ShortcutField(model: model, role: .toggle)
                 }
             }
+            Text("实时纪要").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
+            SettingsCard {
+                SettingsRow(title: L("共享屏幕时让对方看到"), detail: L("录屏也一样；关着时只有你看得到纪要窗口"), divider: false) {
+                    Toggle("共享屏幕时让对方看到", isOn: Binding(get: { settings.notesCapturable }, set: { model.setNotesCapturable($0) }))
+                        .toggleStyle(.switch).labelsHidden().tint(Palette.accent)
+                }
+            }
             Text("字幕条").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
             SettingsCard {
                 SettingsRow(title: L("字幕条显示时机")) {
-                    Picker("显示", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
-                        Text("有人说话时").tag(true)
-                        Text("始终显示").tag(false)
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 140)
+                    overlayAutoSegments(model: model)
                 }
                 if settings.overlayAuto {
                     SettingsRow(title: L("安静多久后收起")) {
-                        Picker("收起", selection: $settings.overlayHideAfter) {
-                            Text("2 秒").tag(2.0)
-                            Text("4 秒").tag(4.0)
-                            Text("8 秒").tag(8.0)
-                        }
-                        .pickerStyle(.segmented).labelsHidden().frame(width: 140)
+                        hideAfterSegments(settings: settings)
                     }
                 }
                 SettingsRow(title: L("位置和大小"), detail: L("鼠标悬停可拖动位置，拖拽右下角可缩放大小"), divider: false) {

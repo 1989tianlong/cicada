@@ -92,17 +92,14 @@ struct MenuPanelView: View {
         }
     }
 
-    private var displayTitle: some View {
-        Text("显示").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+    @ViewBuilder private var holdKey: some View {
+        Text("按住").foregroundStyle(Palette.secondary)
+        KeyCap(settings.talkKey.display)
     }
 
-    private var displayPicker: some View {
-        Picker("显示", selection: Binding(get: { settings.displayMode }, set: { model.setDisplayMode($0) })) {
-            Text("实时纪要").tag("notes")
-            Text("字幕条").tag("bar")
-            Text("不显示").tag("none")
-        }
-        .pickerStyle(.segmented).labelsHidden()
+    private var speakRoute: some View {
+        Text("说\(settings.speakFromLang.name) → \(targetName(model.speak.targetCode))")
+            .foregroundStyle(Palette.secondary).lineLimit(1).fixedSize()
     }
 
     var body: some View {
@@ -124,8 +121,10 @@ struct MenuPanelView: View {
                     }
                     HStack(spacing: 6) {
                         Circle().fill(model.running ? Palette.accent : Color.gray.opacity(0.5)).frame(width: 7, height: 7)
+                        // Two lines: "English (detecting…) → 简体中文" doesn't fit one beside the switch.
                         Text(model.running ? model.summary : model.autoEnded ? L("会议已自动结束") : L("已暂停"))
-                            .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
+                            .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
@@ -146,7 +145,7 @@ struct MenuPanelView: View {
                           options: targetOptions) {
                     model.targetSelection = $0
                 }
-                ChoiceRow(label: L("字幕"), value: subtitleOptions.first { $0.id == model.subtitles }?.title ?? L("原文 + 译文"),
+                ChoiceRow(label: L("内容"), value: subtitleOptions.first { $0.id == model.subtitles }?.title ?? L("原文 + 译文"),
                           badge: model.meetingSubtitles != nil ? L("仅本场") : nil, options: subtitleOptions) {
                     model.setSubtitles($0)
                 }
@@ -157,11 +156,10 @@ struct MenuPanelView: View {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("同声传译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
-                    HStack(spacing: 5) {
-                        Text("按住").foregroundStyle(Palette.secondary)
-                        KeyCap(settings.talkKey.display)
-                        Text("说\(settings.speakFromLang.name) → \(targetName(model.speak.targetCode))")
-                            .foregroundStyle(Palette.secondary).lineLimit(1)
+                    // The languages drop to their own line when the row is too narrow (English, "Right ⌥").
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 5) { holdKey; speakRoute }
+                        VStack(alignment: .leading, spacing: 4) { HStack(spacing: 5) { holdKey }; speakRoute }
                     }
                     .font(.system(size: 12))
                     // Green only when nothing needs fixing; the warning row below covers the rest.
@@ -220,58 +218,23 @@ struct MenuPanelView: View {
 
             Divider()
 
-            VStack(spacing: 10) {
-                // English labels are wider than the 210 pt the Chinese ones fit in: the picker gets its own row.
-                if uiIsChinese {
-                    HStack {
-                        displayTitle
-                        Spacer()
-                        displayPicker.frame(width: 210)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        displayTitle
-                        displayPicker
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if settings.displayMode == "notes" {
-                    HStack {
-                        Text(model.ling.hasKey ? L("纪要、文字记录和字幕都在一个窗口里") : L("填入 API key 后可生成纪要；文字记录照常保存"))
-                            .font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                        Spacer()
-                        SoftButton(L("打开")) { model.openNotesWindow() }
-                    }
-                }
-                if settings.displayMode == "bar" {
-                    HStack {
-                        Text("字幕条").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                        Spacer()
-                        Picker("字幕条", selection: Binding(get: { settings.overlayAuto }, set: { model.setOverlayAuto($0) })) {
-                            Text("有人说话时显示").tag(true)
-                            Text("始终显示").tag(false)
-                        }
-                        .pickerStyle(.segmented).labelsHidden().frame(width: 170)
-                    }
-                }
-                if settings.displayMode == "bar" && settings.overlayAuto {
-                    HStack {
-                        Text("安静多久后收起").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                        Spacer()
-                        Picker("收起前等待", selection: $settings.overlayHideAfter) {
-                            Text("2 秒").tag(2.0)
-                            Text("4 秒").tag(4.0)
-                            Text("8 秒").tag(8.0)
-                        }
-                        .pickerStyle(.segmented).labelsHidden().frame(width: 170)
-                    }
-                }
-                HStack(spacing: 5) {
-                    Text("切换显示方式").foregroundStyle(Palette.secondary)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("显示方式").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
                     Spacer()
-                    KeyCap(settings.toggleKey.display)
+                    HStack(spacing: 5) {
+                        KeyCap(settings.toggleKey.display)
+                        Text("轮换").foregroundStyle(Palette.tertiary)
+                    }
+                    .font(.system(size: 11))
+                    .help(L("切换显示方式"))
                 }
-                .font(.system(size: 12))
+                HStack(spacing: 8) {
+                    ForEach(DisplayTile.modes, id: \.self) { mode in
+                        DisplayTile(mode: mode, selected: settings.displayMode == mode) { model.setDisplayMode(mode) }
+                    }
+                }
+                displayCard
             }
 
             UpdateBanner(updates: model.updates, model: model)
@@ -294,6 +257,76 @@ struct MenuPanelView: View {
 }
 
 extension MenuPanelView {
+    /// The settings of the chosen display mode only, so switching modes swaps one card
+    /// instead of reshuffling the section.
+    @ViewBuilder var displayCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch settings.displayMode {
+            case "bar":
+                cardRow(L("什么时候出现")) {
+                    overlayAutoSegments(model: model, fill: uiIsChinese, track: Palette.line).frame(width: uiIsChinese ? segmentWidth : nil)
+                }
+                if settings.overlayAuto {
+                    cardRow(L("安静多久后收起")) {
+                        hideAfterSegments(settings: settings, fill: uiIsChinese, track: Palette.line).frame(width: uiIsChinese ? segmentWidth : nil)
+                    }
+                }
+            case "none":
+                Text("屏幕上不出字幕，文字记录照常保存")
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            default:
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.notesShown ? L("纪要窗口已打开") : L("纪要窗口已收起"))
+                            .font(.system(size: 12)).foregroundStyle(Palette.ink)
+                        if !model.ling.hasKey {
+                            Text("填入 API key 后可生成纪要；文字记录照常保存")
+                                .font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    SoftButton(model.notesShown ? L("收起") : L("打开"), dark: !model.notesShown, onGrey: true) {
+                        model.notesShown ? model.hideNotesWindow() : model.openNotesWindow()
+                    }
+                }
+                Divider()
+                // Tinted while on: sharing the screen shows the notes too.
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("共享屏幕时让对方看到").font(.system(size: 12)).foregroundStyle(Palette.ink)
+                        if settings.notesCapturable {
+                            Text("对方现在能看到纪要窗口").font(.system(size: 11)).foregroundStyle(Palette.accentInk)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    Toggle("共享屏幕时让对方看到", isOn: Binding(get: { settings.notesCapturable }, set: { model.setNotesCapturable($0) }))
+                        .toggleStyle(.switch).controlSize(.mini).labelsHidden().tint(Palette.accent)
+                }
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 8).fill(settings.notesCapturable ? Palette.accentPale : .clear))
+                .padding(.horizontal, -6)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Palette.ground))
+    }
+
+    /// Both 字幕条 choices share one width so their right edges line up; English sizes to fit and may stack.
+    private var segmentWidth: CGFloat { 160 }
+
+    /// A label and its control on one line, or stacked when the English runs too wide.
+    private func cardRow<C: View>(_ title: String, @ViewBuilder control: () -> C) -> some View {
+        let label = Text(title).font(.system(size: 12)).foregroundStyle(Palette.ink)
+        let c = control()
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) { label; Spacer(minLength: 8); c }
+            VStack(alignment: .leading, spacing: 6) { label; c }
+        }
+    }
+
     /// ⋯ next to the 同声传译 switch: its settings, 试一句, and putting the system mic back by hand.
     var speakMenu: some View {
         Menu {
@@ -328,6 +361,68 @@ extension MenuPanelView {
             return (L("系统麦克风被换成了 \(to)"), L("跟随系统的网页听不到译文"), L("换回"), model.switchSystemMic)
         default:
             return nil
+        }
+    }
+}
+
+/// One of 实时纪要 / 字幕条 / 不显示 in the menu bar panel: a small picture of what shows on screen.
+struct DisplayTile: View {
+    static let modes = ["notes", "bar", "none"]
+    let mode: String
+    let selected: Bool
+    let action: () -> Void
+
+    private var title: String {
+        switch mode {
+        case "bar": return L("字幕条")
+        case "none": return L("不显示")
+        default: return L("实时纪要")
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                glyph.frame(height: 26).opacity(selected ? 1 : 0.7)
+                Text(title)
+                    .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Palette.ink : Palette.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .padding(.top, 10).padding(.bottom, 8).padding(.horizontal, 4)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 11).fill(selected ? Color.white : Palette.ground))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(selected ? Palette.ink : .clear, lineWidth: 2))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private let frameLine = Color(red: 0.79, green: 0.80, blue: 0.83)
+
+    @ViewBuilder private var glyph: some View {
+        switch mode {
+        case "bar":
+            RoundedRectangle(cornerRadius: 4).fill(Color.white)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(frameLine, lineWidth: 1))
+                .overlay(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 2).fill(Palette.ink).frame(width: 26, height: 6).padding(.bottom, 3)
+                }
+                .frame(width: 38, height: 26)
+        case "none":
+            RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.tertiary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                .frame(width: 38, height: 26)
+        default:
+            VStack(alignment: .leading, spacing: 3) {
+                Capsule().fill(Palette.ink).frame(width: 18, height: 3)
+                Capsule().fill(frameLine).frame(width: 24, height: 3)
+                Capsule().fill(frameLine).frame(width: 20, height: 3)
+            }
+            .padding(5)
+            .frame(width: 34, height: 26, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 4).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(frameLine, lineWidth: 1))
         }
     }
 }

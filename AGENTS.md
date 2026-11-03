@@ -13,7 +13,7 @@ Cicada (知了, formerly Live Subs): a macOS menu bar app that turns what the Ma
 - The Ling key lives only in the 0600 `ling-api-key` file (`AIKey`): never UserDefaults, logs or exports.
 - Every Ling call goes through `LingClient` (rate gate, priorities, `thinking: disabled`, content in the system message). Partial text is translated by Google, never Ling.
 - Never speak untranslated text into the room. Never bundle the GPL BlackHole driver; download it and check its pinned SHA-256.
-- The notes window is a non-activating panel with `sharingType = .none`: it must never take focus or show in screen captures.
+- The notes window is a non-activating panel with `sharingType = .none`: it must never take focus, and stays out of screen captures unless the user turns on 共享屏幕时让对方看到 (then it shows a badge).
 - UI and engine state are `@MainActor`; audio callbacks hand buffers to `AudioRouter`'s queue.
 - Don't change the release bundle id `com.wquguru.cicada` or the ad-hoc designated requirement: permissions are tied to them.
 - No third-party dependencies, no `.xcodeproj`; Command Line Tools only.

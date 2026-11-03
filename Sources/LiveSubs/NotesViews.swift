@@ -603,7 +603,7 @@ struct FlowLayout: Layout {
 // One moving thing at a time says the app is working. Driven by TimelineView rather than
 // repeatForever animations, which the window's once-a-second redraw would restart.
 
-private func phase(_ date: Date, period: Double, delay: Double = 0) -> Double {
+func phase(_ date: Date, period: Double, delay: Double = 0) -> Double {
     let t = date.timeIntervalSinceReferenceDate - delay
     return (t.truncatingRemainder(dividingBy: period) + period).truncatingRemainder(dividingBy: period) / period
 }

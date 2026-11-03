@@ -75,7 +75,7 @@ Cicada asks for a permission only when you use the feature that needs it; everyt
 - **Network and virtual microphone**: Cicada only connects to Google Translate (`translate.googleapis.com`), Ling / Ming when a key is configured (`api.ant-ling.com`), the official BlackHole download, and GitHub once a day for update checks. BlackHole is downloaded from the official Apple-notarized package and verified against a hardcoded SHA-256 checksum before installing.
 - **No analytics or servers of our own**: There is no analytics, no tracking, and no backend server. Diagnostics only log timings and counts locally in the meeting folder.
 - **Local storage**: Meetings, recordings and notes live in `~/Library/Application Support/LiveSubs`. Your Ling key and voice sample are readable only by your user account, excluded from Time Machine backups, and never written to logs or exports.
-- **Private notes window**: Hidden from screen sharing, screen recording and screenshots.
+- **Private notes window**: Hidden from screen sharing, screen recording and screenshots, unless you turn on 共享屏幕时让对方看到 to record a demo.
 
 ## Models
 

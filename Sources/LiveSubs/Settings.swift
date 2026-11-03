@@ -102,6 +102,12 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Let screen recordings (and so screen sharing too: macOS has one switch for both) capture the
+    /// notes window. Off by default; kept across launches like 始终置顶, so the window shows a badge.
+    @Published var notesCapturable: Bool {
+        didSet { save() }
+    }
+
     /// Record per-sentence timings (never text) and show the 诊断 tab. On by default in dev builds.
     @Published var diagnostics: Bool {
         didSet { save() }
@@ -139,6 +145,7 @@ final class AppSettings: ObservableObject {
         silenceEnd = defaults.string(forKey: "silenceEnd") ?? "prompt"
         silenceMinutes = defaults.object(forKey: "silenceMinutes") as? Double ?? 10
         diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
+        notesCapturable = defaults.bool(forKey: "notesCapturable")
     }
 
     private func save() {
@@ -168,6 +175,7 @@ final class AppSettings: ObservableObject {
         defaults.set(silenceEnd, forKey: "silenceEnd")
         defaults.set(silenceMinutes, forKey: "silenceMinutes")
         defaults.set(diagnostics, forKey: "diagnostics")
+        defaults.set(notesCapturable, forKey: "notesCapturable")
     }
 
     /// Target language. "Follow system" translates into my language, or into the next system

@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 /// The live notes window: floats over the meeting app, can be dragged and resized anywhere,
-/// stays out of screen sharing, and remembers its frame. Three layouts by width: a small card
+/// stays out of screen sharing (unless 录屏时可见 is on), and remembers its frame. Three layouts by width: a small card
 /// (< 360), a sidebar with 纪要 / 文字记录 tabs, and notes beside the transcript (≥ 760).
 @MainActor
 final class NotesWindowController: NSObject, NSWindowDelegate {
@@ -58,8 +58,8 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             p.hidesOnDeactivate = false
             p.becomesKeyOnlyIfNeeded = true
             p.isReleasedWhenClosed = false
-            // Others never see it when you share your screen.
-            p.sharingType = .none
+            // Others never see it when you share your screen, unless the user lets recordings in.
+            p.sharingType = model.settings.notesCapturable ? .readOnly : .none
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             p.minSize = NSSize(width: 300, height: 180)
             p.backgroundColor = .white
@@ -72,15 +72,18 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             panel = p
         }
         panel?.orderFrontRegardless()
+        model.notesVisibilityChanged(true)
     }
 
     func hide() {
         panel?.orderOut(nil)
+        model?.notesVisibilityChanged(false)
     }
 
     /// Closed with its close button (hide() doesn't come here): the meeting goes on in the
     /// records window, so the notes stay one click away.
     func windowWillClose(_ notification: Notification) {
+        model?.notesVisibilityChanged(false)
         model?.notesWindowClosed()
     }
 
@@ -103,7 +106,7 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
     /// Debug control only: what the close button does.
     func performClose() { panel?.performClose(nil) }
 
-    /// Debug control only: let screenshots capture the window.
+    /// 录屏时可见, and the debug command that flips it for one screenshot without saving it.
     func setCapturable(_ on: Bool) { panel?.sharingType = on ? .readOnly : .none }
 
     /// The sidebar: docked to the right edge, nearly full height.
@@ -233,34 +236,38 @@ struct NotesWindowView: View {
 
     private func header(wide: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 4) {
-                VStack(alignment: .leading, spacing: 6) {
+            // The status line gets its own full-width row: beside the buttons it had a third of a
+            // narrow window, and "Listening · 00:09" or "Live notes" broke onto two lines in English.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 4) {
                     Text(live || session == nil ? L("实时纪要") : L("会议纪要")).font(.system(size: 24, weight: .bold))
-                    HStack(spacing: 6) {
-                        if live { LiveDot() }
-                        // Wraps rather than cut off "· 纪要已更新至 …" when the buttons leave little room.
-                        Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                    Spacer(minLength: 8)
+                    if engine.state == .updating, !engine.notes.isEmpty {
+                        UpdatingPill().padding(.trailing, 4)
                     }
-                }
-                Spacer()
-                if engine.state == .updating, !engine.notes.isEmpty {
-                    UpdatingPill().padding(.top, 4).padding(.trailing, 4)
-                }
-                if live {
-                    languageChip.padding(.trailing, 2)
-                    Button(action: askToEnd) {
-                        Text("结束").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
-                            .padding(.horizontal, 12).frame(height: 28)
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.line, lineWidth: 1))
-                            .contentShape(Rectangle())
+                    if live {
+                        languageChip.padding(.trailing, 2)
+                        Button(action: askToEnd) {
+                            Text("结束").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                                .padding(.horizontal, 12).frame(height: 28)
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.line, lineWidth: 1))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain).help("结束这场会议").padding(.trailing, 4)
                     }
-                    .buttonStyle(.plain).help("结束这场会议").padding(.trailing, 4)
+                    iconButton(wide ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", help: wide ? L("收窄") : L("纪要和原话并排")) {
+                        setWidth(wide ? 460 : 820, nil)
+                    }
+                    iconButton("minus", help: L("收成小卡")) { collapse() }
                 }
-                iconButton(wide ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", help: wide ? L("收窄") : L("纪要和原话并排")) {
-                    setWidth(wide ? 460 : 820, nil)
+                HStack(spacing: 6) {
+                    if live { LiveDot() }
+                    Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if settings.notesCapturable { capturableBadge }
                 }
-                iconButton("minus", help: L("收成小卡")) { collapse() }
+                .frame(minHeight: 22)
             }
             if !wide {
                 HStack(spacing: 0) {
@@ -275,6 +282,27 @@ struct NotesWindowView: View {
             }
         }
         .padding(.horizontal, 24).padding(.top, 34).padding(.bottom, 12)
+    }
+
+    /// Shown while 录屏时可见 is on, so it isn't left on into a shared screen: a record mark (ring
+    /// around a dot, like the menu bar's while recording) whose ring breathes. No words, since
+    /// recordings and screen sharing both see the window. A click turns it off.
+    private var capturableBadge: some View {
+        Button { model.setNotesCapturable(false) } label: {
+            TimelineView(.animation(minimumInterval: 1 / 15)) { ctx in
+                let t = 0.5 + 0.5 * cos(phase(ctx.date, period: 2.4) * 2 * .pi)
+                ZStack {
+                    Circle().stroke(Palette.accent, lineWidth: 1.5).frame(width: 13, height: 13)
+                        .opacity(0.35 + 0.65 * t)
+                    Circle().fill(Palette.accent).frame(width: 6, height: 6)
+                }
+                .frame(width: 22, height: 22)
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("录屏和共享屏幕都看得到纪要窗口，点一下关闭")
+        .accessibilityLabel(Text("录屏可见"))
     }
 
     private var searchField: some View {
@@ -681,6 +709,7 @@ struct NotesWindowView: View {
                         .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
                 }
                 Spacer()
+                if settings.notesCapturable { capturableBadge }
                 iconButton("arrow.up.left.and.arrow.down.right", help: L("展开纪要")) { setWidth(460, 760) }
             }
             if live, let p = model.ending {

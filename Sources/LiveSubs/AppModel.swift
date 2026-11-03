@@ -37,6 +37,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var ending: MeetingEndWatch.Pending?
     /// The last meeting ended by itself: the menu says so, and the next call in a meeting app starts a new one.
     @Published private(set) var autoEnded = false
+    /// The notes window is on screen: the menu bar panel's 显示 / 收起 follows it.
+    @Published private(set) var notesShown = false
     private var endWatch: MeetingEndWatch?
     private var endTimer: Timer?
     /// Debug: meeting apps in a call instead of what Core Audio says, and shorter waits.
@@ -467,6 +469,14 @@ final class AppModel: ObservableObject {
 
     // MARK: Display (live notes / subtitle bar / nothing)
 
+    /// 录屏时可见: every place that shows it (settings, menu bar panel, 显示 menu, the notes
+    /// window's badge) flips this one setting.
+    func setNotesCapturable(_ on: Bool) {
+        settings.notesCapturable = on
+        notesWindow.setCapturable(on)
+        objectWillChange.send()
+    }
+
     func setDisplayMode(_ mode: String) {
         settings.displayMode = mode
         objectWillChange.send()
@@ -519,6 +529,14 @@ final class AppModel: ObservableObject {
     func openNotesWindow() {
         if settings.displayMode != "notes" { setDisplayMode("notes") }
         notesWindow.show()
+    }
+
+    /// 收起 in the menu bar panel: out of the way for now, still in 实时纪要 mode
+    /// (unlike the close button, it doesn't open the records window).
+    func hideNotesWindow() { notesWindow.hide() }
+
+    func notesVisibilityChanged(_ shown: Bool) {
+        if notesShown != shown { notesShown = shown }
     }
 
     // MARK: Settings actions
