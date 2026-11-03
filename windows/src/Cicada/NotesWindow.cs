@@ -18,6 +18,8 @@ sealed class NotesWindow : Window
     ContentControl header = new(), live = new();
     ScrollViewer scroll = new();
     string? builtFor;
+    /// Whether Windows agreed to keep the window out of captures; if not, it's shown as visible.
+    bool hiddenFromCapture;
     bool renderQueued;
 
     public NotesWindow(Controller app)
@@ -65,8 +67,9 @@ sealed class NotesWindow : Window
 
     public void ApplyCaptureSetting()
     {
-        if (!Native.SetCaptureVisible(this, app.Settings.ShowInCapture) && !app.Settings.ShowInCapture)
-            Log.Debug("notes window: could not hide from capture (needs Windows 10 2004+)");
+        var ok = Native.SetCaptureVisible(this, app.Settings.ShowInCapture);
+        hiddenFromCapture = ok && !app.Settings.ShowInCapture;
+        if (!ok && !app.Settings.ShowInCapture) Log.Debug("notes window: could not hide from capture, shown as visible");
         Render();
     }
 
@@ -124,7 +127,9 @@ sealed class NotesWindow : Window
             ? L("正在听 · ") + Languages.Clock((DateTimeOffset.Now - session.StartedAt).TotalSeconds)
             : L("知了");
         var left = Ui.Row(8, Ui.Dot(listen.Listening ? Palette.Accent : Palette.Line), Ui.Text(status, 13, Palette.Ink, FontWeights.SemiBold, wrap: false));
+        // Never silently exposed: a failed exclusion gets a badge too.
         if (app.Settings.ShowInCapture) left.Children.Add(WithMargin(Ui.Badge(L("对方可见")), 8));
+        else if (!hiddenFromCapture) left.Children.Add(WithMargin(Ui.Badge(L("可能被共享")), 8));
         var right = Ui.Row(12,
             Ui.LinkText(listen.Listening ? L("结束") : L("开始听"), () => _ = app.ToggleListening()),
             Ui.LinkText(Subtitles ? L("纪要") : L("字幕"), () => app.SetView(Subtitles ? "notes" : "subtitles")),

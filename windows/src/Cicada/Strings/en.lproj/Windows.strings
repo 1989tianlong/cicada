@@ -38,3 +38,5 @@
 "M月d日" = "MMM d";
 "yyyy年M月d日" = "MMM d, yyyy";
 "纪要停留在 %@。" = "Notes stop at %@.";
+"知了需要 Windows 10 2004 或更新的版本。" = "Cicada needs Windows 10 version 2004 or later.";
+"可能被共享" = "May be visible";

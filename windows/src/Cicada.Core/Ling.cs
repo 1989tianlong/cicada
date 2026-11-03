@@ -182,7 +182,9 @@ public sealed class LingClient
         if (json) body["response_format"] = new JsonObject { ["type"] = "json_object" };
         var payload = body.ToJsonString();
 
-        int attempts = priority == Priority.Notes ? 4 : 1;
+        // Notes can wait; heard audio gets one retry, since on Windows a lost reply loses the words
+        // (on the Mac recognition is local and only the translation is lost); the rest fail fast.
+        int attempts = priority == Priority.Notes ? 4 : audio is not null ? 2 : 1;
         double delay = 1;
         for (int attempt = 1; ; attempt++)
         {

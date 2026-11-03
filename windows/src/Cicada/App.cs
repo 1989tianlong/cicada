@@ -59,6 +59,13 @@ sealed class Controller
 
     public void Launch()
     {
+        // Process loopback and capture exclusion both arrived in Windows 10 2004 (build 19041).
+        if (Environment.OSVersion.Version.Build < 19041)
+        {
+            MessageBox.Show(L("知了需要 Windows 10 2004 或更新的版本。"), L("知了"));
+            application.Shutdown();
+            return;
+        }
         Log.Debug($"app: launch {(Paths.Dev ? "dev" : "release")} {Environment.OSVersion.Version}");
         SetUpTray();
         DebugServer.Start(this);

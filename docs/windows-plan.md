@@ -47,26 +47,28 @@ WASAPI 进程回环（排除知了自己）
   → SessionStore（session.json + system.m4a）
 ```
 
-### 模块（`windows/src/Cicada/`，一个文件一件事，对应 Mac 的文件名）
+### 模块
+
+引擎在 `windows/src/Cicada.Core/`（`net10.0`，Mac 上也能编译和测试），界面在 `windows/src/Cicada/`：
 
 | 文件 | 作用 | 对应 Mac |
 |---|---|---|
-| `SystemAudioTap.cs` | `ActivateAudioInterfaceAsync`，用 `PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE` 排除自己 | `SystemAudioTap.swift` |
-| `FileAudioSource.cs` | 从 WAV 或 m4a 文件喂音频，用于测试和 CI | 无（Mac 用 `afplay` 播放） |
-| `AudioRouter.cs` | 重采样、音量检测、分段、写录音 | `AudioRouter.swift` |
-| `ListenEngine.cs` | 管理整条“听”的流程，处理断句和接句 | `ListenEngine.swift` |
-| `Ling.cs` | `LingClient`：同一套限流（请求间隔至少 0.6s）、优先级、`thinking: disabled`、内容放 system 消息 | `Ling.swift` |
-| `Translator.cs` | 先 Ling 后 Google；草稿只走 Google | `Translator.swift` |
-| `Notes.cs` | 纪要引擎，提示词和解析与 Mac 一致 | `Notes.swift` |
-| `SessionStore.cs` | 读写会议记录 | `SessionStore.swift` |
-| `AIKey.cs` | key 存在 `%APPDATA%\Cicada\ling-api-key`，用 DPAPI 加密，文件只给当前用户访问；不进注册表、设置、日志和导出 | `AIKey` |
-| `NotesWindow.xaml(.cs)` | 置顶、不抢焦点、默认不被截屏的纪要窗 | `NotesWindow.swift` |
-| `SubtitleBar.xaml(.cs)` | 字幕条 | `Overlay.swift` |
-| `Tray.cs` | 托盘图标和菜单 | `AppMenu.swift` |
-| `MainWindow.xaml(.cs)` | 会议记录 | `Views.swift` |
-| `DebugCommands.cs` | 本地命名管道，接收 `lsctl` 风格的调试命令 | `AppModel.debugCommand` |
+| `Core/Segmenter.cs` | 按音量分段：停顿 0.6s 切段，满 8s 在最后 2s 里最安静处切 | `AudioRouter.swift` 的一部分 |
+| `Core/Audio.cs` | `IAudioSource` 接口、`FileAudioSource`（测试和示例会议用）、WAV 读写 | 无 |
+| `Core/ListenEngine.cs` | 整条“听”的流程：请求并行发出、按段的顺序交付、断句接回、语言判断 | `ListenEngine.swift` |
+| `Core/Ling.cs` | `LingClient`（请求间隔至少 0.6s、优先级、`thinking: disabled`、内容放 system 消息）和 `AIKey` | `Ling.swift` |
+| `Core/Translator.cs` | Ming 三行识别（`Hear`）；文字翻译先 Ling 后 Google，草稿只走 Google | `Translator.swift` |
+| `Core/Notes.cs` | 纪要引擎，提示词和解析逐字照搬 | `Notes.swift` |
+| `Core/SessionStore.cs`、`Models.cs`、`Json.cs` | 会议记录，`session.json` 格式与 Mac 一致 | `SessionStore.swift` |
+| `Core/Strings.cs` | 中文作 key，读 Mac 的 `Localizable.strings`，叠加 `Windows.strings` | `L()` |
+| `SystemAudioTap.cs` | WASAPI 进程回环，排除知了自己 | `SystemAudioTap.swift` |
+| `NotesWindow.cs` | 纪要窗和字幕条（同一个窗口的两种样子） | `NotesWindow.swift`、`Overlay.swift` |
+| `MainWindow.cs` | 会议记录 | `Views.swift` |
+| `SettingsWindow.cs`、`Onboarding.cs` | 设置、引导 | `SettingsWindow.swift`、`Onboarding.swift` |
+| `App.cs` | 入口、`Controller`（把引擎接到窗口）、托盘、调试管道 | `AppModel.swift`、`AppMenu.swift` |
+| `Native.cs` | 不抢焦点、不被截屏、DPAPI | 无 |
 
-界面和引擎状态都在 UI 线程上处理；音频回调只把数据交给 `AudioRouter` 的队列。这条规则沿用 Mac 版。
+引擎内部用锁保护状态，事件在工作线程上发出，界面统一转到 UI 线程再更新；音频回调只把数据放进 `ListenEngine` 的队列。
 
 ### 识别：Ming 分段方案的细节和代价
 

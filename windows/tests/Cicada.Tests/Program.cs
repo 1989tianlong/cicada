@@ -343,6 +343,19 @@ static class Tests
         }
     }
 
+    public static async Task LingRetriesAudioOnceWhenBusy()
+    {
+        int calls = 0;
+        var fake = new Fake(_ => Interlocked.Increment(ref calls) == 1 ? new HttpResponseMessage(HttpStatusCode.TooManyRequests) : Reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。"));
+        var ling = Client(fake);
+        var reply = await ling.Chat("c", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]);
+        Check(reply.Contains("ORIGINAL: Hi."), "second attempt answered");
+        Equal(2, calls, "one retry");
+        var text = Client(new Fake(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)));
+        try { await text.Chat("c", "i", Priority.Translate); throw new Exception("text translation retried"); }
+        catch (LingException e) { Equal(LingException.Kind.RateLimited, e.Failure, "text fails fast"); }
+    }
+
     public static async Task LingMarksABadKey()
     {
         var ling = Client(new Fake(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
