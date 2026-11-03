@@ -82,16 +82,7 @@ struct NotesContentView: View {
             if !notes.terms.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     title(L("人名和术语"))
-                    FlowLayout(spacing: 6) {
-                        ForEach(notes.terms) { t in
-                            (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)")
-                                + Text(t.heard.isEmpty ? "" : L(" · 原识别 \(t.heard.prefix(2).joined(separator: "、"))"))
-                                .foregroundColor(Palette.tertiary))
-                                .font(.system(size: 12))
-                                .padding(.horizontal, 9).padding(.vertical, 5)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
-                        }
-                    }
+                    TermChips(terms: notes.terms, showHeard: true)
                 }
             }
         }
@@ -191,14 +182,7 @@ private struct DocumentNotesView: View {
             if !notes.terms.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("人名和术语").font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.tertiary)
-                    FlowLayout(spacing: 6) {
-                        ForEach(notes.terms) { t in
-                            (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)"))
-                                .font(.system(size: 12))
-                                .padding(.horizontal, 9).padding(.vertical, 5)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
-                        }
-                    }
+                    TermChips(terms: notes.terms, showHeard: false)
                 }
             }
         }
@@ -906,6 +890,35 @@ struct Tag: View {
             .padding(.horizontal, 7).padding(.vertical, 2)
             .background(RoundedRectangle(cornerRadius: 6).fill(live ? Palette.accentPale : Palette.fill))
             .fixedSize()
+    }
+}
+
+/// 人名和术语: the corrected spellings first (what the reader can't work out alone), at most
+/// `shown` until asked for the rest. All of them still go to the translation glossary.
+struct TermChips: View {
+    static let shown = 8
+    let terms: [NoteTerm]
+    var showHeard = true
+    @State private var all = false
+
+    var body: some View {
+        let list = NoteTerm.ordered(terms)
+        let extra = list.count - Self.shown
+        FlowLayout(spacing: 6) {
+            ForEach(all || extra <= 0 ? list : Array(list.prefix(Self.shown))) { t in
+                (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)")
+                    + Text(!showHeard || t.heard.isEmpty ? "" : L(" · 原识别 \(t.heard.prefix(2).joined(separator: "、"))"))
+                    .foregroundColor(Palette.tertiary))
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
+            }
+            if extra > 0 {
+                Button(all ? L("收起") : L("展开全部 \(list.count) 个")) { all.toggle() }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .padding(.horizontal, 6).padding(.vertical, 5)
+            }
+        }
     }
 }
 

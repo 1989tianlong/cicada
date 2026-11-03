@@ -63,6 +63,11 @@ struct NoteTerm: Codable, Equatable, Identifiable {
     var note: String
     var heard: [String]
     var id: String { name }
+
+    /// Corrected spellings first: what a reader can't work out alone.
+    static func ordered(_ terms: [NoteTerm]) -> [NoteTerm] {
+        terms.filter { !$0.heard.isEmpty } + terms.filter { $0.heard.isEmpty }
+    }
 }
 
 // MARK: - Engine
@@ -367,7 +372,7 @@ final class NotesEngine: ObservableObject {
         - At most 5 conclusions and only real to-dos (often none).
         - Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.
         - Every topic, point, branch, conclusion and to-do needs evidence: the ids of the lines that say it. Never state anything the transcript does not say.
-        - terms: at most 10 people, places or jargon words that matter. name is the correct spelling in the transcript's language (no translation in brackets); heard lists only the wrong forms the transcript used; note is a few words.
+        - terms: at most 10 in total, replacing less useful ones rather than adding: first names the transcript misspells (heard), then the people, places and jargon a reader would not know. Leave out what everyone knows (a famous company, index or politician) unless it was misheard. name is the correct spelling in the transcript's language (no translation in brackets); heard lists only the wrong forms the transcript used; note is a few words.
         - Write the meeting title and every summary, title, point, branch, conclusion and to-do in \(language), even when the transcript is in another language. Only term names keep the transcript's spelling.
         - Write about what was said, never about the transcript or recognition quality.
         - Use empty arrays when there is nothing. No markdown, no text outside the JSON.
@@ -475,6 +480,8 @@ final class NotesEngine: ObservableObject {
             let heard = (t["heard"] as? [Any] ?? []).map(str).filter { !$0.isEmpty && $0 != name }
             return name.isEmpty ? nil : NoteTerm(name: name, note: str(t["note"]), heard: heard)
         }
+        // The model keeps every term it ever had: bound the glossary, keeping the misheard ones.
+        if n.terms.count > 20 { n.terms = Array(NoteTerm.ordered(n.terms).prefix(20)) }
         return n.isEmpty ? nil : n
     }
 }
