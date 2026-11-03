@@ -68,6 +68,15 @@ final class AudioRouter: @unchecked Sendable {
     /// Below this RMS the block counts as silence (≈ -40 dBFS).
     private let voiceThreshold: Float = 0.01
 
+    /// Loudest buffer since the last `takeLevel()`, for the level meter.
+    private var peak: Float = 0
+    func takeLevel() -> Float {
+        queue.sync {
+            defer { peak = 0 }
+            return peak
+        }
+    }
+
     func push(_ mono: AVAudioPCMBuffer) {
         queue.async { [self] in process(mono) }
     }
@@ -78,6 +87,7 @@ final class AudioRouter: @unchecked Sendable {
         var sum: Float = 0
         for i in 0..<n { sum += data[0][i] * data[0][i] }
         let rms = (sum / Float(n)).squareRoot()
+        peak = max(peak, rms)
         let seconds = Double(n) / mono.format.sampleRate
         let voiced = rms >= voiceThreshold
         if voiced {

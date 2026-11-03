@@ -1239,7 +1239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func showMainWindow() {
         popover.performClose(nil)
         if mainWindow == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 700),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1220, height: 740),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                              backing: .buffered, defer: false)
             w.title = appDisplayName
