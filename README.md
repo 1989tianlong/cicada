@@ -49,7 +49,7 @@ Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what
 
 ### Meeting records
 
-- **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side; "you" covers only what you say while holding the talk key, not what you say into the meeting directly, and individual remote speakers are not separated yet (see [roadmap](#roadmap)).
+- **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side; "you" covers only what you say while holding the talk key, not what you say into the meeting directly (see [roadmap](#roadmap)). Turn on Speaker identification (experimental) to tell the other side's voices apart and, with a Ling key, fill in their names.
 - **Ends when the meeting does.** When the meeting app hangs up, or after 10 minutes with no one speaking, Cicada counts down and ends the meeting, trimming the silent tail, so a forgotten one doesn't run on for hours. You can keep it going with one click, or change this in Settings.
 - **Export anywhere.** Export to Markdown, Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **Generate Notes** afterward to create them.
 
@@ -125,9 +125,8 @@ In rough order; tell us what you need in Issues.
 - **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
 - **Older macOS support (targeting macOS 14.4+)**, falling back to earlier system speech recognition and translation APIs on older versions.
 - **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
-- **Telling speakers apart**, separating and renaming individual remote speakers and tagging conclusions and to-dos with who said them.
+- **Speaker recognition**, building on today's experimental speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
 - **Local notes without an API key** using Apple's on-device model on supported Macs, plus **custom AI providers** for any OpenAI-compatible endpoint.
-- **Speaker recognition**, remembering frequent meeting participants by voice on your Mac so you don't have to rename them each call.
 - **Windows and Android**, sharing the same notes and meeting-record formats (iPhone / iPad are not planned due to iOS audio capture restrictions).
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for details and trade-offs on each item.
