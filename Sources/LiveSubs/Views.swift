@@ -456,9 +456,13 @@ struct MainWindowView: View {
     @State private var quoteJump: Double?
     @State private var detailWidth: CGFloat = 0
     @FocusState private var searchFocused: Bool
+    /// The bilingual column beside the notes is opt-in: three full columns of text read as crowded.
+    @AppStorage("mainShowQuotes") private var showQuotes = false
+    @State private var showOlder = false
 
     /// Wide enough for the notes and the bilingual transcript side by side.
-    private var sideBySide: Bool { detailWidth >= 940 }
+    private var sideBySide: Bool { showQuotes && wideEnough }
+    private var wideEnough: Bool { detailWidth >= 940 }
 
     private var filtered: [Session] {
         guard !query.isEmpty else { return store.sessions }
@@ -471,12 +475,15 @@ struct MainWindowView: View {
     private var current: Session? { store.session(selection ?? store.sessions.first?.id) }
 
     var body: some View {
-        // One white sheet: no ground, no card, one hairline between the list and the page.
-        // The listening pill lives in the window's toolbar (`MainToolbar`).
+        // One white sheet; the list sits on a faint tint instead of behind a rule. The listening
+        // pill lives in the window's toolbar (`MainToolbar`). With no meetings yet, only the
+        // welcome shows: an empty list is noise.
         HStack(spacing: 0) {
-            sidebar
-                .frame(width: 240)
-            Rectangle().fill(Self.hairline).frame(width: 1)
+            if !store.sessions.isEmpty {
+                sidebar
+                    .frame(width: 232)
+                    .background(UnevenRoundedRectangle(topTrailingRadius: 14).fill(Self.listTint).ignoresSafeArea(edges: .bottom))
+            }
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
@@ -492,6 +499,7 @@ struct MainWindowView: View {
     }
 
     static let hairline = Color(red: 0.941, green: 0.945, blue: 0.957)
+    static let listTint = Color(red: 0.98, green: 0.98, blue: 0.984)
 
     // MARK: Sidebar
 
@@ -508,20 +516,35 @@ struct MainWindowView: View {
                 }
             }
             .font(.system(size: 13))
-            .padding(.horizontal, 10).frame(height: 30)
+            .padding(.horizontal, 12).frame(height: 30)
+            .padding(.bottom, 6)
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(groups, id: \.title) { g in
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    // The newest day shows; older ones fold under one row until asked for (or searched).
+                    let all = groups
+                    let folded = query.isEmpty && !showOlder && all.count > 1
+                    ForEach(Array((folded ? Array(all.prefix(1)) : all).enumerated()), id: \.element.title) { i, g in
                         Text(g.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.secondary)
-                            .padding(.horizontal, 10).padding(.top, g.title == groups.first?.title ? 0 : 12).padding(.bottom, 4)
+                            .padding(.horizontal, 12).padding(.top, i == 0 ? 0 : 18).padding(.bottom, 6)
                         ForEach(g.sessions) { sessionRow($0) }
                     }
-                    if store.sessions.isEmpty {
-                        Text("开启字幕后，每场会议都会自动保存在这里。")
-                            .font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                            .padding(.horizontal, 10)
-                    } else if filtered.isEmpty {
+                    if query.isEmpty && all.count > 1 {
+                        Button { withAnimation(.easeOut(duration: 0.2)) { showOlder.toggle() } } label: {
+                            HStack {
+                                Text(showOlder ? L("收起更早的会议") : L("更早的会议"))
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                                    .rotationEffect(.degrees(showOlder ? -90 : 0))
+                            }
+                            .font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 12)
+                    }
+                    if filtered.isEmpty {
                         Text("没有找到“\(query)”").font(.system(size: 12)).foregroundStyle(Palette.secondary)
                             .padding(.horizontal, 10)
                     }
@@ -529,7 +552,11 @@ struct MainWindowView: View {
             }
             .scrollIndicators(.never)
         }
-        .padding(.leading, 12).padding(.trailing, 10).padding(.top, 6).padding(.bottom, 14)
+        .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 14)
+        .onChange(of: selection) { _, id in
+            // A meeting picked from elsewhere (search, the notes window) shouldn't hide in a fold.
+            if let id, let first = groups.first, !first.sessions.contains(where: { $0.id == id }) { showOlder = true }
+        }
     }
 
     /// 今天 / 昨天 / 本周 / then one group per month, newest first.
@@ -556,24 +583,21 @@ struct MainWindowView: View {
             selection = s.id
             titleDraft = ""
         } label: {
-            // One line: the title and when. Length and languages are on the meeting's page.
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if live { BreathingDot(size: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 } }
-                if Self.untitled(s) {
-                    // The default title only repeats the time beside it.
-                    Text("未命名会议").font(.system(size: 13)).foregroundStyle(Palette.secondary)
-                } else {
-                    Text(Self.listTitle(s)).font(.system(size: 13, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(Palette.ink).lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                Text(live ? L("正在记录") : when(s)).font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(live ? Palette.accentInk : Palette.secondary).lineLimit(1).fixedSize()
+            // Titles only: the time and length are on the page (and in the tooltip). Unpicked rows
+            // stay grey so the one being read stands out.
+            HStack(spacing: 8) {
+                if live { BreathingDot(size: 6) }
+                Text(Self.untitled(s) ? L("未命名会议") : Self.listTitle(s))
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected || live ? Palette.ink : Palette.secondary).lineLimit(1)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Palette.fill : Color.clear))
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.white : Color.clear)
+                .shadow(color: selected ? Palette.ink.opacity(0.06) : .clear, radius: 1.5, y: 1))
             .contentShape(Rectangle())
         }
+        .help(live ? L("正在记录") : [when(s), Self.length(s)].joined(separator: " · "))
         .buttonStyle(.plain)
         .contextMenu {
             Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) }
@@ -666,14 +690,34 @@ struct MainWindowView: View {
             }
             .onChange(of: s.id) { _, _ in titleDraft = "" }
         } else {
-            VStack(spacing: 10) {
-                LogoTile(size: 44)
-                Text("还没有会议记录").font(.system(size: 15, weight: .semibold))
-                Text("开启字幕后，每场会议都会自动保存一份双语记录。")
-                    .font(.system(size: 13)).foregroundStyle(Palette.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            welcome
         }
+    }
+
+    /// No meetings yet: the logo, one line and the one thing to do.
+    private var welcome: some View {
+        VStack(spacing: 0) {
+            BrandMark(size: 72).shadow(color: Palette.accent.opacity(0.22), radius: 14, y: 8)
+            Text("还没有会议").font(.system(size: 26, weight: .bold)).padding(.top, 28)
+            Text("打开会议或视频，开始听后，每一场都会存在这里。")
+                .font(.system(size: 15)).foregroundStyle(Palette.secondary).multilineTextAlignment(.center)
+                .padding(.top, 10)
+            Button { model.setRunning(true) } label: {
+                HStack(spacing: 10) {
+                    Circle().fill(Palette.accent).frame(width: 9, height: 9)
+                    Text("开始听").font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white).padding(.horizontal, 22).frame(height: 44)
+                .background(Capsule().fill(Palette.ink))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain).padding(.top, 32)
+            Button("先听一段示例") { model.ensureListening(); model.sample.play() }
+                .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Palette.secondary).padding(.top, 16)
+        }
+        .frame(maxWidth: 420)
+        .padding(.bottom, 60)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// 此刻: the sentence being heard, pinned under the page while the meeting is live.
@@ -711,6 +755,17 @@ struct MainWindowView: View {
             Spacer()
             if tab == "transcript" {
                 Segments(options: [("both", L("双语")), ("src", L("原文")), ("dst", L("译文"))], value: view) { view = $0 }
+            } else if wideEnough, !s.lines.isEmpty {
+                Button { withAnimation(.easeOut(duration: 0.2)) { showQuotes.toggle() } } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "sidebar.right").font(.system(size: 12))
+                        Text("原话").font(.system(size: 13))
+                    }
+                    .foregroundStyle(showQuotes ? Palette.ink : Palette.secondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(showQuotes ? L("收起原话") : L("在纪要旁显示原话"))
             }
             Menu {
                 Button("复制为 Markdown") { model.export(s, kind: "copy") }
@@ -747,26 +802,28 @@ struct MainWindowView: View {
     private func header(_ s: Session) -> some View {
         let live = s.id == store.liveID
         let notes = live ? model.notes.notes : s.notes
-        let facts = [dateLine(s, live: live), Self.length(s), Self.pair(s, short: false),
-                     notes.flatMap { $0.isEmpty ? nil : ($0.final ? L("完整版纪要") : L("速记版纪要")) }]
+        // When and how long up front; the languages and notes version wait in the tooltip.
+        let more = [Self.pair(s, short: false),
+                    notes.flatMap { $0.isEmpty ? nil : ($0.final ? L("完整版纪要") : L("速记版纪要")) }]
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 if live { Tag(L("正在记录"), live: true) }
-                Text(facts.compactMap { $0 }.joined(separator: " · "))
+                Text([dateText(s.startedAt, "MMMdHHmm"), Self.length(s)].joined(separator: " · "))
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary).lineLimit(1)
+                    .help(([dateLine(s, live: live)] + more.compactMap { $0 }).joined(separator: " · "))
             }
             TextField("标题", text: Binding(
                 get: { titleDraft.isEmpty ? s.displayTitle : titleDraft },
                 set: { titleDraft = $0 }
             ), axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.system(size: 28, weight: .bold))
-            .padding(.top, 8)
+            .font(.system(size: 30, weight: .bold))
+            .padding(.top, 10)
             .onSubmit {
                 if !titleDraft.isEmpty { store.rename(s.id, to: titleDraft) }
                 titleDraft = ""
             }
-            tabsRow(s).padding(.top, 20)
+            tabsRow(s).padding(.top, 24)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -899,7 +956,7 @@ struct SessionNotesView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 30) {
+            VStack(alignment: .leading, spacing: 40) {
                 header
                 if let notes, !notes.isEmpty {
                     NotesContentView(notes: notes, fresh: live ? engine.fresh : [], live: live, document: true,
@@ -930,8 +987,9 @@ struct SessionNotesView: View {
                     .background(RoundedRectangle(cornerRadius: 18).fill(Palette.raised))
                 }
             }
-            .frame(maxWidth: 680, alignment: .leading)
-            .padding(.horizontal, 44).padding(.vertical, 36)
+            // A narrow measure and a tall top margin: the page reads as one quiet column.
+            .frame(maxWidth: 600, alignment: .leading)
+            .padding(.horizontal, 44).padding(.top, 52).padding(.bottom, 64)
             .frame(maxWidth: .infinity)
         }
     }

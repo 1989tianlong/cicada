@@ -712,7 +712,11 @@
 "还原系统麦克风" = "Restore System Mic";
 "搜索" = "Search";
 "导出…" = "Export…";
-"开启字幕后，每场会议都会自动保存在这里。" = "Once subtitles are on, every meeting is saved here.";
+"收起更早的会议" = "Hide earlier meetings";
+"更早的会议" = "Earlier meetings";
+"还没有会议" = "No meetings yet";
+"打开会议或视频，开始听后，每一场都会存在这里。" = "Open a meeting or a video and start listening: each one is kept here.";
+"先听一段示例" = "Try a sample first";
 "没有找到“%@”" = "Nothing found for “%@”";
 "今天" = "Today";
 "昨天" = "Yesterday";
@@ -735,8 +739,6 @@
 "开始听" = "Start listening";
 "正在听，说话的内容会出现在这里" = "Listening; what's said will appear here";
 "这场会议没有记录到内容" = "Nothing was recorded in this meeting";
-"还没有会议记录" = "No meetings yet";
-"开启字幕后，每场会议都会自动保存一份双语记录。" = "Once subtitles are on, every meeting is saved as a bilingual record.";
 "译文" = "Translation";
 "复制为 Markdown" = "Copy as Markdown";
 "导出 Markdown…" = "Export Markdown…";
@@ -746,6 +748,8 @@
 "完整版纪要" = "Full notes";
 "速记版纪要" = "Draft notes";
 "原话" = "Original";
+"收起原话" = "Hide original";
+"在纪要旁显示原话" = "Show the original beside the notes";
 "此刻" = "Now";
 "全部 %lld 句" = "All %lld lines";
 "翻译中…" = "Translating…";

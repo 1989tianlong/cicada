@@ -24,6 +24,14 @@ struct NotesContentView: View {
     var onJump: (Double) -> Void = { _ in }
 
     var body: some View {
+        if document {
+            DocumentNotesView(notes: notes, fresh: fresh, live: live, updating: updating, endedAt: endedAt, onJump: onJump)
+        } else {
+            cards
+        }
+    }
+
+    private var cards: some View {
         VStack(alignment: .leading, spacing: document ? 32 : 18) {
             if document && !notes.summary.isEmpty {
                 Text(notes.summary).font(.system(size: 17)).lineSpacing(7).foregroundStyle(Palette.ink.opacity(0.9))
@@ -130,6 +138,156 @@ struct NotesContentView: View {
             .padding(.horizontal, document ? 0 : 16).padding(.vertical, 11)
             if !document && i < all.count - 1 { Divider() }
         }
+    }
+}
+
+/// The main window's page: the conclusions first in one quiet block, the summary, then the topics
+/// as numbered rows that open to their points. Less on screen at once than the live window's cards.
+private struct DocumentNotesView: View {
+    let notes: MeetingNotes
+    let fresh: Set<String>
+    let live: Bool
+    let updating: Bool
+    let endedAt: Double?
+    let onJump: (Double) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 40) {
+            let items = notes.conclusions + notes.todos
+            if !items.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(notes.todos.isEmpty ? L("结论") : L("结论和待办"))
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                        conclusion(item, todo: i >= notes.conclusions.count)
+                    }
+                }
+                .padding(.horizontal, 24).padding(.vertical, 22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Palette.raised))
+            }
+
+            if !notes.summary.isEmpty {
+                Text(notes.summary).font(.system(size: 15)).lineSpacing(9).foregroundStyle(Palette.secondary)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !notes.topics.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("议题").font(.system(size: 12)).foregroundStyle(Palette.secondary).padding(.bottom, 8)
+                    ForEach(Array(notes.topics.enumerated()), id: \.element.id) { i, topic in
+                        let current = live && i == notes.topics.count - 1
+                        Rectangle().fill(MainWindowView.hairline).frame(height: 1)
+                        DocumentTopicRow(index: i, topic: topic, current: current,
+                                         updating: updating && current, fresh: fresh,
+                                         startOpen: i == 0 || current, onJump: onJump)
+                            .id(NotesContentView.topicID(topic))
+                    }
+                    Rectangle().fill(MainWindowView.hairline).frame(height: 1)
+                }
+            }
+
+            if !notes.terms.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("人名和术语").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    FlowLayout(spacing: 6) {
+                        ForEach(notes.terms) { t in
+                            (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)"))
+                                .font(.system(size: 12))
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A conclusion reads as a sentence; clicking it jumps to the lines behind it.
+    private func conclusion(_ item: NoteItem, todo: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if todo { Image(systemName: "circle").font(.system(size: 13)).foregroundStyle(Palette.secondary) }
+            Text(item.text + (item.owner.map { "（\($0)）" } ?? ""))
+                .font(.system(size: 17, weight: .medium)).lineSpacing(5)
+                .foregroundStyle(item.support == 0 ? Palette.secondary : Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if item.support == 0 { Tag(L("依据较少")) }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { if let t = item.t { onJump(t) } }
+        .help(item.t.map { L("\(NotesEngine.clock($0)) · \(item.support) 句") } ?? "")
+    }
+}
+
+private struct DocumentTopicRow: View {
+    let index: Int
+    let topic: NoteTopic
+    let current: Bool
+    let updating: Bool
+    let fresh: Set<String>
+    let onJump: (Double) -> Void
+    @State private var open: Bool
+
+    init(index: Int, topic: NoteTopic, current: Bool, updating: Bool, fresh: Set<String>,
+         startOpen: Bool, onJump: @escaping (Double) -> Void) {
+        self.index = index; self.topic = topic; self.current = current; self.updating = updating
+        self.fresh = fresh; self.onJump = onJump
+        _open = State(initialValue: startOpen)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Button { withAnimation(.easeOut(duration: 0.2)) { open.toggle() } } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(String(format: "%02d", index + 1)).font(.system(size: 12, weight: .bold).monospacedDigit())
+                            .foregroundStyle(Palette.secondary).frame(width: 28, alignment: .leading)
+                        Text(topic.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
+                            .multilineTextAlignment(.leading)
+                        if current { Tag(L("正在讲"), live: true) }
+                        if fresh.contains(topic.title) && !current { Tag(L("新"), live: true) }
+                        Spacer(minLength: 8)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                TimeLink(text: NotesEngine.clock(topic.start), t: topic.start, onJump: onJump)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Palette.secondary).rotationEffect(.degrees(open ? 90 : 0))
+            }
+            .padding(.vertical, 15)
+
+            if open {
+                VStack(alignment: .leading, spacing: 7) {
+                    if !topic.summary.isEmpty {
+                        Text(topic.summary).font(.system(size: 15)).lineSpacing(6).foregroundStyle(Palette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(Array(topic.points.enumerated()), id: \.offset) { i, p in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("·").foregroundStyle(Palette.secondary)
+                            Text(p).font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if fresh.contains(p) { Tag(L("新"), live: true) }
+                        }
+                        .help(topic.pointTime(i).map { NotesEngine.clock($0) } ?? "")
+                        .modifier(FadeIn(active: fresh.contains(p)))
+                    }
+                    if let fish = topic.fishbone { FishboneView(fishbone: fish, onJump: onJump).padding(.top, 4) }
+                    if updating {
+                        VStack(alignment: .leading, spacing: 7) {
+                            SkeletonBar(fraction: 0.82, height: 10, warm: true)
+                            SkeletonBar(fraction: 0.56, height: 10, warm: true)
+                        }
+                        .padding(.top, 2)
+                    }
+                }
+                .padding(.leading, 36).padding(.bottom, 20)
+                .transition(.opacity)
+            }
+        }
+        .onChange(of: current) { _, now in if now { open = true } }
     }
 }
 

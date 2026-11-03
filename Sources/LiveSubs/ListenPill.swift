@@ -52,7 +52,7 @@ import SwiftUI
     }
 }
 
-/// The listening switch, led by the logo: grey and still while idle, in colour and breathing while
+/// The listening switch, led by the logo: still in a white pill while idle, breathing in an ink pill while
 /// listening, ringed by a countdown when the meeting is about to end. The brand is the switch.
 struct ListenPill: View {
     @ObservedObject var model: AppModel
@@ -83,7 +83,8 @@ struct ListenPill: View {
     private var idle: some View {
         Button { model.setRunning(true) } label: {
             HStack(spacing: 9) {
-                BrandMark(size: 22).saturation(0).opacity(0.55)
+                // In colour while idle too: the white pill against the ink one already tells off from on.
+                BrandMark(size: 22)
                 Text(L("知了")).font(.system(size: 13, weight: .heavy)).foregroundStyle(Palette.ink)
                 Rectangle().fill(Palette.line).frame(width: 1, height: 14)
                 Text(model.autoEnded ? L("会议已自动结束") : L("开始听"))
