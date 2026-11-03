@@ -8,6 +8,8 @@ struct Segment {
     let text: String
     let sourceCode: String
     var translation: String?
+    /// The sentence's audio, 16 kHz mono, when telling voices apart is on.
+    var voiceSamples: [Float]? = nil
 }
 
 /// System audio → language detection → on-device transcription → translation.
@@ -121,6 +123,7 @@ final class ListenEngine {
         debugLog("listen start mode=\(settings.sourceMode) target=\(resolvedTarget)")
 
         guard startTap() else { return }
+        router.setVoiceCapture(settings.speakerVoices)
         isRunning = true
         startTickTimer()
 
@@ -326,13 +329,18 @@ final class ListenEngine {
             }
             let conf = chars > 0 ? weighted / Double(chars) : 1
             let provisional = volatileTranslation.isEmpty ? nil : volatileTranslation
-            let seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
+            var seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
+            if settings.speakerVoices {
+                seg.voiceSamples = router.voiceSamples(from: CMTimeGetSeconds(result.range.start), to: CMTimeGetSeconds(result.range.end))
+            }
             nextSegmentID += 1
             // How long ago, in real time, the sentence's last word was spoken.
             let ago = router.fedSeconds() - CMTimeGetSeconds(result.range.end)
             finalTiming[seg.id] = (Date(), ago.isFinite && ago >= 0 && ago < 30 ? ago : nil)
             if finalTiming.count > 40, let oldest = finalTiming.keys.min() { finalTiming[oldest] = nil }
-            segments.append(seg)
+            var shown = seg
+            shown.voiceSamples = nil // the audio only travels to the meeting record
+            segments.append(shown)
             // Only the last few are shown; in notes mode nothing clears them after a pause.
             if segments.count > 30 { segments.removeFirst(segments.count - 30) }
             if segments.count > 8 { segments.removeFirst(segments.count - 8) }
@@ -346,6 +354,8 @@ final class ListenEngine {
                 onFinal?(seg, spoken)
             } else {
                 unconfirmed.append((seg, Date(), spoken))
+                // Held lines keep their audio only while recent: an undecided language must not pile up minutes of it.
+                if unconfirmed.count > 20 { unconfirmed[unconfirmed.count - 21].seg.voiceSamples = nil }
             }
             translateSegment(id: seg.id)
             if settings.sourceMode == .auto, conf < 0.6, text.count >= 4 {

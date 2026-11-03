@@ -90,6 +90,7 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 | Checking the key | Ling `Ling-3.0-tiny` (one token) | — |
 | Interpreting: hearing and translating what you say | Ming `Ming-3.0-audio-flash`, one step | Apple on-device transcript, then the translation chain above |
 | Interpreting: the voice the room hears, voice cloning | Ming `Ming-3.0-tts-0.5B` | macOS system voices (`AVSpeechSynthesizer`); no cloning |
+| Speaker identification (说话人识别, experimental, off by default) | WeSpeaker ResNet34-LM voiceprints, bundled, on device (Core ML) | same |
 
 <a id="ling-api-key"></a>
 ## Setting up a Ling API key
@@ -153,4 +154,4 @@ See [AGENTS.md](AGENTS.md) for architecture details and release workflows. The w
 
 ## License
 
-[Apache-2.0](LICENSE). The BlackHole 2ch virtual audio driver is licensed under the GPL; Cicada does not bundle it and downloads the official release on demand when you choose to install it.
+[Apache-2.0](LICENSE). The BlackHole 2ch virtual audio driver is licensed under the GPL; Cicada does not bundle it and downloads the official release on demand when you choose to install it. The bundled voiceprint model is [WeSpeaker](https://github.com/wenet-e2e/wespeaker)'s ResNet34-LM trained on VoxCeleb, licensed CC BY 4.0, converted to Core ML by `scripts/convert-voiceprint.py`.

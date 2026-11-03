@@ -225,7 +225,8 @@ final class NotesEngine: ObservableObject {
         let base = final || fresh ? MeetingNotes() : (id == shownID ? notes : session.notes ?? MeetingNotes())
         let from = final ? 0 : min(base.covered, lines.count)
         let lang = language(id)
-        let prompt = Self.prompt(notes: base, lines: lines, from: from, language: lang, final: final)
+        let names = TranscriptExport.voices ? SpeakerLabels.names(session) : [:]
+        let prompt = Self.prompt(notes: base, lines: lines, from: from, language: lang, final: final, names: names)
         let started = Date()
         do {
             // The final pass sends only the transcript, with no notes in the reader's language to
@@ -310,10 +311,14 @@ final class NotesEngine: ObservableObject {
 
     static func clock(_ t: Double) -> String { TranscriptExport.clock(t) }
 
-    static func prompt(notes: MeetingNotes, lines: [TranscriptLine], from: Int, language: String, final: Bool) -> String {
+    static func prompt(notes: MeetingNotes, lines: [TranscriptLine], from: Int, language: String, final: Bool,
+                       names: [Int: String] = [:]) -> String {
+        let numbers = TranscriptExport.voices ? SpeakerLabels.numbers(lines) : [:]
         func line(_ i: Int) -> String {
             let l = lines[i]
-            return "[L\(i + 1) \(clock(l.t)) \(l.speaker == "me" ? "你" : "对方")] \(l.src)"
+            // A named voice goes as its name: notes then say "George" rather than "说话人2".
+            let who = l.speaker == "me" ? "你" : numbers[l.id].map { names[$0] ?? "说话人\($0)" } ?? (numbers.isEmpty ? "对方" : "未识别")
+            return "[L\(i + 1) \(clock(l.t)) \(who)] \(l.src)"
         }
         var current = "{}"
         if !notes.isEmpty, let data = try? JSONEncoder().encode(Compact(notes)), let s = String(data: data, encoding: .utf8) {
@@ -331,7 +336,7 @@ final class NotesEngine: ObservableObject {
         if context < from {
             p += "Already covered (context only):\n" + (context..<from).map(line).joined(separator: "\n") + "\n\n"
         }
-        p += "\(final ? "Transcript" : "New lines") (id, mm:ss, speaker 对方=the other side / 你=me, text). Speech recognition makes mistakes, often in names: correct them from context.\n"
+        p += "\(final ? "Transcript" : "New lines") (id, mm:ss, speaker 对方=the other side / 你=me / a name or 说话人N=one person on the other side, told apart by voice and possibly wrong / 未识别=someone on the other side not identified, text). Speech recognition makes mistakes, often in names: correct them from context.\n"
         p += (from..<lines.count).map(line).joined(separator: "\n")
         // The model splits too eagerly when only told how long a topic should be: say plainly
         // whether this update may start one.
@@ -352,7 +357,7 @@ final class NotesEngine: ObservableObject {
          "topics": [{"start": seconds, "title": "short title", "summary": "one sentence", "points": [{"text": "key point", "evidence": ["L4"]}], "evidence": ["L3"],
                      "fishbone": null or {"question": "the problem or question", "branches": [{"label": "2-6 words", "detail": "one short line", "t": seconds, "evidence": ["L5"]}]}}],
          "conclusions": [{"text": "...", "evidence": ["L7", "L8"]}],
-         "todos": [{"text": "...", "owner": "对方" or "你" or null, "evidence": ["L9"]}],
+         "todos": [{"text": "...", "owner": \(numbers.isEmpty ? "\"对方\" or \"你\" or null" : "the person's label from the transcript (a name like \"George\", or \"说话人2\"), \"你\", or null when unclear"), "evidence": ["L9"]}],
          "terms": [{"name": "correct spelling", "note": "who or what, a few words", "heard": ["how it was misrecognised"]}]}
         Rules (be brief: these notes are read at a glance during the meeting):
         - title: a name for the whole meeting, like a calendar entry (at most 12 Chinese characters or 6 words; no date, no quotes, not "会议" alone). Keep the current title unless the meeting's subject has clearly changed.

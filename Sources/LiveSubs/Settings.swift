@@ -31,6 +31,10 @@ final class AppSettings: ObservableObject {
     @Published var speakEnabled: Bool {
         didSet { save() }
     }
+    /// The user has seen what turning 同声传译 on changes (the panel asks once, in place).
+    @Published var speakConfirmed: Bool {
+        didSet { save() }
+    }
     /// Locale of the language I speak.
     @Published var speakFrom: String {
         didSet { save() }
@@ -108,6 +112,11 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Experimental: tell the other side's voices apart (说话人 1、2…). Off by default.
+    @Published var speakerVoices: Bool {
+        didSet { save() }
+    }
+
     /// Record per-sentence timings (never text) and show the 诊断 tab. On by default in dev builds.
     @Published var diagnostics: Bool {
         didSet { save() }
@@ -126,6 +135,8 @@ final class AppSettings: ObservableObject {
         subtitles = defaults.string(forKey: "subtitles") ?? "both"
         notesLanguage = defaults.string(forKey: "notesLanguage") ?? "mine"
         speakEnabled = defaults.bool(forKey: "speakEnabled")
+        // Anyone who had it on before this question existed already knows.
+        speakConfirmed = defaults.object(forKey: "speakConfirmed") as? Bool ?? defaults.bool(forKey: "speakEnabled")
         speakFrom = defaults.string(forKey: "speakFrom")
             ?? speakLocale(forLanguage: LiveSubs.myLanguage(systemLanguages: Locale.preferredLanguages))
         speakTo = defaults.string(forKey: "speakTo") ?? "room"
@@ -146,6 +157,7 @@ final class AppSettings: ObservableObject {
         silenceMinutes = defaults.object(forKey: "silenceMinutes") as? Double ?? 10
         diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
         notesCapturable = defaults.bool(forKey: "notesCapturable")
+        speakerVoices = defaults.bool(forKey: "speakerVoices")
     }
 
     private func save() {
@@ -157,6 +169,7 @@ final class AppSettings: ObservableObject {
         defaults.set(subtitles, forKey: "subtitles")
         defaults.set(notesLanguage, forKey: "notesLanguage")
         defaults.set(speakEnabled, forKey: "speakEnabled")
+        defaults.set(speakConfirmed, forKey: "speakConfirmed")
         defaults.set(speakFrom, forKey: "speakFrom")
         defaults.set(speakTo, forKey: "speakTo")
         defaults.set(speakOutput, forKey: "speakOutput")
@@ -176,6 +189,7 @@ final class AppSettings: ObservableObject {
         defaults.set(silenceMinutes, forKey: "silenceMinutes")
         defaults.set(diagnostics, forKey: "diagnostics")
         defaults.set(notesCapturable, forKey: "notesCapturable")
+        defaults.set(speakerVoices, forKey: "speakerVoices")
     }
 
     /// Target language. "Follow system" translates into my language, or into the next system

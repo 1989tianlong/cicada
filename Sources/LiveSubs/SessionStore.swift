@@ -11,6 +11,14 @@ struct TranscriptLine: Codable, Identifiable, Equatable {
     var dst: String?
     var srcLang: String
     var dstLang: String
+    /// Experimental: which of the other side's voices said it (SpeakerID.swift); nil when unknown.
+    var voice: Int? = nil
+}
+
+/// A name Ling found for a voice, and the line it is based on ("00:06 “Sure, Emma…”").
+struct VoiceGuess: Codable, Equatable {
+    var name: String
+    var evidence: String
 }
 
 struct Session: Codable, Identifiable, Equatable {
@@ -24,6 +32,11 @@ struct Session: Codable, Identifiable, Equatable {
     var notes: MeetingNotes?
     /// The user renamed it; nil in older sessions, where any title but the default counts as renamed.
     var renamed: Bool?
+    /// Experimental 说话人识别: names the user gave voices, keyed by voice id. An empty name means
+    /// "not Ling's guess": the voice shows as 说话人 N.
+    var voiceNames: [String: String]? = nil
+    /// Names Ling read from the conversation, keyed by voice id; shown until the user says otherwise.
+    var voiceGuesses: [String: VoiceGuess]? = nil
 
     var duration: TimeInterval { (endedAt ?? Date()).timeIntervalSince(startedAt) }
 
@@ -146,6 +159,48 @@ final class SessionStore: ObservableObject {
         scheduleSave(id)
     }
 
+    func setVoice(lineID: String, _ voice: Int) {
+        guard let id = liveID, let i = index(id),
+              let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
+        sessions[i].lines[j].voice = voice
+        scheduleSave(id)
+    }
+
+    /// The user names a voice. nil drops their name (Ling's guess shows again); "" keeps 说话人 N.
+    func setVoiceName(_ id: String, voice: Int, _ name: String?) {
+        guard let i = index(id) else { return }
+        var names = sessions[i].voiceNames ?? [:]
+        names[String(voice)] = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        sessions[i].voiceNames = names.isEmpty ? nil : names
+        saveNow(id)
+    }
+
+    /// Ling's latest guesses; earlier ones stay for voices it no longer mentions.
+    func setVoiceGuesses(_ id: String, _ guesses: [Int: VoiceGuess]) {
+        guard let i = index(id), !guesses.isEmpty else { return }
+        var all = sessions[i].voiceGuesses ?? [:]
+        for (v, g) in guesses { all[String(v)] = g }
+        guard all != sessions[i].voiceGuesses else { return }
+        sessions[i].voiceGuesses = all
+        saveNow(id)
+    }
+
+    /// The user said two voices are the same person: `from`'s lines become `into`'s.
+    func mergeVoice(_ id: String, _ from: Int, into: Int) {
+        guard let i = index(id), from != into else { return }
+        for j in sessions[i].lines.indices where sessions[i].lines[j].voice == from { sessions[i].lines[j].voice = into }
+        if var names = sessions[i].voiceNames, let moved = names.removeValue(forKey: String(from)) {
+            // A turned-down guess ("") stays with the voice it was about; a real name moves over.
+            if names[String(into)] == nil, !moved.isEmpty { names[String(into)] = moved }
+            sessions[i].voiceNames = names.isEmpty ? nil : names
+        }
+        if var guesses = sessions[i].voiceGuesses, let moved = guesses.removeValue(forKey: String(from)) {
+            if guesses[String(into)] == nil { guesses[String(into)] = moved }
+            sessions[i].voiceGuesses = guesses.isEmpty ? nil : guesses
+        }
+        saveNow(id)
+    }
+
     func setNotes(_ id: String, _ notes: MeetingNotes) {
         guard let i = index(id) else { return }
         sessions[i].notes = notes
@@ -208,7 +263,16 @@ enum TranscriptExport {
                          : String(format: "%02d:%02d", s / 60, s % 60)
     }
 
-    static func speakerName(_ line: TranscriptLine) -> String { line.speaker == "me" ? L("你") : L("对方") }
+    /// Experimental speaker numbers on (设置 › 通用 › 实验功能); kept in step by AppModel.
+    nonisolated(unsafe) static var voices = false
+
+    static func speakerName(_ line: TranscriptLine, _ numbers: [String: Int] = [:], _ names: [Int: String] = [:]) -> String {
+        if line.speaker == "me" { return L("你") }
+        if let n = numbers[line.id] { return SpeakerLabels.label(n, names) }
+        return numbers.isEmpty ? L("对方") : L("未识别")
+    }
+
+    static func speakerNumbers(_ s: Session) -> [String: Int] { voices ? SpeakerLabels.numbers(s.lines) : [:] }
 
     static func header(_ s: Session) -> String {
         let mins = Int(s.duration / 60)
@@ -243,8 +307,9 @@ enum TranscriptExport {
         var out = "# \(s.displayTitle)\n\n\(header(s))\n\n"
         let notes = notesMarkdown(s.notes)
         if !notes.isEmpty { out += notes + "## \(L("文字记录"))\n\n" }
+        let numbers = speakerNumbers(s), names = SpeakerLabels.names(s)
         for l in s.lines {
-            out += "**[\(clock(l.t))] \(speakerName(l))**  \n\(l.src)\n"
+            out += "**[\(clock(l.t))] \(speakerName(l, numbers, names))**  \n\(l.src)\n"
             if let d = l.dst, d != l.src { out += "> \(d)\n" }
             out += "\n"
         }
@@ -303,8 +368,9 @@ enum TranscriptExport {
             }
             add(L("文字记录"), size: 15, weight: .bold, after: 6)
         }
+        let numbers = speakerNumbers(s), names = SpeakerLabels.names(s)
         for l in s.lines {
-            add("[\(clock(l.t))] \(speakerName(l))", size: 9, weight: .semibold, color: .darkGray, after: 2)
+            add("[\(clock(l.t))] \(speakerName(l, numbers, names))", size: 9, weight: .semibold, color: .darkGray, after: 2)
             add(l.src, size: 11, after: 2)
             if let d = l.dst, d != l.src { add(d, size: 11, color: NSColor(calibratedWhite: 0.3, alpha: 1), after: 10) }
         }

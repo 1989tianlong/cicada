@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     }
     /// The 试一句 sheet in settings.
     @Published var speakTestShown = false
+    /// The panel is asking, the first time, what turning 同声传译 on changes.
+    @Published var speakAsking = false
     /// Meeting apps and the microphone each reads; refreshed every second once the virtual mic exists.
     @Published var micUsers: [MicUser] = []
     lazy var systemMic = SystemMic(settings: settings)
@@ -84,6 +86,11 @@ final class AppModel: ObservableObject {
     lazy var notes = NotesEngine(ling: ling, store: store)
     lazy var notesWindow = NotesWindowController(model: self)
     let sample = SamplePlayer()
+    let speakers = SpeakerTagger()
+    lazy var speakerNamer = SpeakerNamer(ling: ling, store: store)
+    /// Set by the notes window; the records window's people row opens that voice's editor.
+    @Published var speakerEdit: SpeakerEditRequest?
+    private var speakerSetting: AnyCancellable?
     var openOnboarding: (() -> Void)?
 
     var openMainWindow: (() -> Void)?
@@ -109,6 +116,15 @@ final class AppModel: ObservableObject {
         }
         listen.onStateChange = { [weak self] in self?.refresh() }
         listen.onFinal = { [weak self] seg, duration in self?.recordHeard(seg, duration: duration) }
+        speakers.onVoice = { [weak self] line, voice in
+            guard let self else { return }
+            self.store.setVoice(lineID: line, voice)
+            if let id = self.store.liveID { self.speakerNamer.guess(id) }
+        }
+        speakerSetting = settings.$speakerVoices.sink { [weak self] on in
+            TranscriptExport.voices = on
+            self?.listen.router.setVoiceCapture(on)
+        }
         listen.onTranslated = { [weak self] segID, text in
             guard let self, let line = self.lineForSegment[segID] else { return }
             self.store.setTranslation(lineID: line, text)
@@ -356,6 +372,7 @@ final class AppModel: ObservableObject {
         guard !listen.isRunning else { return }
         let session = store.begin()
         diagnostics.begin()
+        speakers.reset()
         lineForSegment = [:]
         speechHeard = false
         meetingSubtitles = nil
@@ -385,7 +402,10 @@ final class AppModel: ObservableObject {
         listen.stop()
         listen.router.setRecording(nil)
         speak.setRecording(nil)
+        // Read the whole meeting for names once more (the id outlives store.end).
+        let ended = store.liveID
         store.end(at: endedAt)
+        if settings.speakerVoices, let ended { speakerNamer.guess(ended, force: true) }
         notes.finish()
         overlay.hide()
         refresh()
@@ -572,6 +592,7 @@ final class AppModel: ObservableObject {
 
     func enableSpeaking(_ on: Bool) {
         settings.speakEnabled = on
+        if on { settings.speakConfirmed = true }
         objectWillChange.send()
         if on {
             AVCaptureDevice.requestAccess(for: .audio) { granted in
@@ -784,7 +805,7 @@ final class AppModel: ObservableObject {
     func endingTitle(_ p: MeetingEndWatch.Pending) -> String {
         switch p.reason {
         case .appLeft(let name): L("\(name) 已挂断")
-        case .silence: L("已经 \(max(1, Int((endConfig.silenceAfter / 60).rounded()))) 分钟没人说话")
+        case .silence, .nobodySpoke: L("已经 \(max(1, Int((endConfig.silenceAfter / 60).rounded()))) 分钟没人说话")
         }
     }
 
@@ -802,6 +823,12 @@ final class AppModel: ObservableObject {
     /// Ends where the meeting really ended: a little after the last words, or at the hang-up if
     /// that was later. Never before a line that was kept, or its audio would be cut.
     private func autoEnd(_ reason: MeetingEndWatch.Reason, watch w: MeetingEndWatch) {
+        if reason == .nobodySpoke {
+            // Nothing to keep or summarise: back to "开始听", not "会议已自动结束".
+            debugLog("meeting end: nobody spoke for \(Int(w.config.silenceAfter)) s, stopped")
+            stop()
+            return
+        }
         var at = w.lastSpeech.addingTimeInterval(5)
         if case .appLeft = reason { at = max(at, Date().addingTimeInterval(-w.config.appGrace)) }
         debugLog("meeting end: ended by itself (\(reason)), end time \(Int(Date().timeIntervalSince(at))) s ago")
@@ -811,6 +838,14 @@ final class AppModel: ObservableObject {
 
     // MARK: Meeting record
 
+    /// Names are typed in the records window: the notes window never takes focus.
+    func editSpeaker(session: String, voice: Int) {
+        speakerEdit = SpeakerEditRequest(session: session, voice: voice)
+        mainShow = nil
+        mainShow = "\(session),transcript"
+        openMainWindow?()
+    }
+
     private func recordHeard(_ seg: Segment, duration: Double) {
         guard let start = store.liveStart else { return }
         lineCounter += 1
@@ -819,6 +854,10 @@ final class AppModel: ObservableObject {
         let t = max(0, Date().timeIntervalSince(start) - duration)
         store.append(TranscriptLine(id: id, t: t, speaker: "them", src: seg.text, dst: seg.translation,
                                     srcLang: seg.sourceCode, dstLang: listen.resolvedTarget))
+        // A line with hardly a letter ("." from a breath or a click) gets no voiceprint.
+        if settings.speakerVoices, let samples = seg.voiceSamples, seg.text.filter(\.isLetter).count >= 2 {
+            speakers.tag(lineID: id, samples: samples)
+        }
         heardWords()
     }
 
@@ -902,6 +941,31 @@ final class AppModel: ObservableObject {
             openOnboarding?()
         case "step": onboardingStep = Int(arg) ?? 1
         case "samplePlay": ensureListening(); sample.play()
+        case "speakers": settings.speakerVoices = arg == "on"
+        case "speakerGuess": speakerNamer.guess(arg, force: true)
+        case "speakersRender":
+            // speakersRender:<session id>=<png>[@width]: the people strip and the first lines with their labels.
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            guard p.count == 2, let s = store.session(p[0]) else { break }
+            let out = p[1].split(separator: "@").map(String.init)
+            let width = out.count > 1 ? CGFloat(Double(out[1]) ?? 360) : 360
+            let r = ImageRenderer(content: SpeakerPreview(model: self, session: s).environment(\.speakerNames, SpeakerLabels.names(s)).frame(width: width).background(Color.white))
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: out[0]))
+            }
+        case "voiceprintFile":
+            // voiceprintFile:<audio>=<json>: the app's voiceprint of a whole file, to compare with the reference model.
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            guard p.count == 2 else { break }
+            DispatchQueue.global().async {
+                let samples = Voiceprints.samples(of: URL(fileURLWithPath: p[0]))
+                let v = samples.flatMap { s in (try? Voiceprints.load())?.embed(s) }
+                let data = try? JSONSerialization.data(withJSONObject: ["seconds": Double(samples?.count ?? 0) / 16000, "v": v ?? []])
+                try? data?.write(to: URL(fileURLWithPath: p[1]))
+                debugLog("voiceprintFile: \(v == nil ? "failed" : "ok") \(p[0])")
+            }
         case "micVerify": installer.install(verifyOnly: true)
         case "settings":
             settingsSection = SettingsSection(rawValue: arg) ?? settingsSection
@@ -1031,6 +1095,24 @@ final class AppModel: ObservableObject {
                     try? full.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg + ".notes.png"))
                 }
             }
+        case "panelRender":
+            // The menu bar panel drawn offscreen with real AppKit controls: the popover closes
+            // as soon as another app is active, so it can't be caught by windowsRender.
+            let host = NSHostingView(rootView: MenuPanelView(model: self, settings: settings))
+            let size = host.fittingSize
+            let w = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: size.width, height: size.height),
+                             styleMask: .borderless, backing: .buffered, defer: false)
+            w.isReleasedWhenClosed = false
+            w.contentView = host
+            w.orderBack(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                host.layoutSubtreeIfNeeded()
+                if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg))
+                }
+                w.orderOut(nil)
+            }
         case "settingsRender":
             // settingsRender:<section>=<png>: one settings page in full, scroll view or not.
             let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
@@ -1068,6 +1150,10 @@ final class AppModel: ObservableObject {
         case "notesRegenerate":
             let p = arg.split(separator: "=").map(String.init)
             if p.count == 2 { regenerateNotes(p[0], choice: p[1]) }
+        case "speakAsk":
+            // speakAsk[:off]: the panel's one-time question, as if the switch was flipped for the first time.
+            speakAsking = arg != "off"
+        case "speakConfirmed": settings.speakConfirmed = arg != "off"
         case "speakOn": enableSpeaking(true)
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
@@ -1140,6 +1226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var settingsWindow: NSWindow?
     private var pollTimer: Timer?
     private var runningObserver: Any?
+    private var popoverClickMonitor: Any?
     private lazy var menu = AppMenu(model: model)
     /// Held here: a toolbar keeps only a weak reference to its delegate.
     private lazy var mainToolbar = MainToolbar(model: model)
@@ -1233,6 +1320,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // edge, pushing the top of the panel above the screen.
         panel.sizingOptions = .preferredContentSize
         popover.contentViewController = panel
+        // .transient closes on focus changes, but the notes panel and the subtitle bar never take
+        // focus: a click on them would leave the popover open on top. Close it ourselves.
+        popoverClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+            if let self, self.popover.isShown, let w = e.window, w !== self.popover.contentViewController?.view.window,
+               w !== self.statusItem.button?.window {
+                self.popover.performClose(nil)
+            }
+            return e
+        }
     }
 
     @objc private func togglePopover() {

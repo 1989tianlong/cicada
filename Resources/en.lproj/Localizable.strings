@@ -39,6 +39,7 @@
 "把 Mac 正在播放的声音变成实时双语字幕和会议纪要" = "Live bilingual subtitles and meeting notes from whatever your Mac is playing";
 "网站" = "Website";
 "反馈问题" = "Report an Issue";
+"声纹模型：WeSpeaker ResNet34-LM（VoxCeleb），CC BY 4.0" = "Voiceprint model: WeSpeaker ResNet34-LM (VoxCeleb), CC BY 4.0";
 
 /* AppMenu */
 "关于 %@" = "About %@";
@@ -127,6 +128,7 @@
 "换后备 " = "Fallbacks ";
 "无" = "none";
 "Ling 请求 %d 次 · 排队最久 %.2fs · token %d/%d" = "Ling requests: %d · longest queue %.2fs · tokens %d/%d";
+"有人说话后，这里会显示每句话的耗时明细" = "Each sentence's timing shows here once someone speaks";
 "这场会议 · %lld 分钟 · %lld 句 · 同声传译 %lld 次" = "This meeting · %lld min · sentences: %lld · interpreted: %lld";
 "开始聆听后，这里会显示每句话的耗时明细" = "Once listening starts, the timing of every sentence shows here";
 "说完到上屏" = "Speech end → on screen";
@@ -138,8 +140,22 @@
 "打开日志" = "Open Log";
 "打开本场数据" = "Open Meeting Data";
 "暂无数据" = "No data yet";
+"一句话的路" = "A sentence's path";
+"还没有句子" = "No sentences yet";
+"听清这句话" = "Hearing it";
+"译成目标语言" = "Translating it";
+"你感到的延迟" = "The delay you feel";
+"更新一次纪要" = "One notes update";
+"翻译通道" = "Translation";
+"Ling 用量" = "Ling usage";
+"账号上限约每秒 2 次" = "The account allows about 2 per second";
 "Ming 语音" = "Ming voice";
 "没译出" = "Not translated";
+"本场还没调用" = "Not used yet";
+"最近的句子" = "Recent sentences";
+"示例 · 对方" = "Example · them";
+"识别" = "Recognize";
+"排队" = "Queue";
 "被搜索劫持" = "Search hijack";
 "限流" = "Rate limited";
 "超时" = "Timeout";
@@ -149,12 +165,10 @@
 "翻译通道分布" = "Translation providers";
 "共 %lld 句" = "Total: %lld";
 "Ling 请求速度" = "Ling request rate";
-"账号上限约每秒 2 次" = "The account allows about 2 per second";
 "排队最久" = "Longest queue";
 "本场用量" = "This meeting's usage";
 "%.1f / 2 次每秒" = "%.1f / 2 per second";
 "%lld 次 · %lld token" = "requests: %lld · tokens: %lld";
-"最近的句子" = "Recent sentences";
 "还没有" = "None yet";
 "你" = "You";
 "对方" = "Them";
@@ -207,19 +221,13 @@
 "正在识别语言…" = "Detecting language…";
 "翻译暂不可用" = "Translation unavailable for now";
 
+/* ListenPill */
+"开始听" = "Start listening";
+"知了" = "Cicada";
+"会议已自动结束" = "Meeting ended by itself";
+"结束" = "End";
+
 /* MicUsersView */
-"跟随系统的软件会自动换好；在软件里自己选过麦克风的，要在软件里改。" = "Apps on the system default switch on their own; apps set to a specific mic need changing there.";
-"这里只显示正在用麦克风的会议软件和常见会议软件，麦克风要在各软件里自己换。" = "Shows meeting apps using a mic, plus common ones. Change the mic inside each app.";
-"会议软件的麦克风" = "Meeting app microphones";
-"实时更新" = "Live";
-"还没有会议软件在用麦克风，进会议后这里会显示" = "No meeting app is using a mic yet. Join a meeting and it shows up here";
-"空闲" = "Idle";
-"怎么改" = "How to fix";
-"正在用虚拟麦克风" = "Using the virtual mic";
-"没用虚拟麦克风，对方听不到译文" = "Not on the virtual mic; they can't hear the translation";
-"正在用 %@，对方听不到译文" = "Using %@; they can't hear the translation";
-"没开麦克风" = "Mic not in use";
-"对方能听到" = "They hear you";
 "顺便关掉自动调节麦克风音量和降噪，译文会更清楚" = "Also turn off automatic mic volume and noise suppression so the translation sounds clearer";
 "进会议后，点麦克风图标旁边的 ⌃" = "In the meeting, click the ⌃ next to the microphone icon";
 "在选择麦克风菜单里点 %@" = "Under Select a Microphone, choose %@";
@@ -254,9 +262,9 @@
 "依据较少" = "Little evidence";
 "依据 %lld 句" = "Evidence: %lld";
 "%@ · %lld 句" = "%@ · %lld lines";
-"看原话" = "See what was said";
 "正在讲" = "Now";
 "新" = "New";
+"看原话" = "See what was said";
 "%@ 起" = "From %@";
 "回到原话" = "Back to transcript";
 "点击分支跳回原话" = "Click a branch to jump to what was said";
@@ -266,7 +274,14 @@
 "说话的内容会出现在这里" = "What's said will appear here";
 "%lld 句新内容" = "%lld new lines";
 "正在说" = "Speaking";
-"有人说话时，会自动开始写纪要" = "Notes start on their own once someone speaks";
+"从这里开始听" = "Listening began";
+"原话" = "Original";
+"译文" = "Translation";
+"此刻" = "Now";
+"等有人开口" = "Waiting for someone to speak";
+"有人开口后，约半分钟出第一版" = "First notes about 30 s after someone speaks";
+"会整理出" = "You'll get";
+"待办" = "To-dos";
 "已听到 %lld 句" = "Heard %lld lines";
 "正在生成纪要" = "Writing notes";
 "正在更新" = "Updating";
@@ -281,7 +296,6 @@
 "收窄" = "Narrow";
 "收成小卡" = "Collapse to card";
 "这场会议的语言" = "Languages for this meeting";
-"结束" = "End";
 "正在听 · " = "Listening · ";
 "正在记录 · " = "Recording · ";
 "%lld 句" = "%lld lines";
@@ -445,8 +459,8 @@
 
 /* SessionStore */
 "会议 %@" = "Meeting %@";
+"未识别" = "Unidentified";
 "不到 1 分钟" = "Under 1 min";
-"待办" = "To-dos";
 
 /* SettingsWindow */
 "语言" = "Language";
@@ -464,7 +478,6 @@
 "还差一步：允许“输入监控”" = "One more step: allow “Input Monitoring”";
 "“按住右 ⌥ 说话”需要此权限。请在系统设置中勾选 %@，返回此处即可生效" = "“Hold right ⌥ to talk” needs this. Turn on %@ in System Settings, then come back";
 "去允许" = "Allow";
-"知了" = "Cicada";
 "再试一次" = "Try Again";
 "虚拟麦克风已就绪" = "Virtual microphone ready";
 "%@ · 试音通过，对方听得到" = "%@ · sound test passed, they can hear you";
@@ -488,36 +501,37 @@
 "对方会听到：" = "They will hear: ";
 "一段声音" = "a sound";
 "虚拟麦克风未收到声音，请再试一次" = "The virtual microphone got no sound; try again";
-"说一句话，听对方听到的声音，看每一步花了多久" = "Say one sentence, hear what they hear, and see how long each step takes";
 "把我说的翻译给对方" = "Translate what I say for them";
+"说话" = "Speaking";
+"按住说话" = "Hold to talk";
+"说%@，对方听到" = "You speak %@, they hear";
+"按键还需要“输入监控”权限" = "The key needs Input Monitoring";
+"系统麦克风还是 %@，别的软件听不到你" = "System mic is still %@; other apps can't hear you";
+"还原" = "Restore";
+"系统麦克风被换成了 %@" = "System mic changed to %@";
+"换回" = "Switch back";
+"系统麦克风还没换成 %@" = "System mic isn't %@ yet";
+"切换" = "Switch";
+"%@还在用 %@" = "%@ still uses %@";
+"%@没选虚拟麦克风" = "%@ isn't on the virtual mic";
+"怎么改" = "How to fix";
+"虚拟麦克风 %@" = "Virtual mic %@";
+"系统麦克风已换好，关掉时换回" = "System mic switched; it goes back when you turn this off";
+"%@已选虚拟麦克风" = "%@ is on the virtual mic";
+"说一句话，听对方听到的声音，看每一步花了多久" = "Say one sentence, hear what they hear, and see how long each step takes";
+"对方听不到你" = "They can't hear you";
+"对方听得到你" = "They can hear you";
+"同声传译没打开" = "Interpreting is off";
 "上次发言：松开后 %@ 秒，对方听到译文" = "Last time: they heard the translation %@ s after you let go";
 "按住说话，松开后约 1 秒，对方听到译文" = "Hold to talk; about 1 s after you let go, they hear the translation";
 "按住说话，松开后约 3 秒，对方听到译文" = "Hold to talk; about 3 s after you let go, they hear the translation";
 "试一句" = "Try it";
-"按住说话" = "Hold to talk";
-"单独按住右侧 ⌥；和别的键一起按不触发" = "Hold the right ⌥ alone; it does nothing with other keys";
-"按住快捷键说话，松开发送" = "Hold the shortcut to talk, let go to send";
-"声音输出到" = "Send voice to";
-"对方只能听到虚拟麦克风里的声音" = "They only hear what goes into the virtual microphone";
-"虚拟麦克风（自动）" = "Virtual microphone (auto)";
-"高级：声音输出到 · %@" = "Advanced: voice goes to · %@";
-"%@ 已装好" = "%@ is installed";
-"试音通过" = "Sound test passed";
-"已装好" = "Installed";
-"系统麦克风" = "System microphone";
-"自动切换系统麦克风" = "Switch the system microphone";
-"同声传译打开时换成 %@，Chrome 等跟随系统的软件不用再设置" = "Uses %@ while Interpreting is on, so Chrome and other apps on the default need no setup";
+"打开时把系统麦克风换成 %@" = "Switch the system mic to %@ while on";
 "%@听你说话用" = "%@ listens through";
-"固定用这个，不跟着系统切换" = "Always this one, whatever the system uses";
-"现在：%@" = "Now: %@";
-"关掉同声传译或退出%@时，换回 %@" = "Switches back to %2$@ when Interpreting is off or %1$@ quits";
-"立即还原" = "Restore now";
-"同声传译已关，别的软件听不到你说话" = "Interpreting is off; other apps can't hear you";
-"还原" = "Restore";
-"跟随系统的网页听不到译文" = "Pages on the default mic won't hear the translation";
-"换回" = "Switch back";
-"切换" = "Switch";
+"译文送到" = "Send the translation to";
+"自动切换系统麦克风" = "Switch the system microphone";
 "自动（%@）" = "Auto (%@)";
+"虚拟麦克风（自动）" = "Virtual microphone (auto)";
 "听的时候显示" = "While listening, show";
 "选择任意模式都会正常保存记录、生成纪要" = "Every mode still saves the meeting and writes notes";
 "切换显示方式" = "Switch display";
@@ -542,6 +556,10 @@
 "提醒后结束" = "Ask, then end";
 "直接结束" = "End";
 "一直记录" = "Keep going";
+"实验功能" = "Experimental";
+"还在打磨，可能出错；随时能关，关掉不影响别的功能。" = "Still being tuned and may get things wrong. Turn it off any time; nothing else is affected.";
+"按声音标出说话人 1、2…，只在这台 Mac 上处理" = "Labels lines Speaker 1, 2… by voice, on this Mac only";
+"说话人识别" = "Speaker identification";
 
 /* Shortcuts */
 "右 ⌥" = "Right ⌥";
@@ -589,7 +607,6 @@
 "松开就发送" = "Let go to send";
 "你的话" = "Your words";
 "识别 + 翻译" = "Recognize + translate";
-"识别" = "Recognize";
 "合成声音" = "Voice";
 "示例句子" = "Sample sentence";
 "麦克风峰值 %lld dB" = "Mic peak %lld dB";
@@ -639,6 +656,24 @@
 "再试一句" = "Try again";
 "复制报告" = "Copy report";
 
+/* SpeakerID */
+"说话人 %lld" = "Speaker %lld";
+"没认出是谁：太短，或和已知的声音都不像" = "Not recognised: too short, or unlike the known voices";
+"实验" = "Beta";
+"关掉说话人识别，记录里的名字一起收起" = "Turn off speaker identification; the names in your records are hidden too";
+"Ling 从对话里认出，点一下可以改" = "Ling found this name in the conversation; click to change";
+"改名字，或和别人合并" = "Rename, or merge with someone else";
+"不准？关掉" = "Wrong? Turn off";
+"说了 %lld 句" = "%lld lines";
+"名字" = "Name";
+"Ling 正在从对话里找名字…" = "Ling is looking for names in the conversation…";
+"输入名字" = "Type a name";
+"Ling 从对话里认出" = "Found by Ling in the conversation";
+"Ling 从对话里认出：%@" = "Found by Ling in the conversation: %@";
+"不是 TA" = "Not them";
+"其实是同一个人" = "Actually the same person";
+"并入 %@" = "Merge into %@";
+
 /* SystemAudioTap */
 "无法启动音频采集（%d）" = "Can't start audio capture (%d)";
 "无法初始化音频单元（%d）" = "Can't initialize the audio unit (%d)";
@@ -685,20 +720,12 @@
 /* Views */
 "自动识别（%@）" = "Auto-detect (%@)";
 "%@（需下载）" = "%@ (download needed)";
-"按住" = "Hold";
-"说%@ → %@" = "%1$@ → %2$@";
-"会议已自动结束" = "Meeting ended by itself";
 "系统" = "System";
 "内容" = "Content";
 "仅本场" = "This meeting";
-"%@已选虚拟麦克风" = "%@ is on the virtual mic";
-"系统麦克风已换成 %@" = "System mic is now %@";
-"同声传译选项" = "Interpreting options";
 "系统麦克风还是 %@" = "System mic is still %@";
 "别的软件现在听不到你说话" = "Other apps can't hear you now";
-"系统麦克风被换成了 %@" = "System mic changed to %@";
-"%@没选虚拟麦克风，对方听不到译文" = "%@ isn't on the virtual mic, so they can't hear you";
-"虚拟麦克风尚未设置好，对方听不到你的声音" = "The virtual microphone isn't set up; they can't hear you";
+"跟随系统的网页听不到译文" = "Pages on the default mic won't hear the translation";
 "显示方式" = "Display";
 "轮换" = "to switch";
 "屏幕上不出字幕，文字记录照常保存" = "Nothing on screen; the transcript is still saved";
@@ -707,26 +734,37 @@
 "纪要窗口已打开" = "Notes window is open";
 "纪要窗口已收起" = "Notes window is hidden";
 "对方现在能看到纪要窗口" = "Others can see the notes window now";
-"同声传译设置…" = "Interpreting Settings…";
-"系统麦克风换成 %@" = "Switch System Mic to %@";
-"还原系统麦克风" = "Restore System Mic";
+"系统麦克风换成 %@" = "System mic switches to %@";
+"译文送进 %@" = "Translations go into %@";
+"先装好虚拟麦克风，对方才听得到" = "Install the virtual mic first so others can hear";
+"打开：%@，按住 %@ 说话\n关掉：全部还原" = "On: %@; hold %@ to talk\nOff: everything goes back";
+"先试一句 →" = "Try one sentence first →";
+"说%@ → %@" = "%1$@ → %2$@";
+"按住说%@" = "Hold to speak %@";
+"正在翻译…" = "Translating…";
+"正在播出…" = "Playing…";
+"松开后播出%@" = "Release to play in %@";
+"打开后：" = "When on:";
+"按住" = "Hold";
+"说话，松开后播出译文" = "to talk, release to play the translation";
+"关掉后全部还原" = "Turning it off puts everything back";
+"好，打开" = "Turn On";
+"虚拟麦克风还没装好" = "Virtual mic isn't set up yet";
+"对方听到 %@ · %@" = "They hear %@ · %@";
+"对方听到 %@" = "They hear %@";
 "搜索" = "Search";
-"导出…" = "Export…";
-"收起更早的会议" = "Hide earlier meetings";
-"更早的会议" = "Earlier meetings";
-"还没有会议" = "No meetings yet";
-"打开会议或视频，开始听后，每一场都会存在这里。" = "Open a meeting or a video and start listening: each one is kept here.";
-"先听一段示例" = "Try a sample first";
 "没有找到“%@”" = "Nothing found for “%@”";
 "今天" = "Today";
 "昨天" = "Yesterday";
 "本周" = "This Week";
+"收起更早的会议" = "Hide earlier meetings";
+"更早的会议" = "Earlier meetings";
 "未命名会议" = "Untitled meeting";
+"%lld 小时" = "%lld h";
+"%lld 小时 %lld 分" = "%lld h %lld min";
 "在 Finder 中显示" = "Show in Finder";
 "恢复自动标题" = "Restore Automatic Title";
 "删除" = "Delete";
-"%lld 小时" = "%lld h";
-"%lld 小时 %lld 分" = "%lld h %lld min";
 "英语" = "English";
 "日语" = "Japanese";
 "中文" = "Chinese";
@@ -736,21 +774,21 @@
 "法语" = "French";
 "德语" = "German";
 "葡语" = "Portuguese";
-"开始听" = "Start listening";
 "正在听，说话的内容会出现在这里" = "Listening; what's said will appear here";
 "这场会议没有记录到内容" = "Nothing was recorded in this meeting";
-"译文" = "Translation";
+"还没有会议" = "No meetings yet";
+"打开会议或视频，开始听后，每一场都会存在这里。" = "Open a meeting or a video and start listening: each one is kept here.";
+"先听一段示例" = "Try a sample first";
+"收起原话" = "Hide original";
+"在纪要旁显示原话" = "Show the original beside the notes";
 "复制为 Markdown" = "Copy as Markdown";
 "导出 Markdown…" = "Export Markdown…";
 "导出 Word…" = "Export Word…";
 "导出字幕 SRT…" = "Export SRT Subtitles…";
-"标题" = "Title";
+"导出…" = "Export…";
 "完整版纪要" = "Full notes";
 "速记版纪要" = "Draft notes";
-"原话" = "Original";
-"收起原话" = "Hide original";
-"在纪要旁显示原话" = "Show the original beside the notes";
-"此刻" = "Now";
+"标题" = "Title";
 "全部 %lld 句" = "All %lld lines";
 "翻译中…" = "Translating…";
 "正在整理纪要…" = "Writing notes…";
@@ -770,8 +808,7 @@
 "%@要让系统认出虚拟麦克风，声音会断约 1 秒。" = "%@ needs to load the virtual microphone; audio will cut out for about 1 second.";
 
 /* VoicePicker */
-"你说%@，对方听到%@" = "You speak %@, they hear %@";
-"改语言" = "Change";
+"声音" = "Voice";
 "选择对方听到的声音" = "Choose the voice they hear";
 "试听" = "Preview";
 "系统声音" = "System voice";

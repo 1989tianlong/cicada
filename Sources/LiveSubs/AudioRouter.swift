@@ -62,6 +62,44 @@ final class AudioRouter: @unchecked Sendable {
     /// The last short pause between words, on the analyzer's clock: where it ended and how long it was.
     private var pause: (end: Double, length: Double) = (0, 0)
 
+    /// Experimental voiceprints: the last `voiceLimit` seconds as 16 kHz mono floats, placed on
+    /// the analyzer clock so a result's time range finds its audio.
+    private let voiceConverter = PCMConverter()
+    private let voiceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+    private var voiceCapture = false
+    private var voice: [Float] = []
+    private var voiceStart = 0.0
+    private let voiceLimit = 90.0
+
+    func setVoiceCapture(_ on: Bool) {
+        queue.async { [self] in
+            voiceCapture = on
+            if !on { voice = []; voiceStart = 0 }
+        }
+    }
+
+    /// 16 kHz mono audio between two analyzer-clock times, or nil when it's no longer kept.
+    func voiceSamples(from start: Double, to end: Double) -> [Float]? {
+        queue.sync {
+            let a = Int(((start - voiceStart) * 16000).rounded()), b = Int(((end - voiceStart) * 16000).rounded())
+            guard a >= 0, b > a, b <= voice.count + 1600 else { return nil }
+            // A voiceprint uses at most `Voiceprints.maxSeconds`; don't copy more.
+            return Array(voice[a..<min(b, voice.count, a + Int(Voiceprints.maxSeconds * 16000))])
+        }
+    }
+
+    private func keepVoice(_ mono: AVAudioPCMBuffer) {
+        guard voiceCapture, continuation != nil,
+              let b = voiceConverter.convert(mono, to: voiceFormat), let d = b.floatChannelData else { return }
+        if voice.isEmpty { voiceStart = fed }
+        voice.append(contentsOf: UnsafeBufferPointer(start: d[0], count: Int(b.frameLength)))
+        let over = voice.count - Int(voiceLimit * 16000)
+        if over > 16000 {
+            voice.removeFirst(over)
+            voiceStart += Double(over) / 16000
+        }
+    }
+
     private var recordURL: URL?
     private var recorder: AVAudioFile?
 
@@ -102,6 +140,7 @@ final class AudioRouter: @unchecked Sendable {
 
         guard let format, let converted = converter.convert(mono, to: format) else { return }
         continuation?.yield(AnalyzerInput(buffer: converted))
+        keepVoice(mono)
         if continuation != nil { fed += seconds }
         record(converted)
         ring.append((converted, seconds, voiced))
@@ -143,6 +182,10 @@ final class AudioRouter: @unchecked Sendable {
         queue.sync {
             fed = 0
             pause = (0, 0)
+            // The clock restarts; replayed audio (below) keeps its samples at the new times.
+            let keptVoice = voice
+            voice = []
+            voiceStart = 0
             if self.format != format {
                 ring.removeAll()
                 ringSeconds = 0
@@ -156,6 +199,7 @@ final class AudioRouter: @unchecked Sendable {
                 }
                 for buffer in replay.reversed() { continuation.yield(AnalyzerInput(buffer: buffer)) }
                 fed = acc
+                voice = Array(keptVoice.suffix(Int(acc * 16000)))
             }
             self.format = format
             self.continuation?.finish()
@@ -176,6 +220,8 @@ final class AudioRouter: @unchecked Sendable {
             continuation = nil
             ring.removeAll()
             ringSeconds = 0
+            voice = []
+            voiceStart = 0
             voicedTotal = 0
             silenceRun = 0
             sinceGap = 0

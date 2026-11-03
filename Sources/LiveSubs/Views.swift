@@ -7,6 +7,13 @@ enum Palette {
     static let line = Color(red: 0.894, green: 0.902, blue: 0.918)
     static let secondary = Color(red: 0.353, green: 0.373, blue: 0.42)
     static let tertiary = Color(red: 0.42, green: 0.44, blue: 0.50)
+    /// Body text in the records window: darker than the greys, lighter than headings.
+    static let body = Color(red: 0.239, green: 0.255, blue: 0.29)
+    /// Times you can click to jump to the original, and the numbers that order notes: the logo's
+    /// orange as ink, so text stays in the brand's family while the bright accent stays "live".
+    static let link = Color(red: 0.70, green: 0.23, blue: 0.08)
+    /// Highlighter behind numbers and dates in the conclusions.
+    static let mark = Color(red: 1.0, green: 0.906, blue: 0.639)
     static let accent = Color(red: 0.91, green: 0.33, blue: 0.17)
     static let accentInk = Color(red: 0.70, green: 0.23, blue: 0.08)
     static let accentPale = Color(red: 0.99, green: 0.93, blue: 0.906)
@@ -92,16 +99,6 @@ struct MenuPanelView: View {
         }
     }
 
-    @ViewBuilder private var holdKey: some View {
-        Text("按住").foregroundStyle(Palette.secondary)
-        KeyCap(settings.talkKey.display)
-    }
-
-    private var speakRoute: some View {
-        Text("说\(settings.speakFromLang.name) → \(targetName(model.speak.targetCode))")
-            .foregroundStyle(Palette.secondary).lineLimit(1).fixedSize()
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
@@ -153,38 +150,7 @@ struct MenuPanelView: View {
 
             Divider()
 
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("同声传译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
-                    // The languages drop to their own line when the row is too narrow (English, "Right ⌥").
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 5) { holdKey; speakRoute }
-                        VStack(alignment: .leading, spacing: 4) { HStack(spacing: 5) { holdKey }; speakRoute }
-                    }
-                    .font(.system(size: 12))
-                    // Green only when nothing needs fixing; the warning row below covers the rest.
-                    if settings.speakEnabled, !model.micUsers.contains(where: { $0.state.isOther }),
-                       let user = model.micUsers.first(where: { $0.state == .virtualMic }) {
-                        HStack(spacing: 6) {
-                            Circle().fill(Palette.ok).frame(width: 7, height: 7)
-                            Text("\(user.name)已选虚拟麦克风").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                        }
-                    } else if settings.speakEnabled, !model.micUsers.contains(where: { $0.state.isOther }),
-                              case .switched = model.systemMicState {
-                        HStack(spacing: 6) {
-                            Circle().fill(Palette.ok).frame(width: 7, height: 7)
-                            Text("系统麦克风已换成 \(model.virtualMic?.name ?? "BlackHole 2ch")").font(.system(size: 12))
-                                .foregroundStyle(Palette.secondary).lineLimit(1)
-                        }
-                    }
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    speakMenu
-                    Toggle("同声传译", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
-                        .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
-                }
-            }
+            speakSection
             if let strip = systemMicStrip {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -193,24 +159,6 @@ struct MenuPanelView: View {
                     }
                     Spacer()
                     SoftButton(strip.button, dark: true, action: strip.action)
-                }
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
-            }
-            if settings.speakEnabled, model.virtualMic != nil, let user = model.micUsers.first(where: { $0.state.isOther }) {
-                HStack {
-                    Text("\(user.name)没选虚拟麦克风，对方听不到译文").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
-                    Spacer()
-                    SoftButton(L("怎么改")) { model.showMicGuide(user) }
-                }
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
-            }
-            if settings.speakEnabled && model.virtualMic == nil {
-                HStack {
-                    Text("虚拟麦克风尚未设置好，对方听不到你的声音").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
-                    Spacer()
-                    SoftButton(L("设置")) { model.openSettings(.speak) }
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 9).fill(Palette.accentPale))
@@ -327,31 +275,6 @@ extension MenuPanelView {
         }
     }
 
-    /// ⋯ next to the 同声传译 switch: its settings, 试一句, and putting the system mic back by hand.
-    var speakMenu: some View {
-        Menu {
-            Button("同声传译设置…") { model.openSettings(.speak) }
-            Button("试一句") { model.openSettings(.speak); model.speakTestShown = true }
-                .disabled(model.virtualMic == nil)
-            Divider()
-            switch model.systemMicState {
-            case .moved, .off where model.wantsSystemMic:
-                Button("系统麦克风换成 \(model.virtualMic?.name ?? "BlackHole 2ch")") { model.switchSystemMic() }
-            default:
-                Button("还原系统麦克风") { model.restoreSystemMic() }
-                    .disabled(model.systemMicState == .off)
-            }
-        } label: {
-            Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
-                .frame(width: 26, height: 22)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.fill))
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        .help("同声传译选项")
-    }
-
-    /// Something left the system mic wrong: say what, and the one button that fixes it.
     var systemMicStrip: (title: String, detail: String, button: String, action: () -> Void)? {
         let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
         switch model.systemMicState {
@@ -362,6 +285,180 @@ extension MenuPanelView {
         default:
             return nil
         }
+    }
+}
+
+// MARK: - 同声传译 in the panel
+
+extension MenuPanelView {
+    private var speakFrom: String { settings.speakFromLang.name }
+    private var speakTarget: String { targetName(model.speak.targetCode) }
+    private var talkKeyName: String { settings.talkKey.display }
+
+    /// What the switch changes, on hover and in the one-time question.
+    private var speakMicLine: String {
+        guard let mic = model.virtualMic?.name else { return L("先装好虚拟麦克风，对方才听得到") }
+        return settings.autoSystemMic ? L("系统麦克风换成 \(mic)") : L("译文送进 \(mic)")
+    }
+
+    private var speakHelp: String {
+        L("打开：\(speakMicLine)，按住 \(talkKeyName) 说话\n关掉：全部还原")
+    }
+
+    /// 同声传译: the first time the switch asks in place what it changes; once on, the talk key is
+    /// the section, and whatever stops the room hearing you shows on it.
+    var speakSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("同声传译").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    if !settings.speakEnabled && !model.speakAsking {
+                        Text("说\(speakFrom) → \(speakTarget)").font(.system(size: 12))
+                            .foregroundStyle(Palette.secondary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                if settings.speakEnabled {
+                    Button("设置") { model.openSettings(.speak) }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                }
+                Toggle("同声传译", isOn: Binding(get: { settings.speakEnabled || model.speakAsking }, set: setSpeaking))
+                    .toggleStyle(.switch).labelsHidden()
+                    .tint(model.speakAsking ? Palette.tertiary : Palette.ink)
+                    .help(speakHelp)
+            }
+            if model.speakAsking {
+                speakQuestion
+            } else if settings.speakEnabled {
+                talkCard
+                if model.lastSpeakLatency == nil, model.virtualMic != nil, model.speakPhase == .idle {
+                    Button("先试一句 →") { model.openSettings(.speak); model.speakTestShown = true }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                }
+            }
+        }
+    }
+
+    private func setSpeaking(_ on: Bool) {
+        if on && !settings.speakConfirmed { model.speakAsking = true; return }
+        model.speakAsking = false
+        if on != settings.speakEnabled { model.enableSpeaking(on) }
+    }
+
+    /// Asked once: switching the system mic is a change people should hear about before it happens.
+    private var speakQuestion: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("打开后：").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+            questionLine(1) { Text(speakMicLine) }
+            questionLine(2) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 4) { Text("按住"); KeyCap(talkKeyName); Text("说话，松开后播出译文") }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) { Text("按住"); KeyCap(talkKeyName) }
+                        Text("说话，松开后播出译文")
+                    }
+                }
+            }
+            questionLine(3) { Text("关掉后全部还原") }
+            HStack(spacing: 8) {
+                Spacer()
+                SoftButton(L("取消"), onGrey: true) { model.speakAsking = false }
+                SoftButton(L("好，打开"), dark: true) { model.speakAsking = false; model.enableSpeaking(true) }
+            }
+            .padding(.top, 2)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Palette.ground))
+    }
+
+    private func questionLine<C: View>(_ n: Int, @ViewBuilder _ content: () -> C) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(n)").foregroundStyle(Palette.tertiary).frame(width: 12, alignment: .leading)
+            content().foregroundStyle(Palette.ink).fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.system(size: 12))
+    }
+
+    /// The first thing keeping the room from hearing you, with the one action that fixes it.
+    private var talkProblem: (text: String, button: String, action: () -> Void)? {
+        if model.talkNeedsPermission {
+            return (L("按键还需要“输入监控”权限"), L("去允许"), model.allowTalkKey)
+        }
+        if model.virtualMic == nil {
+            return (L("虚拟麦克风还没装好"), L("设置"), { model.openSettings(.speak) })
+        }
+        if let user = model.micUsers.first(where: { $0.state.isOther }) {
+            let text: String
+            if case .otherMic(let mic) = user.state, !mic.isEmpty { text = L("\(user.name)还在用 \(mic)") }
+            else { text = L("\(user.name)没选虚拟麦克风") }
+            return (text, L("怎么改"), { model.showMicGuide(user) })
+        }
+        return nil
+    }
+
+    private var talkCard: some View {
+        let phase = model.speakPhase
+        let live = phase != .idle
+        let problem = live ? nil : talkProblem
+        let title: String = switch phase {
+        case .idle: L("按住说\(speakFrom)")
+        case .listening: L("正在听…")
+        case .translating: L("正在翻译…")
+        case .speaking: L("正在播出…")
+        }
+        let hearer = model.micUsers.first { $0.state == .virtualMic }?.name
+        let detail = phase == .listening ? L("松开后播出\(speakTarget)")
+            : live ? L("说\(speakFrom) → \(speakTarget)")
+            : hearer.map { L("对方听到 \(speakTarget) · \($0)") } ?? L("对方听到 \(speakTarget)")
+        return HStack(spacing: 12) {
+            TalkKeyCap(text: talkKeyName, pressed: phase == .listening, live: live)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(live ? Palette.accentInk : Palette.ink).lineLimit(1)
+                if let problem {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(problem.text).foregroundStyle(Palette.accentInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(problem.button, action: problem.action)
+                            .buttonStyle(.plain).fontWeight(.semibold).foregroundStyle(Palette.accentInk).fixedSize()
+                    }
+                    .font(.system(size: 11))
+                } else {
+                    Text(detail).font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 4)
+            if !live {
+                Circle().fill(problem == nil ? Palette.ok : Palette.accent).frame(width: 7, height: 7)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(live ? Palette.accentWash : Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(live ? Palette.accent : Palette.line, lineWidth: 1))
+        .animation(.easeOut(duration: 0.15), value: live)
+    }
+}
+
+/// The talk key drawn as a key: raised while it waits, pressed down while you hold it.
+struct TalkKeyCap: View {
+    let text: String
+    let pressed: Bool
+    let live: Bool
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(live ? Palette.accentInk : Palette.ink)
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 8)
+            .frame(minWidth: 44, minHeight: 32)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(live ? Palette.accent : Color(white: 0.82), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 7).fill(live ? Palette.accent : Color(white: 0.82)).offset(y: pressed ? 0 : 2))
+            .offset(y: pressed ? 2 : 0)
+            .padding(.bottom, 2)
     }
 }
 
@@ -809,16 +906,17 @@ struct MainWindowView: View {
             HStack(spacing: 8) {
                 if live { Tag(L("正在记录"), live: true) }
                 Text([dateText(s.startedAt, "MMMdHHmm"), Self.length(s)].joined(separator: " · "))
-                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary).lineLimit(1)
+                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary).lineLimit(1)
                     .help(([dateLine(s, live: live)] + more.compactMap { $0 }).joined(separator: " · "))
             }
             TextField("标题", text: Binding(
-                get: { titleDraft.isEmpty ? s.displayTitle : titleDraft },
+                // The date is on the line above; a notes title that starts with it shows without.
+                get: { titleDraft.isEmpty ? Self.listTitle(s) : titleDraft },
                 set: { titleDraft = $0 }
             ), axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.system(size: 30, weight: .bold))
-            .padding(.top, 10)
+            .font(.system(size: 26, weight: .semibold))
+            .padding(.top, 8)
             .onSubmit {
                 if !titleDraft.isEmpty { store.rename(s.id, to: titleDraft) }
                 titleDraft = ""
@@ -840,10 +938,14 @@ struct MainWindowView: View {
                             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     }
                     .padding(.bottom, 8)
+                    let speakers = settings.speakerVoices ? SpeakerLabels.numbers(s.lines) : [:]
+                    let starts = SpeakerLabels.runStarts(s.lines, speakers)
                     ForEach(s.lines) { l in
-                        quoteRow(l, picked: quoteJump.map { t in l.id == pickedLine(s, t)?.id } ?? false).id(l.id)
+                        quoteRow(l, speaker: speakers[l.id], picked: quoteJump.map { t in l.id == pickedLine(s, t)?.id } ?? false,
+                                 label: starts.contains(l.id), voices: !speakers.isEmpty).id(l.id)
                     }
                 }
+                .environment(\.speakerNames, SpeakerLabels.names(s))
                 .padding(.vertical, 40)
             }
             .scrollIndicators(.never)
@@ -865,8 +967,16 @@ struct MainWindowView: View {
     }
 
     /// Whitespace between lines, no rules; the picked line gets a soft fill.
-    private func quoteRow(_ l: TranscriptLine, picked: Bool) -> some View {
+    private func quoteRow(_ l: TranscriptLine, speaker: Int?, picked: Bool, label: Bool = true, voices: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
+            // Only once voices are told apart (or for your own lines): one speaker needs no label;
+            // and only where the speaker changes.
+            if !label {
+            } else if let speaker { SpeakerTag(number: speaker).padding(.bottom, 2) }
+            else if voices, l.speaker != "me" { UnknownSpeakerTag().padding(.bottom, 2) }
+            else if l.speaker == "me" {
+                Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk).padding(.bottom, 2)
+            }
             Text(l.src).font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(1)
                 .textSelection(.enabled)
             Text(l.dst ?? L("翻译中…")).font(.system(size: 14)).lineSpacing(2)
@@ -891,8 +1001,14 @@ struct MainWindowView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     header(s).padding(.bottom, 16)
-                    ForEach(s.lines) { l in lineRow(l).id(l.id) }
+                    let speakers = settings.speakerVoices ? SpeakerLabels.numbers(s.lines) : [:]
+                    if !speakers.isEmpty { SpeakerStrip(model: model, session: s).padding(.bottom, 8) }
+                    let starts = SpeakerLabels.runStarts(s.lines, speakers)
+                    ForEach(s.lines) { l in
+                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty).id(l.id)
+                    }
                 }
+                .environment(\.speakerNames, SpeakerLabels.names(s))
                 .frame(maxWidth: 680)
                 .padding(.horizontal, 40).padding(.vertical, 36)
                 .frame(maxWidth: .infinity)
@@ -909,15 +1025,20 @@ struct MainWindowView: View {
         }
     }
 
-    private func lineRow(_ l: TranscriptLine) -> some View {
+    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false) -> some View {
         let me = l.speaker == "me"
         return HStack(alignment: .top, spacing: 16) {
             Text(TranscriptExport.clock(l.t))
                 .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
                 .frame(width: 52, alignment: .leading).padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
+                if !label {
+                } else if let speaker { SpeakerTag(number: speaker) }
+                else if voices, !me { UnknownSpeakerTag() }
+                else {
+                    Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
+                }
                 if view != "dst" {
                     Text(l.src)
                         .font(.system(size: view == "src" ? 15 : 13))

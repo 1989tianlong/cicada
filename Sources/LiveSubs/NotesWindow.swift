@@ -613,13 +613,9 @@ struct NotesWindowView: View {
         } else if engine.state == .noKey || engine.state == .invalidKey {
             Spacer()
         } else if live && heard == 0 {
-            VStack {
-                Spacer()
-                NotesListeningView()
-                Spacer()
-                Spacer()
+            ScrollView {
+                NotesListeningView().padding(.horizontal, 24).padding(.vertical, 12)
             }
-            .frame(maxWidth: .infinity)
         } else if live || (session != nil && engine.generatingID == session?.id) {  // nil == nil is not "generating"
             ScrollView {
                 NotesGeneratingView(heard: heard).padding(.horizontal, 24).padding(.vertical, 12)
@@ -671,9 +667,18 @@ struct NotesWindowView: View {
 
     private var transcript: some View {
         let ms = matches
-        return TranscriptListView(lines: session?.lines ?? [], topics: engine.notes.topics, terms: searchTerms,
-                                  currentMatch: ms.isEmpty ? nil : ms[currentIndex], live: live,
-                                  partial: model.liveSource, partialTime: elapsed, jumpTo: jumpTo)
+        let lines = session?.lines ?? []
+        let speakers = model.settings.speakerVoices ? SpeakerLabels.numbers(lines) : [:]
+        return VStack(alignment: .leading, spacing: 10) {
+            if !speakers.isEmpty, let s = session {
+                SpeakerStrip(model: model, session: s) { voice in model.editSpeaker(session: s.id, voice: voice) }
+            }
+            TranscriptListView(lines: lines, topics: engine.notes.topics, terms: searchTerms,
+                               currentMatch: ms.isEmpty ? nil : ms[currentIndex], live: live,
+                               partial: model.liveSource, partialTime: elapsed, jumpTo: jumpTo, speakers: speakers,
+                               startedAt: store.liveStart)
+        }
+        .environment(\.speakerNames, session.map(SpeakerLabels.names) ?? [:])
     }
 
     @ViewBuilder

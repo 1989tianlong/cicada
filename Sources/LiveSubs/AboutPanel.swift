@@ -27,6 +27,10 @@ enum AboutPanel {
             linked[.link] = url
             text.append(NSAttributedString(string: title, attributes: linked))
         }
+        var note = plain
+        note[.foregroundColor] = NSColor.secondaryLabelColor
+        note[.font] = NSFont.systemFont(ofSize: 10)
+        text.append(NSAttributedString(string: "\n" + L("声纹模型：WeSpeaker ResNet34-LM（VoxCeleb），CC BY 4.0"), attributes: note))
         if let dev = DevBuild.label {
             var secondary = plain
             secondary[.foregroundColor] = NSColor.secondaryLabelColor

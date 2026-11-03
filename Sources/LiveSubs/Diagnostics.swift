@@ -185,17 +185,26 @@ struct DiagnosticsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(subtitle).font(.system(size: 12)).foregroundStyle(Palette.secondary).padding(.top, -8)
-            HStack(spacing: 8) {
-                tile(L("说完到上屏"), diagnostics.endToEnd, dark: true)
-                tile(L("识别定稿"), diagnostics.recognize)
-                tile(L("翻译"), diagnostics.translate)
-                tile(L("纪要一轮"), diagnostics.notesRounds)
+            if empty {
+                // Nothing measured yet: four dashes, a grey bar and zeros read as broken. Show
+                // what each stage is and the shape a sentence will take instead.
+                pipeline
+                emptyChannels
+                emptyRecent
+            } else {
+                HStack(spacing: 8) {
+                    tile(L("说完到上屏"), diagnostics.endToEnd, dark: true)
+                    tile(L("识别定稿"), diagnostics.recognize)
+                    tile(L("翻译"), diagnostics.translate)
+                    tile(L("纪要一轮"), diagnostics.notesRounds)
+                }
+                providers
+                lingCard
+                recent
             }
-            providers
-            lingCard
-            recent
             HStack(spacing: 8) {
-                SoftButton(copied ? L("已复制") : L("复制诊断信息"), dark: true) { copy() }
+                SoftButton(copied ? L("已复制") : L("复制诊断信息"), dark: !empty) { copy() }
+                    .disabled(empty)
                 // The meeting folder holds metrics.jsonl; the log only exists in dev builds or with `debug` on.
                 SoftButton(diagnostics.folder() == nil ? L("打开日志") : L("打开本场数据")) {
                     NSWorkspace.shared.open(diagnostics.folder() ?? URL(fileURLWithPath: DevBuild.logPath))
@@ -207,8 +216,11 @@ struct DiagnosticsView: View {
         .onReceive(timer) { tick = $0 }
     }
 
+    private var empty: Bool { diagnostics.sentences.isEmpty && diagnostics.calls.isEmpty }
+
     private var subtitle: String {
         guard let s = diagnostics.startedAt else { return L("开始聆听后，这里会显示每句话的耗时明细") }
+        if empty { return L("有人说话后，这里会显示每句话的耗时明细") }
         let m = Int((diagnostics.endedAt ?? tick).timeIntervalSince(s) / 60)
         return L("这场会议 · \(m) 分钟 · \(diagnostics.heard.count) 句 · 同声传译 \(diagnostics.said.count) 次")
     }
@@ -224,6 +236,101 @@ struct DiagnosticsView: View {
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(dark ? Palette.ink : Color.white))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(dark ? .clear : Palette.line, lineWidth: 1))
+    }
+
+    // MARK: Before any sentence
+
+    private var pipeline: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("一句话的路").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Spacer()
+                Text("还没有句子").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+            }
+            TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Palette.fill).frame(height: 4)
+                        Circle().fill(Palette.accent).frame(width: 10, height: 10)
+                            .offset(x: phase(ctx.date, period: 2.4) * (g.size.width - 10))
+                    }
+                    .frame(maxHeight: .infinity)
+                }
+            }
+            .frame(height: 10).padding(.horizontal, 14).accessibilityHidden(true)
+            HStack(alignment: .top, spacing: 8) {
+                stage(L("识别定稿"), L("听清这句话"))
+                stage(L("翻译"), L("译成目标语言"))
+                stage(L("说完到上屏"), L("你感到的延迟"))
+                stage(L("纪要一轮"), L("更新一次纪要"))
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line, lineWidth: 1))
+    }
+
+    private func stage(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail).font(.system(size: 11)).foregroundStyle(Palette.tertiary).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("– s").font(.system(size: 18, weight: .bold).monospacedDigit()).foregroundStyle(Palette.placeholder)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
+    }
+
+    private var emptyChannels: some View {
+        SettingsCard {
+            SettingsRow(title: L("翻译通道")) {
+                HStack(spacing: 12) {
+                    ForEach(["ling", "google", "apple"], id: \.self) { v in
+                        HStack(spacing: 5) {
+                            RoundedRectangle(cornerRadius: 2).fill(Self.color(v)).frame(width: 8, height: 8)
+                            Text(Self.name(v)).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                        }
+                    }
+                }
+            }
+            SettingsRow(title: L("Ling 用量"), detail: L("账号上限约每秒 2 次"), divider: false) {
+                Text("本场还没调用").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+            }
+        }
+    }
+
+    private var emptyRecent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("最近的句子").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+            HStack(spacing: 10) {
+                Text("示例 · 对方").font(.system(size: 12)).foregroundStyle(Palette.tertiary).frame(width: 150, alignment: .leading)
+                HStack(spacing: 1) {
+                    RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.42, green: 0.44, blue: 0.50)).frame(width: 70)
+                    RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.96, green: 0.78, blue: 0.71)).frame(width: 18)
+                    RoundedRectangle(cornerRadius: 2).fill(Palette.ink).frame(width: 46)
+                }
+                .frame(height: 10)
+                Spacer(minLength: 0)
+                Text("2.4s").font(.system(size: 12, weight: .semibold).monospacedDigit())
+            }
+            .opacity(0.5)
+            HStack(spacing: 14) {
+                legend(Color(red: 0.42, green: 0.44, blue: 0.50), L("识别"))
+                legend(Color(red: 0.96, green: 0.78, blue: 0.71), L("排队"))
+                legend(Palette.ink, L("翻译"))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line, lineWidth: 1))
+    }
+
+    private func legend(_ color: Color, _ title: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
+            Text(title).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+        }
     }
 
     private static func color(_ via: String) -> Color {

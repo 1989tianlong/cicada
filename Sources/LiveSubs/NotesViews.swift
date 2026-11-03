@@ -155,11 +155,12 @@ private struct DocumentNotesView: View {
         VStack(alignment: .leading, spacing: 40) {
             let items = notes.conclusions + notes.todos
             if !items.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(notes.todos.isEmpty ? L("结论") : L("结论和待办"))
-                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.secondary)
+                        .padding(.bottom, 2)
                     ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                        conclusion(item, todo: i >= notes.conclusions.count)
+                        conclusion(item, index: i + 1, todo: i >= notes.conclusions.count)
                     }
                 }
                 .padding(.horizontal, 24).padding(.vertical, 22)
@@ -168,13 +169,13 @@ private struct DocumentNotesView: View {
             }
 
             if !notes.summary.isEmpty {
-                Text(notes.summary).font(.system(size: 15)).lineSpacing(9).foregroundStyle(Palette.secondary)
+                Text(notes.summary).font(.system(size: 15)).lineSpacing(9).foregroundStyle(Palette.body)
                     .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }
 
             if !notes.topics.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("议题").font(.system(size: 12)).foregroundStyle(Palette.secondary).padding(.bottom, 8)
+                    Text("议题").font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.tertiary).padding(.bottom, 8)
                     ForEach(Array(notes.topics.enumerated()), id: \.element.id) { i, topic in
                         let current = live && i == notes.topics.count - 1
                         Rectangle().fill(MainWindowView.hairline).frame(height: 1)
@@ -189,7 +190,7 @@ private struct DocumentNotesView: View {
 
             if !notes.terms.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("人名和术语").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    Text("人名和术语").font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.tertiary)
                     FlowLayout(spacing: 6) {
                         ForEach(notes.terms) { t in
                             (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)"))
@@ -203,20 +204,51 @@ private struct DocumentNotesView: View {
         }
     }
 
-    /// A conclusion reads as a sentence; clicking it jumps to the lines behind it.
-    private func conclusion(_ item: NoteItem, todo: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            if todo { Image(systemName: "circle").font(.system(size: 13)).foregroundStyle(Palette.secondary) }
-            Text(item.text + (item.owner.map { "（\($0)）" } ?? ""))
-                .font(.system(size: 17, weight: .medium)).lineSpacing(5)
-                .foregroundStyle(item.support == 0 ? Palette.secondary : Palette.ink)
+    /// A conclusion reads as a plain sentence, numbered, with its numbers and dates marked; clicking it
+    /// jumps to the lines behind it. One with little support stays grey.
+    private func conclusion(_ item: NoteItem, index: Int, todo: Bool) -> some View {
+        let weak = item.support == 0
+        let text = item.text + (item.owner.map { "（\($0)）" } ?? "")
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Group {
+                if todo { Image(systemName: "circle").font(.system(size: 11)) } else { Text("\(index)").font(.system(size: 12).monospacedDigit()) }
+            }
+            .fontWeight(.semibold).foregroundStyle(weak ? Palette.secondary : Palette.link).frame(width: 16, alignment: .leading)
+            Text(weak ? AttributedString(text) : Highlight.facts(text))
+                .font(.system(size: 15)).lineSpacing(5)
+                .foregroundStyle(weak ? Palette.secondary : Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if item.support == 0 { Tag(L("依据较少")) }
+            if weak { Tag(L("依据较少")) }
+            if let t = item.t, !weak { TimeLink(text: NotesEngine.clock(t), t: t, onJump: onJump) }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { if let t = item.t { onJump(t) } }
-        .help(item.t.map { L("\(NotesEngine.clock($0)) · \(item.support) 句") } ?? "")
+        .padding(.vertical, 3)
+    }
+}
+
+/// Numbers with their units and day words ("5000 元", "20 岁", "3月3日", "周五晚上") in a conclusion,
+/// marked so the facts can be picked out at a glance.
+enum Highlight {
+    private static let pattern = try! NSRegularExpression(pattern:
+        "(\\d+\\s*月\\s*\\d+\\s*[日号])"
+        + "|((下|本|这|上)?(周|星期|礼拜)[一二三四五六日天](早上|上午|中午|下午|晚上)?)"
+        + "|(\\d[\\d,.]*\\s*(万|千|百|亿)?\\s*(元|块|美元|岁|人|个|次|天|周|个月|月|年|小时|分钟|点|号|%|％|k|K)?)"
+        + "|((今天|明天|后天|昨天|月底|月初|年底)(早上|上午|中午|下午|晚上)?)")
+
+    static func facts(_ text: String) -> AttributedString {
+        var out = AttributedString(text)
+        let ns = text as NSString
+        for m in pattern.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            // A lone digit (list numbers, "第1") is noise; keep multi-digit numbers, units and days.
+            let hit = ns.substring(with: m.range)
+            if hit.count < 2 { continue }
+            guard let r = Range(m.range, in: text),
+                  let lo = AttributedString.Index(r.lowerBound, within: out),
+                  let hi = AttributedString.Index(r.upperBound, within: out) else { continue }
+            out[lo..<hi].backgroundColor = Palette.mark
+            out[lo..<hi].font = .system(size: 15, weight: .semibold)
+        }
+        return out
     }
 }
 
@@ -241,9 +273,9 @@ private struct DocumentTopicRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Button { withAnimation(.easeOut(duration: 0.2)) { open.toggle() } } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(String(format: "%02d", index + 1)).font(.system(size: 12, weight: .bold).monospacedDigit())
-                            .foregroundStyle(Palette.secondary).frame(width: 28, alignment: .leading)
-                        Text(topic.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
+                        Text(String(format: "%02d", index + 1)).font(.system(size: 12, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(Palette.link).frame(width: 28, alignment: .leading)
+                        Text(topic.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
                             .multilineTextAlignment(.leading)
                         if current { Tag(L("正在讲"), live: true) }
                         if fresh.contains(topic.title) && !current { Tag(L("新"), live: true) }
@@ -261,13 +293,13 @@ private struct DocumentTopicRow: View {
             if open {
                 VStack(alignment: .leading, spacing: 7) {
                     if !topic.summary.isEmpty {
-                        Text(topic.summary).font(.system(size: 15)).lineSpacing(6).foregroundStyle(Palette.secondary)
+                        Text(topic.summary).font(.system(size: 14)).lineSpacing(6).foregroundStyle(Palette.body)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     ForEach(Array(topic.points.enumerated()), id: \.offset) { i, p in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text("·").foregroundStyle(Palette.secondary)
-                            Text(p).font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
+                            Text(p).font(.system(size: 14)).lineSpacing(5).foregroundStyle(Palette.ink).textSelection(.enabled)
                                 .fixedSize(horizontal: false, vertical: true)
                             if fresh.contains(p) { Tag(L("新"), live: true) }
                         }
@@ -366,9 +398,10 @@ struct TimeLink: View {
     var body: some View {
         Button { onJump(t) } label: {
             Text(text).font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(hover ? Palette.ink : Palette.tertiary)
+                .fontWeight(.medium)
+                .foregroundStyle(Palette.link)
+                .underline(hover)
                 .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 5).fill(hover ? Palette.fill : .clear))
                 .fixedSize()
         }
         .buttonStyle(.plain)
@@ -478,6 +511,10 @@ struct TranscriptListView: View {
     var partial = ""
     var partialTime: Double?
     var jumpTo: Double?
+    /// Experimental: line id → speaker number for the other side's lines (SpeakerLabels).
+    var speakers: [String: Int] = [:]
+    /// When listening began, for the start mark shown before the first line.
+    var startedAt: Date?
 
     @State private var following = true
     @State private var seenCount = 0
@@ -486,7 +523,8 @@ struct TranscriptListView: View {
     /// The caption keeps the last sentence after it is finished: only show text not yet a line.
     private var showsPartial: Bool {
         let p = partial.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard live, !p.isEmpty else { return false }
+        // A lone "." from background noise is not someone speaking.
+        guard live, p.rangeOfCharacter(from: .alphanumerics) != nil else { return false }
         guard let last = lines.last?.src else { return true }
         return !last.contains(p) && !p.contains(last)
     }
@@ -515,6 +553,7 @@ struct TranscriptListView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         let gs = groups
+                        let starts = SpeakerLabels.runStarts(lines, speakers)
                         ForEach(Array(gs.enumerated()), id: \.element.start) { gi, g in
                             // One lazy child per topic group, with an id to scroll to before it is drawn.
                             VStack(alignment: .leading, spacing: 10) {
@@ -524,7 +563,8 @@ struct TranscriptListView: View {
                                 }
                                 FramedList {
                                     ForEach(Array(g.lines.enumerated()), id: \.element.id) { i, l in
-                                        row(l).id(l.id)
+                                        // With voices told apart, a name only where the speaker changes (and atop each topic).
+                                        row(l, label: speakers.isEmpty || i == 0 || starts.contains(l.id)).id(l.id)
                                         if i < g.lines.count - 1 { Divider() }
                                     }
                                     if gi == gs.count - 1, showsPartial {
@@ -536,8 +576,12 @@ struct TranscriptListView: View {
                             .id(groupID(g.start))
                         }
                         if lines.isEmpty && !showsPartial {
-                            Text("说话的内容会出现在这里").font(.system(size: 13)).foregroundStyle(Palette.tertiary)
-                                .frame(maxWidth: .infinity).padding(.top, 40)
+                            if live {
+                                TranscriptWaitingView(startedAt: startedAt)
+                            } else {
+                                Text("说话的内容会出现在这里").font(.system(size: 13)).foregroundStyle(Palette.tertiary)
+                                    .frame(maxWidth: .infinity).padding(.top, 40)
+                            }
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
@@ -650,7 +694,7 @@ struct TranscriptListView: View {
         return a
     }
 
-    private func row(_ l: TranscriptLine) -> some View {
+    private func row(_ l: TranscriptLine, label: Bool = true) -> some View {
         let isMatch = l.id == currentMatch
         let latest = live && l.id == lines.last?.id
         let dim = searching && !matches(l)
@@ -659,7 +703,10 @@ struct TranscriptListView: View {
                 .foregroundStyle(latest || isMatch ? Palette.accentInk : Palette.tertiary)
                 .frame(width: l.t >= 3600 ? 56 : 40, alignment: .leading).padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
+                if !label {
+                } else if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
+                else if let n = speakers[l.id] { SpeakerTag(number: n) }
+                else if !speakers.isEmpty { UnknownSpeakerTag() }
                 Text(highlighted(l.src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                 if bilingual, let d = l.dst, d != l.src {
                     Text(highlighted(d, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
@@ -690,6 +737,75 @@ struct TranscriptListView: View {
         .padding(.horizontal, 14).padding(.vertical, 11)
         .background(Palette.accentWash)
         .id("partial")
+    }
+}
+
+/// The transcript before anyone has spoken: the start mark, two rows in the bilingual shape
+/// lines will take, and 此刻 waiting for the first words.
+struct TranscriptWaitingView: View {
+    var startedAt: Date?
+
+    private static let time: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; return f }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                if let startedAt { Text(Self.time.string(from: startedAt)).monospacedDigit() }
+                Rectangle().fill(MainWindowView.hairline).frame(height: 1)
+                Text("从这里开始听")
+            }
+            .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+            .padding(.bottom, 14)
+            FramedList {
+                skeletonRow(0.7, 0.88)
+                Divider()
+                skeletonRow(0.54, 0.66).opacity(0.55)
+            }
+            HStack(spacing: 16) {
+                legend(Palette.placeholder.opacity(0.6), L("原话"))
+                legend(Palette.ink, L("译文"))
+            }
+            .padding(.top, 10).padding(.leading, 2)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("此刻").font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.accentInk)
+                HStack(spacing: 3) {
+                    Text("等有人开口").font(.system(size: 15)).foregroundStyle(Palette.tertiary)
+                    BlinkingCaret()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Palette.raised))
+            .padding(.top, 28)
+        }
+        .padding(.top, 8)
+    }
+
+    private func skeletonRow(_ a: CGFloat, _ b: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SkeletonBar(fraction: a, height: 9)
+            SkeletonBar(fraction: b, height: 11)
+        }
+        .padding(14)
+    }
+
+    private func legend(_ color: Color, _ title: String) -> some View {
+        HStack(spacing: 6) {
+            Capsule().fill(color).frame(width: 14, height: 4)
+            Text(title)
+        }
+        .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+    }
+}
+
+/// A text caret blinking once a second.
+struct BlinkingCaret: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
+            Rectangle().fill(Palette.accent).frame(width: 2, height: 17)
+                .opacity(Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0 ? 1 : 0)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -766,28 +882,6 @@ func phase(_ date: Date, period: Double, delay: Double = 0) -> Double {
     return (t.truncatingRemainder(dividingBy: period) + period).truncatingRemainder(dividingBy: period) / period
 }
 
-/// Listening, nobody has spoken yet: five sound bars with a soft ring pulsing behind them.
-struct ListeningMark: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
-            let ring = phase(ctx.date, period: 2)
-            ZStack {
-                Circle().fill(Palette.accentPale)
-                    .scaleEffect(0.8 + 0.8 * ring).opacity(0.55 * (1 - ring))
-                HStack(spacing: 6) {
-                    ForEach(0..<5, id: \.self) { i in
-                        let p = phase(ctx.date, period: 1.1, delay: Double(i) * 0.15)
-                        Capsule().fill(Palette.accent).frame(width: 6, height: 44)
-                            .scaleEffect(x: 1, y: 0.25 + 0.75 * (0.5 - 0.5 * cos(p * 2 * .pi)))
-                    }
-                }
-            }
-            .frame(width: 120, height: 120)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
 /// A small orange ring spinner.
 struct Spinner: View {
     var size: CGFloat = 16
@@ -855,17 +949,72 @@ struct SkeletonBar: View {
     }
 }
 
-/// Listening, nothing said yet.
+/// Listening, nothing said yet: one quiet status row, then the notes' own shape waiting to be
+/// filled, so the first version lands where the reader is already looking.
 struct NotesListeningView: View {
     var body: some View {
-        VStack(spacing: 22) {
-            ListeningMark()
-            VStack(spacing: 8) {
-                Text("正在听").font(.system(size: 17, weight: .bold))
-                Text("有人说话时，会自动开始写纪要").font(.system(size: 13)).foregroundStyle(Palette.secondary)
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 12) {
+                SoundBars()
+                Text("有人开口后，约半分钟出第一版").font(.system(size: 13)).foregroundStyle(Palette.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale.opacity(0.7)))
+            VStack(alignment: .leading, spacing: 10) {
+                Text("总结").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.placeholder)
+                SkeletonBar(fraction: 0.94, height: 10)
+                SkeletonBar(fraction: 0.8, height: 10)
+                SkeletonBar(fraction: 0.56, height: 10)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                Text("议题").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.placeholder)
+                topicSlot(time: "00:00", lines: [0.52, 0.88, 0.7])
+                topicSlot(time: "--:--", lines: [0.4, 0.76]).opacity(0.6)
+            }
+            // Wraps: the English chips don't fit one line in a narrow window.
+            FlowLayout(spacing: 6) {
+                Text("会整理出").font(.system(size: 12)).foregroundStyle(Palette.tertiary).padding(.vertical, 4)
+                ForEach([L("结论"), L("待办"), L("人名和术语"), L("鱼骨图")], id: \.self) { t in
+                    Text(t).font(.system(size: 12)).foregroundStyle(Palette.secondary).fixedSize()
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Capsule().fill(Palette.fill))
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func topicSlot(time: String, lines: [CGFloat]) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(time).font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.placeholder)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { i, f in
+                    SkeletonBar(fraction: f, height: i == 0 ? 11 : 8)
+                }
             }
         }
-        .frame(maxWidth: .infinity)
+        .padding(14)
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+    }
+}
+
+/// Four small orange bars rising and falling: "listening", at the size of a line of text.
+struct SoundBars: View {
+    var height: CGFloat = 22
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+            HStack(spacing: 3) {
+                ForEach(0..<4, id: \.self) { i in
+                    let p = phase(ctx.date, period: 1.1, delay: Double(i) * 0.15)
+                    Capsule().fill(Palette.accent).frame(width: 3, height: height)
+                        .scaleEffect(x: 1, y: 0.3 + 0.7 * (0.5 - 0.5 * cos(p * 2 * .pi)))
+                }
+            }
+        }
+        .frame(height: height)
+        .accessibilityHidden(true)
     }
 }
 

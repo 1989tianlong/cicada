@@ -52,6 +52,12 @@ enum MicUsers {
         return nil
     }
 
+    /// Apple's own processes that read the mic for themselves (System Settings › Sound's level
+    /// meter, Siri, Voice Memos) never carry a meeting: listing them only raises false alarms.
+    static func isSystemUI(_ app: String) -> Bool {
+        app.hasPrefix("com.apple.") && app != "com.apple.Safari" && app != "com.apple.FaceTime"
+    }
+
     /// Pure merge of what Core Audio reports with the running apps: readers first (the ones that
     /// can't hear the translation before the ones that can), then idle meeting apps, each by name.
     static func merge(readers: [Reader], running: [String: String], virtualMic: AudioObjectID,
@@ -59,7 +65,7 @@ enum MicUsers {
         let ids = Set(running.keys)
         var inputs: [String: Set<AudioObjectID>] = [:]
         for r in readers where !r.inputs.isEmpty {
-            guard let app = owner(of: r.bundleID, running: ids), app != ownBundleID else { continue }
+            guard let app = owner(of: r.bundleID, running: ids), app != ownBundleID, !isSystemUI(app) else { continue }
             inputs[app, default: []].formUnion(r.inputs)
         }
         var users = inputs.map { app, devices -> MicUser in

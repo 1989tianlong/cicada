@@ -259,6 +259,23 @@ struct TalkKeyPermissionRow: View {
     }
 }
 
+/// A check, an exclamation mark, or (speaking off) a grey dash, in a small circle.
+struct HealthMark: View {
+    let ok: Bool
+    let on: Bool
+    /// On a tinted problem row the pale circle would vanish.
+    var onTint = false
+    var body: some View {
+        ZStack {
+            Circle().fill(onTint ? Color.white : !ok ? Palette.accentPale : on ? Palette.okPale : Palette.fill)
+            Image(systemName: !ok ? "exclamationmark" : on ? "checkmark" : "minus")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(!ok ? Palette.accent : on ? Palette.ok : Palette.tertiary)
+        }
+        .frame(width: 20, height: 20)
+    }
+}
+
 let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? L("知了")
 
 // MARK: - Virtual microphone checklist
@@ -407,7 +424,14 @@ struct SettingsView: View {
     /// The current section without the scroll view (also drawn by the `settingsRender` debug command).
     var page: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(model.settingsSection.title).font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.ink)
+            HStack {
+                Text(model.settingsSection.title).font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.ink)
+                Spacer()
+                if model.settingsSection == .speak {
+                    Toggle("把我说的翻译给对方", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
+                        .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
+                }
+            }
             switch model.settingsSection {
             case .speak: speak
             case .overlay: overlay
@@ -465,63 +489,27 @@ struct SettingsView: View {
 
     // MARK: Sections
 
+    /// One card says whether the room hears you; it opens into a checklist only when something
+    /// is wrong. Below it, plain settings: what you say with, and which microphones.
     private var speak: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Text(latencyLine).font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                Spacer(minLength: 8)
-                Button { model.speakTestShown = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "play.fill").font(.system(size: 9))
-                        Text("试一句").font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(Color.white).padding(.horizontal, 12).frame(height: 28)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Palette.ink))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(model.virtualMic == nil)
-                .opacity(model.virtualMic == nil ? 0.4 : 1)
-                .help("说一句话，听对方听到的声音，看每一步花了多久")
-                Toggle("把我说的翻译给对方", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
-                    .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+            if model.virtualMic == nil {
+                SettingsCard { MicSetupCard(installer: installer, deviceName: nil) }
+            } else {
+                speakHealth
             }
-            .padding(.top, -8)
-            SettingsCard {
-                micStep
-                Divider().padding(.leading, 50)
-                HStack(spacing: 12) {
-                    StepMark(done: !model.talkNeedsPermission, number: 2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("按住说话").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-                        Text(settings.talkKey.isRightOption ? L("单独按住右侧 ⌥；和别的键一起按不触发") : L("按住快捷键说话，松开发送"))
-                            .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+            group(L("说话")) {
+                SettingsRow(title: L("按住说话")) { ShortcutField(model: model, role: .talk) }
+                SettingsRow(title: L("说\(settings.speakFromLang.name)，对方听到")) {
+                    PillMenu(value: settings.speakTo == "room" ? L("跟随对方（\(targetName(model.speak.targetCode))）") : targetName(settings.speakTo),
+                             options: [("room", L("跟随对方"))] + targetLanguages.map { ($0.code, $0.name) }) {
+                        settings.speakTo = $0
+                        model.objectWillChange.send()
                     }
-                    Spacer(minLength: 8)
-                    ShortcutField(model: model, role: .talk)
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                if settings.speakEnabled && model.talkNeedsPermission { TalkKeyPermissionRow(model: model) }
-                Divider().padding(.leading, 50)
                 VoiceSection(model: model, settings: settings, ling: model.ling)
             }
-            if model.virtualMic != nil { systemMicSection }
-            if model.virtualMic != nil { MicUsersSection(model: model) }
-            DisclosureGroup {
-                SettingsCard {
-                    SettingsRow(title: L("声音输出到"), detail: L("对方只能听到虚拟麦克风里的声音"), divider: false) {
-                        PillMenu(value: outputName,
-                                 options: [("", L("虚拟麦克风（自动）"))] + model.outputs.map { ($0.uid, $0.name) }) {
-                            settings.speakOutput = $0
-                            model.applySystemMic()
-                        }
-                    }
-                }
-                .padding(.top, 8)
-            } label: {
-                Text("高级：声音输出到 · \(outputName)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-            }
-            .padding(.horizontal, 4)
+            if model.virtualMic != nil { micSettings }
         }
         .sheet(isPresented: $model.speakTestShown) {
             SpeakTestView(model: model, tester: model.speakTester) {
@@ -529,6 +517,118 @@ struct SettingsView: View {
                 model.speakTestShown = false
             }
         }
+        .sheet(item: $model.micGuide) { user in
+            MicGuideView(model: model, bundleID: user.bundleID, name: user.name) { model.micGuide = nil }
+        }
+    }
+
+    private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.tertiary).padding(.horizontal, 4)
+            SettingsCard { content() }
+        }
+        .padding(.top, 4)
+    }
+
+    /// Something keeping the room from hearing you, with the one button that fixes it.
+    private struct SpeakProblem: Identifiable {
+        let id: String
+        let text: String
+        let button: String
+        let action: () -> Void
+    }
+
+    private var speakProblems: [SpeakProblem] {
+        var out: [SpeakProblem] = []
+        if settings.speakEnabled && model.talkNeedsPermission {
+            out.append(.init(id: "key", text: L("按键还需要“输入监控”权限"), button: L("去允许"), action: model.allowTalkKey))
+        }
+        // A switched-away or never-restored system mic matters even with speaking off.
+        let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
+        switch model.systemMicState {
+        case .notRestored:
+            out.append(.init(id: "sysmic", text: L("系统麦克风还是 \(virtual)，别的软件听不到你"), button: L("还原"), action: model.restoreSystemMic))
+        case .moved(let to):
+            out.append(.init(id: "sysmic", text: L("系统麦克风被换成了 \(to)"), button: L("换回"), action: model.switchSystemMic))
+        case .off where model.wantsSystemMic:
+            out.append(.init(id: "sysmic", text: L("系统麦克风还没换成 \(virtual)"), button: L("切换"), action: model.switchSystemMic))
+        default: break
+        }
+        if settings.speakEnabled {
+            for user in model.micUsers where user.state.isOther {
+                let text: String
+                if case .otherMic(let mic) = user.state, !mic.isEmpty { text = L("\(user.name)还在用 \(mic)") }
+                else { text = L("\(user.name)没选虚拟麦克风") }
+                out.append(.init(id: user.bundleID, text: text, button: L("怎么改"), action: { model.micGuide = user }))
+            }
+        }
+        return out
+    }
+
+    /// What already works, listed above the problems so the broken step reads in context.
+    private var speakOK: [String] {
+        var out = [L("虚拟麦克风 \(model.virtualMic?.name ?? "BlackHole 2ch")")]
+        if case .switched = model.systemMicState { out.append(L("系统麦克风已换好，关掉时换回")) }
+        if settings.speakEnabled {
+            out += model.micUsers.filter { $0.state == .virtualMic }.map { L("\($0.name)已选虚拟麦克风") }
+        }
+        return out
+    }
+
+    private var speakHealth: some View {
+        let problems = speakProblems
+        let on = settings.speakEnabled
+        let ok = problems.isEmpty
+        return SettingsCard {
+            HStack(spacing: 12) {
+                HealthMark(ok: ok, on: on)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(!ok ? L("对方听不到你") : on ? L("对方听得到你") : L("同声传译没打开"))
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(ok ? Palette.ink : Palette.accentInk)
+                    Text(latencyLine).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button { model.speakTestShown = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "play.fill").font(.system(size: 9))
+                        Text("试一句").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(ok ? Color.white : Palette.ink).padding(.horizontal, 12).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(ok ? Palette.ink : Palette.fill))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("说一句话，听对方听到的声音，看每一步花了多久")
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            if !ok {
+                ForEach(speakOK, id: \.self) { line in
+                    Divider().padding(.leading, 16)
+                    HStack(spacing: 12) {
+                        HealthMark(ok: true, on: true)
+                        Text(line).font(.system(size: 13)).foregroundStyle(Palette.ink)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).frame(minHeight: 40)
+                }
+                ForEach(problems) { p in
+                    Divider().padding(.leading, 16)
+                    HStack(spacing: 12) {
+                        HealthMark(ok: false, on: true, onTint: true)
+                        Text(p.text).font(.system(size: 13)).foregroundStyle(Palette.accentInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        SoftButton(p.button, dark: true, action: p.action)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 8).frame(minHeight: 46)
+                    .background(Palette.accentPale)
+                }
+            }
+        }
+        // The tinted problem rows would otherwise square off the card's corners.
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(ok ? Color.clear : Palette.accent.opacity(0.35), lineWidth: 1))
     }
 
     /// The last measured press, else what to expect.
@@ -541,84 +641,33 @@ struct SettingsView: View {
         return L("上次发言：松开后 \(String(format: "%.1f", v)) 秒，对方听到译文")
     }
 
-    /// Step 1: the checklist until the virtual mic is loaded, then one line.
-    @ViewBuilder
-    private var micStep: some View {
-        if let name = model.virtualMic?.name {
-            HStack(spacing: 12) {
-                StepMark(done: true, number: 1)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("虚拟麦克风").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-                    Text("\(name) 已装好").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 6) {
-                    Circle().fill(micTested ? Palette.ok : Palette.placeholder).frame(width: 8, height: 8)
-                    Text(micTested ? L("试音通过") : L("已装好")).font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-        } else {
-            MicSetupCard(installer: installer, deviceName: nil)
-        }
-    }
-
-    /// 系统麦克风: the virtual mic as the system default while speaking, and the real mic Cicada records from.
-    private var systemMicSection: some View {
+    /// 麦克风: the virtual mic as the system default while speaking, the real mic Cicada records
+    /// from, and where the spoken translation goes. Their state shows in the card above.
+    private var micSettings: some View {
         let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
         let inputs = model.systemMic.realInputs
         // A chosen mic that's unplugged reads as 自动 until it's back.
         let chosen = inputs.first { $0.uid == settings.speakMic }?.name
         let auto = model.systemMic.recordingDevice?.name
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("系统麦克风").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).padding(.horizontal, 4)
-            SettingsCard {
-                SettingsRow(title: L("自动切换系统麦克风"),
-                            detail: L("同声传译打开时换成 \(virtual)，Chrome 等跟随系统的软件不用再设置")) {
-                    Toggle("自动切换系统麦克风", isOn: Binding(get: { settings.autoSystemMic }, set: { model.setAutoSystemMic($0) }))
-                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+        return group(L("麦克风")) {
+            SettingsRow(title: L("打开时把系统麦克风换成 \(virtual)")) {
+                Toggle("自动切换系统麦克风", isOn: Binding(get: { settings.autoSystemMic }, set: { model.setAutoSystemMic($0) }))
+                    .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+            }
+            SettingsRow(title: L("\(appDisplayName)听你说话用")) {
+                PillMenu(value: chosen ?? (auto.map { L("自动（\($0)）") } ?? L("自动")),
+                         options: [("", L("自动"))] + inputs.map { ($0.uid, $0.name) }) {
+                    settings.speakMic = $0
                 }
-                SettingsRow(title: L("\(appDisplayName)听你说话用"), detail: L("固定用这个，不跟着系统切换"),
-                            divider: systemMicStatus != nil) {
-                    PillMenu(value: chosen ?? (auto.map { L("自动（\($0)）") } ?? L("自动")),
-                             options: [("", L("自动"))] + inputs.map { ($0.uid, $0.name) }) {
-                        settings.speakMic = $0
-                    }
-                }
-                if let status = systemMicStatus {
-                    HStack(spacing: 12) {
-                        Circle().fill(status.ok ? Palette.ok : Palette.accent).frame(width: 8, height: 8)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(status.title).font(.system(size: 13)).foregroundStyle(Palette.ink)
-                            Text(status.detail).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-                        }
-                        Spacer(minLength: 8)
-                        SoftButton(status.button, dark: !status.ok, action: status.action)
-                    }
-                    .padding(.horizontal, 16).frame(minHeight: 52)
+            }
+            SettingsRow(title: L("译文送到"), divider: false) {
+                PillMenu(value: outputName,
+                         options: [("", L("虚拟麦克风（自动）"))] + model.outputs.map { ($0.uid, $0.name) }) {
+                    settings.speakOutput = $0
+                    model.applySystemMic()
                 }
             }
         }
-    }
-
-    /// The status row: what the system mic is now and the one thing to do about it.
-    private var systemMicStatus: (ok: Bool, title: String, detail: String, button: String, action: () -> Void)? {
-        let virtual = model.virtualMic?.name ?? "BlackHole 2ch"
-        switch model.systemMicState {
-        case .switched(let original):
-            return (true, L("现在：\(virtual)"), L("关掉同声传译或退出\(appDisplayName)时，换回 \(original)"), L("立即还原"), model.restoreSystemMic)
-        case .notRestored:
-            return (false, L("现在：\(virtual)"), L("同声传译已关，别的软件听不到你说话"), L("还原"), model.restoreSystemMic)
-        case .moved(let to):
-            return (false, L("现在：\(to)"), L("跟随系统的网页听不到译文"), L("换回"), model.switchSystemMic)
-        case .off:
-            guard model.wantsSystemMic else { return nil }
-            return (false, L("现在：\(AudioDevices.defaultInput?.name ?? "-")"), L("跟随系统的网页听不到译文"), L("切换"), model.switchSystemMic)
-        }
-    }
-
-    private var micTested: Bool {
-        installer.passed || (model.speakTester.result.map { $0.broken != .room && $0.heardSeconds > 0 } ?? false)
     }
 
     private var outputName: String {
@@ -690,6 +739,32 @@ struct SettingsView: View {
                 }
             }
             AppRows(updates: model.updates, loginItem: model.loginItem, model: model)
+            experiments
+        }
+    }
+
+    /// Features still being tuned: off by default, each one switch, safe to turn off.
+    private var experiments: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("实验功能").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
+                Text("还在打磨，可能出错；随时能关，关掉不影响别的功能。").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+            }
+            .padding(.top, 4)
+            SettingsCard {
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) {
+                        Text("说话人识别").font(.system(size: 13)).foregroundStyle(Palette.ink)
+                        ExperimentBadge()
+                    }
+                    Spacer(minLength: 12)
+                    Toggle("说话人识别", isOn: $settings.speakerVoices)
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 6).frame(minHeight: 46)
+                .contentShape(Rectangle())
+                .help(L("按声音标出说话人 1、2…，只在这台 Mac 上处理"))
+            }
         }
     }
 }

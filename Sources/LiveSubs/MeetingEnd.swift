@@ -26,6 +26,8 @@ struct MeetingEndWatch: Equatable {
         /// The meeting app (by name) hung up.
         case appLeft(String)
         case silence
+        /// Nobody spoke at all: there is nothing to keep, so it just stops, without a countdown.
+        case nobodySpoke
     }
 
     struct Pending: Equatable {
@@ -60,12 +62,15 @@ struct MeetingEndWatch: Equatable {
     }
 
     /// `calls`: meeting apps reading a microphone now. `said`: the meeting has lines. One without
-    /// keeps listening (nothing is kept until someone speaks, and the subtitles stay ready); a call
-    /// that ended before anyone spoke doesn't count. Returns why the meeting ends now, if it does.
+    /// keeps listening for the silence time (the subtitles stay ready), then stops quietly: a
+    /// forgotten switch shouldn't listen to an empty room for hours. A call that ended before anyone
+    /// spoke doesn't count. Returns why the meeting ends now, if it does.
     mutating func tick(at now: Date, calls: [String: String], said: Bool) -> Reason? {
         guard said else {
             inCall = config.followApps ? calls : [:]
             pending = nil
+            let inACall = config.followApps && !calls.isEmpty
+            if config.silence != .off, !inACall, now.timeIntervalSince(lastSpeech) >= config.silenceAfter { return .nobodySpoke }
             return nil
         }
         if config.followApps {

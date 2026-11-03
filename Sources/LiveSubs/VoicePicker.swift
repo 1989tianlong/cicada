@@ -22,20 +22,13 @@ struct VoiceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // The language is its own row above: this row is only the voice.
             HStack(spacing: 12) {
-                StepMark(done: true, number: 3)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("对方听到").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-                    // One line of prose with the link inside, so it wraps instead of truncating in English.
-                    Text(route)
-                        .font(.system(size: 11)).foregroundStyle(Palette.tertiary).tint(Palette.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .environment(\.openURL, OpenURLAction { _ in model.settingsSection = .language; return .handled })
-                }
+                Text("声音").font(.system(size: 13)).foregroundStyle(Palette.ink)
                 Spacer(minLength: 8)
                 chip
             }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            .padding(.horizontal, 16).padding(.vertical, 8).frame(minHeight: 46)
             if !ling.usable { keyNudge }
             if model.voicePickerOpen { picker.padding(.horizontal, 16).padding(.bottom, 14) }
         }
@@ -48,16 +41,6 @@ struct VoiceSection: View {
                 }
             }
         }
-    }
-
-    /// No-break spaces keep "· 改语言" with the language before it when the line wraps.
-    private var route: AttributedString {
-        var text = AttributedString(L("你说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))") + "\u{00A0}·\u{00A0}")
-        var link = AttributedString(L("改语言"))
-        link.link = URL(string: "cicada-settings:language")
-        link.underlineStyle = .single
-        text.append(link)
-        return text
     }
 
     // MARK: Chip
@@ -111,7 +94,7 @@ struct VoiceSection: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .background(RoundedRectangle(cornerRadius: 9).fill(Palette.raised))
-        .padding(.leading, 50).padding(.trailing, 16).padding(.bottom, 12)
+        .padding(.horizontal, 16).padding(.bottom, 12)
     }
 
     // MARK: Picker
@@ -254,23 +237,6 @@ struct Radio: View {
             if on { Circle().fill(Palette.accent).frame(width: 8, height: 8) }
         }
         .frame(width: 16, height: 16)
-    }
-}
-
-/// The numbered circle of a setup step: a check once done.
-struct StepMark: View {
-    let done: Bool
-    let number: Int
-    var body: some View {
-        ZStack {
-            Circle().fill(done ? Palette.ink : Palette.accentPale)
-            if done {
-                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
-            } else {
-                Text("\(number)").font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.accentInk)
-            }
-        }
-        .frame(width: 22, height: 22)
     }
 }
 

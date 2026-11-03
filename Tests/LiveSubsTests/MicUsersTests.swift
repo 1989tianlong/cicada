@@ -38,4 +38,13 @@ import Testing
             virtualMic: virtual, deviceName: { names[$0] }, ownBundleID: "com.wquguru.cicada")
         #expect(users == [MicUser(bundleID: "com.google.Chrome", name: "Google Chrome", state: .virtualMic)])
     }
+
+    @Test func applesOwnMicReadersAreNotMeetings() {
+        let users = MicUsers.merge(
+            readers: [.init(bundleID: "com.apple.Sound-Settings.extension", inputs: [builtIn]),
+                      .init(bundleID: "com.apple.FaceTime", inputs: [builtIn])],
+            running: ["com.apple.Sound-Settings.extension": "Sound (System Settings)", "com.apple.FaceTime": "FaceTime"],
+            virtualMic: virtual, deviceName: { names[$0] }, ownBundleID: "com.wquguru.cicada")
+        #expect(users.map(\.name) == ["FaceTime"])
+    }
 }
