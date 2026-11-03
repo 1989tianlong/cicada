@@ -29,7 +29,16 @@ REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
 # The author on X: the app is not notarized yet, so a real person to ask helps people trust the first launch.
 X = "https://x.com/wquguru"
-STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img"]
+STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img", "audio"]
+# The home page's meeting with sound, in the language its reader listens to (the English page's is
+# Chinese): file, length in seconds, and who talks when as (person, start, end), one turn per
+# subtitle. Both clips come from scripts/make-sample.sh; the English one is the app's onboarding
+# sample (keep its turns in step with `SamplePlayer.turns`) and is copied in at build time.
+SAMPLES = {
+    "en": ("audio/meeting-en.m4a", 8.8, [(0, 0.25, 2.34), (1, 2.56, 6.97), (0, 7.17, 8.45)]),
+    "zh": ("audio/meeting-zh.m4a", 7.8, [(0, 0.25, 2.21), (1, 2.43, 5.89), (0, 6.09, 7.45)]),
+}
+SAMPLE_FOR = {"zh": "en", "ja": "en", "ko": "en", "en": "zh"}
 # (code, path prefix); the first is the default language, served at the root.
 LANGS = [("zh", ""), ("en", "en/"), ("ja", "ja/"), ("ko", "ko/")]
 FONT_BASE = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Noto+Sans+SC:wght@400;500;700;900"
@@ -140,6 +149,7 @@ def main():
             shutil.copytree(src, os.path.join(OUT, name))
         elif os.path.exists(src):
             shutil.copy2(src, OUT)
+    shutil.copy2(os.path.join(ROOT_DIR, "Resources", "sample", "sample.m4a"), os.path.join(OUT, SAMPLES["en"][0]))
 
     tr = strings()
     urls = []  # (absolute url, last modified) for the sitemap
@@ -219,7 +229,10 @@ def main():
         faq_ld = {"@context": "https://schema.org", "@type": "FAQPage", "inLanguage": t["html_lang"],
                   "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}}
                                  for q, a in t["faq"]]}
+        src, length, turns = SAMPLES[SAMPLE_FOR[code]]
+        sample = {"src": "../" * prefix.count("/") + src + "?v=" + common["REV"], "len": length, "turns": turns}
         page("index.html", code, prefix, {
+            "SAMPLE_JSON": json.dumps(sample), "SAMPLE_LEN": f"0:{round(length):02d}",
             "APPS": apps, "LATEST_SECTION": latest_section,
             "ROAD_NEXT": road_next, "ROAD_LATER": road(t["road_later_items"]), "ROAD_NONE": road(t["road_none_items"]),
             "FAQ": faq, "FAQLD": json.dumps(faq_ld, ensure_ascii=False).replace("</", "<\\/"),

@@ -58,11 +58,14 @@
 
   <section class="wrap stage" aria-label="{{t.demo_label}}">
     <div class="stage-row tilt-in">
-      <div class="window" aria-hidden="true">
-        <div class="bar"><i></i><i></i><i></i><span class="title">{{t.win_title}}</span><span class="live">LIVE</span></div>
-        <div class="screen">
-          <div class="speaker"><div class="avatar"></div>{{t.speaker}}</div>
-          <div class="wave"><span style="height:40px"></span><span style="height:64px;animation-delay:-.3s"></span><span style="height:30px;animation-delay:-.6s"></span><span style="height:56px;animation-delay:-.15s"></span><span style="height:44px;animation-delay:-.8s"></span><span style="height:60px;animation-delay:-.45s"></span><span style="height:34px;animation-delay:-.9s"></span></div>
+      <div class="window" data-sample='{{SAMPLE_JSON}}'>
+        <div class="bar"><i></i><i></i><i></i><span class="title">{{t.win_title}}</span><button class="listen" type="button" data-stop="{{t.listen_stop}}" aria-pressed="false" hidden><svg class="play" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><svg class="stop" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>{{t.listen}} · {{SAMPLE_LEN}}</span></button><span class="live">LIVE</span></div>
+        <div class="screen" aria-hidden="true">
+          <i class="progress"></i>
+          <div class="tiles">
+            <div class="tile"><b>{{t.person1_initial}}</b><span>{{t.person1}}</span><em><i></i><i></i><i></i></em></div>
+            <div class="tile"><b>{{t.person2_initial}}</b><span>{{t.person2}}</span><em><i></i><i></i><i></i></em></div>
+          </div>
           <div class="subbar"><div class="lines">
             <div class="cap"><div class="en"><span class="dot"></span>{{t.cap1_src}}</div><div class="zh">{{t.cap1_dst}}</div></div>
             <div class="cap"><div class="en"><span class="dot"></span>{{t.cap2_src}}</div><div class="zh">{{t.cap2_dst}}</div></div>
@@ -73,18 +76,81 @@
       <div class="side">
         <div class="card notes">
           <div class="head">{{t.notes_head}}<span class="updating">{{t.updating}}</span></div>
-          <div class="note">{{t.note1}}</div>
-          <div class="note">{{t.note2}}</div>
-          <div class="note">{{t.note3}}</div>
+          <div class="nt why">
+            <div class="q"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7 7.5l3.6 8.6M17 7.5l-3.6 8.6" stroke-dasharray="2 2.4"/></svg><b>{{t.n_why}}</b><span>{{t.fb_kind}}</span></div>
+            <div class="bones">
+              <div class="br"><b>{{t.fb1}}</b>{{t.fb1d}}</div><i></i><div class="br"><b>{{t.fb2}}</b>{{t.fb2d}}</div>
+              <div class="br"><b>{{t.fb3}}</b>{{t.fb3d}}</div><i></i><div class="br weak"><b>{{t.fb4}}</b>{{t.fb4d}}</div>
+            </div>
+            <div class="hint">{{t.fb_hint}}</div>
+          </div>
+          <div class="nt items">
+            <div><b>{{t.n_decision}}</b>{{t.n_decision_text}}</div>
+            <div><b>{{t.n_todo}}</b>{{t.n_todo_text}}<span class="who">{{t.person2}}</span></div>
+          </div>
         </div>
         <div class="card speak">
           <div class="hold">{{t.speak_hold}}</div>
-          <div>{{t.speak_said}}</div>
-          <div class="out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>{{t.speak_heard}}</div>
         </div>
       </div>
     </div>
   </section>
+
+  <script>
+  // The meeting above with its sound: only on a click. While the clip plays the speaker and the
+  // subtitle follow its turns (who spoke when, measured in scripts/make-sample.sh): the original
+  // comes in word by word as it is said and the translation trails it, as in the app. When the clip
+  // ends the silent loop takes over again.
+  (function () {
+    var w = document.querySelector('.window[data-sample]'), s = JSON.parse(w.dataset.sample);
+    var btn = w.querySelector('.listen'), label = btn.querySelector('span').textContent, bar = w.querySelector('.progress');
+    var tiles = w.querySelectorAll('.tile'), caps = w.querySelectorAll('.cap'), audio = null, raf = 0;
+    // The translation starts this many seconds after the voice and catches up as the sentence ends,
+    // before the next speaker (turns are at least 0.2 s apart).
+    var LAG = 0.8;
+    var lines = [].map.call(caps, function (c) {
+      var src = c.querySelector('.en').lastChild, dst = c.querySelector('.zh').firstChild;
+      return { src: src, dst: dst, full: [src.nodeValue, dst.nodeValue] };
+    });
+    btn.hidden = false;
+    function mark(list, i) { list.forEach(function (el, j) { el.classList.toggle('on', j === i); }); }
+    // The first share p of a line: by words in English, by characters in Chinese, Japanese and Korean.
+    function part(text, p) {
+      var units = /^[\x00-\x7F’]*$/.test(text) ? text.split(/(?=\s)/) : Array.from(text);
+      return units.slice(0, Math.ceil(units.length * Math.max(0, Math.min(1, p)))).join('');
+    }
+    function reveal(t) {
+      s.turns.forEach(function (turn, i) {
+        var l = lines[i], d = turn[2] - turn[1];
+        l.src.nodeValue = t === null ? l.full[0] : part(l.full[0], (t - turn[1]) / d);
+        l.dst.nodeValue = t === null ? l.full[1] : part(l.full[1], (t - turn[1] - LAG) / (d - LAG + 0.1));
+      });
+    }
+    function frame() {
+      var t = audio.currentTime, talk = -1, cap = 0;
+      s.turns.forEach(function (turn, i) { if (t >= turn[1]) cap = i; if (t >= turn[1] && t < turn[2]) talk = turn[0]; });
+      mark(tiles, talk); mark(caps, cap); reveal(t);
+      bar.style.width = Math.min(100, t / s.len * 100) + '%';
+      raf = requestAnimationFrame(frame);
+    }
+    function stop() {
+      cancelAnimationFrame(raf);
+      if (audio) { audio.pause(); audio = null; }
+      w.classList.remove('playing'); mark(tiles, -1); mark(caps, -1); reveal(null);
+      btn.querySelector('span').textContent = label; btn.setAttribute('aria-pressed', 'false');
+    }
+    btn.addEventListener('click', function () {
+      if (audio) { stop(); return; }
+      var a = audio = new Audio(s.src);
+      // The last translation stays up a moment after the voice ends.
+      a.addEventListener('ended', function () { setTimeout(function () { if (audio === a) stop(); }, 1200); });
+      audio.play().then(function () {
+        w.classList.add('playing'); frame();
+        btn.querySelector('span').textContent = btn.dataset.stop; btn.setAttribute('aria-pressed', 'true');
+      }, stop);
+    });
+  })();
+  </script>
 
   <section class="works" aria-labelledby="works-t">
     <p id="works-t">{{t.works}}</p>
