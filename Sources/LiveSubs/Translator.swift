@@ -193,22 +193,36 @@ final class TranslationService {
         // A line is a remark only when it opens or ends like one and talks about the job itself,
         // so a subtitle that happens to start with "The text…" is kept.
         let opener = ["here is", "here's", "the subtitle", "this subtitle", "the text", "this text", "the original",
-                      "note", "(note", "i'm sorry", "i am sorry", "sorry", "it seems", "it appears", "this appears"]
+                      "the user", "note", "(note", "i'm sorry", "i am sorry", "sorry", "it seems", "it appears", "this appears"]
         let about = ["translat", "subtitle", "garbled", "transcri", "asr", "speech recognition", "best-effort"]
+        // The same in Chinese: "请提供需要翻译的字幕内容", "您似乎忘记提供……".
+        let zhAbout = ["字幕", "翻译"], zhRemark = ["请提供", "似乎", "看起来", "无法", "乱码", "没有附上", "您只发送"]
+        // Reasoning that leaked into the reply ("…</think>") goes; the answer follows it.
+        let answer = reply.components(separatedBy: "</think>").last ?? reply
         var kept: [String] = []
-        for raw in reply.components(separatedBy: .newlines) {
+        for raw in answer.components(separatedBy: .newlines) {
             var line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
             let lower = line.lowercased()
+            let remark = (opener.contains(where: { lower.hasPrefix($0) }) || line.hasSuffix(":") || line.hasSuffix("："))
+                && about.contains(where: { lower.contains($0) })
+                || zhAbout.contains(where: { line.contains($0) }) && zhRemark.contains(where: { line.contains($0) })
             if lower.hasPrefix("translation:") {
                 line = String(line.dropFirst("translation:".count)).trimmingCharacters(in: .whitespaces)
-            } else if opener.contains(where: { lower.hasPrefix($0) }) || line.hasSuffix(":") || line.hasSuffix("："),
-                      about.contains(where: { lower.contains($0) }) {
+            } else if remark {
+                // A note after the translation ("(Note: …" and its list of other wordings) ends it.
+                if !kept.isEmpty { break }
                 continue
             }
             if !line.isEmpty { kept.append(line) }
         }
-        let out = kept.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: "\"“”「」 "))
+        var out = kept.joined(separator: " ")
+        // Quotes come off only when they wrap the whole reply; a closing ” inside it belongs to the text.
+        for (open, close) in [("\"", "\""), ("“", "”"), ("「", "」")]
+        where out.count >= 2 && out.hasPrefix(open) && out.hasSuffix(close) && out.dropFirst().dropLast().contains(open) == false {
+            out = String(out.dropFirst().dropLast())
+        }
+        out = out.trimmingCharacters(in: .whitespaces)
         guard !out.isEmpty else { return nil }
         let letters = out.unicodeScalars.filter { $0.properties.isAlphabetic }
         let cjk = letters.filter { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) }.count

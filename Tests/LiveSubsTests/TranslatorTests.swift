@@ -24,6 +24,25 @@ import Testing
         #expect(TranslationService.cleanTranslation("我们用 API 和 SDK。", target: "zh-CN") == "我们用 API 和 SDK。")
     }
 
+    /// Replies found in stored meetings.
+    @Test func remarksFromRecordedMeetings() {
+        let note = "好的。\n\n(Note: The subtitle \"Right.\" is a very short affirmation. In a live meeting context, it can be translated in a few ways:\n- 对。\n- 没错。)"
+        #expect(TranslationService.cleanTranslation(note, target: "zh-CN") == "好的。")
+        #expect(TranslationService.cleanTranslation("The user wants me to translate the subtitle \"Yes.\" from English into Simplified Chinese. The translation is \"是的。\"", target: "zh-CN") == nil)
+        #expect(TranslationService.cleanTranslation("请提供需要翻译的字幕内容。", target: "zh-CN") == nil)
+        #expect(TranslationService.cleanTranslation("The user wants a translation of \"Yes.\"\nI must output only the translation.</think>\n是的。", target: "zh-CN") == "是的。")
+        #expect(TranslationService.cleanTranslation("您似乎忘记提供需要翻译的字幕内容了。请提供具体的英文字幕文本。", target: "zh-CN") == nil)
+        let mixed = "The subtitle appears to be a mix of Chinese and garbled English. The Chinese portion translates to:\n\"Only 500 messages today.\""
+        #expect(TranslationService.cleanTranslation(mixed, target: "en-US") == "Only 500 messages today.")
+    }
+
+    @Test func quotesInsideTheTextStay() {
+        let s = "我想到了一个人，他说：“在这个派对上，永远都是晚上十点。”"
+        #expect(TranslationService.cleanTranslation(s, target: "zh-CN") == s)
+        #expect(TranslationService.cleanTranslation("He said \"no\" and \"never\"", target: "en-US") == "He said \"no\" and \"never\"")
+        #expect(TranslationService.cleanTranslation("我们会把字幕翻译成中文。", target: "zh-CN") == "我们会把字幕翻译成中文。")
+    }
+
     @Test func translationInTheWrongScriptIsDropped() {
         #expect(TranslationService.cleanTranslation("We ship on Friday.", target: "zh-CN") == nil)
         #expect(TranslationService.cleanTranslation("我们周五发布。", target: "en-US") == nil)
