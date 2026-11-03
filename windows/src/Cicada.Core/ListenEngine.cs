@@ -1,0 +1,247 @@
+using System.Threading.Channels;
+
+namespace Cicada;
+
+/// Listening end to end: system audio → segments → Ming (language, original, translation in one
+/// call) → lines in the record, plus live notes. UI-free; the app shows `Lines` and listens to
+/// `Changed` (raised on worker threads: marshal to the UI thread).
+///
+/// Ming takes ~2.2 s whatever the segment's length, so segments overlap in flight: request starts
+/// still go through LingClient's gate, and lines are delivered in segment order.
+public sealed class ListenEngine
+{
+    readonly LingClient ling;
+    readonly Translator translator;
+    readonly SessionStore store;
+    readonly NotesEngine notes;
+    readonly AppSettings settings;
+    readonly object gate = new();
+
+    IAudioSource? source;
+    Channel<short[]>? audio;
+    Task? worker;
+    Segmenter? segmenter;
+    readonly Dictionary<int, Heard?> done = [];
+    readonly Dictionary<int, Segment> segments = [];
+    readonly List<Task> inFlight = [];
+    int nextToDeliver = 1, lineCount;
+    TranscriptLine? last;
+    double lastEnd;
+    string? hint, candidate;
+    int candidateVotes;
+
+    public bool Listening { get; private set; }
+    public string? SessionId { get; private set; }
+    /// The meeting's language so far (null until Ming has heard something).
+    public string? Spoken => hint;
+    /// Segments sent and not yet back: the UI shows "…" while this is above zero.
+    public int Pending { get { lock (gate) return segments.Count; } }
+    /// The last error worth showing ("key 无效", "网络不通"), cleared by the next good reply.
+    public string? Problem { get; private set; }
+    public double Level { get; private set; }
+    public event Action? Changed;
+
+    public ListenEngine(LingClient ling, Translator translator, SessionStore store, NotesEngine notes, AppSettings settings)
+    {
+        this.ling = ling; this.translator = translator; this.store = store; this.notes = notes; this.settings = settings;
+        translator.Glossary = notes.Glossary;
+    }
+
+    public string Target => settings.TargetCode;
+
+    public void Start(IAudioSource from)
+    {
+        if (Listening) return;
+        var session = store.Begin();
+        SessionId = session.Id;
+        lock (gate)
+        {
+            done.Clear(); segments.Clear(); inFlight.Clear();
+            nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0;
+            hint = null; candidate = null; candidateVotes = 0; Problem = null;
+        }
+        notes.Language = () => Languages.EnglishName(settings.NotesCode);
+        notes.Begin(session.Id);
+        segmenter = new Segmenter();
+        segmenter.Emitted += Send;
+        audio = Channel.CreateUnbounded<short[]>(new UnboundedChannelOptions { SingleReader = true });
+        var reader = audio.Reader;
+        // One reader thread owns the segmenter: audio callbacks only queue buffers.
+        worker = Task.Run(async () =>
+        {
+            await foreach (var buf in reader.ReadAllAsync())
+            {
+                segmenter.Feed(buf);
+                Level = Rms(buf);
+            }
+            segmenter.Flush();
+        });
+        source = from;
+        source.Samples += OnSamples;
+        source.Start();
+        Listening = true;
+        Log.Debug($"listen: started {session.Id} target={Target}");
+        Changed?.Invoke();
+    }
+
+    void OnSamples(short[] buf) => audio?.Writer.TryWrite(buf);
+
+    static double Rms(short[] buf)
+    {
+        if (buf.Length == 0) return 0;
+        double sum = 0;
+        foreach (var s in buf) sum += (double)s * s;
+        return Math.Sqrt(sum / buf.Length) / 32768;
+    }
+
+    /// Stops listening, waits (briefly) for segments still at Ming, ends the record and writes the
+    /// final notes. The task ends when the record is saved; the notes' final pass may run on.
+    public async Task Stop()
+    {
+        if (!Listening) return;
+        Listening = false;
+        if (source is not null) { source.Samples -= OnSamples; source.Stop(); }
+        audio?.Writer.TryComplete();
+        if (worker is not null) await worker;
+        Task[] waiting;
+        lock (gate) waiting = inFlight.ToArray();
+        await Task.WhenAny(Task.WhenAll(waiting), Task.Delay(15_000));
+        var id = SessionId!;
+        store.End(id);
+        Log.Debug($"listen: stopped {id}, {lineCount} lines");
+        Changed?.Invoke();
+        _ = notes.Finish();
+    }
+
+    void Send(Segment seg)
+    {
+        var wav = Wav.Bytes(seg.Samples);
+        string? lang;
+        lock (gate) { segments[seg.Index] = seg; lang = hint; }
+        Changed?.Invoke();
+        var task = Task.Run(async () =>
+        {
+            Heard? heard = null;
+            var started = DateTime.UtcNow;
+            try
+            {
+                heard = await translator.Hear(wav, Target, lang);
+                Problem = null;
+            }
+            catch (LingException e)
+            {
+                Problem = e.Failure switch
+                {
+                    LingException.Kind.NoKey => Strings.L("需要 Ling key 才能听"),
+                    LingException.Kind.InvalidKey => Strings.L("Ling key 无效"),
+                    LingException.Kind.RateLimited => Strings.L("Ling 太忙，稍后再试"),
+                    LingException.Kind.Network or LingException.Kind.Timeout => Strings.L("连不上 Ling，检查网络"),
+                    _ => null,
+                };
+                Log.Debug($"listen: segment {seg.Index} failed {e.Message}");
+            }
+            Log.Debug($"listen: segment {seg.Index} {seg.Seconds:F1}s -> {(heard is null ? "nothing" : heard.Lang)} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");
+            lock (gate) done[seg.Index] = heard;
+            Deliver();
+        });
+        lock (gate) { inFlight.Add(task); inFlight.RemoveAll(t => t.IsCompleted); }
+    }
+
+    /// Hands finished segments on in order: one slow reply holds back those after it.
+    void Deliver()
+    {
+        var ready = new List<(Segment seg, Heard? heard)>();
+        lock (gate)
+        {
+            while (done.Remove(nextToDeliver, out var heard))
+            {
+                ready.Add((segments[nextToDeliver], heard));
+                segments.Remove(nextToDeliver);
+                nextToDeliver++;
+            }
+        }
+        foreach (var (seg, heard) in ready) if (heard is not null) Record(seg, heard);
+        if (ready.Count > 0) Changed?.Invoke();
+    }
+
+    void Record(Segment seg, Heard heard)
+    {
+        var id = SessionId!;
+        var target = Target;
+        // The meeting's language moves only after two segments agree, so one misheard stretch
+        // doesn't flip the hint (the Mac waits for confidence the same way).
+        lock (gate)
+        {
+            if (hint is null) hint = heard.Lang;
+            else if (heard.Lang != hint)
+            {
+                if (candidate == heard.Lang) candidateVotes++; else { candidate = heard.Lang; candidateVotes = 1; }
+                if (candidateVotes >= 2) { hint = candidate; candidate = null; candidateVotes = 0; }
+            }
+            else { candidate = null; candidateVotes = 0; }
+        }
+
+        TranscriptLine line;
+        bool joined = false;
+        lock (gate)
+        {
+            if (last is not null && Continues(last, seg.Start - lastEnd, heard))
+            {
+                last.Src = Join(last.Src, heard.Original, heard.Lang);
+                last.Dst = last.Dst is null || heard.Translation is null ? null : Join(last.Dst, heard.Translation, target);
+                line = last;
+                joined = true;
+            }
+            else
+            {
+                line = new TranscriptLine
+                {
+                    Id = $"h{++lineCount}-{seg.Index}", T = seg.Start, Speaker = "them",
+                    Src = heard.Original, Dst = heard.Translation, SrcLang = heard.Lang, DstLang = target,
+                };
+                last = line;
+            }
+            lastEnd = seg.Start + seg.Seconds;
+        }
+        if (joined) store.Replace(id, line.Copy()); else store.Append(id, line.Copy());
+
+        // A joined sentence is translated again as a whole; a line Ming didn't translate gets text translation.
+        if ((joined || line.Dst is null) && line.SrcLang != target)
+        {
+            var src = line.Src;
+            _ = Task.Run(async () =>
+            {
+                var dst = await translator.Translate(src, line.SrcLang, target, Translator.Kind.Sentence);
+                TranscriptLine copy;
+                lock (gate)
+                {
+                    if (dst is null || line.Src != src) return;
+                    line.Dst = dst;
+                    copy = line.Copy();
+                }
+                store.Replace(id, copy);
+                Changed?.Invoke();
+            });
+        }
+    }
+
+    /// A segment continues the last line when the cut came mid-sentence: no sentence end on the
+    /// last line, a short gap, the same language, and the joined line not too long to read.
+    public static bool Continues(TranscriptLine last, double gap, Heard next)
+    {
+        if (gap > 0.8 || last.SrcLang != next.Lang) return false;
+        var text = last.Src.TrimEnd();
+        if (text.Length == 0 || ".!?。！？…".Contains(text[^1])) return false;
+        bool cjk = next.Lang.StartsWith("zh") || next.Lang.StartsWith("ja") || next.Lang.StartsWith("ko");
+        int size = cjk ? text.Length + next.Original.Length : (text + " " + next.Original).Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        return size <= (cjk ? 80 : 45);
+    }
+
+    public static string Join(string a, string b, string lang)
+    {
+        bool cjk = lang.StartsWith("zh") || lang.StartsWith("ja");
+        a = a.TrimEnd(); b = b.TrimStart();
+        if (cjk) return a + b;
+        return a + " " + b;
+    }
+}
