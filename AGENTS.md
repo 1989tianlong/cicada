@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Cicada (知了, formerly Live Subs): a macOS menu bar app that turns what the Mac plays into live translated subtitles and meeting notes, keeps each meeting as a bilingual record, and speaks what you say back into the room in their language.
+Cicada (知了, formerly Live Subs): a macOS app, run from the menu bar, that turns what the Mac plays into live translated subtitles and meeting notes, keeps each meeting as a bilingual record, and speaks what you say back into the room in their language.
 
 ## Scope
 

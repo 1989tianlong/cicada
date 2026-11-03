@@ -24,7 +24,7 @@
 
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a></p>
 
-Cicada is a macOS menu bar app that listens to what your Mac is playing to give you live bilingual subtitles, structured meeting notes, and push-to-talk interpreting in any call, livestream, video, or voice room, with no bot in the call and nothing for the other side to install.
+Cicada works with whatever is playing on your Mac, from Zoom, Teams, and Feishu calls to X Spaces, Discord stages, and YouTube livestreams. By listening directly to system audio, it gives you live bilingual subtitles and structured meeting notes without sending bots into the call or asking anyone else to install a thing. And when you need to jump in, just hold the right `⌥` key to speak and broadcast your translated voice straight into the meeting.
 
 <p align="center">
   <img src="docs/demo.gif" width="800" alt="A Bloomberg English livestream on YouTube with Cicada's live Chinese notes, topics, and fishbone diagram on the right and bilingual subtitles at the bottom">
