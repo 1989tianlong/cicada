@@ -51,6 +51,6 @@ scripts/deploy-site.sh                 # build the site, wrangler deploy to the 
 
 - Match the existing naming and comment density; comments say why.
 - Commit messages are English only and follow Conventional Commits (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`, `chore:`). `feat:` and `fix:` subjects are the release notes (`scripts/changelog.py`), one line each linked to the commit: say what the user gets in one plain sentence, one change per commit; website changes use `feat(site):` / `fix(site):`.
-- Every user-visible change also gets a Chinese item in `site/changelog.json`, the website's changelog; keep `README.md` and `README.zh-CN.md` in step.
+- Every user-visible change also gets a Chinese item in `site/changelog.json`, the website's changelog; keep `README.md` (Chinese, the default) and `README.en.md` in step.
 - Versions are semver from 1.0.0: patch for fixes only, minor for features, major only when users must grant permissions again.
 - This file stays under 6 KB with these sections; `scripts/check-agents.py` enforces it in `scripts/test.sh`, CI and the pre-commit hook. Implementation detail belongs in code comments, not here.

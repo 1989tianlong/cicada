@@ -1,156 +1,146 @@
 <p align="center">
-  <img src="docs/icon.png" width="128" height="128" alt="Cicada icon">
+  <img src="docs/icon.png" width="128" height="128" alt="知了图标">
 </p>
 
-<h1 align="center">Cicada · 知了</h1>
+<h1 align="center">知了 · Cicada</h1>
 
 <p align="center">
-  Every call. Every stream. No language barrier.<br>
-  Live meeting notes, bilingual transcripts, subtitles and interpreting for anything your Mac plays.
+  任何会议、任何直播，没有语言障碍。<br>
+  听得懂，说得出，记得住。Mac 上的实时纪要、双语文字记录、字幕与同声传译。
 </p>
 
 <p align="center">
-  <a href="https://cicada.indaloop.app"><img src="https://img.shields.io/badge/Website-cicada.indaloop.app-E8552B?style=for-the-badge" alt="Website: cicada.indaloop.app" height="36"></a>
+  <a href="https://cicada.indaloop.app"><img src="https://img.shields.io/badge/官网-cicada.indaloop.app-E8552B?style=for-the-badge" alt="官网 cicada.indaloop.app" height="36"></a>
   &nbsp;
-  <a href="https://github.com/wquguru/cicada/releases/latest"><img src="https://img.shields.io/badge/Download-macOS-15171C?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" height="36"></a>
+  <a href="https://github.com/wquguru/cicada/releases/latest"><img src="https://img.shields.io/badge/下载-macOS 版-15171C?style=for-the-badge&logo=apple&logoColor=white" alt="下载 macOS 版" height="36"></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-26%2B-black" alt="macOS 26+">
-  <img src="https://img.shields.io/badge/Apple%20silicon-only-black" alt="Apple silicon">
+  <img src="https://img.shields.io/badge/Apple%20silicon-only-black" alt="Apple 芯片">
   <img src="https://img.shields.io/badge/Swift-5-orange" alt="Swift 5">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
 </p>
 
-<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
+<p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a></p>
+
+知了是一个常驻 Mac 菜单栏的工具，直接听电脑正在播放的声音，在任何会议、直播、视频或语音房里实时出双语字幕、写会议纪要，还能按住快捷键开口让对方直接听到翻译后的语音，不用派机器人进会，对方也不用装任何东西。
 
 <p align="center">
-  <img src="docs/demo.gif" width="800" alt="An English meeting plays while Cicada writes Chinese notes on the left and a bilingual transcript on the right">
+  <img src="docs/demo.gif" width="800" alt="YouTube 播着 Bloomberg 英文直播，右边是知了实时整理的中文纪要、议题与鱼骨图，底部是双语字幕">
 </p>
 
-Cicada (知了, formerly Live Subs) is a macOS menu bar app that listens to what your Mac is playing. During a call, livestream, video or voice room, it writes structured meeting notes on the left while a line-by-line bilingual transcript scrolls on the right. No bot joins the call, and the other side installs nothing. You can also switch to a compact subtitle bar, or hold a key to speak and have the room hear you in their language.
+## 主要功能
 
-## Features
+### 实时纪要与双语文字记录
 
-### Live notes and bilingual transcript
+开会时纪要窗口边听边整理总结、议题要点、结论、待办、鱼骨图和人名术语表，点一下结论或待办就能跳回双语文字记录里的原话。纪要会统一文中人名和术语的写法并记下听错的变体，按 `⌘F` 搜索时能连同识别错的写法一起搜出来。
 
-- **Writes notes while the meeting runs.** A floating window updates roughly every 45 seconds with a summary, up to 8 topics with timestamped key points, conclusions, to-dos, a fishbone diagram when discussing causes, and a glossary of names and terms, then generates a complete final version when the meeting ends. Notes default to your language (or the meeting's own), and every conclusion or to-do clicks straight back to the supporting lines in the transcript.
-- **Line-by-line bilingual transcript and name search.** Each sentence appears in the original language with its translation right below. Cicada unifies names and terms across the notes and remembers misrecognized spellings, so `⌘F` searches both the canonical spelling and the variants.
+### 实时字幕与语言识别
 
-### Live subtitles and language detection
+对方开口几秒钟就能在本地自动认出语言并翻成你的系统语言，按 `⌃⌥S` 可以在纪要窗口、字幕条和不显示之间切换。字幕条只在有人说话时出现，鼠标划过时自动变透明，不会挡住底下的按钮。
 
-- **On-device language detection.** After someone speaks for about 3 seconds, every installed on-device speech model listens to the same 3 to 6 second audio window at once, and the most confident one wins. Speech recognition runs locally via Apple SpeechAnalyzer.
-- **Translates into your language with a compact subtitle bar.** Follows your system languages by default, and subtitles can show both languages, translation only, or original only. Press `⌃⌥S` to cycle between the notes window, the subtitle bar, and hidden; the bar appears only when someone speaks and turns see-through under your pointer so you can click right through it.
+### 同声传译
 
-### Speak back in their language
-
-- **Push-to-talk interpreting.** Hold the right `⌥` key (or a custom shortcut) and speak. The room hears your translated voice through BlackHole 2ch, a virtual microphone you can install and test from inside the app with one click. While interpreting is on, Cicada makes it the system microphone (and switches back afterwards), so a meeting in Chrome or any app on the default mic needs no setup; Settings shows which meeting apps are on it, live, and how to switch the ones that aren't.
-- **Ming voices and voice cloning.** With a Ling API key, the Ming audio model listens and translates in one step in about 2 seconds. The other side can hear natural Ming voices (English, Chinese, Japanese, Korean, German, French, Spanish), macOS system voices, or a clone of your own voice from an 8 to 30 second sample; without a key, Cicada uses macOS system voices.
-
-### Meeting records
-
-- **Saved on your Mac.** Every session gets its own folder with the bilingual transcript, notes and audio recording. Speakers are labeled as you and the other side; "you" covers only what you say while holding the talk key, not what you say into the meeting directly (see [roadmap](#roadmap)). Turn on Speaker identification (experimental) to tell the other side's voices apart and, with a Ling key, fill in their names.
-- **Ends when the meeting does.** When the meeting app hangs up, or after 10 minutes with no one speaking, Cicada counts down and ends the meeting, trimming the silent tail, so a forgotten one doesn't run on for hours. You can keep it going with one click, or change this in Settings.
-- **Export anywhere.** Export to Markdown, Word (both start with the meeting notes) or SRT subtitles. If you recorded a meeting without live notes, click **Generate Notes** afterward to create them.
+按住键盘右边的 `⌥` 键说话，对方在会议软件里就能直接听到翻译后的语音，打开同声传译时知了会自动把系统麦克风切到一键安装的虚拟驱动 BlackHole 2ch。填了 Ling API key 后可以用自然人声或用 8 到 30 秒录音克隆你自己的声音，不填也能用 Mac 自带语音。
 
 <p align="center">
-  <img src="docs/panel.png" width="300" alt="The menu bar panel">
-  &nbsp;
-  <img src="docs/meetings.png" width="520" alt="A meeting record with each line in the original language and in translation">
+  <img src="docs/interpreting.png" width="640" alt="同声传译设置页，包含按住右 Option 键说话、目标语言、Ming 声音试听与本机声音选择">
 </p>
 
-## Privacy & Permissions
+### 会议记录
 
-Audio capture, language detection, speech recognition (Apple SpeechAnalyzer) and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google with Apple on-device fallback), meeting records and push-to-talk interpreting all work. Live meeting notes, one-step voice translation and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing; Ling gives ¥10 of credit every month, about 10–50 hours of meetings.
+每场会议的双语文字记录、纪要和原始录音都保存在本机，打开实验性的说话人识别后还能区分对方不同的说话人并在有 Ling key 时填上名字。会议软件挂断或 10 分钟没人说话时会自动结束并截掉空白，会后随时可以补生成纪要，或导出成 Markdown、Word 和 SRT 字幕。目前记录里的你只包含按住说话键说的话，会上直接开口的部分见[路线图](#路线图)。
 
-Cicada asks for a permission only when you use the feature that needs it; everything else keeps working if you decline.
+<p align="center">
+  <img src="docs/records.png" width="640" alt="会议记录窗口，显示识别出的说话人名字和逐句英中双语文字记录">
+</p>
 
-| Permission | What it's for | When it's asked | Without it |
+## 隐私与权限
+
+声音采集、语言识别、语音识别（Apple SpeechAnalyzer）和会议录音全部在本机完成。会离开电脑的只有识别出来的文字（发去做翻译和生成纪要），以及填了 Ling API key 并按住说话键用同声传译时你说的那几句语音。不填 API key 时，实时字幕、翻译（走 Google 或退回 Apple 本机翻译）、会议记录和同声传译都能正常用。实时纪要、一步语音翻译和声音克隆需要你自己的 Ling（蚂蚁集团的大模型服务）API key（配置方法见[下文](#配置-ling-api-key)），开一小时会大约花 0.15 到 1 元人民币，Ling 每月赠送 10 元额度，约够 10 到 50 小时会议。
+
+知了只在用到某项功能时才请求对应的权限，拒绝后其他功能照常可用。
+
+| 权限 | 用来做什么 | 什么时候问 | 不给的话 |
 |---|---|---|---|
-| System audio recording (Screen & System Audio Recording) | Hearing what your Mac plays, for subtitles. Never records the screen or its own sound | Onboarding step 1, or the first time it listens | No subtitles or notes |
-| Microphone | Recording only while you hold the talk key, for speak-back | When you turn on speak-back | No speak-back |
-| Input Monitoring | Only to tell whether the right `⌥` was pressed on its own (listen-only; nothing is blocked or logged) | The first time you talk with right `⌥` | Pick a `⌃`/`⌘` combination in Settings instead; it needs no permission |
-| Administrator password | Installing the BlackHole 2ch virtual microphone and restarting the system audio service | When you click Install in onboarding or Settings, once | The room can't hear your translation; everything else works |
+| 录制系统声音（屏幕与系统录音） | 听 Mac 正在播放的声音来出字幕，不录屏幕，也不听知了自己的声音 | 新手引导第一步，或第一次开始听 | 字幕和纪要都用不了 |
+| 麦克风 | 只在你按住说话键时录音，用来做同声传译 | 打开同声传译时 | 只是不能说话翻译 |
+| 输入监控 | 只用来判断右 `⌥` 是否被单独按下（只监听、不拦截、不记录别的按键） | 第一次用右 `⌥` 说话时 | 在设置里改成 `⌃`/`⌘` 组合键，就不需要这个权限 |
+| 管理员密码 | 安装虚拟麦克风 BlackHole 2ch，并重启系统音频服务 | 在引导或设置里点“安装”时，只问一次 | 不能让对方听到翻译，其余照常 |
 
-- **Network and virtual microphone**: Cicada only connects to Google Translate (`translate.googleapis.com`), Ling / Ming when a key is configured (`api.ant-ling.com`), the official BlackHole download, and GitHub once a day for update checks. BlackHole is downloaded from the official Apple-notarized package and verified against a hardcoded SHA-256 checksum before installing.
-- **No analytics or servers of our own**: There is no analytics, no tracking, and no backend server. Diagnostics only log timings and counts locally in the meeting folder.
-- **Local storage**: Meetings, recordings and notes live in `~/Library/Application Support/LiveSubs`. Your Ling key and voice sample are readable only by your user account, excluded from Time Machine backups, and never written to logs or exports.
-- **Private notes window**: Hidden from screen sharing, screen recording and screenshots, unless you turn on 共享屏幕时让对方看到 to record a demo.
+- **联网与虚拟麦克风**。只有翻译（`translate.googleapis.com`）、填了 key 后的 Ling / Ming（`api.ant-ling.com`）、下载 BlackHole 驱动和每天去 GitHub 检查一次新版本会联网。BlackHole 从官方下载已经过苹果公证的安装包，安装前会核对代码里写死的 SHA-256。
+- **没有统计和自建服务器**。应用没有统计、没有埋点，也没有我们自己的服务器，诊断功能只把耗时和次数记在本机会议文件夹里。
+- **本机数据位置**。会议记录、录音和纪要存在 `~/Library/Application Support/LiveSubs`。Ling key 和你录的声音样本只对当前系统账户可读，不进 Time Machine 备份，也不写进日志和导出文件。
+- **共享屏幕看不到纪要窗口**。屏幕共享、录屏和截图都拍不到它，要录演示时可以打开“共享屏幕时让对方看到”。
 
-## Models
+## 用到的模型
 
-Without a Ling key, everything runs on Apple's on-device models plus Google Translate; with a key, Ling and Ming models handle the tasks below and fall back automatically if a request fails.
+不填 Ling key 时全部由 Apple 本机模型加 Google 翻译完成，填了 key 后由 Ling 和 Ming 模型负责并支持失败自动退回。
 
-| Feature | With a Ling key | Without a key / fallback |
+| 功能 | 填了 Ling key | 不填 key / 退回 |
 |---|---|---|
-| Speech recognition and language detection | Apple `SpeechAnalyzer` / `SpeechTranscriber` (on device) | same |
-| Translating finished sentences | Ling `Ling-3.1-flash` (or `Ling-3.0-flash`, set in Settings › AI Service) | Google Translate → Apple `Translation` (on device) |
-| Translating the sentence still being spoken | Google Translate (saves Ling's rate limit) | Apple `Translation` (on device) |
-| Live notes and the final version | Ling `Ling-3.1-flash` (same setting) | not available |
-| Checking the key | Ling `Ling-3.0-tiny` (one token) | — |
-| Interpreting: hearing and translating what you say | Ming `Ming-3.0-audio-flash`, one step | Apple on-device transcript, then the translation chain above |
-| Interpreting: the voice the room hears, voice cloning | Ming `Ming-3.0-tts-0.5B` | macOS system voices (`AVSpeechSynthesizer`); no cloning |
-| Speaker identification (说话人识别, experimental, off by default) | WeSpeaker ResNet34-LM voiceprints, bundled, on device (Core ML) | same |
+| 语音识别、语言识别 | Apple `SpeechAnalyzer` / `SpeechTranscriber`（本机） | 同左 |
+| 整句翻译 | Ling `Ling-3.1-flash`（可在“设置 › AI 服务”改为 `Ling-3.0-flash`） | Google 翻译 → Apple `Translation`（本机） |
+| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度） | Apple `Translation`（本机） |
+| 实时纪要、会后完整版 | Ling `Ling-3.1-flash`（同上设置） | 不可用 |
+| 检查 key 是否有效 | Ling `Ling-3.0-tiny`（只用一个 token） | — |
+| 同声传译：听懂并翻译你说的话 | Ming `Ming-3.0-audio-flash`，一步完成 | Apple 本机识别，再走上面的翻译链 |
+| 同声传译：对方听到的声音、声音克隆 | Ming `Ming-3.0-tts-0.5B` | Mac 自带语音（`AVSpeechSynthesizer`），不能克隆 |
+| 说话人识别（实验功能，默认关闭） | WeSpeaker ResNet34-LM 声纹模型，随 app 附带，本机运行（Core ML） | 同左 |
 
-<a id="ling-api-key"></a>
-## Setting up a Ling API key
+## 配置 Ling API key
 
-1. Sign up or log in on the [Ling open platform](https://chat.ant-ling.com/platform/api).
-2. Click **创建令牌** (create token) and copy the key that starts with `sk-`.
-3. In Cicada, open **Settings › AI Service**, paste the key and click **Save and check** (or paste it in the prompt at the top of the notes window). A one-token request confirms it works.
-4. Optionally pick the model (`Ling-3.1-flash` by default) on the same page, and the Ming voice for each language under **Settings › Interpreting**. To remove the key, click **Remove** on the same page.
+1. 打开 [Ling 开放平台](https://chat.ant-ling.com/platform/api)，注册或登录。
+2. 点创建令牌，复制以 `sk-` 开头的那串 key。
+3. 在知了里打开设置里的 AI 服务，粘贴后点保存并检查，也可以直接粘贴到纪要窗口顶部的提示框里。知了会发一个只用一个 token 的请求确认 key 可用。
+4. 同一页面可以选模型（默认 `Ling-3.1-flash`），每种语言用哪个 Ming 声音在同声传译设置里选。想移除 key，在同一页面点移除即可。
 
-## Requirements & Installation
+## 系统要求与安装
 
-Requires **macOS 26 or later** on **Apple silicon**.
+需要 macOS 26 或更新版本、Apple 芯片的 Mac。界面有中文、英文、日文和韩文，默认跟随系统语言，也可以在系统设置的语言与地区里单独给知了指定。
 
-Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`; verify with `shasum -a 256 Cicada-*.dmg`. Questions? Ask the author, [@wquguru](https://x.com/wquguru), on X.
+从 [Releases 页面](https://github.com/wquguru/cicada/releases/latest) 或 [官网](https://cicada.indaloop.app) 下载 `Cicada-<版本>-macOS-AppleSilicon.dmg`，打开后把知了拖进应用程序文件夹。应用目前是本地签名，还没有苹果公证（见[路线图](#路线图)），第一次打开被拦下时，去系统设置的隐私与安全性里点仍要打开。下载页同时提供 `checksums.txt`，可以用 `shasum -a 256 Cicada-*.dmg` 核对。有疑问可以去 X 找作者 [@wquguru](https://x.com/wquguru)。
 
-The first-launch guide asks for one permission, plays a short sample meeting, then helps you connect your Ling key (or skip it for now) and, only if you want interpreting, set up the virtual microphone. Later updates show as an orange dot on the menu bar icon; one click installs them and keeps your permissions.
+打开后跟着首次引导开一个权限、听一段双人示例会议直接看字幕效果、接上 Ling key（也可以先跳过），要用同声传译时再装虚拟麦克风。之后有新版本时菜单栏图标会出现橙点，点一下就能更新，权限不会丢。
 
-## Usage
+<p align="center">
+  <img src="docs/onboarding.png" width="640" alt="首次引导第二步，播放双人示例会议并实时显示双语字幕">
+</p>
 
-The UI is available in English, Chinese, Japanese and Korean, following your macOS language (or set per app in **System Settings › General › Language & Region**).
+## 路线图
 
-1. Play any video, livestream or call. The live notes window opens by default, and pressing `⌃⌥S` switches between the notes window, the subtitle bar and hidden.
-2. Click the Cicada icon in the menu bar to change the spoken language (auto by default), the target translation language, or the display mode.
-3. To use live notes, paste your [Ling API key](https://chat.ant-ling.com/platform/api) in **Settings › AI Service** or in the notes window prompt.
-4. To speak back in another language, turn on **Interpreting** in the menu bar panel and hold the right `⌥` key while speaking. Cicada switches the system microphone to **BlackHole 2ch** while it's on; a meeting app set to a specific microphone needs **BlackHole 2ch** (or the default) picked in its audio settings.
-5. Open **会议记录** from the menu bar panel to search past transcripts (`⌘F`), generate notes for older sessions, or export to Markdown, Word or SRT.
+按先后排，想要哪一项欢迎在 Issues 里说。
 
-## Roadmap
+- **记录我的发言**，开会时持续听麦克风并做回声消除，把你直接开口说的话也记进文字记录和纪要。
+- **支持更早的 macOS（14.4 起）**，在旧系统上改用较早的系统语音识别与翻译接口。
+- **正式签名与公证**，首次打开不再需要点仍要打开，AI key 也能放回系统钥匙串。
+- **声纹识别**，在现有的说话人识别基础上，在本机记住常一起开会的人的声音，下次开会也能自动认出。
+- **不用 key 也有纪要**，在支持的 Mac 上用 Apple 本机模型整理纪要，以及**自选 AI 服务**接入其他兼容 OpenAI 接口的服务。
+- **Windows 和 Android**，共用纪要与会议记录格式，iPhone 和 iPad 因系统限制暂不计划。
 
-In rough order; tell us what you need in Issues.
+每项的细节和取舍见 [docs/ROADMAP.zh-CN.md](docs/ROADMAP.zh-CN.md)。
 
-- **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
-- **Older macOS support (targeting macOS 14.4+)**, falling back to earlier system speech recognition and translation APIs on older versions.
-- **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
-- **Speaker recognition**, building on today's experimental speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
-- **Local notes without an API key** using Apple's on-device model on supported Macs, plus **custom AI providers** for any OpenAI-compatible endpoint.
-- **Windows and Android**, sharing the same notes and meeting-record formats (iPhone / iPad are not planned due to iOS audio capture restrictions).
+## 卸载
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for details and trade-offs on each item.
-
-## Uninstall
-
-Quit Cicada and drag it from **Applications** to the Trash. To remove all saved transcripts, notes and audio recordings, delete `~/Library/Application Support/LiveSubs`. To clear preferences, run:
+退出知了，去应用程序文件夹里把它拖进废纸篓即可。会议记录和录音都在 `~/Library/Application Support/LiveSubs` 文件夹里，不需要的话可以手动删掉。想清除软件设置可以运行：
 
 ```bash
 defaults delete com.wquguru.cicada
 ```
 
-## Development
+## 开发
 
-Building from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has no third-party dependencies and builds directly against macOS system frameworks.
+从源码构建只需要安装 Xcode Command Line Tools（`xcode-select --install`），项目没有任何第三方依赖。
 
 ```bash
-scripts/build.sh            # dev build → build/Cicada.app ("Cicada Dev", runs beside the installed app)
+scripts/build.sh            # 编译开发版 → build/Cicada.app（名为 Cicada Dev，可与正式版同时运行）
 open build/Cicada.app
-scripts/package.sh          # release DMG + zip + checksums
+scripts/package.sh          # 打包正式版 DMG、zip 和 SHA-256 校验值
 ```
 
-See [AGENTS.md](AGENTS.md) for architecture details and release workflows. The website source lives in `site/` and is generated by `scripts/site.py`. Release history is in [CHANGELOG.md](CHANGELOG.md) and on the website at [cicada.indaloop.app/changelog](https://cicada.indaloop.app/changelog/).
+代码架构等说明写在 [AGENTS.md](AGENTS.md) 里。官网源码放在 `site/` 目录，由 `scripts/site.py` 生成。历次更新记录见 [CHANGELOG.md](CHANGELOG.md) 或官网的[更新日志页](https://cicada.indaloop.app/changelog/)。
 
-## License
+## 开源协议
 
-[Apache-2.0](LICENSE). The BlackHole 2ch virtual audio driver is licensed under the GPL; Cicada does not bundle it and downloads the official release on demand when you choose to install it. The bundled voiceprint model is [WeSpeaker](https://github.com/wenet-e2e/wespeaker)'s ResNet34-LM trained on VoxCeleb, licensed CC BY 4.0, converted to Core ML by `scripts/convert-voiceprint.py`.
+本项目采用 [Apache-2.0](LICENSE) 协议开源。同声传译用到的虚拟麦克风驱动 BlackHole 2ch 采用 GPL 协议，知了安装包里不打包它，在你点安装时直接从它的官方发布地址下载。随 app 附带的声纹模型是 [WeSpeaker](https://github.com/wenet-e2e/wespeaker) 在 VoxCeleb 上训练的 ResNet34-LM，采用 CC BY 4.0 协议，由 `scripts/convert-voiceprint.py` 转成 Core ML。

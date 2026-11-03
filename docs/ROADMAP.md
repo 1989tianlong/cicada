@@ -18,4 +18,4 @@ In rough order, and subject to change. Tell us what you need in Issues.
 - **Android.** Can listen to videos and livestreams (capturing audio from other apps works on Android 10+), but Android blocks capturing phone and meeting call audio, and translated speech cannot be injected into calls. We plan to start with an in-person microphone mode and a viewer for meeting records.
 - **iPhone / iPad.** iOS does not allow capturing audio from other apps; not planned.
 
-Back to the [README](../README.md).
+Back to the [README](../README.en.md).
