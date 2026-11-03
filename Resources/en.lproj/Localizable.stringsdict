@@ -114,21 +114,5 @@
 			<string>%lld lines</string>
 		</dict>
 	</dict>
-	<key>正在记录 · %@ 起 · %lld 句</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>Recording · since %1$@ · %2$#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>lld</string>
-			<key>one</key>
-			<string>%lld line</string>
-			<key>other</key>
-			<string>%lld lines</string>
-		</dict>
-	</dict>
 </dict>
 </plist>

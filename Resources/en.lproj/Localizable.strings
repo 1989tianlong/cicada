@@ -710,14 +710,14 @@
 "同声传译设置…" = "Interpreting Settings…";
 "系统麦克风换成 %@" = "Switch System Mic to %@";
 "还原系统麦克风" = "Restore System Mic";
-"搜索标题和原话" = "Search titles and transcripts";
+"搜索" = "Search";
+"导出…" = "Export…";
 "开启字幕后，每场会议都会自动保存在这里。" = "Once subtitles are on, every meeting is saved here.";
 "没有找到“%@”" = "Nothing found for “%@”";
 "今天" = "Today";
 "昨天" = "Yesterday";
 "本周" = "This Week";
 "未命名会议" = "Untitled meeting";
-"正在记录 · %@ 起 · %lld 句" = "Recording · since %@ · %lld lines";
 "在 Finder 中显示" = "Show in Finder";
 "恢复自动标题" = "Restore Automatic Title";
 "删除" = "Delete";

@@ -20,7 +20,7 @@ Cicada (知了, formerly Live Subs): a macOS menu bar app that turns what the Ma
 
 ## Design
 
-- Ground `#F3F4F6`, white cards, ink `#15171C`, one accent `#E8552B` for "live", greys `#5A5F6B` / `#6B7080`. Design canvases on claude.ai and the app itself are the source of truth.
+- Ground `#F3F4F6`, white cards (the main window is one white sheet, no cards), ink `#15171C`, one accent `#E8552B` for "live", greys `#5A5F6B` / `#6B7080`. Design canvases on claude.ai and the app itself are the source of truth.
 - Copy is Chinese and short, at most one grey helper line. Chinese text is the localization key; `Resources/{en,ja,ko}.lproj` translate it. SwiftUI literals localize themselves; other UI strings use `L("…")`; never `L()` prompts, logs or stored values. After changing UI text run `python3 scripts/strings.py` (`--write` adds TODOs), and check the English UI, which runs wider.
 - The logo geometry is kept in step in `CicadaLogo` (`Onboarding.swift`), `Sources/LiveSubsIcon` and `site/icon.svg`; then rerun `scripts/site-images.sh`.
 

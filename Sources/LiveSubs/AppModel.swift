@@ -1141,6 +1141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var pollTimer: Timer?
     private var runningObserver: Any?
     private lazy var menu = AppMenu(model: model)
+    /// Held here: a toolbar keeps only a weak reference to its delegate.
+    private lazy var mainToolbar = MainToolbar(model: model)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -1260,6 +1262,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             w.minSize = NSSize(width: 760, height: 480)
             w.delegate = self
             w.contentView = NSHostingView(rootView: MainWindowView(model: model, store: model.store, settings: model.settings))
+            w.toolbar = mainToolbar.make()
+            w.toolbarStyle = .unified
+            w.titlebarSeparatorStyle = .none
             w.center()
             w.setFrameAutosaveName("LiveSubsMain")
             mainWindow = w
