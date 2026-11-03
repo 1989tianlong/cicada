@@ -517,9 +517,11 @@ final class ListenEngine {
         guard !translationOff(), let seg = segments.first(where: { $0.id == id }) else { return }
         let trace = TranslateTrace()
         let asked = Date()
+        // The target follows the detected language; log the one this call used, not the one after.
+        let target = resolvedTarget
         Task { [weak self] in
             guard let self else { return }
-            let result = await self.translate(seg.text, source: seg.sourceCode, trace: trace)
+            let result = await self.translate(seg.text, source: seg.sourceCode, target: target, trace: trace)
             if let timing = self.finalTiming.removeValue(forKey: id), !trace.attempts.isEmpty {
                 self.onTiming?(SentenceTiming(at: timing.at, side: "them", chars: seg.text.count, recognize: timing.recognize,
                                               queue: trace.lingQueue, translate: Date().timeIntervalSince(asked), voice: nil,
@@ -533,7 +535,7 @@ final class ListenEngine {
             if let idx = self.segments.firstIndex(where: { $0.id == id }) {
                 self.segments[idx].translation = out
             }
-            contentLog("TRANSLATE [\(seg.sourceCode)→\(self.resolvedTarget)] \(seg.text) => \(out)")
+            contentLog("TRANSLATE [\(seg.sourceCode)→\(target)] \(seg.text) => \(out)")
             self.onTranslated?(id, out)
             self.renderSubtitles()
         }

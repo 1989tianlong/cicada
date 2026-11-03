@@ -118,7 +118,12 @@ final class TranslationService {
             let out = try await ling.chat(content: prompt, instruction: "Translate.", priority: kind == .speak ? .speak : .translate,
                                           maxTokens: 400, timeout: kind == .speak ? 10 : 6,
                                           onQueued: { [weak trace] in trace?.lingQueue += $0 })
-            return (out.isEmpty ? nil : out, "empty")
+            if out.isEmpty { return (nil, "empty") }
+            guard let clean = Self.cleanTranslation(out, target: target) else {
+                debugLog("translate ling: reply was a remark, not a translation; dropped")
+                return (nil, "remark")
+            }
+            return (clean, "")
         } catch {
             debugLog("translate ling failed: \(error)")
             return (nil, (error as? LingClient.Failure).map(LingClient.name) ?? "error")
@@ -178,6 +183,38 @@ final class TranslationService {
         let wantsCJK = ["zh", "ja", "ko"].contains(where: { target.hasPrefix($0) })
         if wantsCJK ? cjk == 0 : cjk * 2 > letters.count { return nil }
         return (o, t)
+    }
+
+    /// Ling sometimes comments on a garbled subtitle ("The subtitle appears to be… Here is the
+    /// best-effort translation:") instead of translating it, and that would land in the subtitles and
+    /// the record. Remark lines are dropped, a "Translation:" label is stripped, and what is left must
+    /// be in the target's script; nil means the next provider translates it.
+    nonisolated static func cleanTranslation(_ reply: String, target: String) -> String? {
+        // A line is a remark only when it opens or ends like one and talks about the job itself,
+        // so a subtitle that happens to start with "The text…" is kept.
+        let opener = ["here is", "here's", "the subtitle", "this subtitle", "the text", "this text", "the original",
+                      "note", "(note", "i'm sorry", "i am sorry", "sorry", "it seems", "it appears", "this appears"]
+        let about = ["translat", "subtitle", "garbled", "transcri", "asr", "speech recognition", "best-effort"]
+        var kept: [String] = []
+        for raw in reply.components(separatedBy: .newlines) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            let lower = line.lowercased()
+            if lower.hasPrefix("translation:") {
+                line = String(line.dropFirst("translation:".count)).trimmingCharacters(in: .whitespaces)
+            } else if opener.contains(where: { lower.hasPrefix($0) }) || line.hasSuffix(":") || line.hasSuffix("："),
+                      about.contains(where: { lower.contains($0) }) {
+                continue
+            }
+            if !line.isEmpty { kept.append(line) }
+        }
+        let out = kept.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: "\"“”「」 "))
+        guard !out.isEmpty else { return nil }
+        let letters = out.unicodeScalars.filter { $0.properties.isAlphabetic }
+        let cjk = letters.filter { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) }.count
+        let wantsCJK = ["zh", "ja", "ko"].contains(where: { target.hasPrefix($0) })
+        if !letters.isEmpty, wantsCJK ? cjk == 0 : cjk * 2 > letters.count { return nil }
+        return out
     }
 
     private func viaApple(_ text: String, source: String, target: String) async -> String? {
