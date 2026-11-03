@@ -17,7 +17,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN/LiveSubs" "$APP/Contents/MacOS/Cicada"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-cp Resources/sample/sample.mp4 Resources/sample/sample.m4a "$APP/Contents/Resources/"
+cp Resources/sample/sample.m4a "$APP/Contents/Resources/"
 cp -R Resources/*.lproj "$APP/Contents/Resources/"
 # Traditional Chinese systems get the Chinese UI rather than English (there is no zh-Hant translation).
 cp -R Resources/zh-Hans.lproj "$APP/Contents/Resources/zh-Hant.lproj"

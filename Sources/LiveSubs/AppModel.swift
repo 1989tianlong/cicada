@@ -63,6 +63,11 @@ final class AppModel: ObservableObject {
     @Published var liveSource = ""
     @Published var liveTranslation = ""
     @Published var onboardingStep = 1
+    /// Step 3 is showing what skipping the key leaves out (debug: `onboarding:3,skip`).
+    @Published var onboardingKeySkip = false
+    /// Step 4's yes/no (false) or checklist (true); nil follows whether speaking is on
+    /// (debug: `onboarding:4,ask` / `onboarding:4,setup`).
+    @Published var onboardingSpeakSetup: Bool?
     /// Debug: which meeting and tab the main window shows ("<id>" or "<id>,transcript").
     @Published var mainShow: String?
     /// Hold right ⌥ is chosen but "输入监控" isn't allowed yet.
@@ -888,7 +893,13 @@ final class AppModel: ObservableObject {
         case "stop": stop()
         case "open": openMainWindow?()
         case "panel": showPanel?()
-        case "onboarding": onboardingStep = Int(arg) ?? 1; openOnboarding?()
+        case "onboarding":
+            // onboarding:<step>[,skip|setup]: the step, optionally in its second state.
+            let p = arg.split(separator: ",").map(String.init)
+            onboardingStep = min(max(Int(p.first ?? "") ?? 1, 1), OnboardingView.done)
+            onboardingKeySkip = p.contains("skip")
+            onboardingSpeakSetup = p.contains("setup") ? true : p.contains("ask") ? false : nil
+            openOnboarding?()
         case "step": onboardingStep = Int(arg) ?? 1
         case "samplePlay": ensureListening(); sample.play()
         case "micVerify": installer.install(verifyOnly: true)

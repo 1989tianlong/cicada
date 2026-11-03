@@ -1,17 +1,45 @@
 #!/bin/bash
-# Builds the onboarding sample: Resources/sample/sample.mp4 (muted video track for display)
-# and Resources/sample/sample.m4a (the speech, played by a helper process so the app's
-# own system-audio capture hears it — the app excludes its own process).
+# Builds the onboarding sample, Resources/sample/sample.m4a: a short meeting voiced by Ming with
+# the Ling key in Application Support. The app plays it through afplay so its own system-audio
+# capture hears it (the app excludes its own process). Ming's output varies a little between runs:
+# after regenerating, re-measure the turns (silencedetect below) into `SamplePlayer.turns`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+KEY_FILE="$HOME/Library/Application Support/LiveSubs/ling-api-key"
+[ -f "$KEY_FILE" ] || KEY_FILE="$HOME/Library/Application Support/LiveSubs Dev/ling-api-key"
 T=$(mktemp -d)
-say -v 'Eddy (English (US))' -r 175 -o "$T/speech.aiff" \
-  "Hi everyone, welcome to the live stream. Today we're talking about real time translation on the Mac."
-swift scripts/make-frame.swift "$T/frame.png"
-DUR=$(afinfo "$T/speech.aiff" | awk '/estimated duration/{print $3}')
-ffmpeg -y -loglevel error -i "$T/speech.aiff" -c:a aac -b:a 64k Resources/sample/sample.m4a
-ffmpeg -y -loglevel error -loop 1 -framerate 25 -t "$DUR" -i "$T/frame.png" \
-  -vf "zoompan=z='min(zoom+0.0006,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=960x540:fps=25,format=yuv420p" \
-  -c:v libx264 -preset slow -crf 30 -an -movflags +faststart Resources/sample/sample.mp4
-rm -rf "$T"
-ls -la Resources/sample/sample.*
+trap 'rm -rf "$T"' EXIT
+
+say() { # out voice text
+  python3 -I - "$1" "$2" "$3" "$KEY_FILE" <<'PY'
+import sys, json, base64, urllib.request
+out, voice, text, key_file = sys.argv[1:]
+key = open(key_file).read().strip()
+body = {"model": "Ming-3.0-tts-0.5B", "input": text, "voice": voice, "response_format": "pcm",
+        "sample_rate": 24000, "stream": True, "stream_format": "sse",
+        "instructions": "Speak fast and casually, like a colleague in a real meeting, natural rhythm."}
+req = urllib.request.Request("https://api.ant-ling.com/v1/audio/speech", data=json.dumps(body).encode(),
+                             headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+pcm = b""
+with urllib.request.urlopen(req, timeout=60) as r:
+    for line in r:
+        line = line.decode().strip()
+        if not line.startswith("data:"): continue
+        try: o = json.loads(line[5:])
+        except ValueError: continue
+        if o.get("type") == "speech.audio.done": break
+        if o.get("audio"): pcm += base64.b64decode(o["audio"])
+open(out, "wb").write(pcm)
+PY
+}
+say "$T/1.pcm" US_Emma "Okay, so where are we on the launch?"
+say "$T/2.pcm" UK_George "Uh, I think we can ship March third, if design signs off by Friday."
+say "$T/3.pcm" US_Emma "Great, let's lock that in."
+
+TRIM="silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse"
+PCM="-f s16le -ar 24000 -ac 1"
+ffmpeg -y -loglevel error $PCM -i "$T/1.pcm" $PCM -i "$T/2.pcm" $PCM -i "$T/3.pcm" -filter_complex \
+  "[0]$TRIM,adelay=250,apad=pad_dur=0.22[a];[1]$TRIM,apad=pad_dur=0.2[b];[2]$TRIM,apad=pad_dur=0.35[c];[a][b][c]concat=n=3:v=0:a=1,loudnorm=I=-16:TP=-1.5,aresample=22050" \
+  -c:a aac -b:a 64k Resources/sample/sample.m4a
+ffmpeg -i Resources/sample/sample.m4a -af silencedetect=n=-40dB:d=0.12 -f null - 2>&1 | grep -o 'silence_[a-z]*: [0-9.]*' || true
+ls -la Resources/sample/sample.m4a

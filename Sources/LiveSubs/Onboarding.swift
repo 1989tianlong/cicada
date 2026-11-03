@@ -1,6 +1,5 @@
 import AppKit
 import AVFoundation
-import AVKit
 import SwiftUI
 
 // MARK: - Brand mark (logo B: a cicada's eyes and wings peeking over a white subtitle card)
@@ -163,40 +162,41 @@ enum BrandImage {
 
 // MARK: - Sample clip
 
-/// Plays the bundled 7-second sample. The picture shows in the onboarding card;
-/// the sound is played by a separate `afplay` process, because the app leaves
-/// its own audio out of what it listens to.
+/// Plays the bundled sample, a short meeting voiced by Ming (`scripts/make-sample.sh`), through a
+/// separate `afplay` process, because the app leaves its own audio out of what it listens to.
+/// The onboarding card draws the call itself and lights whoever is talking.
 @MainActor
 final class SamplePlayer: ObservableObject {
+    static let duration = 8.8
+    /// Who talks when in sample.m4a (0 Emma, 1 George), in seconds; re-measure after regenerating.
+    static let turns: [(speaker: Int, start: Double, end: Double)] = [(0, 0.25, 2.34), (1, 2.56, 6.97), (0, 7.17, 8.45)]
+
     @Published private(set) var playing = false
-    @Published private(set) var progress = 0.0
-    let player: AVPlayer?
+    /// Played since the card appeared: its subtitles stay up after the clip ends, as the last
+    /// translation lands a moment later.
+    @Published private(set) var played = false
+    @Published private(set) var elapsed = 0.0
     private var audio: Process?
     private var timer: Timer?
     private var started = Date()
-    private let duration = 7.4
 
-    init() {
-        if let url = Bundle.main.url(forResource: "sample", withExtension: "mp4") {
-            player = AVPlayer(url: url)
-            player?.isMuted = true
-        } else {
-            player = nil
-        }
+    var progress: Double { min(1, elapsed / Self.duration) }
+    var speaker: Int? {
+        guard playing else { return nil }
+        return Self.turns.first { elapsed >= $0.start && elapsed < $0.end }?.speaker
     }
 
     func play() {
         guard !playing, let audioURL = Bundle.main.url(forResource: "sample", withExtension: "m4a") else { return }
-        player?.seek(to: .zero)
-        player?.play()
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
         p.arguments = [audioURL.path]
         try? p.run()
         audio = p
         playing = true
+        played = true
         started = Date()
-        progress = 0
+        elapsed = 0
         timer?.invalidate()
         let t = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -206,8 +206,8 @@ final class SamplePlayer: ObservableObject {
     }
 
     private func tick() {
-        progress = min(1, Date().timeIntervalSince(started) / duration)
-        if progress >= 1 { stop() }
+        elapsed = Date().timeIntervalSince(started)
+        if elapsed >= Self.duration { stop() }
     }
 
     func stop() {
@@ -215,21 +215,124 @@ final class SamplePlayer: ObservableObject {
         timer = nil
         if audio?.isRunning == true { audio?.terminate() }
         audio = nil
-        player?.pause()
         playing = false
+    }
+
+    /// Back to the untouched card, when the guide leaves the step.
+    func reset() {
+        stop()
+        played = false
+        elapsed = 0
     }
 }
 
-struct PlayerSurface: NSViewRepresentable {
-    let player: AVPlayer?
-    func makeNSView(context: Context) -> AVPlayerView {
-        let v = AVPlayerView()
-        v.controlsStyle = .none
-        v.videoGravity = .resizeAspectFill
-        v.player = player
-        return v
+/// Step 2's card: a two-person call drawn in place of a video. The call sits in the top part and
+/// the bottom strip is kept for the subtitles, so they never cover a face; before the first play
+/// the play button holds that strip, where the eye should land.
+struct SampleCallCard: View {
+    @ObservedObject var sample: SamplePlayer
+    let liveSource: String
+    let liveTranslation: String
+    let play: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(verbatim: "LIVE").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Palette.accent))
+                Text(verbatim: "Launch sync").font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                if sample.played && !sample.playing {
+                    Button(action: play) {
+                        Label("重播", systemImage: "arrow.counterclockwise").font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(height: 18)
+            HStack(spacing: 12) {
+                tile(0, "Emma", Color(red: 0.36, green: 0.39, blue: 0.47))
+                tile(1, "George", Color(red: 0.42, green: 0.36, blue: 0.31))
+            }
+            .padding(.top, 8)
+            Spacer(minLength: 0)
+            Group {
+                if sample.played { subtitle } else { playButton }
+            }
+            .frame(height: 58)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .frame(height: 210)
+        .background(Color(red: 0.1, green: 0.11, blue: 0.13))
+        .overlay(alignment: .topLeading) {
+            if sample.playing {
+                GeometryReader { g in
+                    Rectangle().fill(Palette.accent).frame(width: g.size.width * sample.progress, height: 3)
+                }
+                .frame(height: 3)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .animation(.easeOut(duration: 0.15), value: sample.speaker)
     }
-    func updateNSView(_ nsView: AVPlayerView, context: Context) {}
+
+    private func tile(_ index: Int, _ name: String, _ avatar: Color) -> some View {
+        let speaking = sample.speaker == index
+        return ZStack {
+            RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.15, green: 0.16, blue: 0.19))
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(speaking ? Palette.accent : Color(red: 0.18, green: 0.19, blue: 0.22), lineWidth: 2)
+            Circle().fill(avatar).frame(width: 42, height: 42)
+                .overlay(Text(verbatim: String(name.prefix(1))).font(.system(size: 18, weight: .bold)).foregroundStyle(.white))
+            Text(verbatim: name).font(.system(size: 11)).foregroundStyle(.white.opacity(0.9))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.horizontal, 9).padding(.vertical, 6)
+            if speaking {
+                HStack(alignment: .bottom, spacing: 2) {
+                    ForEach([6.0, 11, 8], id: \.self) { h in
+                        RoundedRectangle(cornerRadius: 1.5).fill(Palette.accent).frame(width: 3, height: h)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(8)
+            }
+        }
+        .frame(width: 168, height: 88)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: name))
+    }
+
+    private var playButton: some View {
+        Button(action: play) {
+            HStack(spacing: 8) {
+                Image(systemName: "play.fill").font(.system(size: 12))
+                Text("播放示例 · 0:09").font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, 22).frame(height: 44)
+            .background(Capsule().fill(Color.white))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var subtitle: some View {
+        VStack(spacing: 3) {
+            Text(liveSource.isEmpty ? L("正在听…") : liveSource)
+                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.65)).lineLimit(1).truncationMode(.head)
+            Text(liveTranslation)
+                .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1).truncationMode(.head)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 18)
+        .frame(maxWidth: 600, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.03, opacity: 0.92)))
+    }
 }
 
 // MARK: - Onboarding
@@ -244,9 +347,12 @@ struct OnboardingView: View {
         nonmutating set { model.onboardingStep = newValue }
     }
     var onFinish: () -> Void
-    /// Permissions, Ling key, sample video, speaking.
+    /// System audio, sample video, Ling key, speaking; then a closing page (step 5) outside the count.
+    /// The video comes before the key so people see the subtitles before being sent to sign up anywhere.
     static let steps = 4
+    static let done = 5
 
+    private var stepNames: [String] { [L("听声音"), L("看效果"), L("接 Ling"), L("同声传译")] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -255,12 +361,13 @@ struct OnboardingView: View {
             Group {
                 switch step {
                 case 1: permissions
-                case 2: OnboardingKeyStep(ling: model.ling, settings: settings)
-                case 3: tryIt
-                default: speaking
+                case 2: tryIt
+                case 3: OnboardingKeyStep(ling: model.ling, settings: settings, skipping: $model.onboardingKeySkip)
+                case 4: speaking
+                default: closing
                 }
             }
-            .padding(.top, 28)
+            .padding(.top, step == Self.done ? 28 : 24)
             Spacer(minLength: 0)
             footer
         }
@@ -268,56 +375,99 @@ struct OnboardingView: View {
         .padding(.bottom, 36)
         .frame(width: 860, height: 640)
         .background(Color(red: 0.965, green: 0.969, blue: 0.976))
-        .onChange(of: step) { _, _ in sample.stop() }
+        .onChange(of: step) { _, _ in sample.reset() }
+        // Only the moment it turns on moves on by itself: when it was already on (the guide
+        // reopened from Settings), step 1 stays put with a plain 继续.
+        .onChange(of: model.systemAudioOK) { was, now in
+            guard !was, now, step == 1 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated { if step == 1 { step = 2 } }
+            }
+        }
     }
 
     // MARK: Header / footer
 
-    private var header: some View {
-        HStack(spacing: 14) {
+    @ViewBuilder private var header: some View {
+        if step == Self.done {
             BrandMark(size: 34)
-            HStack(spacing: 6) {
-                ForEach(1...Self.steps, id: \.self) { i in
-                    Capsule().fill(i <= step ? Palette.ink : Color(white: 0.87)).frame(height: 4)
+        } else {
+            HStack(alignment: .top, spacing: 14) {
+                BrandMark(size: 34)
+                HStack(alignment: .top, spacing: 6) {
+                    ForEach(1...Self.steps, id: \.self) { i in
+                        VStack(alignment: .leading, spacing: 7) {
+                            Capsule().fill(i <= step ? Palette.ink : Color(white: 0.87)).frame(height: 4)
+                            Text(stepNames[i - 1])
+                                .font(.system(size: 11, weight: i == step ? .semibold : .regular))
+                                .foregroundStyle(i == step ? Palette.ink : Palette.tertiary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .padding(.top, 8)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(L("第 \(step) 步，共 \(Self.steps) 步：\(stepNames[step - 1])"))
             }
-            Text("\(step) / \(Self.steps)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
     }
 
-    private var footer: some View {
-        HStack {
-            if step == 1 {
-                Button("以后再说") { step = 2 }.buttonStyle(.plain).foregroundStyle(Palette.secondary)
-            } else {
-                Button("上一步") { step -= 1 }.buttonStyle(.plain).foregroundStyle(Palette.secondary)
+    @ViewBuilder private var footer: some View {
+        HStack(spacing: 16) {
+            // In the checklist, 先不用了 replaces 上一步, but only when speaking was turned on right here:
+            // someone re-running the guide with it already on shouldn't have it switched off.
+            if step > 1 && !(step == 4 && model.onboardingSpeakSetup == true) {
+                Button("上一步") {
+                    model.onboardingKeySkip = false
+                    step -= 1
+                }
+                .buttonStyle(.plain).foregroundStyle(Palette.secondary)
             }
             Spacer()
-            if step == 2 {
-                OnboardingKeyFooter(ling: model.ling, skip: { step = 3 }, next: { step = 3 })
-            } else if step == 1 && !model.systemAudioOK {
-                Text("先打开“听电脑里的声音”")
+            switch step {
+            case 1 where !model.systemAudioOK:
+                Text("打开后自动继续")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.secondary)
                     .padding(.horizontal, 24).frame(height: 44)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.87)))
-            } else {
-                Button {
-                    if step < Self.steps { step += 1 } else { onFinish() }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(step < Self.steps ? L("继续") : L("开始使用"))
-                        if step < Self.steps { Image(systemName: "arrow.right") }
+            case 3:
+                OnboardingKeyFooter(ling: model.ling, skipping: $model.onboardingKeySkip, next: { step = 4 })
+            case 4 where !speakSetupShown:
+                // The two cards above are the choice; nothing to confirm here.
+                EmptyView()
+            case 4:
+                if model.onboardingSpeakSetup == true {
+                    Button("先不用了") {
+                        model.onboardingSpeakSetup = false
+                        model.enableSpeaking(false)
                     }
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                    .padding(.horizontal, 28).frame(height: 44)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.ink))
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain).foregroundStyle(Palette.secondary)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.defaultAction)
+                primaryButton(L("完成"), arrow: false) { step = Self.done }
+            case Self.done:
+                primaryButton(L("开始使用"), arrow: false) { onFinish() }
+            default:
+                primaryButton(L("继续"), arrow: true) { step += 1 }
             }
         }
+        .frame(height: 44)
         .font(.system(size: 13))
+    }
+
+    private func primaryButton(_ text: String, arrow: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(text)
+                if arrow { Image(systemName: "arrow.right") }
+            }
+            .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 28).frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Palette.ink))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.defaultAction)
     }
 
     private func title(_ text: String, _ sub: String) -> some View {
@@ -327,22 +477,13 @@ struct OnboardingView: View {
         }
     }
 
-    private func row<Trailing: View>(icon: String, tint: Color = Palette.ground, iconColor: Color = Palette.ink,
-                                     title: String, tag: String? = nil, tagAccent: Bool = false, detail: String,
+    private func row<Trailing: View>(icon: String, title: String, detail: String,
                                      @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 16) {
-            RoundedRectangle(cornerRadius: 12).fill(tint).frame(width: 44, height: 44)
-                .overlay(Image(systemName: icon).font(.system(size: 18)).foregroundStyle(iconColor))
+            RoundedRectangle(cornerRadius: 12).fill(Palette.ground).frame(width: 44, height: 44)
+                .overlay(Image(systemName: icon).font(.system(size: 18)).foregroundStyle(Palette.ink))
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
-                    if let tag {
-                        Text(tag).font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(tagAccent ? Palette.accentInk : Palette.secondary)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(Capsule().fill(tagAccent ? Palette.accentPale : Color(white: 0.94)))
-                    }
-                }
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
                 Text(detail).font(.system(size: 13)).foregroundStyle(Palette.secondary)
             }
             Spacer()
@@ -376,90 +517,43 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
     }
 
-    private var card: some ShapeStyle { Color.white }
+    private func whiteCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
+    }
 
-    // MARK: Step 1
+    // MARK: Step 1: system audio only (the microphone is asked for in step 4, if at all)
 
     private var permissions: some View {
         VStack(alignment: .leading, spacing: 24) {
-            title(L("先打开两个开关"), L("去系统设置打开，回来会自动识别。"))
-            VStack(spacing: 0) {
-                row(icon: "speaker.wave.2", title: L("听电脑里的声音"), tag: L("必需"), tagAccent: true, detail: L("用于生成字幕，不会录制屏幕画面")) {
+            title(L("让知了听到电脑里的声音"), L("字幕和纪要都从这里来。去系统设置打开，回来会自动识别。"))
+            whiteCard {
+                row(icon: "speaker.wave.2", title: L("听电脑里的声音"), detail: L("只听声音，不录屏幕画面")) {
                     if model.systemAudioOK { done(L("已打开")) } else { primary(L("去开启")) { model.requestSystemAudio() } }
                 }
-                Divider().padding(.horizontal, 22)
-                row(icon: "mic", title: L("麦克风"), tag: L("可选"), detail: L("仅在同声传译时使用")) {
-                    switch model.micStatus {
-                    case .authorized: done(L("已允许"))
-                    case .notDetermined: secondary(L("允许")) { model.requestMicrophone() }
-                    default: secondary(L("去打开")) { model.openMicrophoneSettings() }
-                    }
-                }
             }
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
             Label("声音只在本机识别", systemImage: "lock")
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
     }
 
-    // MARK: Step 3
+    // MARK: Step 2: the sample meeting
 
     private var tryIt: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            title(L("放一段视频试试"), L("点击播放，看看实时字幕效果。"))
-            ZStack {
-                PlayerSurface(player: sample.player)
-                if !sample.playing {
-                    Color.black.opacity(0.35)
-                    Button { model.ensureListening(); sample.play() } label: {
-                        Circle().fill(Color.white).frame(width: 64, height: 64)
-                            .overlay(Image(systemName: "play.fill").font(.system(size: 22)).foregroundStyle(Palette.ink).offset(x: 2))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L("播放示例视频"))
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Text("示例 · 0:07").font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(RoundedRectangle(cornerRadius: 6).fill(.black.opacity(0.5)))
-                        }
-                    }
-                    .padding(12)
-                }
-                if sample.playing || !model.liveTranslation.isEmpty {
-                    VStack {
-                        GeometryReader { g in
-                            Rectangle().fill(Palette.accent).frame(width: g.size.width * sample.progress, height: 3)
-                        }
-                        .frame(height: 3)
-                        Spacer()
-                        VStack(spacing: 4) {
-                            Text(model.liveSource.isEmpty ? L("正在听…") : model.liveSource)
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.65)).lineLimit(1).truncationMode(.head)
-                            Text(model.liveTranslation)
-                                .font(.system(size: 19, weight: .semibold)).foregroundStyle(.white).lineLimit(2).truncationMode(.head)
-                        }
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20).padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.05, opacity: 0.9)))
-                        .padding(.horizontal, 40).padding(.bottom, 18)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 18) {
+            title(L("放一段会议试试"), L("一段 9 秒的英文会议，字幕会跟着声音实时出来。"))
+            SampleCallCard(sample: sample, liveSource: model.liveSource, liveTranslation: model.liveTranslation) {
+                model.ensureListening()
+                sample.play()
             }
-            .frame(height: 230)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color(red: 0.1, green: 0.11, blue: 0.13)))
 
             HStack(spacing: 12) {
                 ChoiceRow(label: L("听到"), value: heardName, badge: nil, options: sourceOptions) { model.sourceSelection = $0 }
                 ChoiceRow(label: L("翻译成"), value: targetName(model.listen.resolvedTarget),
                           badge: settings.target == "system" ? L("跟随系统") : nil, options: targetOptions) { model.targetSelection = $0 }
             }
-            Text("字幕条可任意拖动，拖拽右下角可调整大小。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            OnboardingNotesTeaser(ling: model.ling)
         }
     }
 
@@ -474,78 +568,123 @@ struct OnboardingView: View {
         [("system", L("跟随系统"))] + targetLanguages.map { ($0.code, $0.name) }
     }
 
-    // MARK: Step 4
+    // MARK: Step 4: speaking, only for those who want it
+
+    /// The checklist shows once speaking is on (or was already on); before that, a yes/no.
+    private var speakSetupShown: Bool { model.onboardingSpeakSetup ?? settings.speakEnabled }
 
     private var speaking: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .top, spacing: 24) {
-                title(L("想让对方听懂你？"), L("按住说\(settings.speakFromLang.name)，对方听到翻译后的语音。"))
+                title(L("开会时要说外语吗？"), L("按住一个键说\(settings.speakFromLang.name)，对方听到翻译后的语音。"))
                 Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    HStack(alignment: .bottom, spacing: 6) {
-                        if settings.talkKey.isRightOption {
-                            key("⌥", L("右侧 option"), width: 96)
-                        } else {
-                            ForEach(Array(settings.talkKey.keys.enumerated()), id: \.offset) {
-                                key($0.element, "", width: $0.element.count > 2 ? 96 : 52)
-                            }
+                if speakSetupShown { talkKeyHint }
+            }
+            if speakSetupShown { speakChecklist } else { speakChoice }
+        }
+    }
+
+    private var speakChoice: some View {
+        HStack(spacing: 14) {
+            choiceCard(L("要，现在设置"), L("约 2 分钟，会装一个虚拟麦克风")) {
+                model.onboardingSpeakSetup = true
+                model.enableSpeaking(true)
+            }
+            choiceCard(L("先不用"), L("以后在设置 › 同声传译里打开")) { step = Self.done }
+        }
+        .padding(.top, 6)
+    }
+
+    private func choiceCard(_ title: String, _ detail: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text(detail).font(.system(size: 13)).foregroundStyle(Palette.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(22)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.line, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var speakChecklist: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            whiteCard {
+                VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("麦克风").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                            Text("只在按住说话键时录音").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                        }
+                        Spacer()
+                        switch model.micStatus {
+                        case .authorized: done(L("已允许"))
+                        case .notDetermined: primary(L("允许")) { model.requestMicrophone() }
+                        default: primary(L("去打开")) { model.openMicrophoneSettings() }
                         }
                     }
-                    Text("可在设置中更改").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-                }
-            }
-            VStack(spacing: 0) {
-                MicSetupCard(installer: installer, deviceName: model.virtualMic?.name)
-                    .padding(.horizontal, 6).padding(.vertical, 4)
-                Divider().padding(.horizontal, 22)
-                HStack(spacing: 16) {
-                    Text("按住说话").font(.system(size: 14, weight: .semibold))
-                    Spacer()
-                    Toggle("按住说话", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
-                        .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
-                }
-                .padding(.horizontal, 22).padding(.vertical, 14)
-                if settings.speakEnabled && model.talkNeedsPermission {
+                    .padding(.horizontal, 22).padding(.vertical, 14)
                     Divider().padding(.horizontal, 22)
-                    TalkKeyPermissionRow(model: model).padding(.horizontal, 6).padding(.vertical, 4)
+                    MicSetupCard(installer: installer, deviceName: model.virtualMic?.name)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
+                    if settings.speakEnabled && model.talkNeedsPermission {
+                        Divider().padding(.horizontal, 22)
+                        TalkKeyPermissionRow(model: model).padding(.horizontal, 6).padding(.vertical, 4)
+                    }
                 }
             }
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
+            meetingAppStatus
+        }
+    }
 
-            // Turns green by itself once a meeting app reads the virtual mic.
-            if model.virtualMic != nil && installer.passed {
-                if let user = model.micUsers.first(where: { $0.state == .virtualMic }) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.ok)
-                        Text("\(user.name)已选虚拟麦克风，对方能听到译文").font(.system(size: 13)).foregroundStyle(Palette.ok)
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.okPale))
-                } else if case .switched = model.systemMicState {
-                    // Apps on the default mic already hear it; only ones set to a specific mic need a change.
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.ok)
-                        Text("系统麦克风已换成 \(model.virtualMic?.name ?? "BlackHole 2ch")，用默认麦克风的会议软件不用再选")
-                            .font(.system(size: 13)).foregroundStyle(Palette.ok)
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.okPale))
+    private var talkKeyHint: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 6) {
+                if settings.talkKey.isRightOption {
+                    key("⌥", L("右侧 option"), width: 96)
                 } else {
-                    HStack(spacing: 10) {
-                        (Text("最后一步：在会议软件中，将麦克风选为 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
-                            .font(.system(size: 13)).foregroundStyle(Palette.ink)
-                        Spacer(minLength: 8)
-                        Text("等你选好…").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                    ForEach(Array(settings.talkKey.keys.enumerated()), id: \.offset) {
+                        key($0.element, "", width: $0.element.count > 2 ? 96 : 52)
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
                 }
+            }
+            Text("可在设置中更改").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+        }
+    }
+
+    // Turns green by itself once a meeting app reads the virtual mic.
+    @ViewBuilder private var meetingAppStatus: some View {
+        if model.virtualMic != nil && installer.passed {
+            if let user = model.micUsers.first(where: { $0.state == .virtualMic }) {
+                statusLine(ok: true, Text("\(user.name)已选虚拟麦克风，对方能听到译文"))
+            } else if case .switched = model.systemMicState {
+                // Apps on the default mic already hear it; only ones set to a specific mic need a change.
+                statusLine(ok: true, Text("系统麦克风已换成 \(model.virtualMic?.name ?? "BlackHole 2ch")，用默认麦克风的会议软件不用再选"))
+            } else {
+                HStack(spacing: 10) {
+                    (Text("最后一步：在会议软件中，将麦克风选为 ") + Text(model.virtualMic?.name ?? "BlackHole 2ch").bold())
+                        .font(.system(size: 13)).foregroundStyle(Palette.ink)
+                    Spacer(minLength: 8)
+                    Text("等你选好…").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
             }
         }
+    }
+
+    private func statusLine(ok: Bool, _ text: Text) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.ok)
+            text.font(.system(size: 13)).foregroundStyle(Palette.ok)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.okPale))
     }
 
     private func key(_ top: String, _ bottom: String, width: CGFloat) -> some View {
@@ -561,6 +700,100 @@ struct OnboardingView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 0.84), lineWidth: 1))
         .overlay(alignment: .bottom) {
             RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.84)).frame(height: 3).padding(.horizontal, 1)
+        }
+    }
+
+    // MARK: Closing: where the app lives from now on
+
+    private var closing: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            title(L("好了，知了在菜单栏"), L("接下来会打开会议记录窗口，之后从右上角的图标找到它。"))
+            menuBarSketch
+            HStack(alignment: .top, spacing: 12) {
+                tip(L("开会时点它"), L("开始听，出字幕和纪要"))
+                if settings.speakEnabled {
+                    tip(settings.talkKey.isRightOption ? L("按住右 ⌥ 说话") : L("按住 \(settings.talkKey.display) 说话"),
+                        L("对方听到翻译后的语音"))
+                }
+                tip(L("会后看记录"), L("每场会都存在会议记录里"))
+            }
+        }
+    }
+
+    /// A slice of the menu bar with the app's icon ringed: where to look once this window is gone.
+    private var menuBarSketch: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 18) {
+                Spacer()
+                ForEach(["magnifyingglass", "wifi"], id: \.self) {
+                    Image(systemName: $0).font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                }
+                BrandMark(size: 20)
+                    .padding(3)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.accentPale))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.accent, lineWidth: 1.5))
+                    // Hangs below the bar, centred under the icon.
+                    .overlay(alignment: .top) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "arrow.up").font(.system(size: 14, weight: .semibold))
+                            Text("就是它").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(Palette.accentInk)
+                        .fixedSize()
+                        .offset(y: 42)
+                    }
+                Image(systemName: "battery.75percent").font(.system(size: 13)).foregroundStyle(Palette.tertiary)
+                Text(Date.now, format: .dateTime.weekday().hour().minute())
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            }
+            .padding(.horizontal, 18).frame(height: 36)
+            .background(Color(white: 0.93))
+            .zIndex(1)
+            Color.white.frame(height: 64)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.line, lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+
+    private func tip(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+            Text(detail).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+    }
+}
+
+/// Under the sample video: without a key, a hint that the same words become notes (the next step);
+/// with one, where the subtitle bar can go.
+struct OnboardingNotesTeaser: View {
+    @ObservedObject var ling: LingClient
+
+    var body: some View {
+        if ling.hasKey {
+            Text("字幕条可任意拖动，拖拽右下角可调整大小。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+        } else {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach([1.0, 0.8, 0.9], id: \.self) { w in
+                        Capsule().fill(Color(white: 0.87)).frame(width: 110 * w, height: 6)
+                    }
+                }
+                .frame(width: 110, alignment: .leading)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("开会时，这些字幕还能整理成纪要").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Text("下一步接上 Ling 就有").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line, lineWidth: 1))
         }
     }
 }

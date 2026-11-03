@@ -4,7 +4,7 @@ Cicada (知了, formerly Live Subs): a macOS menu bar app that turns what the Ma
 
 ## Scope
 
-- Surfaces: menu bar panel, live notes window (default) or subtitle bar while listening, main window (meeting records), settings, four-step onboarding (permissions, Ling key, sample video, speaking). A request that fits none of them gets pushed back before any UI is added.
+- Surfaces: menu bar panel, live notes window (default) or subtitle bar while listening, main window (meeting records), settings, four-step onboarding (system audio, sample meeting, Ling key, speaking if wanted). A request that fits none of them gets pushed back before any UI is added.
 - Nothing the user does needs the Terminal.
 - Listening: Core Audio process tap → on-device language detection and `SpeechAnalyzer` → translation. Speaking: hold right ⌥ or a shortcut → mic → Ming (with a Ling key) or on-device + translation → voice → BlackHole 2ch virtual mic.
 

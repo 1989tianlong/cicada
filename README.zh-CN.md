@@ -104,7 +104,7 @@
 
 从 [Releases 页面](https://github.com/wquguru/cicada/releases/latest) 或 [官网](https://cicada.indaloop.app) 下载 `Cicada-<版本>-macOS-AppleSilicon.dmg`，打开后把知了拖进“应用程序”。应用目前是本地签名，还没有苹果公证（见[路线图](#路线图)），第一次打开被拦下时，去“系统设置 › 隐私与安全性”点“仍要打开”。下载页同时提供 `checksums.txt`，可以用 `shasum -a 256 Cicada-*.dmg` 核对。
 
-打开后跟着新手引导开启权限、粘贴 Ling key（也可以先跳过）、看示例视频、按需安装虚拟麦克风。之后有新版本时菜单栏图标会出现橙点，点一下就能更新，权限不丢。
+打开后跟着新手引导开一个权限、听一段示例会议、接上 Ling key（也可以先跳过），要用同声传译时再装虚拟麦克风。之后有新版本时菜单栏图标会出现橙点，点一下就能更新，权限不丢。
 
 ## 使用方法
 
