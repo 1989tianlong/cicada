@@ -46,7 +46,7 @@ SPEAK_AT = 5.5
 LANGS = [("zh", ""), ("en", "en/"), ("ja", "ja/"), ("ko", "ko/")]
 FONT_BASE = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Noto+Sans+SC:wght@400;500;700;900"
 FONT_EXTRA = {"ja": "&amp;family=Noto+Sans+JP:wght@400;500;700;900", "ko": "&amp;family=Noto+Sans+KR:wght@400;500;700;900"}
-KINDS = [("new", "新功能"), ("improved", "改进"), ("fixed", "修复")]
+KINDS = [("new", "新功能"), ("improved", "改进"), ("changed", "改动"), ("fixed", "修复")]
 
 e = html.escape
 

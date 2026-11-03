@@ -37,7 +37,7 @@ scripts/test.sh                        # AGENTS.md check + unit tests
 scripts/build.sh && open build/Cicada.app   # dev build: own bundle id, settings, log
 RELEASE=1 scripts/build.sh             # release build
 scripts/package.sh                     # DMG + zip + checksums
-scripts/release.sh <x.y.z>             # needs a dated CHANGELOG section; CI publishes the tag
+scripts/release.sh <x.y.z>             # writes the CHANGELOG section from commits; CI publishes the tag
 scripts/deploy-site.sh                 # build the site, wrangler deploy to the cicada-site Worker (cicada.indaloop.app)
 ```
 
@@ -50,6 +50,7 @@ scripts/deploy-site.sh                 # build the site, wrangler deploy to the 
 ## Conventions
 
 - Match the existing naming and comment density; comments say why.
-- Every user-visible change gets a `CHANGELOG.md` line and a matching `site/changelog.json` item; keep `README.md` and `README.zh-CN.md` in step.
-- Commit messages are English only and follow Conventional Commits (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`, `chore:`).
+- Commit messages are English only and follow Conventional Commits (`feat:`, `fix:`, `docs:`, `build:`, `refactor:`, `test:`, `chore:`). `feat:` and `fix:` subjects are the release notes (`scripts/changelog.py`), one line each linked to the commit: say what the user gets in one plain sentence, one change per commit; website changes use `feat(site):` / `fix(site):`.
+- Every user-visible change also gets a Chinese item in `site/changelog.json`, the website's changelog; keep `README.md` and `README.zh-CN.md` in step.
+- Versions are semver from 1.0.0: patch for fixes only, minor for features, major only when users must grant permissions again.
 - This file stays under 6 KB with these sections; `scripts/check-agents.py` enforces it in `scripts/test.sh`, CI and the pre-commit hook. Implementation detail belongs in code comments, not here.
