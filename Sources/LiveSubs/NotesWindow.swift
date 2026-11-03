@@ -675,8 +675,11 @@ struct NotesWindowView: View {
             }
             TranscriptListView(lines: lines, topics: engine.notes.topics, terms: searchTerms,
                                currentMatch: ms.isEmpty ? nil : ms[currentIndex], live: live,
-                               partial: model.liveSource, partialTime: elapsed, jumpTo: jumpTo, speakers: speakers,
-                               startedAt: store.liveStart)
+                               partialShown: TranscriptPartial.shows(model.liveSource, live: live, after: lines.last?.src),
+                               jumpTo: jumpTo, speakers: speakers, startedAt: store.liveStart) {
+                LivePartialRow(model: model, startedAt: store.liveStart)
+            }
+            .equatable()
         }
         .environment(\.speakerNames, session.map(SpeakerLabels.names) ?? [:])
     }

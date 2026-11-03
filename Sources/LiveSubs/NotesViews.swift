@@ -499,7 +499,11 @@ enum UserScroll {
 /// The transcript grouped under the notes' topics, oldest first. While live it follows the
 /// newest line; scrolling up pauses that and collects new lines into a "↓ N 句新内容" button.
 /// A search highlights matches in place instead of hiding the lines around them.
-struct TranscriptListView: View {
+///
+/// Every row is its own lazy child (a topic's card is drawn a row at a time, `cardSlice`), so a long
+/// meeting lays out only what is on screen. What is being said right now is `partial`, a view that
+/// watches the speech itself: with `.equatable()` a new word redraws that row, not the list.
+struct TranscriptListView<Partial: View>: View, Equatable {
     let lines: [TranscriptLine]
     let topics: [NoteTopic]
     /// Spellings to highlight: the query, plus the notes' misrecognised forms of a name.
@@ -507,27 +511,26 @@ struct TranscriptListView: View {
     var currentMatch: String?
     var bilingual = true
     var live = false
-    /// What is being said right now, not yet a finished line.
-    var partial = ""
-    var partialTime: Double?
+    /// `partial` is on show (`TranscriptPartial.shows`).
+    var partialShown = false
     var jumpTo: Double?
     /// Experimental: line id → speaker number for the other side's lines (SpeakerLabels).
     var speakers: [String: Int] = [:]
     /// When listening began, for the start mark shown before the first line.
     var startedAt: Date?
+    @ViewBuilder var partial: Partial
 
     @State private var following = true
     @State private var seenCount = 0
+    @State private var followQueued = false
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.lines == b.lines && a.topics == b.topics && a.terms == b.terms && a.currentMatch == b.currentMatch
+            && a.bilingual == b.bilingual && a.live == b.live && a.partialShown == b.partialShown
+            && a.jumpTo == b.jumpTo && a.speakers == b.speakers && a.startedAt == b.startedAt
+    }
 
     private var searching: Bool { !terms.isEmpty }
-    /// The caption keeps the last sentence after it is finished: only show text not yet a line.
-    private var showsPartial: Bool {
-        let p = partial.trimmingCharacters(in: .whitespacesAndNewlines)
-        // A lone "." from background noise is not someone speaking.
-        guard live, p.rangeOfCharacter(from: .alphanumerics) != nil else { return false }
-        guard let last = lines.last?.src else { return true }
-        return !last.contains(p) && !p.contains(last)
-    }
 
     private var groups: [(title: String, start: Double, lines: [TranscriptLine])] {
         guard !topics.isEmpty else { return [("", 0, lines)] }
@@ -537,6 +540,35 @@ struct TranscriptListView: View {
             let first = i == 0 ? -Double.infinity : t.start
             let ls = lines.filter { $0.t >= first && $0.t < end }
             if !ls.isEmpty { out.append((t.title, t.start, ls)) }
+        }
+        return out
+    }
+
+    /// One lazy child: a topic's title, or one line of its card.
+    private enum Item: Identifiable {
+        case header(title: String, start: Double, gap: Bool)
+        case line(TranscriptLine, first: Bool, last: Bool, label: Bool, gap: Bool)
+        var id: String {
+            switch self {
+            case .header(_, let start, _): "group-\(start)"
+            case .line(let l, _, _, _, _): l.id
+            }
+        }
+    }
+
+    private var items: [Item] {
+        let gs = groups
+        let starts = SpeakerLabels.runStarts(lines, speakers)
+        var out: [Item] = []
+        for (gi, g) in gs.enumerated() {
+            if !g.title.isEmpty { out.append(.header(title: g.title, start: g.start, gap: gi > 0)) }
+            for (i, l) in g.lines.enumerated() {
+                // The line being spoken closes the last card when it shows.
+                let last = i == g.lines.count - 1 && !(gi == gs.count - 1 && partialShown)
+                // With voices told apart, a name only where the speaker changes (and atop each topic).
+                out.append(.line(l, first: i == 0, last: last, label: speakers.isEmpty || i == 0 || starts.contains(l.id),
+                                 gap: gi > 0 && i == 0 && g.title.isEmpty))
+            }
         }
         return out
     }
@@ -551,31 +583,31 @@ struct TranscriptListView: View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottom) {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        let gs = groups
-                        let starts = SpeakerLabels.runStarts(lines, speakers)
-                        ForEach(Array(gs.enumerated()), id: \.element.start) { gi, g in
-                            // One lazy child per topic group, with an id to scroll to before it is drawn.
-                            VStack(alignment: .leading, spacing: 10) {
-                                if !g.title.isEmpty {
-                                    Text("\(NotesEngine.clock(g.start)) · \(g.title)")
-                                        .font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.secondary).padding(.top, 6)
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(items) { item in
+                            switch item {
+                            case .header(let title, let start, let gap):
+                                Text("\(NotesEngine.clock(start)) · \(title)")
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.secondary)
+                                    .padding(.top, gap ? 16 : 6).padding(.bottom, 10)
+                            case .line(let l, let first, let last, let label, let gap):
+                                VStack(alignment: .leading, spacing: 0) {
+                                    row(l, label: label)
+                                    if !last { Divider() }
                                 }
-                                FramedList {
-                                    ForEach(Array(g.lines.enumerated()), id: \.element.id) { i, l in
-                                        // With voices told apart, a name only where the speaker changes (and atop each topic).
-                                        row(l, label: speakers.isEmpty || i == 0 || starts.contains(l.id)).id(l.id)
-                                        if i < g.lines.count - 1 { Divider() }
-                                    }
-                                    if gi == gs.count - 1, showsPartial {
-                                        Divider()
-                                        partialRow
-                                    }
-                                }
+                                .cardSlice(first: first, last: last)
+                                .padding(.top, gap ? 10 : 0)
                             }
-                            .id(groupID(g.start))
                         }
-                        if lines.isEmpty && !showsPartial {
+                        if partialShown {
+                            VStack(alignment: .leading, spacing: 0) {
+                                if !lines.isEmpty { Divider() }
+                                partial
+                            }
+                            .cardSlice(first: lines.isEmpty, last: true)
+                            .id("partial")
+                        }
+                        if lines.isEmpty && !partialShown {
                             if live {
                                 TranscriptWaitingView(startedAt: startedAt)
                             } else {
@@ -605,7 +637,7 @@ struct TranscriptListView: View {
                     }
                 }
                 .onChange(of: lines.count) { _, _ in follow(proxy) }
-                .onChange(of: partial) { _, _ in follow(proxy) }
+                .onChange(of: partialShown) { _, _ in follow(proxy) }
                 .onChange(of: currentMatch) { _, id in
                     guard let id, let line = lines.first(where: { $0.id == id }) else { return }
                     reveal(line, anchor: .center, proxy)
@@ -634,22 +666,25 @@ struct TranscriptListView: View {
         }
     }
 
-    private func groupID(_ start: Double) -> String { "group-\(start)" }
-
-    /// Rows inside a topic group that the lazy stack hasn't drawn yet can't be scrolled to:
-    /// bring the group in first, then the line.
+    /// A row the lazy stack hasn't drawn yet lands where its height was guessed: jump, then settle
+    /// once it is measured.
     private func reveal(_ line: TranscriptLine, anchor: UnitPoint, _ proxy: ScrollViewProxy) {
-        if let g = groups.last(where: { $0.lines.contains { $0.id == line.id } }) {
-            proxy.scrollTo(groupID(g.start), anchor: .top)
-        }
+        proxy.scrollTo(line.id, anchor: anchor)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             withAnimation { proxy.scrollTo(line.id, anchor: anchor) }
         }
     }
 
+    /// Once per turn of the run loop, after layout: scrolling from inside a layout pass, while rows
+    /// are still being measured, could leave the view past the end of what is drawn (a blank window).
     private func follow(_ proxy: ScrollViewProxy) {
-        guard live, following, !searching else { return }
-        proxy.scrollTo("bottom", anchor: .bottom)
+        guard live, following, !searching, !followQueued else { return }
+        followQueued = true
+        DispatchQueue.main.async {
+            followQueued = false
+            guard following, !searching else { return }
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
     }
 
     private func newLinesButton(_ action: @escaping () -> Void) -> some View {
@@ -720,23 +755,62 @@ struct TranscriptListView: View {
         .opacity(dim ? 0.5 : 1)
     }
 
-    private var partialRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text(partialTime.map(NotesEngine.clock) ?? "").font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(Palette.accentInk)
-                .frame(width: (partialTime ?? 0) >= 3600 ? 56 : 40, alignment: .leading).padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .lastTextBaseline, spacing: 0) {
-                    Text(partial).font(.system(size: 14)).foregroundStyle(Palette.secondary).lineSpacing(2)
-                    AnimatedDots().font(.system(size: 14)).foregroundStyle(Palette.secondary)
+}
+
+enum TranscriptPartial {
+    /// The caption keeps the last sentence after it is finished: only show text not yet a line.
+    static func shows(_ partial: String, live: Bool, after last: String?) -> Bool {
+        let p = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A lone "." from background noise is not someone speaking.
+        guard live, p.rangeOfCharacter(from: .alphanumerics) != nil else { return false }
+        guard let last else { return true }
+        return !last.contains(p) && !p.contains(last)
+    }
+}
+
+/// The line being spoken, under the transcript. It watches the app itself so each new word redraws
+/// only this row (`TranscriptListView` decides whether it shows).
+struct LivePartialRow: View {
+    @ObservedObject var model: AppModel
+    let startedAt: Date?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            let time = startedAt.map { max(0, ctx.date.timeIntervalSince($0)) }
+            HStack(alignment: .top, spacing: 12) {
+                Text(time.map(NotesEngine.clock) ?? "").font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(Palette.accentInk)
+                    .frame(width: (time ?? 0) >= 3600 ? 56 : 40, alignment: .leading).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .lastTextBaseline, spacing: 0) {
+                        Text(model.liveSource).font(.system(size: 14)).foregroundStyle(Palette.secondary).lineSpacing(2)
+                        AnimatedDots().font(.system(size: 14)).foregroundStyle(Palette.secondary)
+                    }
+                    Text("正在说").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
-                Text("正在说").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .background(Palette.accentWash)
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(Palette.accentWash)
-        .id("partial")
+    }
+}
+
+extension View {
+    /// One row of a `FramedList` card, drawn on its own so a long card can be lazy: the outline's
+    /// top and rounded corners on the first row, its bottom on the last, only the sides between.
+    func cardSlice(first: Bool, last: Bool) -> some View {
+        let r: CGFloat = 16
+        let shape = UnevenRoundedRectangle(topLeadingRadius: first ? r : 0, bottomLeadingRadius: last ? r : 0,
+                                           bottomTrailingRadius: last ? r : 0, topTrailingRadius: first ? r : 0)
+        return frame(maxWidth: .infinity, alignment: .leading)
+            .clipShape(shape)
+            .overlay {
+                // Edges between rows are pushed outside the row and masked away; the sides stay whole.
+                shape.stroke(Palette.line, lineWidth: 1)
+                    .padding(.top, first ? 0 : -2).padding(.bottom, last ? 0 : -2)
+                    .mask { Rectangle().padding(.horizontal, -2).padding(.top, first ? -2 : 0).padding(.bottom, last ? -2 : 0) }
+            }
     }
 }
 

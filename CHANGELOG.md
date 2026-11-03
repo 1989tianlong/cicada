@@ -5,6 +5,7 @@ the release workflow publishes it as the release notes.
 
 ## Unreleased
 
+- Fixed: in a long meeting the live notes window's 文字记录 no longer goes white or flickers. It used to lay out a whole topic's lines (up to a hundred) at once and redraw them for every new word being spoken, and following the newest line could scroll past what was drawn; now only the lines on screen are drawn, and the line being spoken redraws on its own.
 - Fixed: with 说话人识别 on, Ling no longer names a voice from a line someone else said. A name now counts only when its line was said by that voice or within two lines of it ("Okay, Amos, thank you" right after Amos spoke), so "I'm Christina…" from an advert break no longer names the anchor; names guessed this way before are checked again and dropped. Well-known people's names are spelt as the news spells them ("Amos Hochstein", not "Hockstein"), in the names and in the notes.
 - Fixed: a sentence cut in two by a short pause is joined back into one line and translated again as a whole, instead of two lines with half translations ("…at this" → "在这个"). Lines join when the second follows within 1.5 s, from the same voice, and the first doesn't end a sentence; the subtitle shows the joined sentence too.
 - Fixed: lines no longer start with stray punctuation or carry runs of dots from hesitations (", , that", "in..........", ". , that is"): leading marks go, dots become one "…", repeated commas one comma.
