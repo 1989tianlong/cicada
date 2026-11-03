@@ -48,6 +48,7 @@ final class ListenEngine {
     private var pendingSwitch: Lang?
     private var needsDetection = true
     private var nextPeriodicDetection = 30.0
+    private var lastForeignCheck = Date.distantPast
     private var lastDetectionAt = Date.distantPast
     private var ambiguousDetections = 0
     /// Sentences finished before detection settled the language: recorded once it confirms the
@@ -386,10 +387,12 @@ final class ListenEngine {
             if settings.sourceMode == .auto, conf < 0.6, text.count >= 4 {
                 needsDetection = true
             }
+            checkForeignLetters(text)
         } else {
             if volatileText.isEmpty { volatileStartedAt = Date(); volatileStartClock = router.fedSeconds() }
             if text != volatileText { volatileChangedAt = Date() }
             volatileText = text
+            checkForeignLetters(text)
         }
         renderSubtitles()
     }
@@ -410,6 +413,20 @@ final class ListenEngine {
     }
 
     // MARK: Language detection
+
+    /// A Chinese, Japanese or Korean model hearing English writes it out in Latin letters
+    /// ("OKo where wen the lanch", "reigifridadeinali") with a confidence that looks fine; without
+    /// this the switch waits for the next periodic check, 20 s of speech later. Only a line that
+    /// ends in a run of Latin letters counts: English words mixed into Chinese ("还在做 onboarding
+    /// 的 UI") would ask for checks that each risk a wrong switch.
+    private func checkForeignLetters(_ text: String) {
+        guard settings.sourceMode == .auto, !needsDetection, let code = activeLang?.code,
+              ["zh", "ja", "ko"].contains(where: { code.hasPrefix($0) }),
+              Date().timeIntervalSince(lastForeignCheck) >= 8, HeardText.endsInLatin(text) else { return }
+        lastForeignCheck = Date()
+        debugLog("detect: Latin letters from the \(code) model, checking the language")
+        needsDetection = true
+    }
 
     private func maybeDetectLanguage() {
         guard isRunning, settings.sourceMode == .auto, !detecting, candidates.count >= 2 else { return }

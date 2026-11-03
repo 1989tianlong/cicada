@@ -39,6 +39,16 @@ import Testing
         #expect(HeardText.fuller(final: "我们周五。", draft: "我们周五之前把落地页的文案定下来") == "我们周五之前把落地页的文案定下来")
     }
 
+    @Test func englishHeardByAChineseModelEndsInLatin() {
+        // From test runs: English after Chinese, still on the zh-CN model.
+        #expect(HeardText.endsInLatin("提前准备一下会议室和午餐。reigifridadeinali"))
+        #expect(HeardText.endsInLatin("下会议室和午餐ouchrivesignin of Fridayndeledinalrin cop foretinge"))
+        // English terms in Chinese speech.
+        #expect(!HeardText.endsInLatin("Want还在做 onbording的 UIAtaging环境不太稳定。"))
+        #expect(!HeardText.endsInLatin("我们这个 featur的 rroatemape下周要定下来 datline是月底 backent那边的 API已经 bready了"))
+        #expect(!HeardText.endsInLatin("必要 dev帮忙看一下 Quberned的配置，另外 productmanager希望我们在 sprintreview之前把 Demo准备好"))
+    }
+
     @Test func joinOnlyWhatCarriesOn() {
         // Cut mid-sentence by a pause, carried on at once.
         #expect(HeardText.continues("that… in increased production that you would have expected at this",

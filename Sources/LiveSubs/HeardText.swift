@@ -38,6 +38,16 @@ enum HeardText {
         return clean(draft)
     }
 
+    /// The line ends in a run of Latin letters, the way a Chinese, Japanese or Korean model writes
+    /// English it hears: 15 letters or more after its last CJK character.
+    static func endsInLatin(_ text: String) -> Bool {
+        let isCJK: (Character) -> Bool = { c in
+            c.unicodeScalars.contains { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) }
+        }
+        let tail = text.reversed().prefix(while: { !isCJK($0) })
+        return tail.filter { $0.isASCII && $0.isLetter }.count >= 15
+    }
+
     /// The longest pause, in seconds, that still joins two pieces of one sentence.
     static let joinGap = 1.5
     /// A line this long takes nothing more: past it a translation is slow and the line hard to read.
