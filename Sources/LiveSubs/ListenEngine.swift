@@ -5,11 +5,15 @@ import Speech
 
 struct Segment {
     let id: Int
-    let text: String
+    var text: String
     let sourceCode: String
     var translation: String?
     /// The sentence's audio, 16 kHz mono, when telling voices apart is on.
     var voiceSamples: [Float]? = nil
+    /// Where it sits in the recognizer's audio (seconds; `clock` changes with each new recognizer),
+    /// and whether Cicada ended it at a pause: what deciding a join needs (`HeardText.continues`).
+    var start = 0.0, end = 0.0, clock = 0
+    var cut = false
 }
 
 /// System audio → language detection → on-device transcription → translation.
@@ -68,6 +72,8 @@ final class ListenEngine {
     private var cutting = false
     private var lastCut = ""
     private var lastCutThrough = 0.0
+    /// A cut was asked for: the next final line ends at Cicada's pause, not the speaker's.
+    private var cutAsked = false
     /// Final transcript time and how long after the last word it came, per segment, until its translation lands.
     private var finalTiming: [Int: (at: Date, recognize: Double?)] = [:]
 
@@ -259,6 +265,7 @@ final class ListenEngine {
         volatileTranslation = ""
         lastVolatileSent = ""
         volatileEpoch += 1
+        cutAsked = false
         onStateChange?()
 
         let transcriber = SpeechTranscriber(locale: Locale(identifier: lang.locale),
@@ -315,11 +322,14 @@ final class ListenEngine {
     private func handle(_ result: SpeechTranscriber.Result, generation gen: Int) {
         guard gen == generation, isRunning else { return }
         failureStreak = 0
-        let text = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
         if result.isFinal {
+            text = HeardText.clean(text)
             volatileText = ""
             volatileEpoch += 1
-            guard !text.isEmpty else { renderSubtitles(); return }
+            // A "." or "…" from a breath or a click is no sentence: Ling would answer it with a note that
+            // there was nothing to translate, and it would sit in the record as a line.
+            guard text.contains(where: \.isLetter) else { renderSubtitles(); return }
             var weighted = 0.0, chars = 0
             for run in result.text.runs {
                 guard let c = run.transcriptionConfidence else { continue }
@@ -330,6 +340,11 @@ final class ListenEngine {
             let conf = chars > 0 ? weighted / Double(chars) : 1
             let provisional = volatileTranslation.isEmpty ? nil : volatileTranslation
             var seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
+            seg.start = CMTimeGetSeconds(result.range.start)
+            seg.end = CMTimeGetSeconds(result.range.end)
+            seg.clock = gen
+            seg.cut = cutAsked
+            cutAsked = false
             if settings.speakerVoices {
                 seg.voiceSamples = router.voiceSamples(from: CMTimeGetSeconds(result.range.start), to: CMTimeGetSeconds(result.range.end))
             }
@@ -513,6 +528,8 @@ final class ListenEngine {
             }
             guard let out = result else { return }
             guard self.isRunning else { return }
+            // The line was joined with the next one meanwhile: only the whole sentence's translation counts.
+            if let now = self.segments.first(where: { $0.id == id }), now.text != seg.text { return }
             if let idx = self.segments.firstIndex(where: { $0.id == id }) {
                 self.segments[idx].translation = out
             }
@@ -520,6 +537,21 @@ final class ListenEngine {
             self.onTranslated?(id, out)
             self.renderSubtitles()
         }
+    }
+
+    /// The app joined segment `id` onto `into` (one sentence cut by a pause): the bar shows them as
+    /// one, and the whole sentence is translated again. The old translation stays until then.
+    func join(_ id: Int, into: Int, text: String) {
+        let piece = segments.firstIndex(where: { $0.id == id }).map { segments.remove(at: $0) }
+        if let i = segments.firstIndex(where: { $0.id == into }) {
+            segments[i].text = text
+        } else {
+            // The bar was cleared in between: show the joined sentence on its own.
+            segments.append(Segment(id: into, text: text, sourceCode: piece?.sourceCode ?? activeLang?.code ?? "auto", translation: nil))
+        }
+        finalTiming[id] = nil
+        translateSegment(id: into)
+        renderSubtitles()
     }
 
     /// SpeechTranscriber ends a sentence only at a clear pause; in a quick conversation that can
@@ -547,6 +579,7 @@ final class ListenEngine {
             return
         }
         cutting = true
+        cutAsked = true
         lastCut = volatileText
         lastCutThrough = through
         let chars = volatileText.count
@@ -556,6 +589,7 @@ final class ListenEngine {
                 debugLog(String(format: "cut: line of %d chars ended after %.1f s (%@)", chars, held, why))
             } catch {
                 debugLog("cut: finalize failed \(error)")
+                self?.cutAsked = false
             }
             self?.cutting = false
         }

@@ -99,6 +99,11 @@ final class AppModel: ObservableObject {
 
     private var lineForSegment: [Int: String] = [:]
     private var lineCounter = 0
+    /// The other side's last recorded line, which the next one may carry on (`HeardText.continues`).
+    private var lastHeard: (seg: Segment, line: String)?
+    /// A line that may carry on `lastHeard`, waiting to hear whose voice it is; its translation if
+    /// that comes first.
+    private var heldJoin: (seg: Segment, t: Double, translation: String?)?
 
     init() {
         listen.onSubtitle = { [weak self] src, dst in
@@ -126,7 +131,9 @@ final class AppModel: ObservableObject {
             self?.listen.router.setVoiceCapture(on)
         }
         listen.onTranslated = { [weak self] segID, text in
-            guard let self, let line = self.lineForSegment[segID] else { return }
+            guard let self else { return }
+            if self.heldJoin?.seg.id == segID { self.heldJoin?.translation = text }
+            guard let line = self.lineForSegment[segID] else { return }
             self.store.setTranslation(lineID: line, text)
         }
 
@@ -374,6 +381,8 @@ final class AppModel: ObservableObject {
         diagnostics.begin()
         speakers.reset()
         lineForSegment = [:]
+        lastHeard = nil
+        heldJoin = nil
         speechHeard = false
         meetingSubtitles = nil
         autoEnded = false
@@ -402,6 +411,10 @@ final class AppModel: ObservableObject {
         listen.stop()
         listen.router.setRecording(nil)
         speak.setRecording(nil)
+        if let held = heldJoin {
+            heldJoin = nil
+            appendHeard(held.seg, t: held.t, translation: held.translation)
+        }
         // Read the whole meeting for names once more (the id outlives store.end).
         let ended = store.liveID
         store.end(at: endedAt)
@@ -848,14 +861,69 @@ final class AppModel: ObservableObject {
 
     private func recordHeard(_ seg: Segment, duration: Double) {
         guard let start = store.liveStart else { return }
+        let t = max(0, Date().timeIntervalSince(start) - duration)
+        // A line still waiting for its voice is overtaken: it stands on its own.
+        if let held = heldJoin {
+            heldJoin = nil
+            appendHeard(held.seg, t: held.t, translation: held.translation)
+        }
+        guard let prev = lastHeard, store.session(store.liveID ?? "")?.lines.last?.id == prev.line,
+              prev.seg.clock == seg.clock, prev.seg.sourceCode == seg.sourceCode,
+              HeardText.continues(prev.seg.text, seg.text, gap: seg.start - prev.seg.end, cut: prev.seg.cut) else {
+            appendHeard(seg, t: t, tag: true)
+            return
+        }
+        // Two voices never share a line: hear whose this is first (a few hundredths of a second).
+        if settings.speakerVoices, let samples = seg.voiceSamples, seg.text.filter(\.isLetter).count >= 2 {
+            heldJoin = (seg, t, nil)
+            speakers.voice(of: samples) { [weak self] voice in self?.heardVoice(seg, voice) }
+            return
+        }
+        join(seg, onto: prev)
+    }
+
+    private func heardVoice(_ seg: Segment, _ voice: Int?) {
+        guard let held = heldJoin, held.seg.id == seg.id else {
+            // Already recorded on its own (another line came first).
+            if let voice, let line = lineForSegment[seg.id] { speakers.onVoice?(line, voice) }
+            return
+        }
+        heldJoin = nil
+        let lines = store.session(store.liveID ?? "")?.lines ?? []
+        if let prev = lastHeard, let last = lines.last, last.id == prev.line,
+           voice == nil || last.voice == nil || voice == last.voice {
+            join(seg, onto: prev)   // the earlier line's voice stays
+        } else {
+            appendHeard(seg, t: held.t, translation: held.translation)
+            if let voice, let line = lineForSegment[seg.id] { speakers.onVoice?(line, voice) }
+        }
+    }
+
+    /// One sentence a pause cut in two: the earlier line takes the rest and is translated again whole.
+    private func join(_ seg: Segment, onto prev: (seg: Segment, line: String)) {
+        let text = HeardText.join(prev.seg.text, seg.text)
+        var joined = prev.seg
+        joined.text = text
+        joined.end = seg.end
+        joined.cut = seg.cut
+        lastHeard = (joined, prev.line)
+        store.setSource(lineID: prev.line, text)
+        listen.join(seg.id, into: prev.seg.id, text: text)
+        contentLog("JOIN \(prev.line) += \(seg.text)")
+        heardWords()
+    }
+
+    private func appendHeard(_ seg: Segment, t: Double, translation: String? = nil, tag: Bool = false) {
         lineCounter += 1
         let id = "h\(lineCounter)-\(seg.id)"
         lineForSegment[seg.id] = id
-        let t = max(0, Date().timeIntervalSince(start) - duration)
-        store.append(TranscriptLine(id: id, t: t, speaker: "them", src: seg.text, dst: seg.translation,
+        store.append(TranscriptLine(id: id, t: t, speaker: "them", src: seg.text, dst: translation ?? seg.translation,
                                     srcLang: seg.sourceCode, dstLang: listen.resolvedTarget))
+        var kept = seg
+        kept.voiceSamples = nil
+        lastHeard = (kept, id)
         // A line with hardly a letter ("." from a breath or a click) gets no voiceprint.
-        if settings.speakerVoices, let samples = seg.voiceSamples, seg.text.filter(\.isLetter).count >= 2 {
+        if tag, settings.speakerVoices, let samples = seg.voiceSamples, seg.text.filter(\.isLetter).count >= 2 {
             speakers.tag(lineID: id, samples: samples)
         }
         heardWords()

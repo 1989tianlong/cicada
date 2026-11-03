@@ -159,6 +159,14 @@ final class SessionStore: ObservableObject {
         scheduleSave(id)
     }
 
+    /// A line joined with the one after it (`HeardText.join`).
+    func setSource(lineID: String, _ text: String) {
+        guard let id = liveID, let i = index(id),
+              let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
+        sessions[i].lines[j].src = text
+        scheduleSave(id)
+    }
+
     func setVoice(lineID: String, _ voice: Int) {
         guard let id = liveID, let i = index(id),
               let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
@@ -175,13 +183,15 @@ final class SessionStore: ObservableObject {
         saveNow(id)
     }
 
-    /// Ling's latest guesses; earlier ones stay for voices it no longer mentions.
-    func setVoiceGuesses(_ id: String, _ guesses: [Int: VoiceGuess]) {
-        guard let i = index(id), !guesses.isEmpty else { return }
+    /// Ling's latest guesses; earlier ones stay for voices it no longer mentions, unless it now named
+    /// them without evidence (`refuted`, voice → name): then that earlier name goes too.
+    func setVoiceGuesses(_ id: String, _ guesses: [Int: VoiceGuess], refuted: [Int: String] = [:]) {
+        guard let i = index(id), !guesses.isEmpty || !refuted.isEmpty else { return }
         var all = sessions[i].voiceGuesses ?? [:]
+        for (v, name) in refuted where guesses[v] == nil && all[String(v)]?.name == name { all[String(v)] = nil }
         for (v, g) in guesses { all[String(v)] = g }
         guard all != sessions[i].voiceGuesses else { return }
-        sessions[i].voiceGuesses = all
+        sessions[i].voiceGuesses = all.isEmpty ? nil : all
         saveNow(id)
     }
 

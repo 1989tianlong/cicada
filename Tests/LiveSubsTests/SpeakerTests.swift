@@ -103,11 +103,56 @@ import Testing
         // One name for two voices: the one with more lines keeps it.
         var more = s
         more.lines += (11..<14).map { line($0, 4) }
-        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 1, "name": "Ann"}, {"speaker": 2, "name": "Ann"}]}"#, more).keys.sorted() == [4])
+        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 1, "name": "Ann", "evidence": "L1"}, {"speaker": 2, "name": "Ann", "evidence": "L6"}]}"#, more).keys.sorted() == [4])
         #expect(SpeakerNameGuess.parse("not json", s).isEmpty)
         // One voice on show: nothing to ask.
         #expect(SpeakerNameGuess.content(Session(id: "s", title: "t", startedAt: Date(), endedAt: nil,
                                                  lines: (0..<6).map { line($0, 1) }, hasAudio: false, notes: nil, renamed: nil)) == nil)
+    }
+
+    /// The end of session 20261103-000911 (Bloomberg TV): voice 0 is the guest, voice 1 the anchor,
+    /// then an advert break with other voices.
+    private var bloomberg: Session {
+        let rows: [(Int?, String)] = [
+            (0, "We have to invest in alternative routes to the Strait of Hormuz."), (0, "That is something that financial markets are not used to doing."),
+            (1, "Let's talk about financing a little bit."), (1, "I was watching you speak yesterday as well in an interview."),
+            (1, "It is still important, and you see the need to still come here."), (1, "lucrative investment opportunities, whether it's in the UAE."),
+            (0, "Yes, I think that what we're going to see is a big investment in infrastructure."), (0, "We need to invest in these infrastructure routes to harden them."),
+            (0, "And I think the question will be, how do we invest in them?"), (0, "We saw that in the '70s."), (0, "I think we're going to see it again."),
+            (1, "Okay, Amos, thank you so much for your time this morning, Amos Hockstein, managing partner."),
+            (nil, ".."), (1, "And now, coming up, we will be discussing the outlook for oil markets."), (1, "That is next live from Adipec here in Abu Dhabi."),
+            (nil, "This is Bloomberg."), (2, "It's a multi trillion dollar industry."), (3, "Welcome to Bloomer this weekend."),
+            (nil, "I'm David Brewer."), (nil, "I'm Lisa Mattay."), (nil, "I'm Christina Raffini."),
+            (4, "We're tracking breaking news today from Wall Street to Washington."),
+        ]
+        let lines = rows.enumerated().map { i, r in
+            TranscriptLine(id: "l\(i)", t: Double(i), speaker: "them", src: r.1, dst: nil, srcLang: "en", dstLang: "zh-CN", voice: r.0)
+        }
+        return Session(id: "s", title: "t", startedAt: Date(), endedAt: nil, lines: lines, hasAudio: false, notes: nil, renamed: nil)
+    }
+
+    @Test func aNameNeedsItsSpeakerNearTheEvidence() {
+        let s = bloomberg
+        #expect(SpeakerLabels.voiceNumbers(s.lines) == [0: 1, 1: 2])
+        // Amos (voice 0, 说话人1) is thanked on L12, right after his own L10 and L11: kept.
+        // "I'm Christina Raffini." (L21) is an advert, voice 1 last spoke on L15: dropped.
+        let reply = #"{"speakers": [{"speaker": 1, "name": "Amos Hochstein", "evidence": "L12"}, {"speaker": 2, "name": "Christina Raffini", "evidence": "L21"}]}"#
+        let r = SpeakerNameGuess.read(reply, s)
+        #expect(r.found.keys.sorted() == [0] && r.found[0]?.name == "Amos Hochstein")
+        #expect(r.found[0]?.evidence.hasPrefix("00:11 “Okay, Amos") == true)
+        #expect(r.refuted == [1: "Christina Raffini"])
+        // Said by the speaker themselves; "L12, L13" reads as L12; no evidence, or one out of range, is no name.
+        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 2, "name": "Anchor", "evidence": "L12, L14"}]}"#, s)[1]?.name == "Anchor")
+        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 2, "name": "Anchor"}]}"#, s).isEmpty)
+        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 2, "name": "Anchor", "evidence": "L99"}]}"#, s).isEmpty)
+        // Two lines away still counts; three doesn't.
+        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 1, "name": "Amos", "evidence": "L13"}]}"#, s)[0] != nil)
+        #expect(SpeakerNameGuess.parse(#"{"speakers": [{"speaker": 1, "name": "Amos", "evidence": "L14"}]}"#, s).isEmpty)
+        #expect(SpeakerNameGuess.instruction.contains("misspells"))
+        // A guess stored before the check is tested again from its quoted line.
+        #expect(!SpeakerNameGuess.holds(VoiceGuess(name: "Christina Raffini", evidence: "00:20 “I'm Christina Raffini.”"), voice: 1, in: s))
+        #expect(SpeakerNameGuess.holds(VoiceGuess(name: "Amos", evidence: "00:11 “Okay, Amos, thank you so much for your time this morning, Amos…”"), voice: 0, in: s))
+        #expect(SpeakerNameGuess.holds(VoiceGuess(name: "Ann", evidence: "09:59 “Not in this meeting”"), voice: 1, in: s))
     }
 
     @Test func guessesShowUntilTheUserSaysOtherwise() {

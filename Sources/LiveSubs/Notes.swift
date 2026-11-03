@@ -336,7 +336,7 @@ final class NotesEngine: ObservableObject {
         if context < from {
             p += "Already covered (context only):\n" + (context..<from).map(line).joined(separator: "\n") + "\n\n"
         }
-        p += "\(final ? "Transcript" : "New lines") (id, mm:ss, speaker 对方=the other side / 你=me / a name or 说话人N=one person on the other side, told apart by voice and possibly wrong / 未识别=someone on the other side not identified, text). Speech recognition makes mistakes, often in names: correct them from context.\n"
+        p += "\(final ? "Transcript" : "New lines") (id, mm:ss, speaker 对方=the other side / 你=me / a name or 说话人N=one person on the other side, told apart by voice and possibly wrong / 未识别=someone on the other side not identified, text). Speech recognition makes mistakes, often in names: correct them from context, and write a public figure's name as the news spells it.\n"
         p += (from..<lines.count).map(line).joined(separator: "\n")
         // The model splits too eagerly when only told how long a topic should be: say plainly
         // whether this update may start one.

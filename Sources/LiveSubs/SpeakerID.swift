@@ -283,6 +283,13 @@ final class SpeakerTagger {
     func merge(_ from: Int, into: Int) { queue.async { [self] in clusterer.merge(from, into: into) } }
 
     func tag(lineID: String, samples: [Float]) {
+        voice(of: samples) { [weak self] voice in
+            if let voice { self?.onVoice?(lineID, voice) }
+        }
+    }
+
+    /// The voice of a line not recorded yet; nil when unsure. Like `tag`, it counts towards that voice.
+    func voice(of samples: [Float], _ done: @escaping @MainActor (Int?) -> Void) {
         let seconds = Double(samples.count) / 16000
         queue.async { [self] in
             if model == nil, !loadFailed {
@@ -291,10 +298,8 @@ final class SpeakerTagger {
                     debugLog("voiceprint model failed to load: \(error)")
                 }
             }
-            guard let model, let v = model.embed(samples), let voice = clusterer.label(v, seconds: seconds) else { return }
-            DispatchQueue.main.async { [weak self] in
-                MainActor.assumeIsolated { self?.onVoice?(lineID, voice) }
-            }
+            let voice = model.flatMap { $0.embed(samples) }.flatMap { clusterer.label($0, seconds: seconds) }
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(voice) } }
         }
     }
 }
@@ -318,38 +323,69 @@ enum SpeakerNameGuess {
     }
 
     static let instruction = """
-    Who are the people labelled 说话人N? Name one only when the transcript makes it clear: they introduce \
-    themselves, or someone addresses them by name and they answer next, or others name them as they speak. \
-    Use the name as written. Leave out anyone you are unsure of. Reply as JSON: \
-    {"speakers": [{"speaker": 2, "name": "George", "evidence": "L12"}]}, with an empty list if none.
+    Who are the people labelled 说话人N? Name one only when the transcript makes it clear: they \
+    introduce themselves on a line labelled with their own 说话人N; someone addresses them by name just \
+    before or after they speak ("Thanks, George" right after 说话人1's answer: 说话人1 is George); \
+    or others name them as they speak. A name on a 对方 line, or far from any line of 说话人N (an advert, \
+    a clip, people introducing themselves on another show), is not theirs. Speech recognition writes \
+    names by ear and often misspells them: for a public figure (an official, an executive, a presenter) \
+    recognisable from the name and what is said, write the name as the news spells it ("Jensen Hwang" \
+    → "Jensen Huang"); otherwise as written. Leave out anyone \
+    you are unsure of. Reply as JSON: {"speakers": [{"speaker": 2, "name": "George", "evidence": "L12"}]}, \
+    the evidence being the line with the name; an empty list if none. Check each name's spelling before replying.
     """
 
     /// Voice id → guess, with the evidence line quoted ("03:21 “Thanks, George”"). A name Ling gives
     /// two voices goes to the one with more lines: two people rarely share a name in one meeting.
-    static func parse(_ reply: String, _ s: Session) -> [Int: VoiceGuess] {
+    static func parse(_ reply: String, _ s: Session) -> [Int: VoiceGuess] { read(reply, s).found }
+
+    /// How far from the evidence line the named voice may speak: "Okay, Amos, thank you" comes
+    /// right after Amos's last words.
+    static let evidenceReach = 2
+
+    /// `refuted`: voices Ling named on a line they neither said nor spoke next to ("I'm Christina"
+    /// in an advert, given to the anchor); such a name is dropped, and an earlier copy of it too.
+    static func read(_ reply: String, _ s: Session) -> (found: [Int: VoiceGuess], refuted: [Int: String]) {
         guard let data = reply.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = obj["speakers"] as? [[String: Any]] else { return [:] }
+              let list = obj["speakers"] as? [[String: Any]] else { return ([:], [:]) }
         let voiceOf = Dictionary(uniqueKeysWithValues: SpeakerLabels.voiceNumbers(s.lines).map { ($1, $0) })
         let lines = Array(s.lines.suffix(400))
         func count(_ v: Int) -> Int { s.lines.filter { $0.voice == v }.count }
-        var out: [Int: VoiceGuess] = [:]
+        var out: [Int: VoiceGuess] = [:], refuted: [Int: String] = [:]
         for item in list {
             guard let n = (item["speaker"] as? Int) ?? Int("\(item["speaker"] ?? "")"), let v = voiceOf[n],
                   let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !name.isEmpty, name.count <= 40 else { continue }
+            // "L52" or "L52, L53": the first line named.
+            let e = (item["evidence"] as? String) ?? "\(item["evidence"] ?? "")"
+            guard let i = Int(String(e.drop(while: { !$0.isNumber }).prefix(while: \.isNumber))).map({ $0 - 1 }),
+                  lines.indices.contains(i),
+                  lines[max(0, i - evidenceReach)...min(lines.count - 1, i + evidenceReach)]
+                      .contains(where: { $0.speaker == "them" && $0.voice == v }) else {
+                refuted[v] = name
+                continue
+            }
             if let other = out.first(where: { $0.value.name == name })?.key {
                 if count(other) >= count(v) { continue }
                 out[other] = nil
             }
-            var evidence = ""
-            if let e = item["evidence"] as? String, let i = Int(e.drop(while: { !$0.isNumber })), lines.indices.contains(i - 1) {
-                let l = lines[i - 1]
-                evidence = "\(TranscriptExport.clock(l.t)) “\(l.src.count > 60 ? String(l.src.prefix(60)) + "…" : l.src)”"
-            }
+            let l = lines[i]
+            let evidence = "\(TranscriptExport.clock(l.t)) “\(l.src.count > 60 ? String(l.src.prefix(60)) + "…" : l.src)”"
             out[v] = VoiceGuess(name: name, evidence: evidence)
         }
-        return out
+        return (out, refuted)
+    }
+
+    /// Whether a stored guess still stands by the same rule (guesses from before it was checked): its
+    /// evidence ("04:41 “I'm Christina…”") is found again and the voice speaks there. Kept when not found.
+    static func holds(_ g: VoiceGuess, voice v: Int, in s: Session) -> Bool {
+        guard let open = g.evidence.firstIndex(of: "“") else { return true }
+        let clock = g.evidence[..<open].trimmingCharacters(in: .whitespaces)
+        let quote = String(g.evidence[g.evidence.index(after: open)...].dropLast().prefix(while: { $0 != "…" }))
+        guard let i = s.lines.firstIndex(where: { TranscriptExport.clock($0.t) == clock && $0.src.hasPrefix(quote) }) else { return true }
+        return s.lines[max(0, i - evidenceReach)...min(s.lines.count - 1, i + evidenceReach)]
+            .contains { $0.speaker == "them" && $0.voice == v }
     }
 }
 
@@ -389,9 +425,14 @@ final class SpeakerNamer: ObservableObject {
             do {
                 let reply = try await ling.chat(content: content, instruction: SpeakerNameGuess.instruction,
                                                 priority: .notes, json: true, maxTokens: 300)
-                let found = SpeakerNameGuess.parse(reply, s)
-                store.setVoiceGuesses(id, found)
-                debugLog("speaker names: \(found.count) found for \(id)")
+                let (found, read) = SpeakerNameGuess.read(reply, s)
+                var refuted = read
+                for (key, g) in s.voiceGuesses ?? [:] {
+                    if let v = Int(key), found[v] == nil, !SpeakerNameGuess.holds(g, voice: v, in: s) { refuted[v] = g.name }
+                }
+                store.setVoiceGuesses(id, found, refuted: refuted)
+                debugLog("speaker names: \(found.count) found, \(refuted.count) without evidence for \(id)")
+                contentLog("speaker names reply: \(reply)")
             } catch {
                 debugLog("speaker names: ling failed \(error)")
             }
