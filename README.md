@@ -103,7 +103,7 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 
 Requires **macOS 26 or later** on **Apple silicon**.
 
-Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`; verify with `shasum -a 256 Cicada-*.dmg`.
+Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`; verify with `shasum -a 256 Cicada-*.dmg`. Questions? Ask the author, [@wquguru](https://x.com/wquguru), on X.
 
 The first-launch guide asks for one permission, plays a short sample meeting, then helps you connect your Ling key (or skip it for now) and, only if you want interpreting, set up the virtual microphone. Later updates show as an orange dot on the menu bar icon; one click installs them and keeps your permissions.
 

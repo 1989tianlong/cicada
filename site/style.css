@@ -337,6 +337,11 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .gate .path span { padding: 8px 12px; border-radius: 9px; background: var(--card); border: 1px solid var(--line2); }
 .gate .path span.last { background: var(--ink); color: #FFFFFF; border-color: var(--ink); }
 .gate .path i { font-style: normal; color: var(--faint); }
+.gate .trust { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line2); }
+.gate .trust b { font-size: 14px; }
+.gate .trust ul { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.6; color: var(--ink2); }
+.gate .trust li { display: flex; gap: 8px; align-items: flex-start; }
+.gate .trust svg { flex-shrink: 0; margin-top: 3px; color: var(--orange); }
 .gains ul { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .gains li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; line-height: 1.6; color: var(--grey); }
 .gains li svg { flex: none; margin-top: 2px; color: var(--orange); }

@@ -27,6 +27,8 @@ OUT = os.path.join(ROOT_DIR, "build", "site")
 SITE = (os.environ.get("SITE_URL") or "https://cicada.indaloop.app/").rstrip("/") + "/"
 REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
+# The author on X: the app is not notarized yet, so a real person to ask helps people trust the first launch.
+X = "https://x.com/wquguru"
 STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img"]
 # (code, path prefix); the first is the default language, served at the root.
 LANGS = [("zh", ""), ("en", "en/"), ("ja", "ja/"), ("ko", "ko/")]
@@ -126,7 +128,8 @@ def main():
     if not released:
         sys.exit("site.py: changelog.json has no released version")
     latest = released[0]
-    common = {"SITE": SITE, "REPO": REPO, "DOWNLOAD": DOWNLOAD, "VERSION": latest["version"], "REV": rev()}
+    common = {"SITE": SITE, "REPO": REPO, "DOWNLOAD": DOWNLOAD, "VERSION": latest["version"], "REV": rev(),
+              "X": X, "X_LINK": f'<a href="{X}">@wquguru</a>'}
 
     if os.path.isdir(OUT):
         shutil.rmtree(OUT)
@@ -259,7 +262,7 @@ def main():
           '<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="zh-CN">'
           f'<title>知了更新日志</title><id>{SITE}changelog/</id>'
           f'<link href="{SITE}changelog/"/><link rel="self" href="{SITE}feed.xml"/>'
-          f'<updated>{latest["date"]}T00:00:00Z</updated><author><name>知了 Cicada</name></author>'
+          f'<updated>{latest["date"]}T00:00:00Z</updated><author><name>wquguru</name><uri>{X}</uri></author>'
           + "".join(entries) + "</feed>\n")
 
     write("sitemap.xml", '<?xml version="1.0" encoding="utf-8"?>\n'
