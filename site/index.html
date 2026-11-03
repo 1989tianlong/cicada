@@ -171,10 +171,112 @@
 
   <section class="wrap verbs" id="how" aria-label="{{t.how_label}}">
     <article class="verb rv" id="subtitles"><small>{{t.v1_small}}</small><h3>{{t.v1_h}}</h3><p>{{t.v1_p}}</p></article>
-    <article class="verb rv" id="interpreting"><small>{{t.v2_small}}</small><h3>{{t.v2_h}}</h3><p>{{t.v2_p}}</p></article>
-    <article class="verb rv" id="notes"><small>{{t.v3_small}}</small><h3>{{t.v3_h}}</h3><p>{{t.v3_p}}</p></article>
+    <article class="verb rv" id="interpreting"><small>{{t.v2_small}}</small><h3>{{t.v2_h}}</h3><p>{{t.v2_p}}</p><a class="more" href="#speak">{{t.sp_more}} ↓</a></article>
+    <article class="verb rv" id="notes"><small>{{t.v3_small}}</small><h3>{{t.v3_h}}</h3><p>{{t.v3_p}}</p><a class="more" href="#records">{{t.rec_more}} ↓</a></article>
     <p class="fine">{{t.fine}} <a href="{{HOME}}start/">{{t.how_to_start}} →</a></p>
   </section>
+
+  <section class="wrap scene" id="speak" aria-labelledby="speak-t">
+    <div class="scene-head rv"><div><small>{{t.v2_small}}</small><h2 id="speak-t">{{t.sp_h}}</h2></div><p>{{t.sp_p}}</p></div>
+    <div class="sp" data-speak='{{SPEAK_JSON}}'>
+      <div class="sp-call" aria-hidden="true">
+        <div class="bar"><i></i><i></i><i></i><span class="title">{{t.win_title}}</span><span class="mic">{{t.sp_mic}}</span></div>
+        <div class="sp-tiles">
+          <div class="pt"><b>{{t.person1_initial}}</b><span>{{t.person1}}</span></div>
+          <div class="pt"><b>{{t.person2_initial}}</b><span>{{t.person2}}</span></div>
+          <div class="you">
+            <b>{{t.sp_you}}</b>
+            <div class="lines">
+              <span class="state"><em>{{t.sp_l1}}</em><em>{{t.sp_l2}}</em><em>{{t.sp_l3}}</em></span>
+              <span class="said">{{t.sp_said}}</span>
+              <span class="heard">{{t.sp_heard}}</span>
+            </div>
+            <span class="vol"><i></i><i></i><i></i><i></i></span>
+          </div>
+        </div>
+      </div>
+      <ol class="sp-steps">
+        <li><span>{{t.sp_s1}}</span><kbd>{{t.sp_key}}</kbd></li>
+        <li><span>{{t.sp_s2}}</span>{{t.sp_said}}</li>
+        <li><span>{{t.sp_s3}}</span><b>{{t.sp_heard}}</b></li>
+        <li><span>{{t.sp_s4}}</span>{{t.sp_s4_p}}</li>
+        <li class="play"><button class="listen" type="button" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>{{t.sp_listen}}</button></li>
+      </ol>
+    </div>
+  </section>
+  <script>
+  // 听一段: start the scene over and let the room's voice come in when it reaches 说进会议.
+  (function () {
+    var sp = document.querySelector('.sp[data-speak]'), s = JSON.parse(sp.dataset.speak), btn = sp.querySelector('.listen'), t = 0;
+    btn.hidden = false;
+    btn.addEventListener('click', function () {
+      clearTimeout(t);
+      var all = sp.querySelectorAll('*');
+      all.forEach(function (el) { el.style.animation = 'none'; }); void sp.offsetWidth;
+      all.forEach(function (el) { el.style.animation = ''; });
+      var a = new Audio(s.src);
+      t = setTimeout(function () { a.play().catch(function () {}); }, s.at * 1000);
+    });
+  })();
+  </script>
+
+  <section class="wrap scene" id="records" aria-labelledby="records-t">
+    <div class="scene-head rv"><div><small>{{t.v3_small}}</small><h2 id="records-t">{{t.rec_h}}</h2></div><p>{{t.rec_p}}</p></div>
+    <div class="paper">
+      <svg class="link" aria-hidden="true"><path/></svg>
+      <div class="paper-top">
+        <div><div class="meta">{{t.rec_meta}}</div><div class="name">{{t.rec_title}}</div></div>
+        <span class="formats"><span>Markdown</span><span>Word</span><span>SRT</span></span>
+      </div>
+      <div class="paper-body">
+        <div class="notes-col">
+          <div class="concl">
+            <small>{{t.n_decision}}</small>
+            <div data-k="1"><b class="n">1</b><span>{{t.rec_c1}}</span></div>
+            <div data-k="3"><b class="n">2</b><span>{{t.rec_c2}}</span></div>
+          </div>
+          <div class="fish">
+            <div class="q"><b>{{t.n_why}}</b><span>{{t.fb_kind}}</span></div>
+            <div class="bones">
+              <div class="br"><b>{{t.fb1}}</b>{{t.fb1d}}</div><i></i><div class="br" data-k="2"><b>{{t.fb2}}</b>{{t.fb2d}}</div>
+              <div class="br"><b>{{t.fb3}}</b>{{t.fb3d}}</div><i></i><div class="br weak"><b>{{t.fb4}}</b>{{t.fb4d}}</div>
+            </div>
+          </div>
+        </div>
+        <div class="quotes">
+          <small>{{t.rec_quotes}}</small>
+          <div data-k="1"><span class="at">00:03</span><span class="src">{{t.cap2_src}}</span>{{t.cap2_dst}}</div>
+          <div data-k="2"><span class="at">02:10</span><span class="src">{{t.rec_q2_src}}</span>{{t.rec_q2_dst}}</div>
+          <div data-k="3"><span class="at">04:10</span><span class="src">{{t.rec_q3_src}}</span>{{t.rec_q3_dst}}</div>
+          <p class="hint">{{t.rec_hint}}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <script>
+  // Each conclusion or branch lights up with the line it came from: in turn on its own, or the one
+  // under the pointer; side by side, a line joins the two.
+  (function () {
+    var paper = document.querySelector('.paper'), svg = paper.querySelector('.link'), path = svg.querySelector('path');
+    var items = paper.querySelectorAll('[data-k]'), k = 1, timer = 0, still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function light(n) {
+      k = n;
+      items.forEach(function (el) { el.classList.toggle('lit', el.dataset.k == n); });
+      var a = paper.querySelector('.notes-col [data-k="' + n + '"]'), b = paper.querySelector('.quotes [data-k="' + n + '"]');
+      var p = paper.getBoundingClientRect(), ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      if (rb.left < ra.right) { path.removeAttribute('d'); return; } // stacked on a phone
+      var x1 = ra.right - p.left, y1 = ra.top + ra.height / 2 - p.top, x2 = rb.left - p.left - 4, y2 = rb.top + rb.height / 2 - p.top, m = (x1 + x2) / 2;
+      path.setAttribute('d', 'M' + x1 + ' ' + y1 + 'C' + m + ' ' + y1 + ' ' + m + ' ' + y2 + ' ' + x2 + ' ' + y2);
+    }
+    function cycle() { clearInterval(timer); if (!still) timer = setInterval(function () { light(k % 3 + 1); }, 2600); }
+    items.forEach(function (el) {
+      el.addEventListener('mouseenter', function () { clearInterval(timer); light(+el.dataset.k); });
+      el.addEventListener('mouseleave', cycle);
+    });
+    addEventListener('resize', function () { light(k); });
+    light(1); cycle();
+  })();
+  </script>
 
   <section class="wrap roadmap" id="privacy" aria-labelledby="privacy-t">
     <div class="head rv"><h2 id="privacy-t">{{t.privacy_h}}</h2><a href="{{t.privacy_url}}">{{t.privacy_link}}</a></div>

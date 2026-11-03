@@ -39,6 +39,9 @@ SAMPLES = {
     "zh": ("audio/meeting-zh.m4a", 7.8, [(0, 0.25, 2.21), (1, 2.43, 5.89), (0, 6.09, 7.45)]),
 }
 SAMPLE_FOR = {"zh": "en", "ja": "en", "ko": "en", "en": "zh"}
+# The 同声传译 scene's line as the room hears it (make-sample.sh speak), and when in the scene's
+# 10 s loop it starts: at 说进会议.
+SPEAK_AT = 5.5
 # (code, path prefix); the first is the default language, served at the root.
 LANGS = [("zh", ""), ("en", "en/"), ("ja", "ja/"), ("ko", "ko/")]
 FONT_BASE = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Noto+Sans+SC:wght@400;500;700;900"
@@ -232,7 +235,8 @@ def main():
         src, length, turns = SAMPLES[SAMPLE_FOR[code]]
         sample = {"src": "../" * prefix.count("/") + src + "?v=" + common["REV"], "len": length, "turns": turns}
         page("index.html", code, prefix, {
-            "SAMPLE_JSON": json.dumps(sample), "SAMPLE_LEN": f"0:{round(length):02d}",
+            "SAMPLE_JSON": json.dumps(sample),
+            "SPEAK_JSON": json.dumps({"src": "../" * prefix.count("/") + f"audio/speak-{'zh' if code == 'en' else 'en'}.m4a?v=" + common["REV"], "at": SPEAK_AT}), "SAMPLE_LEN": f"0:{round(length):02d}",
             "APPS": apps, "LATEST_SECTION": latest_section,
             "ROAD_NEXT": road_next, "ROAD_LATER": road(t["road_later_items"]), "ROAD_NONE": road(t["road_none_items"]),
             "FAQ": faq, "FAQLD": json.dumps(faq_ld, ensure_ascii=False).replace("</", "<\\/"),
