@@ -159,7 +159,7 @@ final class SpeakEngine {
         let lang = settings.speakFromLang
         guard analyzerLocale != lang.locale || analyzerFormat == nil else { return }
         let t = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
-                                  reportingOptions: [.volatileResults], attributeOptions: [])
+                                  reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
         do {
             if await AssetInventory.status(forModules: [t]) != .installed,
                let req = try await AssetInventory.assetInstallationRequest(supporting: [t]) {
@@ -191,8 +191,10 @@ final class SpeakEngine {
     private func beginUtterance() -> AsyncStream<AnalyzerInput>.Continuation? {
         guard analyzerFormat != nil else { return nil }
         let lang = settings.speakFromLang
+        // Without `.fastResults` Chinese only reports every ~11 s of audio, so the bar stays
+        // empty for a whole sentence or two; with it, text trails speech by about a second.
         let t = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
-                                  reportingOptions: [.volatileResults], attributeOptions: [])
+                                  reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
         let (stream, cont) = AsyncStream.makeStream(of: AnalyzerInput.self)
         finals = []
         volatile = ""
