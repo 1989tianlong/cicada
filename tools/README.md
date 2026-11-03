@@ -22,7 +22,7 @@
   - 纪要：`notesLang:<mine|source>`、`meetingNotesLang:<…>`、`notesRegenerate:<id>=<mine|source>`、`notesWindow[:x,y,w,h]`、`notesClose`、`notesFrame`、`notesNow`、`notesState`、`notesShow:<id>`、`notesReplay:<id>`、`notesCapturable[:off]`
   - 结束会议：`endSim:<应用名>[,…]` 假装这些会议应用在通话（`endSim:` 全部挂断，`endSim:off` 回到真实情况），`endTimes:<静默秒>,<倒计时秒>,<挂断宽限秒>` 缩短等待（`endTimes:` 回到设置），`endKeep` 等于点“继续记录”，`endState` 写进日志
   - 渲染（不需要录屏权限）：`panelRender:<png>`（菜单栏面板，离屏画）、`windowsRender:<目录>`、`settingsRender:<栏目>=<png>`、`notesRender:<png>`、`mainShow:<id>[,transcript]`、`mainRender:<png>`、`speakTestRender:<png>`
-  - AI：`aiKeyFile:<路径>`（从 0600 文件读 key，不经过日志；测完就删掉文件）、`aiCheck`、`aiRemove`、`aiHide:<on|off>`（只在内存里当作没有 key，文件不动；用于截图）、`aiState`、`lingSimulate:<429|hijack|timeout|off>`
+  - AI：`aiKeyFile:<路径>`（从 0600 文件读 key，不经过日志；测完就删掉文件）、`aiCheck`、`aiRemove`、`aiHide:<on|off>`（只在内存里当作没有 key，文件不动；用于截图）、`aiState`、`lingSimulate:<429|hijack|timeout|off>`、`translateFail:<n>`（接下来 n 句在所有翻译来源都失败，用来测重试）
   - 声音：`voice:<语言>[=<id>]`、`voicePreview:<语言>=<id>`、`voiceCloneFile:<wav>`、`voicePicker:<on|off>`
   - 诊断：`diagnostics:<on|off>`、`diagReport`
   - 更新与登录项：`updateFeed:<url>`、`updateCheck`、`updateInstall`、`updateState`、`loginItem[:on|off]`

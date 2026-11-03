@@ -58,6 +58,8 @@ final class ListenEngine {
 
     private var segments: [Segment] = []
     private var nextSegmentID = 0
+    /// Segments joined onto the line before: a retry of theirs would translate half a sentence.
+    private var joinedAway: Set<Int> = []
     private var volatileText = ""
     private var volatileTranslation = ""
     private var lastVolatileSent = ""
@@ -521,8 +523,11 @@ final class ListenEngine {
         return out
     }
 
-    private func translateSegment(id: Int) {
-        guard !translationOff(), let seg = segments.first(where: { $0.id == id }) else { return }
+    /// `retry` counts the earlier tries of a line every provider failed (Ling rate-limited while
+    /// Google answers 429, and no on-device model): it is asked again a little later, as the copy
+    /// `again`, since it may have scrolled off the bar meanwhile; the record still takes it.
+    private func translateSegment(id: Int, retry: Int = 0, again: Segment? = nil) {
+        guard !translationOff(), let seg = again ?? segments.first(where: { $0.id == id }) else { return }
         let trace = TranslateTrace()
         let asked = Date()
         // The target follows the detected language; log the one this call used, not the one after.
@@ -536,10 +541,24 @@ final class ListenEngine {
                                               failed: trace.failedSeconds, via: result == nil ? "none" : trace.via,
                                               fallbacks: trace.fallbacks))
             }
-            guard let out = result else { return }
             guard self.isRunning else { return }
             // The line was joined with the next one meanwhile: only the whole sentence's translation counts.
             if let now = self.segments.first(where: { $0.id == id }), now.text != seg.text { return }
+            guard let out = result else {
+                guard retry < 2 else { return }
+                let delay = retry == 0 ? 10.0 : 20.0
+                debugLog("translate: every provider failed, again in \(Int(delay)) s")
+                // Segment ids are never reused, so a language switch in between does not matter.
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self, self.isRunning, !self.joinedAway.contains(id) else { return }
+                        // Joined meanwhile: the joined sentence was asked for on its own.
+                        if let now = self.segments.first(where: { $0.id == id }), now.text != seg.text { return }
+                        self.translateSegment(id: id, retry: retry + 1, again: seg)
+                    }
+                }
+                return
+            }
             if let idx = self.segments.firstIndex(where: { $0.id == id }) {
                 self.segments[idx].translation = out
             }
@@ -553,6 +572,8 @@ final class ListenEngine {
     /// one, and the whole sentence is translated again. The old translation stays until then.
     func join(_ id: Int, into: Int, text: String) {
         let piece = segments.firstIndex(where: { $0.id == id }).map { segments.remove(at: $0) }
+        joinedAway.insert(id)
+        if joinedAway.count > 200, let oldest = joinedAway.min() { joinedAway.remove(oldest) }
         if let i = segments.firstIndex(where: { $0.id == into }) {
             segments[i].text = text
         } else {

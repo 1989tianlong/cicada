@@ -1205,6 +1205,10 @@ final class AppModel: ObservableObject {
         case "lingSimulate":
             ling.simulate = ["429": .rateLimited, "hijack": .hijacked, "timeout": .timeout][arg]
             debugLog("ling simulate=\(String(describing: ling.simulate))")
+        case "translateFail":
+            // translateFail:<n>: the next n sentences fail on every provider (tests the retry).
+            translator.failNext = Int(arg) ?? 0
+            debugLog("translate fail next=\(translator.failNext)")
         case "aiRemove": ling.removeKey()
         case "aiHide":
             // aiHide:<on|off>: the key file stays; the app behaves as if there were none (for screenshots).

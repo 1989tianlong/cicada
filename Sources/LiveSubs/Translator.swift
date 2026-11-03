@@ -65,8 +65,16 @@ final class TranslationService {
 
     /// `trace`, when given, collects which providers were tried, how long each took and why it
     /// fell through (diagnostics; never the text).
+    /// Debug (`translateFail:<n>`): the next n sentences fail on every provider, to test the retry.
+    var failNext = 0
+
     func translate(_ text: String, source: String, target: String, kind: Kind, trace: TranslateTrace? = nil) async -> String? {
         if source == target { return text }
+        if kind == .sentence, failNext > 0 {
+            failNext -= 1
+            trace?.attempts.append(.init(provider: "ling", seconds: 0, failure: "simulated"))
+            return nil
+        }
         if kind != .draft, ling.usable {
             let started = Date()
             let (out, failure) = await viaLing(text, source: source, target: target, kind: kind, trace: trace)
