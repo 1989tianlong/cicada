@@ -266,6 +266,8 @@ final class ListenEngine {
         lastVolatileSent = ""
         volatileEpoch += 1
         cutAsked = false
+        // The new transcriber's audio clock starts again at zero.
+        lastCutThrough = 0
         onStateChange?()
 
         let transcriber = SpeechTranscriber(locale: Locale(identifier: lang.locale),
@@ -325,6 +327,12 @@ final class ListenEngine {
         var text = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
         if result.isFinal {
             text = HeardText.clean(text)
+            let fuller = HeardText.fuller(final: text, draft: volatileText)
+            if fuller != text {
+                debugLog("final dropped words the draft had: kept the draft")
+                contentLog("FINAL was: \(text)")
+                text = fuller
+            }
             volatileText = ""
             volatileEpoch += 1
             // A "." or "…" from a breath or a click is no sentence: Ling would answer it with a note that
@@ -588,7 +596,8 @@ final class ListenEngine {
         Task { [weak self] in
             do {
                 try await analyzer.finalize(through: CMTime(seconds: through, preferredTimescale: 1000))
-                debugLog(String(format: "cut: line of %d chars ended after %.1f s (%@)", chars, held, why))
+                debugLog(String(format: "cut: line of %d chars ended after %.1f s (%@) at %.1f s of %.1f s",
+                                chars, held, why, through, c.fed))
             } catch {
                 debugLog("cut: finalize failed \(error)")
                 self?.cutAsked = false

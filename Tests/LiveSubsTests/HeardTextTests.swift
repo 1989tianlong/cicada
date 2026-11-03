@@ -24,6 +24,21 @@ import Testing
         #expect(HeardText.clean("........") == "")
     }
 
+    @Test func keepTheDraftWhenTheFinalDroppedPhrases() {
+        // Issue #1, from a 200 wpm run: the final pass lost "the support team asked", "numbers", "foxtrot 6".
+        let final = "for a new escalation process for enterprise customers, and Echo 5 Finance, needs the budget. for next year by the end. of this month. in."
+        let draft = "to for the support team asked for a new escalation process for enterprise customers and echo 5 Finance needs the budget numbers for next year by the end of this month in foxtrot 6"
+        #expect(HeardText.fuller(final: final, draft: draft) == draft)
+    }
+
+    @Test func keepTheFinalWhenItHasAboutAsMuch() {
+        let final = "We need the design review finished by Tuesday, and the audit too."
+        #expect(HeardText.fuller(final: final, draft: "We need the design review finished by Tuesday and the the audit too") == final)
+        #expect(HeardText.fuller(final: final, draft: "") == final)
+        #expect(HeardText.fuller(final: "我们周五之前把文案定下来。", draft: "我们周五之前把落地页的文案定下来") == "我们周五之前把文案定下来。")
+        #expect(HeardText.fuller(final: "我们周五。", draft: "我们周五之前把落地页的文案定下来") == "我们周五之前把落地页的文案定下来")
+    }
+
     @Test func joinOnlyWhatCarriesOn() {
         // Cut mid-sentence by a pause, carried on at once.
         #expect(HeardText.continues("that… in increased production that you would have expected at this",
