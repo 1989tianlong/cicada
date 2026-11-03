@@ -1,8 +1,9 @@
 name: build
 
-# macOS runner minutes are billed at 10× for private repositories, so this runs on
-# pull requests and on demand rather than on every push to main.
+# The repo is public, so macOS runner minutes are free: check every push to main too.
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

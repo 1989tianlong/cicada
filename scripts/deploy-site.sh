@@ -2,7 +2,6 @@
 # Builds the website and deploys it to the Cloudflare Worker "cicada-site" (static assets only), which
 # serves cicada.indaloop.app. The custom domain is attached to the Worker in Cloudflare, so the config
 # below declares no routes and a deploy leaves it alone. Needs `wrangler login` once.
-# (.github/workflows/pages.yml deploys to GitHub Pages instead, but skips while the repo is private.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
