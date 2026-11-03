@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds the website (GitHub Pages) from site/ into build/site/.
+"""Builds the website (served from Cloudflare, see scripts/deploy-site.sh) from site/ into build/site/.
 
 Languages: Chinese at /, English, Japanese and Korean under /en/, /ja/, /ko/. Each has the home page
 (site/index.html) and the setup guide (site/start.html → start/); {{t.key}} in a template is filled
