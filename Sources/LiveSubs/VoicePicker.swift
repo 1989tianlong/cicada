@@ -50,8 +50,9 @@ struct VoiceSection: View {
         }
     }
 
+    /// No-break spaces keep "· 改语言" with the language before it when the line wraps.
     private var route: AttributedString {
-        var text = AttributedString(L("你说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))") + " · ")
+        var text = AttributedString(L("你说\(settings.speakFromLang.name)，对方听到\(targetName(model.speak.targetCode))") + "\u{00A0}·\u{00A0}")
         var link = AttributedString(L("改语言"))
         link.link = URL(string: "cicada-settings:language")
         link.underlineStyle = .single
