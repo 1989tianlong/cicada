@@ -163,7 +163,6 @@ def main():
             hreflang += f'\n<link rel="alternate" hreflang="x-default" href="{SITE}en/{kind}">'
         v = dict(common, ROOT=root, HOME=root + prefix, LANG=code,
                  CHANGELOG=(root + "changelog/") if code == "zh" else REPO + "/releases",
-                 CL_CURRENT=' aria-current="page"' if current == "changelog" else "",
                  START_CURRENT=' aria-current="page"' if current == "start" else "",
                  CANONICAL=SITE + rel, HREFLANG=hreflang, LANG_LINKS=links, LANG_LINKS_FOOT=foot_links,
                  ALTS_JSON=json.dumps(alts), FONTS=FONT_BASE + FONT_EXTRA.get(code, "") + "&amp;display=swap",
@@ -203,8 +202,24 @@ def main():
             "isAccessibleForFree": True, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
             "releaseNotes": SITE + "changelog/", "codeRepository": REPO,
         }
+        def road(items):
+            return "".join(f"<li><b>{e(h)}</b><span>{e(p)}</span></li>" for h, p in items)
+        # The second item is the older-macOS one: it carries the tag that ties it to the FAQ's first answer.
+        road_next = "".join(
+            f'<li><b>{e(h)}</b>' + (f'<em>{e(t["road_tag"])}</em>' if i == 1 else "") + f'<span>{e(p)}</span></li>'
+            for i, (h, p) in enumerate(t["road_items"]))
+        # The first answer ("will it run on my Mac?") is open and has a fixed id the setup page links to.
+        faq = "".join(
+            f'<details class="card rv"{" open" if i == 0 else ""} id="faq-{"mac" if i == 0 else i + 1}">'
+            f'<summary>{e(q)}<i aria-hidden="true"></i></summary><p>{e(a)}</p></details>'
+            for i, (q, a) in enumerate(t["faq"]))
+        faq_ld = {"@context": "https://schema.org", "@type": "FAQPage", "inLanguage": t["html_lang"],
+                  "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}}
+                                 for q, a in t["faq"]]}
         page("index.html", code, prefix, {
             "APPS": apps, "LATEST_SECTION": latest_section,
+            "ROAD_NEXT": road_next, "ROAD_LATER": road(t["road_later_items"]), "ROAD_NONE": road(t["road_none_items"]),
+            "FAQ": faq, "FAQLD": json.dumps(faq_ld, ensure_ascii=False).replace("</", "<\\/"),
             "JSONLD": json.dumps(app_ld, ensure_ascii=False).replace("</", "<\\/")})
         # Setup guide
         howto = {"@context": "https://schema.org", "@type": "HowTo", "name": t["start_h1"], "inLanguage": t["html_lang"],

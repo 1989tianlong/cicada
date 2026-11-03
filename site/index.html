@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="{{FONTS}}">
 <link rel="stylesheet" href="{{ROOT}}style.css?v={{REV}}">
 <script type="application/ld+json">{{JSONLD}}</script>
+<script type="application/ld+json">{{FAQLD}}</script>
 </head>
 <body>
 {{HEADER}}
@@ -117,12 +118,37 @@
   </section>
 
   <section class="wrap roadmap" id="roadmap" aria-labelledby="roadmap-t">
-    <div class="head rv"><h2 id="roadmap-t">{{t.road_h}}</h2><a href="{{REPO}}/issues">{{t.road_link}}</a></div>
-    <div class="rows">
-      <div class="card stage-card rv"><small class="now">{{t.r1_small}}</small><h3>{{t.r1_h}}</h3><p>{{t.r1_p}}</p></div>
-      <div class="card stage-card rv"><small>{{t.r2_small}}</small><h3>{{t.r2_h}}</h3><p>{{t.r2_p}}</p></div>
+    <div class="head rv"><div><h2 id="roadmap-t">{{t.road_h}}</h2><p>{{t.road_sub}}</p></div><a href="{{REPO}}/issues">{{t.road_link}}</a></div>
+    <div class="road">
+      <div class="card road-col rv"><small class="now"><i></i>{{t.road_next}}</small><ol>{{ROAD_NEXT}}</ol></div>
+      <div class="card road-col rv"><small>{{t.road_later}}</small><ul>{{ROAD_LATER}}</ul></div>
+      <div class="road-col none rv"><small>{{t.road_none}}</small><ul>{{ROAD_NONE}}</ul></div>
     </div>
   </section>
+
+  <section class="wrap faq" id="faq" aria-labelledby="faq-t">
+    <div class="faq-side rv">
+      <small>{{t.faq_small}}</small>
+      <h2 id="faq-t">{{t.faq_h}}</h2>
+      <p>{{t.faq_sub}}</p>
+      <div class="card req-card">
+        <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>{{t.req_h}}</h3>
+        <dl>
+          <div><dt>{{t.req_os_k}}</dt><dd>{{t.req_os_v}}</dd></div>
+          <div><dt>{{t.req_chip_k}}</dt><dd>{{t.req_chip_v}}</dd></div>
+          <div><dt>{{t.req_intel_k}}</dt><dd>{{t.req_intel_v}}</dd></div>
+        </dl>
+        <p>{{t.req_how}}</p>
+      </div>
+      <a href="{{REPO}}/issues">{{t.faq_ask}}</a>
+    </div>
+    <div class="faq-list">{{FAQ}}</div>
+  </section>
+  <script>
+  // A link to #faq-… (the setup page's "will it run on my Mac?") opens that answer.
+  function openFaq() { var d = location.hash && document.getElementById(location.hash.slice(1)); if (d && d.tagName === 'DETAILS') d.open = true; }
+  openFaq(); addEventListener('hashchange', openFaq);
+  </script>
 
 {{LATEST_SECTION}}
 

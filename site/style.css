@@ -212,6 +212,54 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .stage-card small.now { color: var(--orange-text); }
 .stage-card h3 { margin: 0; font-size: 19px; line-height: 1.4; font-weight: 800; }
 .stage-card p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--grey); }
+.roadmap .head p { margin: 8px 0 0; font-size: 15px; color: var(--grey); }
+/* Three columns: next on the Mac (numbered), later, not planned. */
+.road { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 16px; align-items: stretch; }
+.road-col { padding: 24px 26px; }
+.road-col.none { border-radius: 18px; border: 1px dashed #DADDE2; background: var(--soft); }
+.road-col small { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: var(--grey); }
+.road-col small.now { color: var(--orange-text); }
+.road-col small i { width: 8px; height: 8px; border-radius: 4px; background: var(--orange); }
+.road-col ol, .road-col ul { margin: 0; padding: 0; list-style: none; }
+.road-col ol { counter-reset: road; }
+.road-col li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.road-col li:last-child { border-bottom: 0; padding-bottom: 0; }
+.road-col ol li { counter-increment: road; display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 10px; }
+.road-col ol li::before { content: counter(road, decimal-leading-zero); grid-row: 1 / span 2; font-size: 14px; font-weight: 700; color: var(--faint); padding-top: 2px; }
+.road-col li b { font-size: 17px; font-weight: 800; }
+.road-col li em { justify-self: start; grid-column: 2; margin-top: 6px; font-style: normal; font-size: 12px; font-weight: 700; color: var(--orange-text); background: var(--orange-soft); border-radius: 999px; padding: 3px 10px; }
+.road-col li span { display: block; grid-column: 2; margin-top: 4px; font-size: 14px; line-height: 1.6; color: var(--grey); }
+.road-col ul li span { margin-top: 4px; }
+
+/* FAQ: requirements card on the left, questions on the right. */
+.faq { padding-bottom: 96px; display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 56px; align-items: start; }
+.faq-side { display: flex; flex-direction: column; gap: 14px; }
+.faq-side small { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; color: var(--orange-text); }
+.faq-side h2 { margin: 0; font-size: clamp(26px, 2.8vw, 36px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.2; }
+.faq-side > p { margin: 0; font-size: 15px; line-height: 1.7; color: var(--grey); }
+.faq-side > a { font-size: 15px; font-weight: 600; text-decoration: none; }
+.req-card { margin-top: 10px; padding: 22px 24px; }
+.req-card h3 { margin: 0 0 6px; display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; }
+.req-card dl { margin: 0; border-top: 1px solid var(--line); }
+.req-card dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0 0; font-size: 15px; }
+.req-card dt { color: var(--grey); }
+.req-card dd { margin: 0; font-weight: 700; text-align: right; }
+.req-card p { margin: 14px 0 0; font-size: 13px; line-height: 1.6; color: var(--grey2); }
+.faq-list { display: flex; flex-direction: column; gap: 10px; }
+.faq-list details { padding: 0 26px; }
+.faq-list summary { list-style: none; cursor: pointer; min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 17px; font-weight: 700; }
+.faq-list summary::-webkit-details-marker { display: none; }
+.faq-list summary i { flex: none; position: relative; width: 14px; height: 14px; transition: transform .2s; }
+.faq-list summary i::before, .faq-list summary i::after { content: ""; position: absolute; left: 0; top: 6px; width: 14px; height: 2px; border-radius: 1px; background: var(--grey2); }
+.faq-list summary i::after { transform: rotate(90deg); }
+.faq-list details[open] summary i { transform: rotate(45deg); }
+.faq-list summary:hover { color: var(--orange-text); }
+.faq-list details p { margin: 0 0 22px; font-size: 15px; line-height: 1.75; color: var(--ink2); }
+@media (max-width: 900px) {
+  .road, .faq { grid-template-columns: minmax(0, 1fr); }
+  .faq { gap: 28px; }
+}
+.start-head .req a { font-weight: 700; margin-left: 6px; }
 
 /* CTA */
 .cta { padding-bottom: 80px; }

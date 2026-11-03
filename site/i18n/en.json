@@ -6,9 +6,9 @@
   "nav_label": "Main",
   "brand_name": "Cicada",
   "brand_sub": "",
-  "nav_why": "Why Cicada",
   "nav_how": "What it does",
   "nav_start": "Get started",
+  "nav_faq": "FAQ",
   "nav_changelog": "Changelog",
   "download_free": "Download free",
   "mac_only": "Mac app",
@@ -21,7 +21,7 @@
   "ld_desc": "Live translated subtitles, interpreting and AI meeting notes on the Mac, for any call or stream.",
   "feed_title": "Cicada changelog",
   "pill": "Free and open source · macOS 26 · Apple silicon",
-  "kicker": "Cicada: live subtitles, interpreting and meeting notes for any call or stream",
+  "kicker": "Cicada listens, speaks and remembers for you",
   "slogan": "Any call, any stream,<br>no language barrier.",
   "sub": "Understand. Speak up. Remember.",
   "dl_mac": "Download for Mac",
@@ -100,6 +100,7 @@
   "start_h1": "Get started in three steps",
   "start_lead": "Install Cicada, get a Ling key, then follow the guide in the app. About five minutes.",
   "start_req": "Requires macOS 26 or later on an Apple silicon Mac",
+  "start_mac_q": "Will it run on my Mac?",
   "start_mob_h": "Install it on your Mac",
   "start_mob_p": "Send the download link to your Mac. You can sign up for a Ling key on your phone right now.",
   "s1_h": "Download and install",
@@ -140,8 +141,8 @@
   "later2_h": "Your own voice",
   "later2_p": "Record 15 seconds and the translation is spoken in your voice. Record it in Settings › Interpreting.",
   "more": "Models, shortcuts, uninstalling and other details are in the <a href=\"{{REPO}}#readme\">README on GitHub</a>.",
-  "foot_slogan": "Any call, any stream, no language barrier.",
-  "foot_desc": "Live subtitles, interpreting and AI meeting notes in your Mac’s menu bar. Free and open source.",
+  "foot_slogan": "Cicada hears every meeting, and speaks up for you.",
+  "foot_desc": "Named for the insect that’s never quiet. Live subtitles, interpreting and AI meeting notes in your Mac’s menu bar. Free and open source.",
   "foot_meta": "macOS 26 · Apple silicon · Version",
   "foot_label": "Footer",
   "f_product": "Product",
@@ -177,12 +178,99 @@
   "p3_small": "Open",
   "p3_h": "No tracking, open source",
   "p3_p": "It only connects to the translation service, your own Ling key, the official BlackHole download and GitHub. No analytics and no servers of our own. Installers can be checked against their SHA-256.",
-  "road_h": "What’s next",
+  "road_h": "Roadmap",
   "road_link": "Tell us what you need →",
-  "r1_small": "Next · Mac",
-  "r1_h": "Record what I say, tell speakers apart",
-  "r1_p": "What you say in the meeting goes into the notes too. Support back to macOS 14.4. Proper signing, so no more “Open Anyway” on first launch. Several speakers on the other side told apart, with to-dos showing who said them. Notes written by an on-device model, with no key needed.",
-  "r2_small": "Later",
-  "r2_h": "Voice recognition, Windows and Android",
-  "r2_p": "Remember the voices of colleagues you meet often and recognize them next time; voiceprints stay on your Mac. A full version for Windows. Android can’t capture call audio, so it starts with subtitles for videos and streams, a face-to-face mode and a meeting record viewer."
+  "road_sub": "In order, and subject to change",
+  "road_next": "Next · Mac",
+  "road_later": "Later",
+  "road_none": "Not planned",
+  "road_tag": "Older Macs",
+  "road_items": [
+    [
+      "Record what I say",
+      "What you say out loud in the meeting goes into the notes too"
+    ],
+    [
+      "macOS 14.4 and later",
+      "Older systems use an earlier speech recognizer with fewer languages"
+    ],
+    [
+      "Proper signing and notarization",
+      "No more “Open Anyway” on first launch"
+    ],
+    [
+      "Tell speakers apart",
+      "To-dos show who said them"
+    ],
+    [
+      "Notes without a key",
+      "Written by an on-device model, or any AI service you choose"
+    ]
+  ],
+  "road_later_items": [
+    [
+      "Voice recognition",
+      "Remember people you meet often; voiceprints stay on your Mac"
+    ],
+    [
+      "Windows",
+      "The full feature set, sharing the meeting record format"
+    ],
+    [
+      "Android",
+      "Starting with video and stream subtitles and a face-to-face mode"
+    ]
+  ],
+  "road_none_items": [
+    [
+      "iPhone / iPad",
+      "The system doesn’t let apps capture other apps’ audio"
+    ]
+  ],
+  "faq_small": "FAQ",
+  "faq_h": "Before you download",
+  "faq_sub": "Didn’t find your question? Ask us on GitHub.",
+  "faq_ask": "Ask a question →",
+  "req_h": "Requirements",
+  "req_os_k": "System",
+  "req_os_v": "macOS 26 or later",
+  "req_chip_k": "Chip",
+  "req_chip_v": "Apple silicon (M series)",
+  "req_intel_k": "Intel Mac",
+  "req_intel_v": "Not yet",
+  "req_how": "Apple menu › About This Mac shows your system version and chip.",
+  "faq": [
+    [
+      "Will it run on my Mac?",
+      "You need macOS 26 or later on an Apple silicon Mac. On-device speech recognition uses SpeechAnalyzer, which is new in macOS 26. Support back to macOS 14.4 is second on the roadmap; recognition will be a little weaker on older systems."
+    ],
+    [
+      "Does it cost anything?",
+      "Cicada is free and open source. Live subtitles, translation and meeting records work without a key. AI notes and natural voices use your own Ling key: about ¥0.15–1 per hour of meeting, and Ling gives ¥10 of credit every month."
+    ],
+    [
+      "Will the other side know?",
+      "No bot joins the call, and nobody else installs anything. When you share your screen, the notes window stays out of the picture by default."
+    ],
+    [
+      "Is meeting audio uploaded?",
+      "Audio turns into text on your Mac, and recordings stay there. Only the recognized text leaves it, plus the few sentences you say while holding the talk key for interpreting."
+    ],
+    [
+      "Which languages does it support?",
+      "It detects the language being spoken, among those your Mac’s on-device speech recognition supports, and translates into your system language by default. Natural interpreting voices cover English, Chinese, Japanese, Korean, German, French and Spanish."
+    ],
+    [
+      "Is what I say out loud recorded?",
+      "For now, only what you say while holding the talk key. “Record what I say” is first on the roadmap."
+    ],
+    [
+      "macOS blocked it on first launch?",
+      "Cicada isn’t notarized by Apple yet. Go to System Settings › Privacy & Security and click “Open Anyway”, once. Proper signing is on the roadmap."
+    ],
+    [
+      "What else does interpreting need?",
+      "A virtual microphone, BlackHole. The first time you turn on interpreting, Cicada downloads it from the official source, installs it and runs a sound check."
+    ]
+  ]
 }
