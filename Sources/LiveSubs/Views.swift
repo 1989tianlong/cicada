@@ -36,18 +36,39 @@ struct LogoTile: View {
     var body: some View { BrandMark(size: size) }
 }
 
+typealias ChoiceOption = (id: String, title: String)
+
 /// A gray rounded row that opens a menu, used for the language choices.
 struct ChoiceRow: View {
     let label: String
     let value: String
     var badge: String? = nil
-    let options: [(id: String, title: String)]
+    /// Groups the menu separates; a header is its grey section title.
+    let sections: [(header: String?, options: [ChoiceOption])]
     let onPick: (String) -> Void
+
+    init(label: String, value: String, badge: String? = nil,
+         sections: [(header: String?, options: [ChoiceOption])], onPick: @escaping (String) -> Void) {
+        self.label = label; self.value = value; self.badge = badge
+        self.sections = sections.filter { !$0.options.isEmpty }
+        self.onPick = onPick
+    }
+
+    init(label: String, value: String, badge: String? = nil,
+         options: [ChoiceOption], onPick: @escaping (String) -> Void) {
+        self.init(label: label, value: value, badge: badge, sections: [(nil, options)], onPick: onPick)
+    }
 
     var body: some View {
         Menu {
-            ForEach(options, id: \.id) { o in
-                Button(o.title) { onPick(o.id) }
+            // Sections, not Dividers: the menu draws the separators itself, and a Divider next to
+            // a headed Section would draw a second one.
+            ForEach(sections.indices, id: \.self) { i in
+                if let header = sections[i].header {
+                    Section(header) { buttons(sections[i].options) }
+                } else {
+                    Section { buttons(sections[i].options) }
+                }
             }
         } label: {
             HStack(spacing: 10) {
@@ -73,6 +94,12 @@ struct ChoiceRow: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
     }
+
+    private func buttons(_ options: [ChoiceOption]) -> some View {
+        ForEach(options, id: \.id) { o in
+            Button(o.title) { onPick(o.id) }
+        }
+    }
 }
 
 // MARK: - Menu bar panel
@@ -81,11 +108,17 @@ struct MenuPanelView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
 
-    private var sourceOptions: [(id: String, title: String)] {
+    /// Languages without a speech model on this Mac sit in their own group under one line saying
+    /// picking one downloads it, rather than a suffix on every row.
+    private var sourceSections: [(header: String?, options: [ChoiceOption])] {
         let auto = model.candidates.map(\.name).joined(separator: "、")
-        return [("auto", auto.isEmpty ? L("自动识别") : L("自动识别（\(auto)）"))] + sourceLanguages.map {
-            ($0.locale, model.installed.isEmpty || model.installed.contains($0.locale) ? $0.name : L("\($0.name)（需下载）"))
-        }
+        let ready = sourceLanguages.filter { model.installed.isEmpty || model.installed.contains($0.locale) }
+        let missing = sourceLanguages.filter { !ready.contains($0) }
+        return [
+            (nil, [("auto", auto.isEmpty ? L("自动识别") : L("自动识别（\(auto)）"))]),
+            (nil, ready.map { ($0.locale, $0.name) }),
+            (L("选中后自动下载语音模型"), missing.map { ($0.locale, $0.name) }),
+        ]
     }
 
     private var targetOptions: [(id: String, title: String)] {
@@ -132,7 +165,7 @@ struct MenuPanelView: View {
             if let p = model.ending { MeetingEndingStrip(model: model, pending: p, compact: true) }
 
             VStack(spacing: 8) {
-                ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, options: sourceOptions) {
+                ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, sections: sourceSections) {
                     model.sourceSelection = $0
                 }
                 ChoiceRow(label: L("翻译成"),

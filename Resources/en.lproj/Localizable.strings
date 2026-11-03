@@ -258,7 +258,6 @@
 "结论" = "Conclusions";
 "结论和待办" = "Conclusions and to-dos";
 "人名和术语" = "Names and terms";
-" · 原识别 %@" = " · heard as %@";
 "依据较少" = "Little evidence";
 "依据 %lld 句" = "Evidence: %lld";
 "%@ · %lld 句" = "%@ · %lld lines";
@@ -279,6 +278,9 @@
 "译文" = "Translation";
 "此刻" = "Now";
 "等有人开口" = "Waiting for someone to speak";
+"收起" = "Hide";
+"展开全部 %lld 个" = "Show all %lld";
+" · 原识别 %@" = " · heard as %@";
 "有人开口后，约半分钟出第一版" = "First notes about 30 s after someone speaks";
 "会整理出" = "You'll get";
 "待办" = "To-dos";
@@ -320,8 +322,6 @@
 "韩" = "KO";
 "自动" = "Auto";
 "打开语言设置" = "Open language settings";
-"收起" = "Hide";
-"展开全部 %lld 个" = "Show all %lld";
 "这场会议" = "This meeting";
 "只改这一场，默认值在 设置 › 语言" = "Changes only this meeting; defaults are in Settings › Language";
 "还没听出来" = "Not detected yet";
@@ -720,7 +720,7 @@
 
 /* Views */
 "自动识别（%@）" = "Auto-detect (%@)";
-"%@（需下载）" = "%@ (download needed)";
+"选中后自动下载语音模型" = "Downloads its speech model when chosen";
 "系统" = "System";
 "内容" = "Content";
 "仅本场" = "This meeting";
