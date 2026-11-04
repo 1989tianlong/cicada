@@ -29,7 +29,8 @@ object Strings {
 
     @JvmStatic fun L(key: String): String = table[key]?.takeIf { it.isNotEmpty() } ?: key
 
-    /// L() with the Mac's `%@` placeholders, filled in order (or `%1$@` by position).
+    /// L() with the Mac's placeholders filled in order: `%@` (or `%1$@` by position), and the
+    /// numbers `%lld` / `%ld` / `%d`.
     @JvmStatic fun LF(key: String, vararg args: Any): String {
         val text = L(key)
         val b = StringBuilder()
@@ -39,6 +40,8 @@ object Strings {
             if (text[i] == '%' && i + 1 < text.length && text[i + 1] == '@') {
                 b.append(args.getOrNull(next++) ?: ""); i += 2; continue
             }
+            val number = listOf("%lld", "%ld", "%d").firstOrNull { text.startsWith(it, i) }
+            if (number != null) { b.append(args.getOrNull(next++) ?: ""); i += number.length; continue }
             if (text[i] == '%' && i + 3 < text.length && text[i + 1].isDigit() && text[i + 2] == '$' && text[i + 3] == '@') {
                 b.append(args.getOrNull(text[i + 1] - '1') ?: ""); i += 4; continue
             }

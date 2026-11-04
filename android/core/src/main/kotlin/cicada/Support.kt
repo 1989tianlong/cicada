@@ -61,7 +61,22 @@ object Languages {
     fun fromSystem(tag: String): String {
         val parts = tag.split('-', '_')
         if (parts[0] != "zh") return parts[0]
-        return if (parts.any { it in setOf("Hant", "TW", "HK", "MO") }) "zh-TW" else "zh-CN"
+        // As the Mac's translationCode: the script decides; a region only when there's none.
+        if ("Hant" in parts) return "zh-TW"
+        if ("Hans" in parts) return "zh-CN"
+        return if (parts.any { it in setOf("TW", "HK", "MO") }) "zh-TW" else "zh-CN"
+    }
+
+    /// The Mac's myLanguage: Chinese when the system list has it (the app speaks Chinese),
+    /// otherwise the first system language.
+    fun myLanguage(prefs: List<String>): String = fromSystem(prefs.firstOrNull { it.startsWith("zh") } ?: prefs.firstOrNull() ?: "zh-Hans")
+
+    /// The Mac's followSystemTarget: my language, unless that is what they speak; then the next
+    /// system language, or between Chinese and English when the system has only one.
+    fun followSystemTarget(source: String?, prefs: List<String>): String {
+        val mine = myLanguage(prefs)
+        if (source == null || source != mine) return mine
+        return prefs.map(::fromSystem).firstOrNull { it != mine } ?: if (mine.startsWith("zh")) "en" else "zh-CN"
     }
 
     /// Normalizes what Ming says the language is ("zh", "zh-Hans", "cmn") to a source code.
