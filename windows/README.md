@@ -50,3 +50,21 @@ DOTNET_ROOT=~/.dotnet build/cli/cicada-cli roundtrip ~/Library/Application\ Supp
    ```
    其余命令：`start`、`stop`、`view subtitles`、`capture on`、`show records`、`quit`。
 6. 检查：日志里 `tap:` 那行是实际的录音格式，不应出现 `display affinity failed`；纪要窗不抢焦点（点它之后原来的窗口仍能打字）；Win+Shift+S 截图和会议软件的屏幕共享里看不到它；打开“共享屏幕时让对方看到”后能看到，并显示“对方可见”；用浏览器放一段视频再 `start`，字幕跟得上。
+
+## 在 Mac 上自动测（QEMU 虚拟机）
+
+`vm/` 里是一台无界面的 Windows 11 ARM 测试机：QEMU + HVF，装机全自动（`autounattend.xml`），装好后用 SSH 驱动。
+
+```bash
+brew install qemu
+# 放进 ~/VMs/cicada-win11/：win11.iso（微软官网 ARM64 ISO）、virtio-win.iso、vm_key（ssh-keygen 生成）
+vm/run.sh                      # 第一次会自动装 Windows，约 30 分钟；之后几十秒开机
+scripts/build.sh && vm/deploy.sh
+vm/vmctl.sh g launch 'C:\cicada-test\Cicada-win-arm64\Cicada.exe' --dev
+vm/vmctl.sh ssh '& C:\cicada-test\Cicada-win-arm64\test\cicadactl.ps1 state'
+vm/vmctl.sh g play 'C:\cicada-test\Cicada-win-arm64\test\zh.wav'   # 另一个进程放声音
+vm/vmctl.sh shot out.png       # 屏幕本身（看得到纪要窗）
+vm/vmctl.sh g shot C:\x.png    # Windows 里截图（屏幕共享看到的，不应有纪要窗）
+```
+
+`vmctl.sh g …` 调 `guest.ps1`：SSH 会话没有桌面，要桌面的事（启动、放声音、截图、点击、看前台窗口）都通过计划任务在登录的桌面里做。测不到的：真机 x64、蓝牙耳机切换、多显示器 DPI、会议软件的真实屏幕共享。
