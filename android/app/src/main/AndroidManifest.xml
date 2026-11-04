@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Asked for even to capture other apps' sound, and for 面对面. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The floating notes window / subtitle bar. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <application
+        android:name=".CicadaApp"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:localeConfig="@xml/locales_config"
+        android:allowAudioPlaybackCapture="false"
+        android:supportsRtl="false"
+        android:theme="@style/Cicada">
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".ListeningActivity" android:exported="false" android:parentActivityName=".MainActivity" android:launchMode="singleTop" />
+        <activity android:name=".RecordsActivity" android:exported="false" android:parentActivityName=".MainActivity" />
+        <activity android:name=".RecordActivity" android:exported="false" android:parentActivityName=".MainActivity" />
+        <activity android:name=".SettingsActivity" android:exported="false" android:parentActivityName=".MainActivity" />
+        <activity android:name=".OnboardingActivity" android:exported="false" />
+        <activity android:name=".ProjectionActivity" android:exported="false"
+            android:theme="@style/Cicada.Translucent" android:excludeFromRecents="true" />
+        <service android:name=".ListenTile" android:exported="true" android:label="@string/app_name"
+            android:icon="@drawable/ic_notification" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+        <service android:name=".ListenService" android:exported="false"
+            android:foregroundServiceType="mediaProjection|microphone" />
+    </application>
+</manifest>

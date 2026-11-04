@@ -1,0 +1,111 @@
+package com.wquguru.cicada
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import cicada.Json
+import cicada.Strings
+import cicada.Log
+import cicada.Session
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/// Debug commands for dev builds over `adb shell am broadcast` (scripts/cicadactl.sh): the
+/// Android counterpart of the Mac's tools/lsctl and the Windows pipe. One command per broadcast,
+/// one JSON line back as the broadcast's result (never meeting text or the key).
+///   state | start [playback|mic] | stop | feed <wav in files/> | sample | view notes|subtitles
+///   capture on|off | overlay show|hide | show main|live|records|settings|onboarding|record [id] | overlay collapse|expand | key reload
+///   import <session.json in files/> | onboarded on|off | target <code> | ui <lang> | clip <text>
+class DebugReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (!BuildConfig.DEBUG) return
+        val app = context.cicada
+        val line = intent.getStringExtra("cmd") ?: "state"
+        val pending = goAsync()
+        // UI work on the main thread; the reply waits for it, then for state to settle.
+        app.background.execute {
+            val done = CountDownLatch(1)
+            var reply: Map<String, Any?> = emptyMap()
+            app.main.post { reply = try { run(app, line) } catch (e: Exception) { mapOf("error" to "${e.javaClass.simpleName}: ${e.message}") }; done.countDown() }
+            done.await(5, TimeUnit.SECONDS)
+            if (reply.isEmpty()) {
+                val again = CountDownLatch(1)
+                Thread.sleep(300)
+                app.main.post { reply = state(app); again.countDown() }
+                again.await(5, TimeUnit.SECONDS)
+            }
+            pending.resultCode = 0
+            pending.resultData = Json.write(reply, pretty = false)
+            pending.finish()
+        }
+    }
+
+    /// Empty: "reply with the state once the command has had a moment".
+    private fun run(app: CicadaApp, line: String): Map<String, Any?> {
+        val parts = line.trim().split(Regex("\\s+"), 2)
+        val arg = parts.getOrElse(1) { "" }
+        if (parts[0] != "state") Log.d("debug: ${parts[0]}")
+        fun open(cls: Class<*>, extra: String? = null) =
+            app.startActivity(Intent(app, cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply { extra?.let { putExtra("id", it) } })
+        when (parts[0]) {
+            "state" -> return state(app)
+            "start" -> app.startListening(app, arg.ifEmpty { app.settings.source })
+            "stop" -> app.stopListening()
+            "feed" -> app.listenToFile(File(app.filesDir, arg), play = false)
+            "sample" -> app.listenToFile(null, play = true)
+            "view" -> app.setView(if (arg == "subtitles") "subtitles" else "notes")
+            "capture" -> { app.settings.showInCapture = arg == "on"; app.saveSettings(); app.overlay.rebuild() }
+            "overlay" -> if (arg == "collapse") { app.overlay.collapsed = true; app.overlay.rebuild() } else if (arg == "expand") { app.overlay.collapsed = false; app.overlay.rebuild() } else if (arg == "hide") { app.overlay.forced = false; app.overlay.hide() } else { app.overlay.forced = true; app.overlay.show() }
+            "target" -> { app.settings.target = arg.ifEmpty { "system" }; app.saveSettings() }
+            "ui" -> { app.settings.uiLanguage = arg.ifEmpty { "system" }; app.saveSettings(); app.loadStrings(); app.overlay.rebuild() }
+            // Puts text on the clipboard (the shell can't), so 粘贴 can be tested.
+            "clip" -> app.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("test", arg))
+            "onboarded" -> { app.settings.onboarded = arg != "off"; app.saveSettings() }
+            "key" -> { app.key.reload(); app.ling.keyChanged(); app.background.execute { app.ling.check() } }
+            "import" -> {
+                val s = Session.read(File(app.filesDir, arg).readText()) ?: return mapOf("error" to "unreadable")
+                app.store.import(s)
+            }
+            "show" -> when (arg.substringBefore(' ')) {
+                "settings" -> open(SettingsActivity::class.java)
+                "onboarding" -> open(OnboardingActivity::class.java)
+                "record" -> open(RecordActivity::class.java, arg.substringAfter(' ', "").ifEmpty { app.store.all().firstOrNull { it.id != app.listen.sessionId || !app.listen.listening }?.id })
+                "records" -> open(RecordsActivity::class.java)
+                "live" -> app.openLive()
+                else -> open(MainActivity::class.java)
+            }
+            else -> return mapOf("error" to "unknown command ${parts[0]}")
+        }
+        return emptyMap()
+    }
+
+    companion object {
+        fun state(app: CicadaApp): Map<String, Any?> {
+            val listen = app.listen
+            val id = listen.sessionId
+            return mapOf(
+                "listening" to listen.listening,
+                "source" to listen.sourceKind,
+                "session" to id,
+                "lines" to (id?.let { app.store.lines(it).size } ?: 0),
+                "translated" to (id?.let { app.store.lines(it).count { l -> l.dst != null } } ?: 0),
+                "pending" to listen.pending,
+                "spoken" to listen.spoken,
+                "target" to listen.target,
+                "heardSeconds" to Math.round(listen.heardSeconds * 10) / 10.0,
+                "peak" to Math.round(listen.peak * 10000) / 10000.0,
+                "problem" to (listen.problem ?: app.startProblem),
+                "notes" to app.notes.status.name,
+                "topics" to app.notes.notes.topics.size,
+                "key" to app.ling.keyState.name,
+                "view" to app.settings.view,
+                "showInCapture" to app.settings.showInCapture,
+                "overlay" to app.overlay.describe(),
+                "canOverlay" to app.canOverlay,
+                "sessions" to app.store.all().size,
+                "ui" to Strings.language,
+            )
+        }
+    }
+}

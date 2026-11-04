@@ -1,0 +1,39 @@
+name: android
+
+# The Android app (android/): the engines' unit tests on the JVM, the translation check, then the
+# dev APK as an artifact. Listening itself is tested in the emulator or on a phone.
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", "Resources/**/Localizable.strings", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android/**", "Resources/**/Localizable.strings", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.8.2"
+      - name: Unit tests
+        run: |
+          gradle --console=plain -q :cli:installDist
+          JAVA_OPTS="-Dcicada.resources=$PWD/../Resources -Dcicada.androidStrings=$PWD/app/src/main/strings" cli/build/install/cicada-cli/bin/cicada-cli test
+      - name: Translations
+        run: python3 scripts/strings.py
+      - name: Build
+        run: gradle --console=plain -q :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cicada-android-dev
+          path: android/app/build/outputs/apk/debug/app-debug.apk
