@@ -45,7 +45,7 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
     func show() {
         guard let model else { return }
         if panel == nil {
-            let p = NSPanel(contentRect: defaultFrame(), styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            let p = NotesPanel(contentRect: defaultFrame(), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel],
                             backing: .buffered, defer: false)
             p.titleVisibility = .hidden
             p.titlebarAppearsTransparent = true
@@ -53,6 +53,8 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             p.isFloatingPanel = onTop
             p.level = onTop ? .floating : .normal
             p.delegate = self
+            p.onMiniaturize = { [weak self] in self?.hide() }
+            p.standardWindowButton(.miniaturizeButton)?.isEnabled = true
             // Clicking it leaves the meeting app active and our other windows where they are;
             // it only takes the keyboard for its text fields.
             p.hidesOnDeactivate = false
@@ -112,6 +114,8 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
 
     /// Debug control only: what the close button does.
     func performClose() { panel?.performClose(nil) }
+    /// Debug control only: what the minimize button does.
+    func performMiniaturize() { panel?.performMiniaturize(nil) }
 
     /// 录屏时可见, and the debug command that flips it for one screenshot without saving it.
     func setCapturable(_ on: Bool) { panel?.sharingType = on ? .readOnly : .none }
@@ -121,6 +125,20 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
         let v = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         return NSRect(x: v.maxX - 460 - 16, y: v.minY + 16, width: 460, height: v.height - 32)
     }
+}
+
+/// The yellow button tucks the window away to the menu bar, like 收起: with only the menu bar
+/// item there is no Dock to minimize into, and the panel's 打开 brings it back either way.
+private final class NotesPanel: NSPanel {
+    var onMiniaturize: (() -> Void)?
+    // AppKit greys the button out for a floating, all-Spaces panel, and re-greys it on every
+    // titlebar update; it hides instead of minimizing, so keep it lit.
+    override func update() {
+        super.update()
+        if let b = standardWindowButton(.miniaturizeButton), !b.isEnabled { b.isEnabled = true }
+    }
+    override func performMiniaturize(_ sender: Any?) { onMiniaturize?() }
+    override func miniaturize(_ sender: Any?) { onMiniaturize?() }
 }
 
 // MARK: - Views

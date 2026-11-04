@@ -1389,6 +1389,7 @@ final class AppModel: ObservableObject {
         case "notesCapturable": notesWindow.setCapturable(arg != "off")
         case "notesShare": setNotesCapturable(arg != "off")  // the setting itself, as its badge or switch does
         case "notesClose": notesWindow.performClose()
+        case "notesMinimize": notesWindow.performMiniaturize()
         case "closeWindow":
             // closeWindow:<main|settings|onboarding>: what the window's close button does.
             let w = NSApp.windows.first { w in
