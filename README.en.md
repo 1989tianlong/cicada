@@ -101,6 +101,8 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 3. In Cicada, open **Settings › AI Service**, paste the key, and click **Save and check** (or paste it in the prompt at the top of the notes window). A one-token request confirms it works.
 4. Optionally pick the model (`Ling-3.1-flash` by default) on the same page, and the Ming voice for each language under **Settings › Interpreting**. To remove the key, click **Remove** on the same page.
 
+If you can't sign up for Ling, switch to OpenRouter, ZenMux or OpenAI from the menu at the top right of **Settings › AI Service**, or enter the address of any OpenAI-compatible service (a model running on your Mac, for example). Live notes and sentence translation work with all of them, with models picked for quality and price that you can change; OpenRouter and ZenMux also give interpreting natural Gemini voices. One-step voice translation and voice cloning are Ling only; with other services, interpreting recognizes on your Mac and then translates. Each service keeps its own key, so switching back needs no re-entry.
+
 ## Requirements & Installation
 
 Requires **macOS 14.4 or later** on **Apple silicon**. macOS 26 uses the newer on-device speech recognizer, which is more accurate; on 14.4–15 Cicada uses the system's earlier recognizer, which needs **Dictation** turned on in **System Settings › Keyboard**, with each language you want heard added to its languages. The UI is available in English, Chinese, Japanese, and Korean, following your macOS language or set per app in **System Settings › General › Language & Region**.
@@ -120,7 +122,7 @@ In rough order; tell us what you need in Issues.
 - **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
 - **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
 - **Speaker recognition**, building on today's speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
-- **Local notes without an API key** using Apple's on-device model on supported Macs, plus **custom AI providers** for any OpenAI-compatible endpoint.
+- **Local notes without an API key** using Apple's on-device model on supported Macs.
 - **Windows and Android**, sharing the same notes and meeting-record formats (iPhone and iPad are not planned due to iOS audio capture restrictions).
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for details and trade-offs on each item.

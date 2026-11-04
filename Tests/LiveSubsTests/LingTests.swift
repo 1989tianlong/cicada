@@ -94,6 +94,16 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         #expect(AIKey.read() == nil)
     }
 
+    @Test func eachServiceHasItsOwnKeyFile() throws {
+        #expect(AIKey.save("sk-ling-111", "ling"))
+        #expect(AIKey.save("sk-zen-222", "zenmux"))
+        let file = folder.appendingPathComponent("ai-key-zenmux")
+        #expect(try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int == 0o600)
+        #expect(AIKey.read("ling") == "sk-ling-111" && AIKey.read("zenmux") == "sk-zen-222" && AIKey.read("openai") == nil)
+        AIKey.remove("zenmux")
+        #expect(AIKey.read("zenmux") == nil && AIKey.read() == "sk-ling-111")
+    }
+
     @Test func maskedShowsOnlyTheEnds() {
         #expect(AIKey.masked("sk-abcdefghij3f9a") == "sk-" + String(repeating: "•", count: 12) + "3f9a")
         #expect(AIKey.masked("short") == "sk-…")

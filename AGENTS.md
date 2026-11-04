@@ -10,8 +10,8 @@ Cicada (知了, formerly Live Subs) turns what a computer plays into live transl
 
 ## Hard rules
 
-- The Ling key lives only in the 0600 `ling-api-key` file (`AIKey`): never UserDefaults, logs or exports.
-- Every Ling call goes through `LingClient` (rate gate, priorities, `thinking: disabled`, content in the system message). Partial text is translated by Google, never Ling.
+- AI keys live only in 0600 files (`AIKey`): never UserDefaults, logs or exports.
+- Every AI call goes through `LingClient` (rate gate, priorities, `thinking: disabled`, content in the system message). Partial text is translated by Google, never Ling.
 - Never speak untranslated text into the room. Never bundle the GPL BlackHole driver; download it and check its pinned SHA-256.
 - The notes window is a non-activating panel with `sharingType = .none`: it must never take focus, and stays out of screen captures unless the user turns on 共享屏幕时让对方看到 (then it shows a badge).
 - Mac: UI and engine state are `@MainActor`; audio callbacks hand buffers to `AudioRouter`'s queue.

@@ -3,54 +3,58 @@ import Security
 
 // MARK: - API key (local file)
 
-/// The user's Ling API key, in a file only this user can read (0600, folder 0700) under
-/// Application Support, left out of backups. Never written to UserDefaults, logs or exports.
+/// The user's AI keys, one file per service (`ling-api-key`, `ai-key-<service>`) only this user
+/// can read (0600, folder 0700) under Application Support, left out of backups. Never written to
+/// UserDefaults, logs or exports.
 ///
 /// Not the Keychain for now: the app is signed ad hoc, so the Keychain only trusts one exact build
 /// (its cdhash) and asks for the login password after every rebuild or update. Back to the Keychain
 /// once builds are signed with a Developer ID (a stable team id). Keys saved there by earlier
 /// builds are moved over once.
 enum AIKey {
-    private static var cached: String??
+    private static var cached: [String: String?] = [:]
 
     /// Tests only: keep the key in this folder instead, and leave the Keychain alone, so a test
     /// run never touches the user's real key.
-    static var folderOverride: URL? { didSet { cached = nil } }
+    static var folderOverride: URL? { didSet { cached = [:] } }
 
     private static var folder: URL {
         folderOverride ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(DevBuild.supportFolder)
     }
-    private static var file: URL { folder.appendingPathComponent("ling-api-key") }
+    private static func file(_ service: String) -> URL {
+        folder.appendingPathComponent(service == "ling" ? "ling-api-key" : "ai-key-\(service)")
+    }
 
-    static func read() -> String? {
-        if let cached { return cached }
-        var value = (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+    static func read(_ service: String = "ling") -> String? {
+        if let hit = cached[service] { return hit }
+        var value = (try? String(contentsOf: file(service), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
         if value?.isEmpty ?? true { value = nil }
-        if value == nil, folderOverride == nil, let old = LegacyKeychain.take() {
+        if value == nil, service == "ling", folderOverride == nil, let old = LegacyKeychain.take() {
             // One last Keychain prompt, then the key lives in the file.
             value = old
-            write(old)
+            write(old, service)
         }
-        cached = .some(value)
+        cached[service] = .some(value)
         return value
     }
 
     @discardableResult
-    static func save(_ key: String) -> Bool {
-        let ok = write(key)
-        cached = .some(ok ? key : nil)
+    static func save(_ key: String, _ service: String = "ling") -> Bool {
+        let ok = write(key, service)
+        cached[service] = .some(ok ? key : nil)
         return ok
     }
 
-    static func remove() {
-        try? FileManager.default.removeItem(at: file)
-        if folderOverride == nil { LegacyKeychain.delete() }
-        cached = .some(nil)
+    static func remove(_ service: String = "ling") {
+        try? FileManager.default.removeItem(at: file(service))
+        if service == "ling", folderOverride == nil { LegacyKeychain.delete() }
+        cached[service] = .some(nil)
     }
 
     @discardableResult
-    private static func write(_ key: String) -> Bool {
+    private static func write(_ key: String, _ service: String) -> Bool {
+        let file = file(service)
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -112,11 +116,13 @@ enum AIKey {
 
 // MARK: - Ling client
 
-/// Ling (ant-ling.com), OpenAI-compatible. One shared instance for the whole app: the account
-/// allows about 2 requests per second across every model, so request *starts* go through one
-/// gate (≥ 0.6 s apart, overlapping is fine) in priority order: speak-back, translation, notes.
+/// The one AI client for the whole app: Ling (ant-ling.com) or another OpenAI-compatible service
+/// (`AIProvider`), whichever settings name. Request *starts* go through one gate in priority order
+/// (speak-back, translation, notes), spaced for the service: Ling's account allows about 2
+/// requests per second across every model.
 ///
-/// Two quirks found in testing shape every call:
+/// Two Ling quirks found in testing shape every call (`AIConfig.shape` turns thinking off for the
+/// others too, each its own way):
 /// - `thinking` is on by default: always disable it (otherwise +2.6 s and billed reasoning).
 /// - When the user message reads like a factual question, the gateway answers it with a search
 ///   essay instead of following the prompt. So the content always goes in the system message and
@@ -141,13 +147,17 @@ final class LingClient: ObservableObject {
         case noKey, invalidKey, rateLimited, hijacked, timeout, http(Int), network, parse
     }
 
-    static let models = ["Ling-3.1-flash", "Ling-3.0-flash"]
-    private static let base = URL(string: "https://api.ant-ling.com/v1/")!
+    static let models = AIProvider.ling.textModels.map(\.id)
     private static let hijackPrefixes = ["根据现有检索证据", "暂未找到足够可靠的信息", "根据检索"]
 
     @Published private(set) var keyState: KeyState
     @Published private(set) var rateLimitedAt: Date?
-    var model: () -> String = { "Ling-3.1-flash" }
+    /// The service's text models from its `/models`, recommended first (empty until fetched).
+    @Published private(set) var catalog: [String] = []
+    /// The service in use, its address and models. Set by the app from settings.
+    var config: () -> AIConfig = { AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash",
+                                            voiceModel: "Ming-3.0-tts-0.5B", voiceBase: AIProvider.ling.base) }
+    var provider: AIProvider { config().provider }
 
     /// Debug control only: make every chat call fail this way.
     var simulate: Failure?
@@ -159,12 +169,34 @@ final class LingClient: ObservableObject {
     var session: URLSession = .shared
 
     var hasKey: Bool { key != nil }
-    var key: String? { hideKey ? nil : AIKey.read() }
-    /// The key is known to work (or at least not known to be bad).
+    /// The key for the service in use. A custom service on this Mac may need none: "".
+    var key: String? {
+        if hideKey { return nil }
+        let c = config()
+        if c.provider.id == .custom {
+            guard let base = c.base else { return nil }
+            return AIKey.read(c.provider.id.rawValue) ?? (AIProvider.isLocal(base.absoluteString) ? "" : nil)
+        }
+        return AIKey.read(c.provider.id.rawValue)
+    }
+    /// The key is known to work (or at least not known to be bad): notes and translation.
     var usable: Bool { hasKey && keyState != .invalid }
+    /// Voices in the room from this service (else the Mac's).
+    var speaks: Bool { usable && config().hasVoices }
+    /// The user's own voice: only Ling clones.
+    var clones: Bool { usable && provider.clones }
+    /// Speak-back heard by the service's audio model (Ming) instead of on this Mac.
+    var hearsAudio: Bool { usable && provider.hearsAudio }
 
     init() {
         keyState = AIKey.read() == nil ? .none : .unchecked
+    }
+
+    /// Settings switched service, address or model: forget the old state and check again.
+    func reconfigure() {
+        catalog = []
+        keyState = hasKey ? .unchecked : .none
+        if hasKey { Task { await check() } }
     }
 
     // MARK: Key
@@ -174,36 +206,69 @@ final class LingClient: ObservableObject {
         let k = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !k.isEmpty else { return }
         if hideKey { debugLog("ai key: not saved while hidden (debug)"); keyState = .invalid; return }
-        AIKey.save(k)
+        AIKey.save(k, provider.id.rawValue)
         await check()
     }
 
     func removeKey() {
-        AIKey.remove()
-        keyState = .none
+        AIKey.remove(provider.id.rawValue)
+        catalog = []
+        keyState = hasKey ? .unchecked : .none
     }
 
+    /// The cheapest request that proves the key: Ling's tiny model, OpenRouter's key info, OpenAI's
+    /// model list, else one token from the chosen model. A custom service must also return JSON
+    /// (the notes need it).
     func check() async {
         guard let key else { keyState = .none; return }
         keyState = .checking
+        let c = config()
         let started = Date()
-        let body: [String: Any] = [
-            "model": "Ling-3.0-tiny",
-            "messages": [["role": "user", "content": "hi"]],
-            "max_tokens": 1,
-            "thinking": ["type": "disabled"],
-        ]
+        let name = c.provider.id == .custom ? L("这个服务") : c.provider.name
         do {
-            _ = try await post("chat/completions", body: body, key: key, timeout: 15)
+            switch c.provider.id {
+            case .ling:
+                _ = try await post("chat/completions", body: ["model": "Ling-3.0-tiny", "messages": [["role": "user", "content": "hi"]],
+                                                             "max_tokens": 1, "thinking": ["type": "disabled"]], key: key, timeout: 15)
+            case .openrouter:
+                _ = try await get("key", key: key)
+            case .openai:
+                _ = try await get("models", key: key)
+            case .zenmux, .custom:
+                var body: [String: Any] = ["model": c.textModel, "messages": [["role": "user", "content": "hi"]]]
+                c.shape(&body, maxTokens: 1)
+                _ = try await post("chat/completions", body: body, key: key, timeout: 20)
+                if c.provider.id == .custom {
+                    var json: [String: Any] = ["model": c.textModel, "response_format": ["type": "json_object"],
+                                               "messages": [["role": "system", "content": "Reply with the JSON object {\"ok\": true}."],
+                                                            ["role": "user", "content": "Reply."]]]
+                    c.shape(&json, maxTokens: 20)
+                    do { _ = try await post("chat/completions", body: json, key: key, timeout: 20) } catch Failure.http(let code) {
+                        keyState = .unreachable(L("这个服务不支持 JSON（HTTP \(code)），纪要用不了"))
+                        return
+                    }
+                }
+            }
             keyState = .ok(seconds: Date().timeIntervalSince(started))
         } catch Failure.invalidKey {
             keyState = .invalid
         } catch Failure.rateLimited {
             keyState = .ok(seconds: Date().timeIntervalSince(started))
+        } catch Failure.http(let code) where code == 404 || code == 400 {
+            keyState = .unreachable(c.provider.id == .custom ? L("找不到模型，或地址不对（HTTP \(code)）") : L("\(name) 拒绝了请求（HTTP \(code)），请检查模型名"))
         } catch {
-            keyState = .unreachable(L("连不上 Ling，检查网络或代理"))
+            keyState = .unreachable(L("连不上 \(name)，请检查网络或代理"))
         }
-        debugLog("ling: key check → \(keyState)")
+        debugLog("ai \(c.provider.id.rawValue): key check → \(keyState)")
+        if case .ok = keyState, c.provider.id != .ling { await fetchCatalog() }
+    }
+
+    /// The service's text models, for the model menu. Quietly empty when it has no `/models`.
+    func fetchCatalog() async {
+        let c = config()
+        guard let key, c.provider.id != .ling, let data = try? await getData("models", key: key) else { return }
+        catalog = AIConfig.textModels(fromCatalog: data, recommended: c.provider.textModels.map(\.id))
+        debugLog("ai \(c.provider.id.rawValue): \(catalog.count) models")
     }
 
     // MARK: Chat
@@ -211,7 +276,7 @@ final class LingClient: ObservableObject {
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
     /// message. Notes retry 429s with backoff; translation and speak-back fail fast so the caller
     /// can fall back to another translator. `audio` (a WAV) goes in the user message before the
-    /// instruction, for Ming's audio model.
+    /// instruction, for Ming's audio model (Ling only: `hearsAudio`).
     func chat(content: String, instruction: String, priority: Priority, json: Bool = false,
               maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil, audio: Data? = nil,
               onQueued: ((Double) -> Void)? = nil) async throws -> String {
@@ -221,8 +286,9 @@ final class LingClient: ObservableObject {
             if simulate == .rateLimited { rateLimitedAt = Date() }
             throw simulate
         }
+        let c = config()
         var body: [String: Any] = [
-            "model": model ?? self.model(),
+            "model": model ?? c.textModel,
             "messages": [
                 ["role": "system", "content": content],
                 ["role": "user", "content": audio.map { wav -> Any in
@@ -230,11 +296,9 @@ final class LingClient: ObservableObject {
                      ["type": "text", "text": instruction]]
                 } ?? instruction],
             ],
-            "max_tokens": maxTokens,
-            "temperature": 0.2,
-            "thinking": ["type": "disabled"],
             "stream": false,
         ]
+        c.shape(&body, maxTokens: maxTokens)
         if json { body["response_format"] = ["type": "json_object"] }
         let attempts = priority == .notes ? 4 : 1
         var delay = 1.0
@@ -251,7 +315,7 @@ final class LingClient: ObservableObject {
                       let text = message["content"] as? String else { throw Failure.parse }
                 let finish = choice["finish_reason"] as? String
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if finish == nil || Self.hijackPrefixes.contains(where: { trimmed.hasPrefix($0) }) {
+                if (finish == nil && c.provider.id == .ling) || Self.hijackPrefixes.contains(where: { trimmed.hasPrefix($0) }) {
                     debugLog("ling: \(priority) search-style reply dropped (finish=\(finish ?? "nil"))")
                     throw Failure.hijacked
                 }
@@ -293,37 +357,50 @@ final class LingClient: ObservableObject {
         }
     }
 
-    // MARK: Speech (Ming TTS)
+    // MARK: Speech
 
-    /// Streams Ming's voice for `text` as raw 24 kHz mono 16-bit PCM chunks: a built-in `voice`, or
-    /// a voice cloned from `reference` (a WAV data URI and what it says). `language` is Ming's
-    /// `language_id`, needed for Japanese, Korean, German, French and Spanish.
+    /// Streams the voice for `text` as raw 24 kHz mono 16-bit PCM chunks. Ling (Ming): a built-in
+    /// `voice`, or a voice cloned from `reference` (a WAV data URI and what it says); `language` is
+    /// Ming's `language_id`, needed for Japanese, Korean, German, French and Spanish. Others: the
+    /// configured speech model and `voice`.
+    ///
+    /// Replies come three ways and all are read: SSE with base64 chunks (Ling, ZenMux), raw PCM
+    /// bytes (OpenRouter), or one JSON `{"audio": <WAV>}`. Gemini TTS and Kokoro speak 24 kHz too.
     func speech(_ text: String, voice: String? = "UK_Charlotte", reference: (audio: String, text: String)? = nil,
                 language: String? = nil) -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { cont in
             let task = Task { @MainActor [weak self] in
                 guard let self, let key = self.key else { cont.finish(throwing: Failure.noKey); return }
+                let c = self.config()
+                guard let base = c.voiceBase, let voiceModel = c.voiceModel else { cont.finish(throwing: Failure.noKey); return }
                 await self.acquire(.speak)
-                var req = URLRequest(url: Self.base.appendingPathComponent("audio/speech"))
+                var req = URLRequest(url: base.appendingPathComponent("audio/speech"))
                 req.httpMethod = "POST"
                 req.timeoutInterval = 20
-                req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+                if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                var body: [String: Any] = [
-                    "model": "Ming-3.0-tts-0.5B", "input": text,
-                    "response_format": "pcm", "sample_rate": 24000, "stream": true, "stream_format": "sse",
-                ]
-                if let reference {
-                    body["references"] = [["audio": reference.audio, "text": reference.text]]
-                    req.timeoutInterval = 30
-                } else if let voice {
-                    body["voice"] = voice
+                var body: [String: Any] = ["model": voiceModel, "input": text, "response_format": "pcm"]
+                if c.provider.id == .ling {
+                    body["sample_rate"] = 24000
+                    body["stream"] = true
+                    body["stream_format"] = "sse"
+                    if let reference {
+                        body["references"] = [["audio": reference.audio, "text": reference.text]]
+                        req.timeoutInterval = 30
+                    } else if let voice {
+                        body["voice"] = voice
+                    }
+                    if let language { body["language_id"] = language }
+                } else {
+                    // OpenRouter documents no `stream` (it streams the bytes anyway); ZenMux needs it.
+                    if c.provider.id != .openrouter { body["stream"] = true }
+                    body["voice"] = voice ?? c.voices.first?.id ?? "Kore"
                 }
-                if let language { body["language_id"] = language }
                 req.httpBody = try? JSONSerialization.data(withJSONObject: body)
                 do {
                     let (bytes, response) = try await self.session.bytes(for: req)
-                    switch (response as? HTTPURLResponse)?.statusCode ?? 0 {
+                    let http = response as? HTTPURLResponse
+                    switch http?.statusCode ?? 0 {
                     case 200: break
                     case 401, 403:
                         self.keyState = .invalid
@@ -331,12 +408,30 @@ final class LingClient: ObservableObject {
                     case 429: throw Failure.rateLimited
                     case let code: throw Failure.http(code)
                     }
-                    for try await line in bytes.lines {
-                        guard line.hasPrefix("data:"),
-                              let obj = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(5).utf8)) as? [String: Any]
-                        else { continue }
-                        if obj["type"] as? String == "speech.audio.done" { break }
-                        if let b64 = obj["audio"] as? String, let pcm = Data(base64Encoded: b64) { cont.yield(pcm) }
+                    let type = http?.value(forHTTPHeaderField: "Content-Type") ?? ""
+                    if type.contains("event-stream") {
+                        for try await line in bytes.lines {
+                            guard line.hasPrefix("data:"),
+                                  let obj = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(5).utf8)) as? [String: Any]
+                            else { continue }
+                            if obj["type"] as? String == "speech.audio.done" { break }
+                            if let b64 = obj["audio"] as? String, let pcm = Data(base64Encoded: b64) { cont.yield(pcm) }
+                        }
+                    } else if type.contains("json") {
+                        var data = Data()
+                        for try await b in bytes { data.append(b) }
+                        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let b64 = obj["audio"] as? String, let wav = Data(base64Encoded: b64) else { throw Failure.parse }
+                        cont.yield(Self.pcm(fromWAV: wav))
+                    } else {
+                        // Raw PCM: hand it on in 0.1 s pieces so playback starts early.
+                        var chunk = Data()
+                        chunk.reserveCapacity(4800)
+                        for try await b in bytes {
+                            chunk.append(b)
+                            if chunk.count >= 4800 { cont.yield(chunk); chunk.removeAll(keepingCapacity: true) }
+                        }
+                        if !chunk.isEmpty { cont.yield(chunk) }
                     }
                     cont.finish()
                 } catch {
@@ -347,15 +442,48 @@ final class LingClient: ObservableObject {
         }
     }
 
+    /// The samples of a WAV (its `data` chunk); the bytes as they are when there is no header.
+    nonisolated static func pcm(fromWAV wav: Data) -> Data {
+        guard wav.count > 12, wav.prefix(4) == Data("RIFF".utf8) else { return wav }
+        var i = 12
+        while i + 8 <= wav.count {
+            let id = wav.subdata(in: i..<i + 4)
+            let size = wav.subdata(in: i + 4..<i + 8).withUnsafeBytes { Int($0.loadUnaligned(as: UInt32.self).littleEndian) }
+            if id == Data("data".utf8) { return wav.subdata(in: i + 8..<min(wav.count, i + 8 + size)) }
+            i += 8 + size + (size & 1)
+        }
+        return wav
+    }
+
     // MARK: Transport
 
     private func post(_ path: String, body: [String: Any], key: String, timeout: TimeInterval) async throws -> [String: Any] {
-        var req = URLRequest(url: Self.base.appendingPathComponent(path))
+        guard let base = config().base else { throw Failure.noKey }
+        var req = URLRequest(url: base.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.timeoutInterval = timeout
-        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data = try await send(req, key: key)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Failure.parse }
+        return root
+    }
+
+    private func get(_ path: String, key: String) async throws -> [String: Any] {
+        let data = try await getData(path, key: key)
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    private func getData(_ path: String, key: String) async throws -> Data {
+        guard let base = config().base else { throw Failure.noKey }
+        var req = URLRequest(url: base.appendingPathComponent(path))
+        req.timeoutInterval = 15
+        return try await send(req, key: key)
+    }
+
+    private func send(_ request: URLRequest, key: String) async throws -> Data {
+        var req = request
+        if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let data: Data
         let response: URLResponse
         do {
@@ -368,7 +496,7 @@ final class LingClient: ObservableObject {
         }
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         switch code {
-        case 200: break
+        case 200: return data
         case 401, 403:
             if keyState != .invalid { keyState = .invalid }
             throw Failure.invalidKey
@@ -377,20 +505,17 @@ final class LingClient: ObservableObject {
             debugLog("ling: HTTP \(code)")
             throw Failure.http(code)
         }
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Failure.parse }
-        return root
     }
 
     // MARK: Start gate
 
-    private static let spacing: TimeInterval = 0.6
     private var lastStart = Date.distantPast
     private var waiting: [(priority: Priority, seq: Int, resume: CheckedContinuation<Void, Never>)] = []
     private var seq = 0
     private var pumping = false
 
     private func acquire(_ priority: Priority) async {
-        if waiting.isEmpty && Date().timeIntervalSince(lastStart) >= Self.spacing {
+        if waiting.isEmpty && Date().timeIntervalSince(lastStart) >= provider.spacing {
             lastStart = Date()
             return
         }
@@ -405,7 +530,7 @@ final class LingClient: ObservableObject {
     private func pump() {
         guard !pumping, !waiting.isEmpty else { return }
         pumping = true
-        let wait = max(0, Self.spacing - Date().timeIntervalSince(lastStart))
+        let wait = max(0, provider.spacing - Date().timeIntervalSince(lastStart))
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }

@@ -362,7 +362,7 @@ struct OnboardingView: View {
                 switch step {
                 case 1: permissions
                 case 2: tryIt
-                case 3: OnboardingKeyStep(ling: model.ling, settings: settings, skipping: $model.onboardingKeySkip)
+                case 3: OnboardingKeyStep(model: model, ling: model.ling, settings: settings, skipping: $model.onboardingKeySkip)
                 case 4: speaking
                 default: closing
                 }

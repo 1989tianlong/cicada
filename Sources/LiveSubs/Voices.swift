@@ -3,15 +3,16 @@ import Foundation
 
 // MARK: - Catalog
 
-/// A voice the room can hear: one of Ming's (through the Ling key), a voice installed on this Mac,
-/// or the user's own voice cloned from a recording.
+/// A voice the room can hear: one of Ming's (through the Ling key), one of another service's speech
+/// model, a voice installed on this Mac, or the user's own voice cloned from a recording.
 struct VoiceOption: Identifiable, Equatable {
     enum Kind: Equatable {
         case ming(String)
+        case cloud(String)
         case system(String)
         case clone
     }
-    /// Stored in settings: "ming:US_Emma", "system:<AVSpeechSynthesisVoice identifier>", "clone".
+    /// Stored in settings: "ming:US_Emma", "cloud:Kore", "system:<AVSpeechSynthesisVoice identifier>", "clone".
     let id: String
     let name: String
     let tags: [String]
@@ -25,6 +26,15 @@ struct VoiceOption: Identifiable, Equatable {
 /// George speak it with `language_id`. The Mac's own best female and male voices follow, so there is
 /// always something without a key.
 enum VoiceCatalog {
+    /// The cloud voices of the AI service in use. Set by the app when the service changes.
+    enum Service: Equatable {
+        case ming
+        /// `label`: where they come from, shown next to each ("Gemini").
+        case cloud(label: String, voices: [CloudVoice])
+        case none
+    }
+    nonisolated(unsafe) static var service: Service = .ming
+
     /// Tabs in settings: (key, title). The key is the translation code without region ("zh" for zh-CN / zh-TW).
     static let languages: [(key: String, title: String)] = [
         ("en", "English"), ("zh", "中文"), ("ja", "日本語"), ("ko", "한국어"),
@@ -78,11 +88,22 @@ enum VoiceCatalog {
         return out
     }
 
-    static func options(for language: String) -> [VoiceOption] { ming(for: language) + system(for: language) }
+    /// The service's voices for a language: Ming's, a speech model's (the same in every language), or none.
+    static func remote(for language: String) -> [VoiceOption] {
+        switch service {
+        case .ming: return ming(for: language)
+        case .cloud(let label, let voices):
+            return voices.map { VoiceOption(id: "cloud:\($0.id)", name: $0.id, tags: [$0.gender, label].filter { !$0.isEmpty },
+                                            kind: .cloud($0.id)) }
+        case .none: return []
+        }
+    }
 
-    /// What a language uses until the user picks: Ming's first voice with a key, else the Mac's.
+    static func options(for language: String) -> [VoiceOption] { remote(for: language) + system(for: language) }
+
+    /// What a language uses until the user picks: the service's first voice with a key, else the Mac's.
     static func defaultID(for language: String, hasKey: Bool) -> String? {
-        (hasKey ? ming(for: language).first : nil)?.id ?? system(for: language).first?.id
+        (hasKey ? remote(for: language).first : nil)?.id ?? system(for: language).first?.id
     }
 
     static let cloneOption = VoiceOption(id: "clone", name: L("我自己的声音"), tags: [], kind: .clone)

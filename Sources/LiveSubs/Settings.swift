@@ -100,6 +100,54 @@ final class AppSettings: ObservableObject {
     @Published var aiModel: String {
         didSet { save() }
     }
+    /// The AI service: an `AIProvider.Kind` ("ling" unless the user picked another).
+    @Published var aiProvider: String {
+        didSet { save() }
+    }
+    /// Text and speech model per service other than Ling ("openrouter": "qwen/qwen3.8-flash"); a
+    /// service not listed uses its first recommended model. "custom" in `aiVoiceModels` is the
+    /// custom service's speech model, empty for none.
+    @Published var aiModels: [String: String] {
+        didSet { save() }
+    }
+    @Published var aiVoiceModels: [String: String] {
+        didSet { save() }
+    }
+    /// The custom service: its address (an OpenAI-compatible `/v1`), and optionally another
+    /// address for speech (empty: the same one) and the voice to ask for.
+    @Published var aiCustomBase: String {
+        didSet { save() }
+    }
+    @Published var aiCustomVoiceBase: String {
+        didSet { save() }
+    }
+    @Published var aiCustomVoice: String {
+        didSet { save() }
+    }
+
+    var provider: AIProvider { AIProvider.named(aiProvider) }
+
+    /// What `LingClient` calls with: the service, its address and models.
+    var aiConfig: AIConfig {
+        let p = provider
+        switch p.id {
+        case .ling:
+            return AIConfig(provider: p, base: p.base, textModel: aiModel, voiceModel: p.voiceModels.first?.id, voiceBase: p.base)
+        case .custom:
+            let base = AIProvider.customBase(aiCustomBase)
+            let voice = (aiVoiceModels["custom"] ?? "").trimmingCharacters(in: .whitespaces)
+            let voiceBase = aiCustomVoiceBase.isEmpty ? base : AIProvider.customBase(aiCustomVoiceBase)
+            let name = aiCustomVoice.trimmingCharacters(in: .whitespaces)
+            return AIConfig(provider: p, base: base, textModel: aiModels["custom"] ?? "", voiceModel: voice.isEmpty ? nil : voice,
+                            voiceBase: voiceBase, customVoice: name.isEmpty ? nil : name)
+        default:
+            return AIConfig(provider: p, base: p.base, textModel: aiModels[p.id.rawValue] ?? p.textModels.first?.id ?? "",
+                            voiceModel: p.hasVoices ? aiVoiceModels[p.id.rawValue] ?? p.voiceModels.first?.id : nil, voiceBase: p.base)
+        }
+    }
+
+    /// The text model in use, for display.
+    var textModel: String { aiConfig.textModel }
 
     /// End the meeting when the meeting app it was heard through hangs up.
     @Published var endWithApp: Bool {
@@ -166,6 +214,12 @@ final class AppSettings: ObservableObject {
         talkKey = Shortcut(stored: defaults.string(forKey: "talkKey")) ?? .defaultTalk
         toggleKey = Shortcut(stored: defaults.string(forKey: "toggleKey")) ?? .defaultToggle
         aiModel = defaults.string(forKey: "aiModel") ?? "Ling-3.1-flash"
+        aiProvider = defaults.string(forKey: "aiProvider") ?? "ling"
+        aiModels = defaults.dictionary(forKey: "aiModels") as? [String: String] ?? [:]
+        aiVoiceModels = defaults.dictionary(forKey: "aiVoiceModels") as? [String: String] ?? [:]
+        aiCustomBase = defaults.string(forKey: "aiCustomBase") ?? ""
+        aiCustomVoiceBase = defaults.string(forKey: "aiCustomVoiceBase") ?? ""
+        aiCustomVoice = defaults.string(forKey: "aiCustomVoice") ?? ""
         displayMode = defaults.string(forKey: "displayMode") ?? "notes"
         speakVoices = defaults.dictionary(forKey: "speakVoices") as? [String: String] ?? [:]
         endWithApp = defaults.object(forKey: "endWithApp") as? Bool ?? true
@@ -209,6 +263,12 @@ final class AppSettings: ObservableObject {
         defaults.set(talkKey.stored, forKey: "talkKey")
         defaults.set(toggleKey.stored, forKey: "toggleKey")
         defaults.set(aiModel, forKey: "aiModel")
+        defaults.set(aiProvider, forKey: "aiProvider")
+        defaults.set(aiModels, forKey: "aiModels")
+        defaults.set(aiVoiceModels, forKey: "aiVoiceModels")
+        defaults.set(aiCustomBase, forKey: "aiCustomBase")
+        defaults.set(aiCustomVoiceBase, forKey: "aiCustomVoiceBase")
+        defaults.set(aiCustomVoice, forKey: "aiCustomVoice")
         defaults.set(displayMode, forKey: "displayMode")
         defaults.set(speakVoices, forKey: "speakVoices")
         defaults.set(endWithApp, forKey: "endWithApp")

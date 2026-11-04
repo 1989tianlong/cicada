@@ -1326,7 +1326,7 @@ struct SessionNotesView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(generating ? L("正在整理纪要…") : live ? L("纪要会在会议进行中自动生成") : L("这场会议还没有纪要"))
                             .font(.system(size: 15, weight: .bold))
-                        Text(ling.hasKey ? L("使用 Ling 将文字记录整理为总结、议题、结论和人名，约需半分钟。")
+                        Text(ling.hasKey ? L("用 \(ling.provider.name) 整理出总结、议题、结论和人名，约半分钟。")
                                          : L("前往 设置 › AI 服务 填入 Ling 的 API key 后即可生成。"))
                             .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         if !live {

@@ -430,6 +430,7 @@ struct SettingsView: View {
             HStack {
                 Text(model.settingsSection.title).font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.ink)
                 Spacer()
+                if model.settingsSection == .ai { AIServiceMenu(model: model, settings: settings) }
                 if model.settingsSection == .speak {
                     Toggle("把我说的翻译给对方", isOn: Binding(get: { settings.speakEnabled }, set: { model.enableSpeaking($0) }))
                         .toggleStyle(.switch).labelsHidden().tint(Palette.ink)
@@ -441,7 +442,7 @@ struct SettingsView: View {
             case .language: LanguageSettings(model: model, settings: settings)
             case .records: records
             case .ai: AISettingsView(model: model, ling: model.ling, settings: settings)
-            case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, model: settings.aiModel)
+            case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, model: settings.textModel)
             }
         }
         .padding(.leading, 12).padding(.trailing, 28).padding(.top, 40).padding(.bottom, 28)

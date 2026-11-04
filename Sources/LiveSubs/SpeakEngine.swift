@@ -491,6 +491,8 @@ final class SpeakEngine {
 
     /// Set by the app: the voice chosen for a language.
     var route: ((String) -> VoiceRoute)?
+    /// Who speaks a stream, for logs and the test ("ming", or the service: "zenmux").
+    var streamName: () -> String = { "ming" }
 
     /// Returns after the audio has played. A stream that fails before any audio falls back to the
     /// Mac's voice, so the room always hears the sentence.
@@ -500,9 +502,10 @@ final class SpeakEngine {
         lastDevice = override ?? outputDevice()
         switch forced ?? route?(language) ?? .system(nil) {
         case .stream(let make):
-            lastVoice = "ming"
+            let name = streamName()
+            lastVoice = name
             if await speakStream(make(text), device: override ?? outputDevice()) { return }
-            lastVoice = "system (ming failed)"
+            lastVoice = "system (\(name) failed)"
         case .system(let id):
             lastVoice = "system"
             voiceID = id

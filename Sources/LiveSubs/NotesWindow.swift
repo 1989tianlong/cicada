@@ -628,7 +628,7 @@ struct NotesWindowView: View {
     private var keyEntry: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("生成纪要需要 API key").font(.system(size: 15, weight: .bold))
-            Text("文字记录仍在正常保存。填入 Ling 的 key 后，会从头开始整理整场会议的内容。")
+            Text(L("文字记录仍在保存。填好 \(model.ling.provider.name) 的 key 后，会从头整理出整场纪要。"))
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
             HStack(spacing: 8) {
                 SecureField("sk-…", text: $keyDraft)
@@ -639,10 +639,10 @@ struct NotesWindowView: View {
                     .onSubmit(saveKey)
                 SoftButton(L("保存并开始"), dark: true, action: saveKey)
             }
-            Button("获取 Ling key ↗") {
-                if let url = URL(string: "https://chat.ant-ling.com/platform/api") { NSWorkspace.shared.open(url) }
+            if let site = model.ling.provider.site {
+                Button(L("获取 \(model.ling.provider.name) key ↗")) { NSWorkspace.shared.open(site) }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
             }
-            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 16).fill(Palette.raised))

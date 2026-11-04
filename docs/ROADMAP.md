@@ -9,7 +9,6 @@ In rough order, and subject to change. Tell us what you need in Issues.
 - **Developer ID signing and notarization.** Removes the "Open Anyway" prompt on first launch and stores the AI key in the macOS Keychain.
 - **Speaker recognition.** Speaker identification (experimental, since 1.0) already tells the other side's voices apart within a meeting, lets you rename them and names to-do owners, but forgets them when the meeting ends. Next, Cicada will remember frequent meeting participants by voice so they're named in the next meeting too. Because voiceprints are biometric data, they stay on your Mac, require opt-in, and can be deleted anytime.
 - **Local notes without an API key.** Use Apple's on-device model to generate meeting notes on supported Macs, keeping all audio and text local.
-- **Custom AI providers.** Support any OpenAI-compatible API endpoint besides Ling.
 
 **Later**
 - **Live voice changing.** No translation: your voice goes into the meeting as a different voice, changed as you speak, without holding the talk key. Setting "I speak" and "They hear" to the same language already swaps the voice today, but it goes through text, so the room hears it only after you let go and your tone is lost.

@@ -35,6 +35,8 @@ final class AppModel: ObservableObject {
     @Published var micGuide: MicUser?
     /// Settings › 同声传译: the voice list under "对方听到" is open.
     @Published var voicePickerOpen = false
+    /// Settings › AI 服务's 自己选模型 is unfolded.
+    @Published var aiModelsOpen = false
 
     @Published var running = false
     /// The meeting is about to end by itself (a hang-up or a long silence) unless someone keeps it going.
@@ -182,7 +184,7 @@ final class AppModel: ObservableObject {
         }
         ling.onCall = { [weak self] in self?.diagnostics.record($0) }
 
-        ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
+        ling.config = { [weak self] in self?.settings.aiConfig ?? AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash") }
         listen.translator = translator
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
         importer.onFinished = { [weak self] id in self?.importFinished(id) }
@@ -190,7 +192,7 @@ final class AppModel: ObservableObject {
             TranslationService.englishName(self?.notesLanguageCode(id) ?? "zh-CN")
         }
         listen.translationOff = { [weak self] in self?.subtitles == "original" }
-        if ling.hasKey { Task { await ling.check() } }
+        applyAIService()
 
         installer.speakThrough = { [weak self] text, lang, device in
             await self?.speak.speak(text, language: lang, device: device)
@@ -849,13 +851,32 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// The chosen voice for a language, or its default (Ming's first with a key, else the Mac's).
+    /// The chosen voice for a language, or its default (the service's first with a key, else the
+    /// Mac's). A choice the service in use cannot speak (Ming after switching to OpenRouter, the
+    /// user's own voice without Ling) falls back to the default, and comes back with that service.
     func voiceID(for language: String) -> String? {
-        if let id = settings.speakVoices[VoiceCatalog.key(for: language)] {
-            if id == "clone" && !VoiceReference.exists { return VoiceCatalog.defaultID(for: language, hasKey: ling.usable) }
-            return id
+        let fallback = VoiceCatalog.defaultID(for: language, hasKey: ling.speaks)
+        guard let id = settings.speakVoices[VoiceCatalog.key(for: language)] else { return fallback }
+        if id.hasPrefix("system:") { return id }
+        if id == "clone" { return VoiceReference.exists && ling.clones ? id : fallback }
+        return VoiceCatalog.remote(for: language).contains { $0.id == id } ? id : fallback
+    }
+
+    /// Settings changed the AI service, its address or a model: voices follow, the key is checked again.
+    func applyAIService() {
+        let c = settings.aiConfig
+        switch c.provider.id {
+        case .ling: VoiceCatalog.service = .ming
+        default:
+            let label = c.provider.id == .custom ? (c.voiceModel ?? "") : c.voiceModel.map { $0.contains("gemini") ? "Gemini" : c.provider.name } ?? ""
+            VoiceCatalog.service = c.hasVoices ? .cloud(label: label, voices: c.voices) : .none
         }
-        return VoiceCatalog.defaultID(for: language, hasKey: ling.usable)
+        speak.streamName = { [weak self] in
+            guard let id = self?.settings.provider.id, id != .ling else { return "ming" }
+            return id.rawValue
+        }
+        ling.reconfigure()
+        applyVoice()
     }
 
     func setVoice(_ id: String, for language: String) {
@@ -866,9 +887,17 @@ final class AppModel: ObservableObject {
     func voiceRoute(id: String?, language: String) -> SpeakEngine.VoiceRoute {
         guard let id else { return .system(nil) }
         if id.hasPrefix("system:") { return .system(String(id.dropFirst("system:".count))) }
-        guard ling.usable else { return .system(nil) }
+        guard ling.speaks else { return .system(nil) }
+        if id.hasPrefix("cloud:") {
+            let voice = String(id.dropFirst("cloud:".count))
+            return .stream { [weak self] text in
+                self?.ling.speech(text, voice: voice)
+                    ?? AsyncThrowingStream { $0.finish(throwing: LingClient.Failure.noKey) }
+            }
+        }
         let lang = VoiceCatalog.mingLanguage(for: language)
         if id == "clone" {
+            guard ling.clones else { return .system(nil) }
             guard let ref = VoiceReference.reference() else { return .system(nil) }
             return .stream { [weak self] text in
                 self?.ling.speech(text, voice: nil, reference: ref, language: lang)
@@ -1311,7 +1340,7 @@ final class AppModel: ObservableObject {
             setDiagnostics(arg != "off")
             debugLog("diagnostics \(settings.diagnostics ? "on" : "off")")
         case "diagReport":
-            debugLog("diag report:\n" + diagnostics.report(version: "", model: settings.aiModel))
+            debugLog("diag report:\n" + diagnostics.report(version: "", model: settings.textModel))
         case "micTest": installer.runTest()
         case "micNext": installer.next()
         case "sysMic":
@@ -1492,7 +1521,20 @@ final class AppModel: ObservableObject {
             // aiHide:<on|off>: the key file stays; the app behaves as if there were none (for screenshots).
             ling.hideKey = arg != "off"
             Task { await ling.check() }
-        case "aiState": debugLog("ai state=\(ling.keyState) hasKey=\(ling.hasKey) model=\(settings.aiModel)")
+        case "aiState":
+            let c = settings.aiConfig
+            debugLog("ai state=\(ling.keyState) provider=\(c.provider.id.rawValue) hasKey=\(ling.hasKey) model=\(c.textModel) "
+                     + "voice=\(c.voiceModel ?? "-") speaks=\(ling.speaks) clones=\(ling.clones) catalog=\(ling.catalog.count)")
+        // AI service: aiProvider:<ling|openrouter|zenmux|openai|custom>, aiTextModel:<id>, aiVoiceModel:<id|"">,
+        // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>.
+        case "aiProvider": settings.aiProvider = AIProvider.named(arg).id.rawValue; applyAIService()
+        case "aiTextModel":
+            if settings.provider.id == .ling { settings.aiModel = arg } else { settings.aiModels[settings.aiProvider] = arg }
+            applyAIService()
+        case "aiVoiceModel": settings.aiVoiceModels[settings.aiProvider] = arg; applyAIService()
+        case "aiCustomBase": settings.aiCustomBase = arg; applyAIService()
+        case "aiCustomVoiceBase": settings.aiCustomVoiceBase = arg; applyAIService()
+        case "aiCustomVoice": settings.aiCustomVoice = arg; applyAIService()
         case "subtitles": setSubtitles(arg)
         case "meetingSubtitles": setSubtitles(arg, meetingOnly: true)
         case "notesLang": setNotesLanguage(arg)
@@ -1521,6 +1563,7 @@ final class AppModel: ObservableObject {
             speak.resetOutput()
             debugLog("speak output=\(speak.outputDevice()?.name ?? "-")")
         case "voicePicker": voicePickerOpen = arg != "off"
+        case "aiModels": aiModelsOpen = arg != "off"
         case "speakTestBegin": speakTester.beginTalking()
         case "speakTestEnd": speakTester.endTalking()
         case "speakTestClose": speakTester.cancel(); speakTestShown = false
