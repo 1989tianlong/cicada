@@ -498,7 +498,7 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     /// `partial` is on show (`TranscriptPartial.shows`).
     var partialShown = false
     var jumpTo: Double?
-    /// Experimental: line id → speaker number for the other side's lines (SpeakerLabels).
+    /// Line id → speaker number for the other side's lines (SpeakerLabels).
     var speakers: [String: Int] = [:]
     /// When listening began, for the start mark shown before the first line.
     var startedAt: Date?
@@ -511,6 +511,8 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     var onAssign: ((Set<String>, Int) -> Void)?
     @ViewBuilder var partial: Partial
 
+    @State private var assigning: String?
+
     @State private var following = true
     @State private var seenCount = 0
     @State private var followQueued = false
@@ -518,7 +520,8 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     static func == (a: Self, b: Self) -> Bool {
         a.lines == b.lines && a.topics == b.topics && a.terms == b.terms && a.currentMatch == b.currentMatch
             && a.bilingual == b.bilingual && a.live == b.live && a.partialShown == b.partialShown
-            && a.jumpTo == b.jumpTo && a.speakers == b.speakers && a.startedAt == b.startedAt
+            && a.jumpTo == b.jumpTo && a.speakers == b.speakers && a.startedAt == b.startedAt && a.voices == b.voices && a.marked == b.marked
+            && a.identifying == b.identifying
     }
 
     private var searching: Bool { !terms.isEmpty }
@@ -731,12 +734,32 @@ struct TranscriptListView<Partial: View>: View, Equatable {
             VStack(alignment: .leading, spacing: 4) {
                 if !label {
                 } else if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
+                else if onAssign != nil, !voices.isEmpty {
+                    Button { assigning = assigning == l.id ? nil : l.id } label: {
+                        HStack(spacing: 4) {
+                            if let n = speakers[l.id] { SpeakerTag(number: n) } else { UnknownSpeakerTag() }
+                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.tertiary)
+                        }
+                        .padding(.horizontal, assigning == l.id ? 6 : 0).frame(height: 20)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(assigning == l.id ? Color.white : .clear))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help(ls.count > 1 ? L("这段是谁说的") : L("这句是谁说的"))
+                }
                 else if let n = speakers[l.id] { SpeakerTag(number: n) }
                 else if !speakers.isEmpty { UnknownSpeakerTag() }
                 Text(highlighted(l.src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                 if bilingual, let d = l.dst, d != l.src {
                     Text(highlighted(d, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         .lineSpacing(2).textSelection(.enabled)
+                }
+                if assigning == l.id, let onAssign {
+                    LineSpeakerPicker(voices: voices, current: l.voice.flatMap { voices[$0] != nil ? $0 : nil },
+                                      nearby: nearby(ls), several: ls.count > 1) { v in
+                        assigning = nil
+                        onAssign(Set(ls.map(\.id)), v)
+                    }
+                    .padding(.top, 6)
                 }
             }
             Spacer(minLength: 0)
@@ -746,6 +769,52 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         .opacity(dim ? 0.5 : 1)
     }
 
+}
+
+extension TranscriptListView {
+    /// The voices speaking just before and after a paragraph, most likely the right one.
+    func nearby(_ ls: [TranscriptLine]) -> [Int] {
+        guard let i = lines.firstIndex(where: { $0.id == ls[0].id }) else { return [] }
+        let j = i + ls.count
+        var out: [Int] = []
+        for k in [i - 1, j, i - 2, j + 1] where lines.indices.contains(k) {
+            if let v = lines[k].voice, voices[v] != nil, !out.contains(v), !ls.contains(where: { $0.voice == v }) { out.append(v) }
+        }
+        return out
+    }
+}
+
+/// The notes window's transcript reads as paragraphs: one person's lines within 30 seconds of the
+/// paragraph's first are one block, one time, instead of a row and a rule for every fragment.
+enum TranscriptParagraphs {
+    static let span: Double = 30
+
+    static func group(_ lines: [TranscriptLine], _ speakers: [String: Int]) -> [[TranscriptLine]] {
+        var out: [[TranscriptLine]] = []
+        var key: String?
+        for l in lines {
+            let k = l.speaker == "me" ? "me" : speakers[l.id].map { "n\($0)" } ?? "?"
+            if k == key, let first = out.last?.first, l.t - first.t <= span {
+                out[out.count - 1].append(l)
+            } else {
+                out.append([l])
+            }
+            key = k
+        }
+        return out
+    }
+
+    /// Sentences side by side: a space between words, none after Chinese or Japanese.
+    static func join(_ parts: [String]) -> String {
+        var out = ""
+        for p in parts.map({ $0.trimmingCharacters(in: .whitespaces) }) where !p.isEmpty {
+            if let last = out.unicodeScalars.last, !(last.properties.isIdeographic || "。！？，、；：”）".unicodeScalars.contains(last)) {
+                out += " "
+            }
+            out += p
+        }
+        return out
+    }
 }
 
 enum TranscriptPartial {

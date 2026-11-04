@@ -725,6 +725,7 @@ struct MainWindowView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
+                .overlay(alignment: .bottom) { SpeakerUndoToast(model: model, session: selection) }
         }
         .background(Color.white.ignoresSafeArea())
         .background(Button("") { searchFocused = true }.keyboardShortcut("f").opacity(0))
@@ -1206,8 +1207,11 @@ struct MainWindowView: View {
                     let speakers = settings.speakerVoices ? SpeakerLabels.numbers(s.lines) : [:]
                     if !speakers.isEmpty { SpeakerStrip(model: model, session: s).padding(.bottom, 8) }
                     let starts = SpeakerLabels.runStarts(s.lines, speakers)
+                    let voices = SpeakerLabels.voiceNumbers(s.lines)
                     ForEach(s.lines) { l in
-                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty).id(l.id)
+                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty, in: s)
+                            .contextMenu { if !speakers.isEmpty, l.speaker == "them" { assignMenu(s, l, voices) } }
+                            .id(l.id)
                     }
                 }
                 .environment(\.speakerNames, SpeakerLabels.names(s))
@@ -1245,9 +1249,16 @@ struct MainWindowView: View {
             }
             VStack(alignment: .leading, spacing: 5) {
                 if !label {
+                } else if voices, !me, let s = shownSession {
+                    // A click on whose line it is: say it was someone else's.
+                    Menu { assignMenu(s, l, SpeakerLabels.voiceNumbers(s.lines)) } label: {
+                        if let speaker { SpeakerTag(number: speaker) } else { UnknownSpeakerTag() }
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                    .help(L("这句是谁说的"))
                 } else if let speaker { SpeakerTag(number: speaker) }
-                else if voices, !me { UnknownSpeakerTag() }
-                else {
+                else if shownSession?.sourceFile == nil {
+                    // An imported file has no "other side": its lines carry no label.
                     Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
                 }
@@ -1272,6 +1283,21 @@ struct MainWindowView: View {
 }
 
 
+extension MainWindowView {
+    /// "这句是谁说的": the people on show; the line takes that voice.
+    @ViewBuilder
+    func assignMenu(_ s: Session, _ l: TranscriptLine, _ voices: [Int: Int]) -> some View {
+        let names = SpeakerLabels.names(s)
+        Section("这句是谁说的") {
+            ForEach(voices.sorted { $0.value < $1.value }, id: \.key) { v, n in
+                Button(SpeakerLabels.label(n, names) + (l.voice == v ? " ✓" : "")) {
+                    model.assignLines(session: s.id, [l.id], to: v)
+                }
+            }
+        }
+    }
+}
+
 /// A meeting's notes in the main window: the same notes view as the live window, or a way to
 /// make them for a meeting recorded without a key.
 struct SessionNotesView: View {
@@ -1292,7 +1318,7 @@ struct SessionNotesView: View {
             VStack(alignment: .leading, spacing: 40) {
                 header
                 if let notes, !notes.isEmpty {
-                    NotesContentView(notes: notes, fresh: live ? engine.fresh : [], live: live, document: true,
+                    NotesContentView(notes: SpeakerLabels.named(notes, SpeakerLabels.names(session)), fresh: live ? engine.fresh : [], live: live, document: true,
                                      endedAt: session.lines.last?.t, onJump: onJump)
                 } else if generating || (live && ling.hasKey && !session.lines.isEmpty) {
                     NotesGeneratingView(heard: session.lines.count)

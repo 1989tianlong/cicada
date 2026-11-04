@@ -101,6 +101,13 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
         p.setFrame(f, display: true, animate: true)
     }
 
+    /// After a name is typed: the keyboard goes back to the meeting app, which never stopped being active.
+    func returnKeyboard() {
+        guard let panel, panel.isKeyWindow else { return }
+        panel.makeFirstResponder(nil)
+        if !NSApp.isActive { NSWorkspace.shared.frontmostApplication?.activate() }
+    }
+
     func place(_ r: NSRect) { panel?.setFrame(r, display: true) }
 
     /// Debug control only: what the close button does.
@@ -143,6 +150,8 @@ struct NotesWindowView: View {
     /// "结束" was clicked during a meeting with lines: the confirmation strip is showing.
     @State private var confirmEnd = false
     @State private var languageOpen = false
+    /// The voice whose editor is open under the people row.
+    @State private var editingVoice: Int?
     /// When the reader last scrolled the notes: a live update only brings the current topic into
     /// view when they haven't just been reading something else.
     @State private var notesScrolledAt = Date.distantPast
@@ -179,6 +188,7 @@ struct NotesWindowView: View {
                     }
                     // The title bar is transparent: start the header beside its buttons, not below a blank band.
                     .ignoresSafeArea(.container, edges: .top)
+                    .overlay(alignment: .bottom) { SpeakerUndoToast(model: model, session: session?.id) }
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -653,7 +663,8 @@ struct NotesWindowView: View {
     private var notesScroll: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                NotesContentView(notes: engine.notes, fresh: engine.fresh, live: live,
+                NotesContentView(notes: session.map { SpeakerLabels.named(engine.notes, SpeakerLabels.names($0)) } ?? engine.notes,
+                                 fresh: engine.fresh, live: live,
                                  updating: engine.state == .updating,
                                  summaryJustChanged: engine.summaryChangedAt.map { now.timeIntervalSince($0) < 20 } ?? false,
                                  coveredUntil: lastCovered > 0 ? lastCovered : nil,
@@ -689,12 +700,15 @@ struct NotesWindowView: View {
         let speakers = model.settings.speakerVoices ? SpeakerLabels.numbers(lines) : [:]
         return VStack(alignment: .leading, spacing: 10) {
             if !speakers.isEmpty, let s = session {
-                SpeakerStrip(model: model, session: s) { voice in model.editSpeaker(session: s.id, voice: voice) }
+                SpeakerStrip(model: model, session: s, editing: $editingVoice)
             }
             TranscriptListView(lines: lines, topics: engine.notes.topics, terms: searchTerms,
                                currentMatch: ms.isEmpty ? nil : ms[currentIndex], live: live,
                                partialShown: TranscriptPartial.shows(model.liveSource, live: live, after: lines.last?.src),
-                               jumpTo: jumpTo, speakers: speakers, startedAt: store.liveStart) {
+                               jumpTo: jumpTo, speakers: speakers, startedAt: store.liveStart,
+                               identifying: model.identifyingLanguage,
+                               voices: speakers.isEmpty ? [:] : SpeakerLabels.voiceNumbers(lines), marked: editingVoice,
+                               onAssign: { ids, voice in if let s = session { model.assignLines(session: s.id, ids, to: voice) } }) {
                 LivePartialRow(model: model, startedAt: store.liveStart)
             }
             .equatable()

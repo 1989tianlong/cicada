@@ -115,8 +115,8 @@ final class AppModel: ObservableObject {
     let sample = SamplePlayer()
     let speakers = SpeakerTagger()
     lazy var speakerNamer = SpeakerNamer(ling: ling, store: store)
-    /// Set by the notes window; the records window's people row opens that voice's editor.
-    @Published var speakerEdit: SpeakerEditRequest?
+    /// The last speaker edit, offered as 撤销 at the bottom of both windows for a few seconds.
+    @Published var speakerUndo: SpeakerUndo?
     private var speakerSetting: AnyCancellable?
     var openOnboarding: (() -> Void)?
 
@@ -986,12 +986,54 @@ final class AppModel: ObservableObject {
 
     // MARK: Meeting record
 
-    /// Names are typed in the records window: the notes window never takes focus.
-    func editSpeaker(session: String, voice: Int) {
-        speakerEdit = SpeakerEditRequest(session: session, voice: voice)
-        mainShow = nil
-        mainShow = "\(session),transcript"
-        openMainWindow?()
+    // MARK: Speakers
+
+    /// Name a voice ("" keeps 说话人 N, nil goes back to Ling's guess).
+    func renameSpeaker(session id: String, voice: Int, _ name: String?) {
+        guard let s = store.session(id) else { return }
+        let n = SpeakerLabels.voiceNumbers(s.lines)[voice] ?? 0
+        let before = SpeakerLabels.label(n, SpeakerLabels.names(s))
+        speakerEdit(id) { store.setVoiceName(id, voice: voice, name) }
+        let after = store.session(id).map { SpeakerLabels.label(n, SpeakerLabels.names($0)) } ?? before
+        if after != before { speakerUndo?.text = L("\(before) 已改成 \(after)") } else { speakerUndo = nil }
+    }
+
+    /// Two voices are one person. While listening the voiceprints merge too, which 撤销 can't take back.
+    func mergeSpeaker(session id: String, _ from: Int, into: Int) {
+        guard let s = store.session(id) else { return }
+        let numbers = SpeakerLabels.voiceNumbers(s.lines), names = SpeakerLabels.names(s)
+        let a = SpeakerLabels.label(numbers[from] ?? 0, names), b = SpeakerLabels.label(numbers[into] ?? 0, names)
+        speakerEdit(id) { store.mergeVoice(id, from, into: into) }
+        if id == store.liveID { speakers.merge(from, into: into) }
+        speakerUndo?.text = L("\(a) 已并入 \(b)")
+    }
+
+    /// These lines were someone else's.
+    func assignLines(session id: String, _ lines: Set<String>, to voice: Int) {
+        guard let s = store.session(id) else { return }
+        let first = s.lines.first { lines.contains($0.id) }
+        speakerEdit(id) { store.setLineVoices(id, lines: lines, voice) }
+        guard let s2 = store.session(id) else { return }
+        let who = SpeakerLabels.label(SpeakerLabels.voiceNumbers(s2.lines)[voice] ?? 0, SpeakerLabels.names(s2))
+        speakerUndo?.text = L("\(first.map { TranscriptExport.clock($0.t) } ?? "") 这句已改给 \(who)")
+    }
+
+    func undoSpeakerEdit() {
+        guard let u = speakerUndo else { return }
+        speakerUndo = nil
+        store.restore(u.session, u.snapshot)
+        debugLog("speakers: undo \(u.session)")
+    }
+
+    private func speakerEdit(_ id: String, _ change: () -> Void) {
+        guard let snap = store.voiceSnapshot(id) else { return }
+        change()
+        let undo = SpeakerUndo(session: id, snapshot: snap, text: "")
+        speakerUndo = undo
+        debugLog("speakers: edit \(id)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            if self?.speakerUndo?.id == undo.id { self?.speakerUndo = nil }
+        }
     }
 
     private func recordHeard(_ seg: Segment, duration: Double) {

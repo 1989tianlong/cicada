@@ -68,6 +68,16 @@ struct NoteTerm: Codable, Equatable, Identifiable {
     static func ordered(_ terms: [NoteTerm]) -> [NoteTerm] {
         terms.filter { !$0.heard.isEmpty } + terms.filter { $0.heard.isEmpty }
     }
+
+    /// Roles that say a term is a person, for offering it as a speaker's name.
+    private static let roles = ["首席", "执行官", "主席", "总裁", "董事", "经理", "创始人", "记者", "主持", "研究员",
+                                "分析师", "教授", "老师", "教师", "官员", "部长", "议员", "候选人", "嘉宾", "发言人",
+                                "CEO", "CFO", "CTO", "host", "analyst", "reporter", "founder"]
+
+    /// Names of people the notes mention, by their note ("BGN 集团首席运营官").
+    static func people(_ terms: [NoteTerm]) -> [String] {
+        terms.filter { t in roles.contains { t.note.localizedCaseInsensitiveContains($0) } }.map(\.name)
+    }
 }
 
 // MARK: - Engine

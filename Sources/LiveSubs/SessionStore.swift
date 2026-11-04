@@ -196,6 +196,41 @@ final class SessionStore: ObservableObject {
         scheduleSave(id)
     }
 
+    /// The user says a line (or a paragraph of them) was someone else's: those lines take that voice.
+    func setLineVoices(_ id: String, lines ids: Set<String>, _ voice: Int) {
+        guard let i = index(id) else { return }
+        for j in sessions[i].lines.indices where ids.contains(sessions[i].lines[j].id) && sessions[i].lines[j].speaker == "them" {
+            sessions[i].lines[j].voice = voice
+        }
+        saveNow(id)
+    }
+
+    /// Who said what in a meeting, taken before a speaker edit so 撤销 can put it back.
+    struct VoiceSnapshot {
+        /// Every line's voice then (nil included), by line id.
+        let voices: [String: Int?]
+        let names: [String: String]?
+        let guesses: [String: VoiceGuess]?
+    }
+
+    func voiceSnapshot(_ id: String) -> VoiceSnapshot? {
+        guard let s = session(id) else { return nil }
+        var voices: [String: Int?] = [:]
+        for l in s.lines { voices[l.id] = .some(l.voice) }
+        return VoiceSnapshot(voices: voices, names: s.voiceNames, guesses: s.voiceGuesses)
+    }
+
+    func restore(_ id: String, _ snap: VoiceSnapshot) {
+        guard let i = index(id) else { return }
+        // Lines heard since keep the voice they were given.
+        for j in sessions[i].lines.indices {
+            if let v = snap.voices[sessions[i].lines[j].id] { sessions[i].lines[j].voice = v }
+        }
+        sessions[i].voiceNames = snap.names
+        sessions[i].voiceGuesses = snap.guesses
+        saveNow(id)
+    }
+
     /// The user names a voice. nil drops their name (Ling's guess shows again); "" keeps 说话人 N.
     func setVoiceName(_ id: String, voice: Int, _ name: String?) {
         guard let i = index(id) else { return }
