@@ -172,6 +172,68 @@ enum VoiceReference {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    // MARK: Pace
+
+    /// Ming copies the recording's pace into every sentence: a recital at 1.7 characters a second
+    /// made each sentence about 4× as long as the built-in voice says it. Below these (characters
+    /// for Chinese, Japanese and Korean, words otherwise, per second of speech) the clone is too
+    /// slow for a meeting; reading the passage at an ordinary pace gives 3.5–5 and 2.3–3.
+    static let slowCharacters = 2.5, slowWords = 1.6
+
+    /// How many characters or words a second the recording is read at, silence at both ends left
+    /// out; nil when there is no speech to measure.
+    static func pace(text: String, samples: [Float], sampleRate: Double) -> Double? {
+        let units = SpeakScore.tokens(text).count
+        guard units > 0, let span = speechSpan(samples, sampleRate: sampleRate), span > 0.5 else { return nil }
+        return Double(units) / span
+    }
+
+    static func isSlow(text: String, pace: Double) -> Bool {
+        let tokens = SpeakScore.tokens(text)
+        let characters = tokens.filter { $0.unicodeScalars.contains(where: SpeakScore.isCJK) }.count
+        return pace < (characters * 2 >= tokens.count ? slowCharacters : slowWords)
+    }
+
+    /// Seconds from the first to the last 20 ms window within 35 dB of the loudest one.
+    static func speechSpan(_ samples: [Float], sampleRate: Double) -> Double? {
+        let size = max(1, Int(sampleRate * 0.02))
+        var levels: [Float] = []
+        var i = 0
+        while i < samples.count {
+            let end = min(samples.count, i + size)
+            var sum: Float = 0
+            for k in i..<end { sum += samples[k] * samples[k] }
+            levels.append((sum / Float(end - i)).squareRoot())
+            i = end
+        }
+        guard let loudest = levels.max(), loudest > 0.003 else { return nil }
+        let floor = loudest * 0.0178
+        guard let first = levels.firstIndex(where: { $0 >= floor }),
+              let last = levels.lastIndex(where: { $0 >= floor }) else { return nil }
+        return Double(last - first + 1) * Double(size) / sampleRate
+    }
+
+    /// The pace of a WAV and what it says.
+    static func pace(of url: URL, text: String) -> Double? {
+        guard let f = try? AVAudioFile(forReading: url),
+              let buf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)),
+              (try? f.read(into: buf)) != nil, let ch = buf.floatChannelData?[0] else { return nil }
+        return pace(text: text, samples: Array(UnsafeBufferPointer(start: ch, count: Int(buf.frameLength))),
+                    sampleRate: f.processingFormat.sampleRate)
+    }
+
+    private static var savedPace: (date: Date, slow: Bool)?
+
+    /// The saved recording is read too slowly (worked out once per recording).
+    static var savedIsSlow: Bool {
+        guard let date = (try? audioURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+              let text else { return false }
+        if let c = savedPace, c.date == date { return c.slow }
+        let slow = pace(of: audioURL, text: text).map { isSlow(text: text, pace: $0) } ?? false
+        savedPace = (date, slow)
+        return slow
+    }
+
     /// The passage to read, in the user's own language.
     static func passage(for locale: String) -> String {
         switch VoiceCatalog.key(for: locale) {
@@ -277,7 +339,14 @@ final class VoiceRecorder: ObservableObject {
         Task {
             let text = await Self.transcribe(url, locale: locale)
             self.transcript = text
-            self.phase = text.count >= 6 ? .ready : .failed(L("没听清录音内容，请换个安静的地方再录一次"))
+            guard text.count >= 6 else { self.phase = .failed(L("没听清录音内容，请换个安静的地方再录一次")); return }
+            let pace = VoiceReference.pace(of: url, text: text)
+            debugLog("voice clone: \(text.count) chars, pace \(pace.map { String(format: "%.1f", $0) } ?? "-")/s")
+            if let pace, VoiceReference.isSlow(text: text, pace: pace) {
+                self.phase = .failed(L("读得有点慢，克隆的声音也会这么慢。请用平时说话的语速再录一次"))
+                return
+            }
+            self.phase = .ready
         }
     }
 

@@ -209,7 +209,7 @@ struct VoiceSection: View {
                 Text("我自己的声音").font(.system(size: 13, weight: .semibold))
                 if has {
                     HStack(spacing: 4) {
-                        Text("已录 \(Int(VoiceReference.duration.rounded())) 秒 · \(cloneNote)")
+                        Text("已录 \(Int(VoiceReference.duration.rounded())) 秒 · \(VoiceReference.savedIsSlow ? L("读得偏慢") : cloneNote)")
                         Text("·")
                         Button("重录") { recording = true }.buttonStyle(.plain).underline()
                         Button("删除") {

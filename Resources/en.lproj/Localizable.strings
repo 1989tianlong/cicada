@@ -998,6 +998,7 @@
 "用你的声音说%@" = "Your voice speaking %@";
 "对方会听到这个" = "They'll hear this";
 "用这个声音" = "Use This Voice";
+"读得偏慢" = "Read slowly";
 
 /* Voices */
 "美式" = "American";
@@ -1020,3 +1021,4 @@
 "无法打开麦克风：%@" = "Can't open the microphone: %@";
 "录音太短了，请至少朗读 %lld 秒" = "Too short; read for at least %lld seconds";
 "没听清录音内容，请换个安静的地方再录一次" = "Couldn't make out the recording; try again somewhere quiet";
+"读得有点慢，克隆的声音也会这么慢。请用平时说话的语速再录一次" = "Read a bit slowly: your cloned voice would be just as slow. Record again at your usual pace";

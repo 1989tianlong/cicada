@@ -1385,7 +1385,8 @@ final class AppModel: ObservableObject {
                       (try? f.read(into: buf)) != nil else { debugLog("voiceCloneFile: unreadable"); return }
                 let text = await LoopbackTest.transcribe([buf], locale: settings.speakFromLang.locale)
                 do { try VoiceReference.save(wav: url, text: text) } catch { debugLog("voiceCloneFile: \(error)") }
-                debugLog("voiceCloneFile: saved, transcript \(text.count) chars")
+                let pace = VoiceReference.pace(of: url, text: text)
+                debugLog("voiceCloneFile: saved, transcript \(text.count) chars, pace \(pace.map { String(format: "%.1f", $0) } ?? "-")/s slow=\(pace.map { VoiceReference.isSlow(text: text, pace: $0) } ?? false)")
             }
         case "voicePreview":
             // voicePreview:<lang>=<id>
