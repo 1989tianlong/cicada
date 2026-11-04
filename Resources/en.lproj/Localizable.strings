@@ -174,6 +174,8 @@
 "换后备 " = "Fallbacks ";
 "无" = "none";
 "AI 请求 %d 次 · 排队最久 %.2fs · token %d/%d" = "AI requests: %d · longest queue %.2fs · tokens %d/%d";
+
+/* DiagnosticsView */
 "有人说话后，这里会显示每句话的耗时明细" = "Each sentence's timing shows here once someone speaks";
 "这场会议 · %lld 分钟 · %lld 句 · 同声传译 %lld 次" = "This meeting · %lld min · sentences: %lld · interpreted: %lld";
 "开始聆听后，这里会显示每句话的耗时明细" = "Once listening starts, the timing of every sentence shows here";
@@ -574,13 +576,29 @@
 "本机不支持%@识别" = "This Mac can't recognize %@";
 "请在系统设置 › 键盘 › 听写里添加%@，下载好后可用" = "Add %@ to Dictation in System Settings › Keyboard; it works once downloaded";
 
+/* RecordList */
+"今天" = "Today";
+"昨天" = "Yesterday";
+"本周" = "This Week";
+"不到 1 分钟" = "Under 1 min";
+"%lld 小时" = "%lld h";
+"%lld 小时 %lld 分" = "%lld h %lld min";
+"英语" = "English";
+"日语" = "Japanese";
+"中文" = "Chinese";
+"繁中" = "Trad. Chinese";
+"韩语" = "Korean";
+"西语" = "Spanish";
+"法语" = "French";
+"德语" = "German";
+"葡语" = "Portuguese";
+
 /* RoomMic */
 "没有可用的麦克风" = "No microphone available";
 
 /* SessionStore */
 "会议 %@" = "Meeting %@";
 "未识别" = "Unidentified";
-"不到 1 分钟" = "Under 1 min";
 
 /* SettingsWindow */
 "语言" = "Language";
@@ -777,10 +795,13 @@
 
 /* SpeakerID */
 "说话人 %lld" = "Speaker %lld";
+
+/* SpeakerViews */
 "没认出是谁：太短，或和已知的声音都不像" = "Not recognised: too short, or unlike the known voices";
 "关掉说话人识别，记录里的名字一起收起" = "Turn off speaker identification; the names in your records are hidden too";
 "Ling 从对话里认出，点一下可以改" = "Ling found this name in the conversation; click to change";
 "改名字，或和别人合并" = "Rename, or merge with someone else";
+"改名字" = "Rename";
 "不准？关掉" = "Wrong? Turn off";
 "说了 %lld 句" = "%lld lines";
 "是谁" = "Who";
@@ -897,9 +918,6 @@
 "对方听到 %@" = "They hear %@";
 "搜索" = "Search";
 "没有找到“%@”" = "Nothing found for “%@”";
-"今天" = "Today";
-"昨天" = "Yesterday";
-"本周" = "This Week";
 "收起更早的会议" = "Hide earlier meetings";
 "更早的会议" = "Earlier meetings";
 "只有录音" = "Recording only";
@@ -907,21 +925,10 @@
 "转写中 %lld%%" = "%lld%%";
 "翻译中" = "Translating";
 "准备中" = "Preparing";
-"%lld 小时" = "%lld h";
-"%lld 小时 %lld 分" = "%lld h %lld min";
 "显示原文件" = "Show Original File";
 "在 Finder 中显示" = "Show in Finder";
 "恢复自动标题" = "Restore Automatic Title";
 "删除" = "Delete";
-"英语" = "English";
-"日语" = "Japanese";
-"中文" = "Chinese";
-"繁中" = "Trad. Chinese";
-"韩语" = "Korean";
-"西语" = "Spanish";
-"法语" = "French";
-"德语" = "German";
-"葡语" = "Portuguese";
 "正在听，说话的内容会出现在这里" = "Listening; what's said will appear here";
 "转出的文字会陆续出现在这里" = "The transcript will appear here as it's made";
 "还没有文字记录" = "No transcript yet";
@@ -1041,3 +1048,28 @@
 "录音太短了，请至少朗读 %lld 秒" = "Too short; read for at least %lld seconds";
 "读得有点慢，克隆的声音也会这么慢。请用平时说话的语速再录一次" = "Read a bit slowly: your cloned voice would be just as slow. Record again at your usual pace";
 "没听清录音内容，请换个安静的地方再录一次" = "Couldn't make out the recording; try again somewhere quiet";
+
+/* Debug */
+"导入录音或视频" = "Import a Recording or Video";
+
+/* RecordsView */
+"%lld 人" = "%lld people";
+
+/* RootView */
+"好" = "OK";
+"下一版就能用" = "Coming in the next version";
+"正在听 · %@" = "Listening · %@";
+"对方说和翻译成" = "They speak, and translate into";
+"%lld 人在说" = "%lld people talking";
+"纪要 · %lld 条新" = "Notes · %lld new";
+"开始说话后，字幕会出现在这里" = "Subtitles show up here once people start talking";
+"只看 %@ · %lld 段 · 再点一下取消" = "Only %@ · %lld turns · tap again to clear";
+"只看这个人；按住可改名字，或和别人合并" = "Shows only this person; press and hold to rename or merge";
+"正在准备…" = "Getting ready…";
+"请在设置里允许知了使用麦克风" = "Allow Cicada to use the microphone in Settings";
+"识别中断了，请重新开始听" = "Recognition stopped. Start listening again";
+
+/* SettingsView (iOS) */
+"在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
+"打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
+"Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";

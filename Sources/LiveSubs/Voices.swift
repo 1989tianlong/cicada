@@ -174,6 +174,9 @@ enum VoiceReference {
 
     // MARK: Pace
 
+    #if !CICADA_IOS
+    // Mac app only, with the voice recorder below: it scores with the speak test's tokens (SpeakTest.swift).
+
     /// Ming copies the recording's pace into every sentence: a recital at 1.7 characters a second
     /// made each sentence about 4× as long as the built-in voice says it. Below these (characters
     /// for Chinese, Japanese and Korean, words otherwise, per second of speech) the clone is too
@@ -233,6 +236,7 @@ enum VoiceReference {
         savedPace = (date, slow)
         return slow
     }
+    #endif
 
     /// The passage to read, in the user's own language.
     static func passage(for locale: String) -> String {
