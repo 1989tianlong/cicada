@@ -29,6 +29,8 @@ state="$("$ctl" state)"
 echo "$state"
 "$ctl" windows
 python3 -c 'import json,sys; s=json.loads(sys.argv[1]); assert s["listening"], "not listening"; assert s["peak"] > 0.05, "monitor heard nothing (peak %s)" % s["peak"]' "$state"
+# SMOKE_VOICES=1 (CI, on the installed tarball): 说话人识别 must load, i.e. the shipped library links here.
+[ -z "${SMOKE_VOICES:-}" ] || python3 -c 'import json,sys; assert json.loads(sys.argv[1])["speakers"]["available"], "voiceprint library did not load"' "$state"
 "$ctl" stop >/dev/null
 "$ctl" quit >/dev/null || true
 wait $app 2>/dev/null || true

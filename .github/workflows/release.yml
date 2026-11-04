@@ -90,14 +90,37 @@ jobs:
           name: windows
           path: dist/*.zip
 
-  linux:
+  # The voiceprint library (说话人识别) for each architecture, on 22.04 so it loads on 22.04 and 24.04.
+  linux-native:
     needs: plan
+    if: needs.plan.outputs.linux == 'true'
+    strategy:
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - run: linux/native/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice-${{ matrix.runner }}
+          path: linux/native/out/libcicada-voice-*.so
+
+  linux:
+    needs: [plan, linux-native]
     if: needs.plan.outputs.linux == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: voice-*
+          path: linux/native/out
+          merge-multiple: true
       - name: Build
         # ffmpeg turns the sample meeting into WAV (no afconvert on Linux).
         run: |
@@ -127,6 +150,7 @@ jobs:
         # replace its files and notes instead. Without the Mac app the release is not marked
         # latest: Macs on 1.0.0 read releases/latest and would offer a release with nothing for them.
         run: |
+          rm -f dist/libcicada-voice-*.so  # the voiceprint libraries are inside the Linux tarball, not files of their own
           (cd dist && sha256sum -- * > checksums.txt)
           cat dist/checksums.txt
           scripts/release_notes.sh "${TAG#v}" > notes.md
