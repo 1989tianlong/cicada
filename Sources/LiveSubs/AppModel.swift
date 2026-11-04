@@ -659,9 +659,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func openNotesWindow() {
-        if settings.displayMode != "notes" { setDisplayMode("notes") }
-        notesWindow.show()
+    /// Asked for by name (菜单栏面板 打开, 窗口 › 实时纪要): shown even before anyone speaks, and
+    /// without touching 显示方式, so 不显示 or 字幕条 is back at the next meeting.
+    func openNotesWindow() { notesWindow.show() }
+
+    /// The listening pill: bring back what shows this meeting, the subtitle bar in 字幕条 mode,
+    /// else the notes window (in 不显示 just this once).
+    func showLiveDisplay() {
+        if settings.displayMode == "bar" { overlay.reveal() } else { openNotesWindow() }
     }
 
     /// 收起 in the menu bar panel: out of the way for now, still in 实时纪要 mode
@@ -1412,6 +1417,13 @@ final class AppModel: ObservableObject {
                 try? png.write(to: URL(fileURLWithPath: arg))
             }
         case "mainShow": mainShow = arg
+        case "mainWindow":
+            // Place the records window, floating above other apps' panels while testing clicks (no arg: back to normal).
+            guard let w = NSApp.windows.first(where: { $0.contentView is NSHostingView<MainWindowView> }) else { break }
+            let v = arg.split(separator: ",").compactMap { Double($0) }
+            if v.count == 4 { w.setFrame(NSRect(x: v[0], y: v[1], width: v[2], height: v[3]), display: true) }
+            w.level = v.count == 4 ? .floating : .normal
+            w.orderFrontRegardless()
         case "mainRender":
             // The main window as drawn, for checking it without Screen Recording permission.
             guard let view = NSApp.windows.first(where: { $0.contentView is NSHostingView<MainWindowView> })?.contentView,
@@ -1531,6 +1543,7 @@ final class AppModel: ObservableObject {
             if n.count == 4 { overlay.place(x: n[0], y: n[1], width: n[2], fontSize: n[3]) }
         case "overlayState": debugLog("overlay \(overlay.stateDescription)")
         case "overlayToggle": overlay.toggleManual()
+        case "pillClick": showLiveDisplay()
         case "overlayAuto": setOverlayAuto(arg != "off")
         case "hideAfter": settings.overlayHideAfter = Double(arg) ?? 4
         case "frame":
