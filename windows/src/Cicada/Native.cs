@@ -16,6 +16,11 @@ static class Native
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
     [DllImport("user32.dll")] static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
+    [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int processId);
+
+    /// A second launch has the foreground (the user just opened it); this lets the running Cicada
+    /// bring its records window forward instead of flashing in the taskbar behind other windows.
+    public static void LetOthersTakeForeground() => AllowSetForegroundWindow(-1 /* ASFW_ANY */);
 
     /// Makes a window like the Mac's non-activating panel: clicks and drags work, but the app the
     /// user is in keeps the keyboard focus, and the window isn't in Alt+Tab or the taskbar.

@@ -188,8 +188,10 @@ public sealed class LingClient
         double delay = 1;
         for (int attempt = 1; ; attempt++)
         {
+            var queued = DateTime.UtcNow;
             await Acquire(priority, cancel);
             var started = DateTime.UtcNow;
+            if ((started - queued).TotalSeconds > 1) Log.Debug($"ling: {priority} waited {(started - queued).TotalMilliseconds:F0} ms at the gate");
             try
             {
                 var root = await Post("chat/completions", payload, k, timeout, cancel);

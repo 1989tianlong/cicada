@@ -15,6 +15,30 @@ sealed class MainWindow : Window
     string? selected;
     bool refreshQueued;
 
+    /// A record row: grey ground when selected, a lighter one under the mouse; no Windows blue.
+    static readonly Style RowStyle = MakeRowStyle();
+
+    static Style MakeRowStyle()
+    {
+        var template = new ControlTemplate(typeof(ListBoxItem));
+        var border = new FrameworkElementFactory(typeof(Border), "bg");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        border.SetValue(Border.MarginProperty, new Thickness(0, 0, 0, 2));
+        border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+        template.VisualTree = border;
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Ground, "bg"));
+        var chosen = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
+        chosen.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Line, "bg"));
+        template.Triggers.Add(hover); template.Triggers.Add(chosen);
+        var style = new Style(typeof(ListBoxItem));
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+        style.Seal();
+        return style;
+    }
+
     public MainWindow(Controller app)
     {
         this.app = app;
@@ -66,7 +90,7 @@ sealed class MainWindow : Window
                 Ui.Text(SessionStore.DisplayTitle(s), 13, Palette.Ink, FontWeights.SemiBold, wrap: false),
                 Ui.Text(live ? L("正在听") : $"{s.StartedAt.ToLocalTime():yyyy-MM-dd HH:mm} · {Languages.Clock(s.Duration.TotalSeconds)}", 11, live ? Palette.Accent : Palette.Tertiary, wrap: false));
             row.Margin = new Thickness(6, 6, 6, 6);
-            list.Items.Add(new ListBoxItem { Content = row, Tag = s.Id });
+            list.Items.Add(new ListBoxItem { Content = row, Tag = s.Id, Style = RowStyle });
         }
         if (sessions.Count == 0) { selected = null; detail.Content = Empty(); return; }
         selected ??= sessions[0].Id;

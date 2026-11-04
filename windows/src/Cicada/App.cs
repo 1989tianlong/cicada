@@ -16,7 +16,7 @@ static class Program
         Paths.Dev = Paths.Dev || args.Contains("--dev");
         // One Cicada per user: a second launch just opens the records of the running one.
         using var single = new Mutex(true, Paths.Dev ? "com.wquguru.cicada.dev" : "com.wquguru.cicada", out bool first);
-        if (!first) { DebugServer.Send("show records"); return 0; }
+        if (!first) { Native.LetOthersTakeForeground(); DebugServer.Send("show records"); return 0; }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.DispatcherUnhandledException += (_, e) => { Log.Debug($"ui: unhandled {e.Exception.GetType().Name}: {e.Exception.Message}"); e.Handled = true; };
         var controller = new Controller(app);
