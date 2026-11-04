@@ -21,6 +21,8 @@ struct NotesContentView: View {
     var coveredUntil: Double?
     /// Where the last topic ends when the meeting is over (its last line).
     var endedAt: Double?
+    /// Lines heard since `coveredUntil` that the notes don't cover yet (shown under the last topic).
+    var behind = 0
     var onJump: (Double) -> Void = { _ in }
 
     var body: some View {
@@ -60,10 +62,12 @@ struct NotesContentView: View {
                         if document { Divider() }
                         TopicView(topic: topic,
                                   end: i + 1 < notes.topics.count ? notes.topics[i + 1].start : (live ? nil : endedAt),
-                                  current: live && i == notes.topics.count - 1,
-                                  updating: updating && i == notes.topics.count - 1, fresh: fresh, onJump: onJump)
+                                  current: live && i == notes.topics.count - 1, fresh: fresh, onJump: onJump)
                             .padding(.vertical, document ? 14 : 0)
                             .id(Self.topicID(topic))
+                    }
+                    if live, behind > 0, let coveredUntil {
+                        NotesBehindRow(after: coveredUntil, lines: behind, onJump: onJump)
                     }
                 }
             }
@@ -312,53 +316,46 @@ private struct TopicView: View {
     /// The next topic's start, or the meeting's end; nil while it is still being discussed.
     let end: Double?
     let current: Bool
-    let updating: Bool
     let fresh: Set<String>
     let onJump: (Double) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(topic.title).font(.system(size: 15, weight: .bold)).fixedSize(horizontal: false, vertical: true)
+                if current { Tag(L("正在讲"), live: true) }
+                if fresh.contains(topic.title) && !current { Tag(L("新"), live: true) }
+                Spacer(minLength: 8)
                 Button { onJump(topic.start) } label: {
                     Text(range)
                         .font(.system(size: 12, weight: current ? .semibold : .regular).monospacedDigit())
                         .foregroundStyle(current ? Palette.accentInk : Palette.tertiary)
-                        .frame(width: column, alignment: .leading)
+                        .fixedSize()
                 }
                 .buttonStyle(.plain).help("看原话")
-                Text(topic.title).font(.system(size: 15, weight: .bold))
-                if current { Tag(L("正在讲"), live: true) }
-                if fresh.contains(topic.title) && !current { Tag(L("新"), live: true) }
             }
-            VStack(alignment: .leading, spacing: 6) {
-                if !topic.summary.isEmpty {
-                    Text(topic.summary).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineSpacing(2)
+            if !topic.summary.isEmpty {
+                Text(topic.summary).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Each point's time and 新 sit on a line above it, so the text keeps the column's whole width.
+            ForEach(Array(topic.points.enumerated()), id: \.offset) { i, p in
+                VStack(alignment: .leading, spacing: 3) {
+                    if topic.pointTime(i) != nil || fresh.contains(p) {
+                        HStack(spacing: 6) {
+                            if let t = topic.pointTime(i) { TimeLink(text: NotesEngine.clock(t), t: t, onJump: onJump) }
+                            if fresh.contains(p) { Tag(L("新"), live: true) }
+                        }
+                    }
+                    Text(p).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                ForEach(Array(topic.points.enumerated()), id: \.offset) { i, p in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Circle().fill(fresh.contains(p) ? Palette.accent : Palette.ink.opacity(0.55)).frame(width: 4, height: 4)
-                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
-                        Text(p).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if fresh.contains(p) { Tag(L("新"), live: true) }
-                        Spacer(minLength: 4)
-                        if let t = topic.pointTime(i) { TimeLink(text: NotesEngine.clock(t), t: t, onJump: onJump) }
-                    }
-                    .modifier(FadeIn(active: fresh.contains(p)))
-                }
-                if let fish = topic.fishbone { FishboneView(fishbone: fish, onJump: onJump).padding(.top, 4) }
-                if updating {
-                    VStack(alignment: .leading, spacing: 7) {
-                        SkeletonBar(fraction: 0.82, height: 10, warm: true)
-                        SkeletonBar(fraction: 0.56, height: 10, warm: true)
-                    }
-                    .padding(.top, 2)
-                }
+                .modifier(FadeIn(active: fresh.contains(p)))
             }
-            .padding(.leading, column + 10)
+            if let fish = topic.fishbone { FishboneView(fishbone: fish, onJump: onJump).padding(.top, 4) }
         }
-        .padding(.vertical, current ? 10 : 0).padding(.horizontal, current ? 10 : 0)
+        .padding(.vertical, current ? 12 : 0).padding(.horizontal, current ? 12 : 0)
         .background(RoundedRectangle(cornerRadius: 14).fill(current ? Palette.accentWash : .clear))
     }
 
@@ -368,8 +365,33 @@ private struct TopicView: View {
         guard let end, end > topic.start + 1 else { return current ? L("\(from) 起") : from }
         return "\(from)–\(NotesEngine.clock(end))"
     }
+}
 
-    private var column: CGFloat { (end ?? topic.start) >= 3600 ? 104 : 76 }
+/// Under the last topic while the notes are behind the meeting: how much isn't in them yet, and a
+/// way to read it in the transcript meanwhile.
+struct NotesBehindRow: View {
+    let after: Double
+    let lines: Int
+    let onJump: (Double) -> Void
+
+    var body: some View {
+        Button { onJump(after) } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    LiveDot()
+                    Text("\(NotesEngine.clock(after)) 之后的 \(lines) 句还在整理").font(.system(size: 13, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("先看原话 →").font(.system(size: 12))
+            }
+            .foregroundStyle(Palette.accentInk)
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.accent.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 /// A small time that jumps to that moment in the transcript.
@@ -484,7 +506,7 @@ enum UserScroll {
 /// newest line; scrolling up pauses that and collects new lines into a "↓ N 句新内容" button.
 /// A search highlights matches in place instead of hiding the lines around them.
 ///
-/// Every row is its own lazy child (a topic's card is drawn a row at a time, `cardSlice`), so a long
+/// Every paragraph is its own lazy child, so a long
 /// meeting lays out only what is on screen. What is being said right now is `partial`, a view that
 /// watches the speech itself: with `.equatable()` a new word redraws that row, not the list.
 struct TranscriptListView<Partial: View>: View, Equatable {
@@ -538,14 +560,14 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         return out
     }
 
-    /// One lazy child: a topic's title, or one line of its card.
+    /// One lazy child: a topic's title, or a paragraph (one person's lines close together).
     private enum Item: Identifiable {
         case header(title: String, start: Double, gap: Bool)
-        case line(TranscriptLine, first: Bool, last: Bool, label: Bool, gap: Bool)
+        case paragraph([TranscriptLine], label: Bool)
         var id: String {
             switch self {
             case .header(_, let start, _): "group-\(start)"
-            case .line(let l, _, _, _, _): l.id
+            case .paragraph(let ls, _): ls[0].id
             }
         }
     }
@@ -556,21 +578,19 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         var out: [Item] = []
         for (gi, g) in gs.enumerated() {
             if !g.title.isEmpty { out.append(.header(title: g.title, start: g.start, gap: gi > 0)) }
-            for (i, l) in g.lines.enumerated() {
-                // The line being spoken closes the last card when it shows.
-                let last = i == g.lines.count - 1 && !(gi == gs.count - 1 && partialShown)
+            for (i, p) in TranscriptParagraphs.group(g.lines, speakers).enumerated() {
                 // With voices told apart, a name only where the speaker changes (and atop each topic).
-                out.append(.line(l, first: i == 0, last: last, label: speakers.isEmpty || i == 0 || starts.contains(l.id),
-                                 gap: gi > 0 && i == 0 && g.title.isEmpty))
+                // Every paragraph carries its name when voices are on: it is also where it's corrected.
+                out.append(.paragraph(p, label: speakers.isEmpty || !voices.isEmpty || i == 0 || starts.contains(p[0].id)))
             }
         }
         return out
     }
 
-    private struct Edge: Equatable {
-        var distance: CGFloat
-        var height: CGFloat
-        var container: CGFloat
+    /// The scroll target for a line: the paragraph it is in.
+    private func target(_ line: TranscriptLine) -> String {
+        for item in items { if case .paragraph(let ls, _) = item, ls.contains(where: { $0.id == line.id }) { return item.id } }
+        return line.id
     }
 
     var body: some View {
@@ -584,22 +604,12 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                                 Text("\(NotesEngine.clock(start)) · \(title)")
                                     .font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.secondary)
                                     .padding(.top, gap ? 16 : 6).padding(.bottom, 10)
-                            case .line(let l, let first, let last, let label, let gap):
-                                VStack(alignment: .leading, spacing: 0) {
-                                    row(l, label: label)
-                                    if !last { Divider() }
-                                }
-                                .cardSlice(first: first, last: last)
-                                .padding(.top, gap ? 10 : 0)
+                            case .paragraph(let ls, let label):
+                                row(ls, label: label).padding(.bottom, 4)
                             }
                         }
                         if partialShown {
-                            VStack(alignment: .leading, spacing: 0) {
-                                if !lines.isEmpty { Divider() }
-                                partial
-                            }
-                            .cardSlice(first: lines.isEmpty, last: true)
-                            .id("partial")
+                            partial.id("partial")
                         }
                         if lines.isEmpty && !partialShown {
                             if live {
@@ -611,12 +621,10 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
-                    .padding(.bottom, 12)
+                    .padding(.top, 8).padding(.bottom, 12)
                 }
-                .onScrollGeometryChange(for: Edge.self) { g in
-                    Edge(distance: g.contentSize.height - g.contentOffset.y - g.containerSize.height,
-                         height: g.contentSize.height, container: g.containerSize.height)
-                } action: { old, new in
+                .topFade()
+                .onScrollEdgeChange { old, new in
                     if new.height != old.height || new.container != old.container {
                         // Not only new lines move the bottom: a translation arriving under its line,
                         // topic headers from a notes update, rows the lazy stack only now measured,
@@ -663,9 +671,10 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     /// A row the lazy stack hasn't drawn yet lands where its height was guessed: jump, then settle
     /// once it is measured.
     private func reveal(_ line: TranscriptLine, anchor: UnitPoint, _ proxy: ScrollViewProxy) {
-        proxy.scrollTo(line.id, anchor: anchor)
+        let id = target(line)
+        proxy.scrollTo(id, anchor: anchor)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            withAnimation { proxy.scrollTo(line.id, anchor: anchor) }
+            withAnimation { proxy.scrollTo(id, anchor: anchor) }
         }
     }
 
@@ -723,10 +732,13 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         return a
     }
 
-    private func row(_ l: TranscriptLine, label: Bool = true) -> some View {
-        let isMatch = l.id == currentMatch
-        let latest = live && l.id == lines.last?.id
-        let dim = searching && !matches(l)
+    private func row(_ ls: [TranscriptLine], label: Bool = true) -> some View {
+        let l = ls[0]
+        let isMatch = ls.contains { $0.id == currentMatch }
+        let latest = live && ls.last?.id == lines.last?.id
+        let dim = searching && !ls.contains(where: matches)
+        let src = TranscriptParagraphs.join(ls.map(\.src))
+        let dst = TranscriptParagraphs.join(ls.compactMap { $0.dst != $0.src ? $0.dst : nil })
         return HStack(alignment: .top, spacing: 12) {
             Text(NotesEngine.clock(l.t)).font(.system(size: 12, weight: isMatch ? .semibold : .regular).monospacedDigit())
                 .foregroundStyle(latest || isMatch ? Palette.accentInk : Palette.tertiary)
@@ -748,9 +760,9 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                 }
                 else if let n = speakers[l.id] { SpeakerTag(number: n) }
                 else if !speakers.isEmpty { UnknownSpeakerTag() }
-                Text(highlighted(l.src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
-                if bilingual, let d = l.dst, d != l.src {
-                    Text(highlighted(d, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                Text(highlighted(src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
+                if bilingual, !dst.isEmpty {
+                    Text(highlighted(dst, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         .lineSpacing(2).textSelection(.enabled)
                 }
                 if assigning == l.id, let onAssign {
@@ -764,8 +776,12 @@ struct TranscriptListView<Partial: View>: View, Equatable {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(latest || isMatch ? Palette.accentWash : Color.clear)
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 10).fill(
+            assigning == l.id ? Palette.fill
+            : latest || isMatch ? Palette.accentWash
+            : marked != nil && ls.contains(where: { $0.voice == marked }) ? SpeakerColor.ink(voices[marked!] ?? 1).opacity(0.07)
+            : Color.clear))
         .opacity(dim ? 0.5 : 1)
     }
 
@@ -850,28 +866,22 @@ struct LivePartialRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(Palette.accentWash)
+            .padding(.horizontal, 12).padding(.vertical, 9)
         }
     }
 }
 
 extension View {
-    /// One row of a `FramedList` card, drawn on its own so a long card can be lazy: the outline's
-    /// top and rounded corners on the first row, its bottom on the last, only the sides between.
-    func cardSlice(first: Bool, last: Bool) -> some View {
-        let r: CGFloat = 16
-        let shape = UnevenRoundedRectangle(topLeadingRadius: first ? r : 0, bottomLeadingRadius: last ? r : 0,
-                                           bottomTrailingRadius: last ? r : 0, topTrailingRadius: first ? r : 0)
-        return frame(maxWidth: .infinity, alignment: .leading)
-            .clipShape(shape)
-            .overlay {
-                // Edges between rows are pushed outside the row and masked away; the sides stay whole.
-                shape.stroke(Palette.line, lineWidth: 1)
-                    .padding(.top, first ? 0 : -2).padding(.bottom, last ? 0 : -2)
-                    .mask { Rectangle().padding(.horizontal, -2).padding(.top, first ? -2 : 0).padding(.bottom, last ? -2 : 0) }
+    /// A scroll view's top edge fades to white, so a line scrolled half out of view doesn't look cut off.
+    func topFade(_ height: CGFloat = 24) -> some View {
+        mask {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: height)
+                Color.black
             }
+        }
     }
+
 }
 
 /// The transcript before anyone has spoken: the start mark, two rows in the bilingual shape
@@ -1280,21 +1290,6 @@ struct NotesGeneratingView: View {
     }
 }
 
-/// "正在更新" pill in the header while notes that already exist are being updated.
-struct UpdatingPill: View {
-    var body: some View {
-        HStack(spacing: 7) {
-            Spinner(size: 12, track: Color(red: 0.965, green: 0.847, blue: 0.796))
-            Text("正在更新").font(.system(size: 12, weight: .semibold))
-        }
-        .foregroundStyle(Palette.accentInk)
-        .padding(.horizontal, 11).padding(.vertical, 6)
-        .background(Capsule().fill(Palette.accentPale))
-        .fixedSize()
-    }
-}
-
-/// A point that just arrived fades in from slightly below.
 struct FadeIn: ViewModifier {
     let active: Bool
     @State private var shown = false

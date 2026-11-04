@@ -190,6 +190,9 @@ struct NotesWindowView: View {
                         header(wide: geo.size.width >= 760)
                         meetingBar.padding(.horizontal, 24).padding(.bottom, 4)
                         banner.padding(.horizontal, 24).padding(.bottom, 4)
+                        if live { LanguageNotice(model: model).padding(.horizontal, 24).padding(.bottom, 8) }
+                        // Where the scrolling starts: a hairline, and each column fades in under it (`topFade`).
+                        Rectangle().fill(MainWindowView.hairline).frame(height: 1)
                         if geo.size.width >= 760 {
                             HStack(alignment: .top, spacing: 0) {
                                 notesPane.frame(maxWidth: .infinity)
@@ -273,11 +276,7 @@ struct NotesWindowView: View {
                     Text(live || session == nil ? L("实时纪要") : L("会议纪要")).font(.system(size: 24, weight: .bold))
                         .lineLimit(1).minimumScaleFactor(0.75)
                     Spacer(minLength: 8)
-                    if engine.state == .updating, !engine.notes.isEmpty {
-                        UpdatingPill().padding(.trailing, 4)
-                    }
                     if live {
-                        languageChip.padding(.trailing, 2)
                         Button(action: askToEnd) {
                             Text("结束").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
                                 .padding(.horizontal, 12).frame(height: 28)
@@ -291,15 +290,29 @@ struct NotesWindowView: View {
                     }
                     iconButton("minus", help: L("收成小卡")) { collapse() }
                 }
-                HStack(spacing: 6) {
-                    if live { LiveDot() }
-                    Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    // Apart on the right, so turning it on or off doesn't move the text.
+                // State lives here, not in buttons beside 结束: the meeting's languages as a text link
+                // and a small spinner while the notes are being written. The sharing mark sits apart on
+                // the right, so turning it on or off doesn't move the text.
+                HStack(alignment: .top, spacing: 6) {
+                    FlowLayout(spacing: 6) {
+                        if live { LiveDot().frame(height: 22) }
+                        Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).frame(height: 22)
+                        if live {
+                            dotSeparator
+                            languageLink
+                        }
+                        if live, engine.state == .updating, !engine.notes.isEmpty {
+                            dotSeparator
+                            HStack(spacing: 5) {
+                                Spinner(size: 10)
+                                Text("整理中").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                            }
+                            .frame(height: 22)
+                        }
+                    }
                     Spacer(minLength: 0)
                     capturableBadge
                 }
-                .frame(minHeight: 22)
             }
             if !wide {
                 HStack(spacing: 0) {
@@ -426,7 +439,6 @@ struct NotesWindowView: View {
         if live {
             var parts = [(heard == 0 ? L("正在听 · ") : L("正在记录 · ")) + NotesEngine.clock(elapsed)]
             if heard > 0 { parts.append(L("\(heard) 句")) }
-            if !engine.notes.isEmpty, lastCovered > 0 { parts.append(L("纪要已更新至 \(NotesEngine.clock(lastCovered))")) }
             return parts.joined(separator: " · ")
         }
         let clock = session.map { L("已结束 · ") + TranscriptExport.header($0) } ?? L("没有在记录")
@@ -440,21 +452,20 @@ struct NotesWindowView: View {
     /// "EN → 中": what the meeting speaks → what the notes are written in. Opens this meeting's
     /// choices below the header (not a popover: the panel never activates the app, and a popover in
     /// an inactive app closes as soon as it opens); the defaults live in 设置 › 语言.
-    private var languageChip: some View {
+    private var languageLink: some View {
         let id = session?.id ?? ""
-        let from = model.meetingLanguage(store.liveID).map(Self.short) ?? L("自动")
+        let from = model.meetingLanguage(store.liveID).map(targetName) ?? L("自动")
         return Button { languageOpen.toggle() } label: {
-            HStack(spacing: 4) {
-                Text(from)
-                Image(systemName: "arrow.right").font(.system(size: 9, weight: .bold))
-                Text(Self.short(model.notesLanguageCode(id)))
-            }
-            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.accentInk)
-            .padding(.horizontal, 9).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.accentPale))
-            .contentShape(Rectangle())
+            Text("\(from) → \(targetName(model.notesLanguageCode(id)))")
+                .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                .underline(color: Palette.line)
+                .frame(height: 22).contentShape(Rectangle())
         }
         .buttonStyle(.plain).help("这场会议的语言").accessibilityLabel(L("这场会议的语言"))
+    }
+
+    private var dotSeparator: some View {
+        Text("·").font(.system(size: 12)).foregroundStyle(Palette.tertiary).frame(height: 22)
     }
 
     private func languageCard(_ id: String) -> some View {
@@ -494,16 +505,6 @@ struct NotesWindowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.fill))
         .foregroundStyle(Palette.ink)
-    }
-
-    static func short(_ code: String) -> String {
-        switch code {
-        case "zh-CN": L("中")
-        case "zh-TW": L("繁")
-        case "ja": L("日")
-        case "ko": L("韩")
-        default: code.prefix(2).uppercased()
-        }
     }
 
     // MARK: Ending a meeting
@@ -603,6 +604,13 @@ struct NotesWindowView: View {
         }
     }
 
+    /// Lines the notes don't cover yet, once they are two minutes behind the meeting (between
+    /// ordinary 45 s updates there is always a little that isn't in yet).
+    private var behind: Int {
+        guard live, let s = session, lastCovered > 0, elapsed - lastCovered >= 120 else { return 0 }
+        return max(0, s.lines.count - engine.notes.covered)
+    }
+
     private var lastCovered: Double {
         guard let s = session, engine.notes.covered > 0, engine.notes.covered <= s.lines.count else { return 0 }
         return s.lines[engine.notes.covered - 1].t
@@ -687,10 +695,12 @@ struct NotesWindowView: View {
                                  summaryJustChanged: engine.summaryChangedAt.map { now.timeIntervalSince($0) < 20 } ?? false,
                                  coveredUntil: lastCovered > 0 ? lastCovered : nil,
                                  endedAt: session?.lines.last?.t,
+                                 behind: behind,
                                  onJump: { t in jumpTo = t; tab = "transcript" })
-                    .padding(.horizontal, 24).padding(.vertical, 12)
+                    .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 12)
             }
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, _ in
+            .topFade()
+            .onScrolled {
                 if UserScroll.recent { notesScrolledAt = Date() }
             }
             // Each live update lands on the topic being discussed now, which is the last one and
