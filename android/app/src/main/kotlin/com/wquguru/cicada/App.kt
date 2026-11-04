@@ -69,6 +69,10 @@ class CicadaApp : Application() {
         notes = NotesEngine(ling, store)
         translator = Translator(ling)
         listen = ListenEngine(ling, translator, store, notes, settings)
+        listen.encoder = { pcm ->
+            val t = System.currentTimeMillis()
+            AacEncoder.encode(pcm)?.also { Log.d("listen: ${pcm.size * 2 / 1024} KB PCM → ${it.bytes.size / 1024} KB ${it.type} in ${System.currentTimeMillis() - t} ms") }
+        }
         overlay = Overlay(this)
         listen.onChange(::changed)
         notes.onChange(::changed)

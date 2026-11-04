@@ -161,16 +161,17 @@ class LingClient(private val key: AIKey, private val transport: Transport = UrlT
     }
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
-    /// message, `audio` (a WAV) goes before it for Ming. Notes retry 429s with backoff; heard audio
+    /// message, `audio` (of `audioType`) goes before it for Ming. Notes retry 429s with backoff; heard audio
     /// gets one retry (a lost reply loses the words); the rest fail fast so the caller can fall back.
     fun chat(
         content: String, instruction: String, priority: Priority, json: Boolean = false,
         maxTokens: Int = 1024, timeout: Double = 30.0, model: String? = null, audio: ByteArray? = null,
+        audioType: String = "audio/wav",
     ): String {
         val k = key.read() ?: throw LingException(LingException.Kind.NoKey)
         if (keyState == KeyState.Invalid) throw LingException(LingException.Kind.InvalidKey)
         val user: Any = if (audio == null) instruction else listOf(
-            mapOf("type" to "audio_url", "audio_url" to mapOf("url" to "data:audio/wav;base64," + Base64.getEncoder().encodeToString(audio))),
+            mapOf("type" to "audio_url", "audio_url" to mapOf("url" to "data:$audioType;base64," + Base64.getEncoder().encodeToString(audio))),
             mapOf("type" to "text", "text" to instruction),
         )
         val body = linkedMapOf<String, Any?>(

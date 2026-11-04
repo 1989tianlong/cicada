@@ -53,6 +53,11 @@ class PcmAudioSource(private val load: () -> ShortArray, private val speed: Doub
     override fun stop() { stopped = true }
 }
 
+/// One stretch of speech as sent to Ming: the bytes and their media type.
+class Clip(val bytes: ByteArray, val type: String) {
+    companion object { fun wav(pcm: ShortArray) = Clip(Wav.bytes(pcm), "audio/wav") }
+}
+
 object Wav {
     fun bytes(pcm: ShortArray, rate: Int = Segmenter.RATE): ByteArray {
         val b = ByteBuffer.allocate(44 + pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)

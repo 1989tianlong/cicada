@@ -16,12 +16,13 @@ class Translator(private val ling: LingClient, private val transport: Transport 
 
     // MARK: Hearing
 
-    /// One stretch of speech (16 kHz mono WAV) heard and interpreted. `hint` is the language the
+    /// One stretch of speech (16 kHz mono, WAV or compressed) heard and interpreted. `hint` is the language the
     /// meeting has been in, which keeps Ming from flipping on a short or accented stretch. Null
     /// when there was no speech or the reply wasn't in the three-line form; never a guess.
-    fun hear(wav: ByteArray, target: String, hint: String?): Heard? {
+    fun hear(clip: Clip, target: String, hint: String?): Heard? {
         val reply = ling.chat(hearPrompt(target, hint, glossary()), hearInstruction(target), Priority.Translate,
-                              maxTokens = 800, timeout = 12.0, model = LingClient.AUDIO_MODEL, audio = wav)
+                              maxTokens = 800, timeout = 12.0, model = LingClient.AUDIO_MODEL,
+                              audio = clip.bytes, audioType = clip.type)
         return parseHeard(reply, target, hint)
     }
 

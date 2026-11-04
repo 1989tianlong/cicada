@@ -394,6 +394,8 @@ object Tests {
         equal("audio_url", user[0].obj()!!["type"], "audio first")
         equal("data:audio/wav;base64,AQID", user[0].obj()!!["audio_url"].obj()!!["url"], "WAV as a data URL")
         equal("Translate.", user[1].obj()!!["text"], "fixed instruction last")
+        client(fake).chat("c", "i", Priority.Translate, model = LingClient.AUDIO_MODEL, audio = byteArrayOf(1, 2, 3), audioType = "audio/aac")
+        equal("data:audio/aac;base64,AQID", content(fake.calls[1].second, 1).arr()[0].obj()!!["audio_url"].obj()!!["url"], "AAC keeps its type")
     }
 
     fun lingDropsHijacked() {

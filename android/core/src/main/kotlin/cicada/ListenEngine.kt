@@ -51,6 +51,10 @@ class ListenEngine(
     /// The loudest recent level: 0 for a while means the source is silent (e.g. an app that blocks capture).
     @Volatile var peak = 0.0; private set
 
+    /// Compresses a segment before upload (the app sets AAC: WAV is ~10x larger, ~146 MB an hour
+    /// of speech on mobile data). Null or a throw falls back to WAV, which Ming always takes.
+    @Volatile var encoder: (ShortArray) -> Clip? = { null }
+
     init { translator.glossary = { notes.glossary() } }
 
     fun onChange(listener: () -> Unit) { synchronized(listeners) { listeners.add(listener) } }
@@ -119,15 +123,21 @@ class ListenEngine(
         pool.execute { notes.finish() }
     }
 
+    private fun encode(pcm: ShortArray): Clip {
+        val clip = try { encoder(pcm) } catch (e: Exception) { Log.d("listen: encode failed ${e.message}"); null }
+        if (clip == null || clip.bytes.isEmpty()) return Clip.wav(pcm)
+        return clip
+    }
+
     private fun send(seg: Segment) {
-        val wav = Wav.bytes(seg.samples)
         val lang = synchronized(gate) { segments[seg.index] = seg; hint }
         changed()
         val future = pool.submit {
             var heard: Heard? = null
             val started = System.currentTimeMillis()
             try {
-                heard = translator.hear(wav, target, lang)
+                val clip = encode(seg.samples)
+                heard = translator.hear(clip, target, lang)
                 problem = null
             } catch (e: LingException) {
                 problem = when (e.kind) {
