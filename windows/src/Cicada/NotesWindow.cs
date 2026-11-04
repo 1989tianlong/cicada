@@ -43,11 +43,21 @@ sealed class NotesWindow : Window
         MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) try { DragMove(); } catch { } };
         clock.Tick += (_, _) => header.Content = Header();
         IsVisibleChanged += (_, _) => { if (IsVisible) clock.Start(); else clock.Stop(); };
+        // The subtitle bar fits its text (a long line wraps to two or three) and grows upward, so its
+        // bottom edge stays where it was placed or dragged.
+        SizeChanged += (_, e) =>
+        {
+            if (!Subtitles || !e.HeightChanged) return;
+            // The first real height arrives after Place(): sit it above the taskbar then.
+            if (e.PreviousSize.Height <= 0 || !placedSubtitles) { Top = SystemParameters.WorkArea.Bottom - e.NewSize.Height - 24; placedSubtitles = true; }
+            else Top -= e.NewSize.Height - e.PreviousSize.Height;
+        };
         Place();
         Render();
     }
 
     bool Subtitles => app.Settings.View == "subtitles";
+    bool placedSubtitles;
 
     /// Notes at the right edge, subtitles along the bottom, on the primary screen's work area.
     public void Place()
@@ -55,11 +65,14 @@ sealed class NotesWindow : Window
         var area = SystemParameters.WorkArea;
         if (Subtitles)
         {
-            Width = Math.Min(820, area.Width - 40); Height = 128;
-            Left = area.Left + (area.Width - Width) / 2; Top = area.Bottom - Height - 24;
+            SizeToContent = SizeToContent.Height; MinHeight = 96;
+            Width = Math.Min(820, area.Width - 40);
+            Left = area.Left + (area.Width - Width) / 2; Top = area.Bottom - Math.Max(ActualHeight, MinHeight) - 24;
+            placedSubtitles = ActualHeight > 0;
         }
         else
         {
+            SizeToContent = SizeToContent.Manual; MinHeight = 0;
             Width = 380; Height = Math.Min(620, area.Height - 48);
             Left = area.Right - Width - 20; Top = area.Top + 24;
         }
