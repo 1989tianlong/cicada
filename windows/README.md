@@ -37,8 +37,16 @@ DOTNET_ROOT=~/.dotnet build/cli/cicada-cli roundtrip ~/Library/Application\ Supp
 
 ## 在 Windows 里验证
 
-1. 把 `build/Cicada-win-arm64`（ARM 虚拟机）或 `build/Cicada-win-x64`（x64 电脑）拷过去。
-2. 先跑抓声音验证：`spike/LoopbackProbe` 编译出的 `LoopbackProbe.exe`，一次默认、一次 `--include-self`，前者应显示 `absent`，后者 `PRESENT`。
-3. 双击 `Cicada Dev.cmd` 打开开发版（记录在 `%APPDATA%\Cicada Dev`，日志在 `%TEMP%\cicada-dev-debug.log`）。
-4. 用 PowerShell 驱动：`scripts\cicadactl.ps1 state`、`start`、`feed C:\path\en.wav`、`view subtitles`、`capture on`、`stop`。
-5. 检查：纪要窗不抢焦点（点它之后原来的窗口仍能打字）；Win+Shift+S 截图和会议软件的屏幕共享里看不到它；打开“共享屏幕时让对方看到”后能看到，并显示“对方可见”。
+这一节是开发验证，不是给用户的安装说明；用户安装要等 M3 的安装包。
+
+1. 在 Mac 上 `scripts/build.sh`，把整个 `build/Cicada-win-arm64`（ARM 虚拟机）或 `build/Cicada-win-x64`（x64 电脑）拷到 Windows 的本地磁盘（比如桌面），不要直接从共享文件夹运行。ARM 虚拟机里两个都能跑，x64 版走模拟，可顺便验证大多数用户会用的那份。
+2. 没签名，第一次打开会弹“Windows 已保护你的电脑”：点“更多信息”→“仍要运行”。
+3. 在 `test\` 里打开 PowerShell，先验证抓声音：`.\LoopbackProbe.exe` 应显示 `absent`，`.\LoopbackProbe.exe --include-self` 应显示 `PRESENT`。虚拟机要有声卡（VMware 默认有），并且没静音。
+4. 双击 `Cicada Dev.cmd` 打开开发版（记录在 `%APPDATA%\Cicada Dev`，日志在 `%TEMP%\cicada-dev-debug.log`）。走完引导：填 key → 播放任意声音看音量条 → 示例会议。
+5. 在 `test\` 的 PowerShell 里驱动它（Windows 默认禁止运行脚本，所以用 `-ExecutionPolicy Bypass`）：
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\cicadactl.ps1 state
+   powershell -ExecutionPolicy Bypass -File .\cicadactl.ps1 feed "$PWD\en.wav"
+   ```
+   其余命令：`start`、`stop`、`view subtitles`、`capture on`、`show records`、`quit`。
+6. 检查：日志里 `tap:` 那行是实际的录音格式，不应出现 `display affinity failed`；纪要窗不抢焦点（点它之后原来的窗口仍能打字）；Win+Shift+S 截图和会议软件的屏幕共享里看不到它；打开“共享屏幕时让对方看到”后能看到，并显示“对方可见”；用浏览器放一段视频再 `start`，字幕跟得上。

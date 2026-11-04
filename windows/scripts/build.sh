@@ -28,6 +28,13 @@ for rid in win-x64 win-arm64; do
   rm -rf "$out"
   scripts/dotnet.sh publish src/Cicada -c "$config" -r "$rid" -o "$out" -p:DebugType=embedded -v quiet -nologo 2>&1 | grep -E ' error |warning CS' | sort -u || true
   [ -f "$out/Cicada.exe" ] || { echo "build failed for $rid" >&2; exit 1; }
-  [ "$config" = Debug ] && printf '@echo off\r\nstart "" "%%~dp0Cicada.exe" --dev\r\n' > "$out/Cicada Dev.cmd"
+  if [ "$config" = Debug ]; then
+    printf '@echo off\r\nstart "" "%%~dp0Cicada.exe" --dev\r\n' > "$out/Cicada Dev.cmd"
+    # Everything the VM test needs in the one folder: the capture probe, the control script and the clips.
+    mkdir -p "$out/test"
+    scripts/dotnet.sh publish spike/LoopbackProbe -c Release -r "$rid" -o "$out/test" -p:DebugType=none -v quiet -nologo >/dev/null
+    cp scripts/cicadactl.ps1 "$out/test/"
+    cp spike/clips/*.wav "$out/test/" 2>/dev/null || echo "no clips: run spike/make-clips.sh" >&2
+  fi
   echo "$out/Cicada.exe ($(du -h "$out/Cicada.exe" | cut -f1))"
 done
