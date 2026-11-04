@@ -197,6 +197,7 @@ jobs:
           (cd dist && sha256sum -- * > checksums.txt)
           cat dist/checksums.txt
           scripts/release_notes.sh "${TAG#v}" > notes.md
+          [[ "${{ needs.plan.outputs.android }}" == true ]] && sed "s/<version>/${TAG#v}/" .github/release-notes-android.md >> notes.md
           latest=true; [[ "${{ needs.plan.outputs.mac }}" == true ]] || latest=false
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
