@@ -34,6 +34,7 @@ object Tests {
             "joinsCutSentences" to ::joinsCutSentences,
             "segmentsOnPauses" to ::segmentsOnPauses,
             "cutsLongSpeechAtItsQuietestMoment" to ::cutsLongSpeech,
+            "cutsTheFirstStretchEarly" to ::cutsTheFirstStretchEarly,
             "ignoresClicks" to ::ignoresClicks,
             "wavRoundTrip" to ::wavRoundTrip,
             "parsesNotes" to ::parsesNotes,
@@ -270,12 +271,20 @@ object Tests {
     }
 
     fun cutsLongSpeech() {
-        // 7 s of speech, a 0.3 s dip (shorter than a pause), 4 s more: one cut, at the dip.
-        val list = cut(tone(7.0), tone(0.3, 0.004), tone(4.0), silence(1.0))
-        equal(2, list.size, "split in two")
-        check(list[0].seconds in 6.9..7.4, "cut inside the dip, got ${list[0].seconds}")
+        // After a first short stretch: 7 s of speech, a 0.3 s dip (shorter than a pause), 4 s
+        // more: one cut, at the dip.
+        val list = cut(tone(1.0), silence(1.0), tone(7.0), tone(0.3, 0.004), tone(4.0), silence(1.0))
+        equal(3, list.size, "the first, then the long one split in two")
+        check(list[1].seconds in 6.9..7.4, "cut inside the dip, got ${list[1].seconds}")
         check(list.all { it.seconds <= 8.0 }, "no segment over 8 s")
-        check(abs(list[1].start - (list[0].start + list[0].seconds)) < 0.001, "the rest carries on without a gap")
+        check(abs(list[2].start - (list[1].start + list[1].seconds)) < 0.001, "the rest carries on without a gap")
+    }
+
+    fun cutsTheFirstStretchEarly() {
+        // A meeting's first stretch is cut by 4 s (at its quietest moment), so a line shows soon.
+        val list = cut(tone(3.0), tone(0.3, 0.004), tone(4.0), silence(1.0))
+        equal(2, list.size, "split in two")
+        check(list[0].seconds in 2.9..3.5, "cut inside the dip, got ${list[0].seconds}")
     }
 
     fun ignoresClicks() {

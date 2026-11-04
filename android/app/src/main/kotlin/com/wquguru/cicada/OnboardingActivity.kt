@@ -273,19 +273,39 @@ class OnboardingActivity : Activity() {
             addView(progressClock, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(12) })
         }
         val content = ui.stack(16, intro(L("试一下"), L("放一段 9 秒的示例会议，看看字幕和纪要怎么出来")), player)
-        val line = heard?.lines?.lastOrNull()
+        val lines = heard?.lines.orEmpty()
+        val line = lines.lastOrNull()
         if (line != null) {
             val card = NotesViews.liveCard(ui, app, line, 20f, dots = playing)
             card.addView(ui.text(L("字幕"), 13f, Palette.secondary, bold = true), 0)
             (card.getChildAt(1).layoutParams as? LinearLayout.LayoutParams)?.topMargin = ui.dp(10)
+            // The lines before the newest stay above it: the sample's two come back half a second
+            // apart, and showing only the newest made the first one flash by.
+            lines.dropLast(1).takeLast(2).forEachIndexed { i, l ->
+                val row = ui.stack(2, ui.text(NotesViews.said(l), 13f, Palette.secondary))
+                if (!l.dst.isNullOrEmpty() && l.dst != l.src) row.addView(ui.text(l.dst!!, 15f, Palette.ink))
+                card.addView(row, 1 + i, ui.lp(top = 10))
+            }
             content.addView(card, ui.lp(top = 12))
-            val notes = heard.notes ?: if (app.notes.shownId == heard.id) app.notes.notes else null
+            val notes = heard?.notes ?: if (app.notes.shownId == heard?.id) app.notes.notes else null
             val notesCard = ui.stack(8, ui.text(L("纪要"), 13f, Palette.secondary, bold = true),
                 NotesViews.notesBody(ui, notes ?: MeetingNotes(), app.notes.status, true, compact = true)).apply {
                 background = ui.rounded(Palette.card, 20)
                 setPadding(ui.dp(18), ui.dp(16), ui.dp(18), ui.dp(16))
             }
             content.addView(notesCard, ui.lp(top = 12))
+        } else if (playing) {
+            // Ming answers a stretch once it ends (~6 s in for the first): say it's coming.
+            content.addView(ui.stack(10, ui.text(L("字幕"), 13f, Palette.secondary, bold = true),
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    listOf(1f, 0.6f, 0.3f).forEach { a -> addView(ui.dot(Palette.accent, 6).apply { alpha = a }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)).apply { rightMargin = ui.dp(5) }) }
+                    addView(ui.text(L("正在听下一句…"), 15f, Palette.secondary), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(4) })
+                }).apply {
+                background = ui.rounded(Palette.card, 20)
+                setPadding(ui.dp(18), ui.dp(16), ui.dp(18), ui.dp(16))
+            }, ui.lp(top = 12))
         } else {
             content.addView(LinearLayout(this).apply {
                 layoutParams = ui.lp(top = 12)

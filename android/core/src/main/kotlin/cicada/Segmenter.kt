@@ -8,8 +8,10 @@ class Segment(val index: Int, val start: Double, val samples: ShortArray) {
 
 /// Cuts the audio into stretches of speech by loudness alone: a pause of 0.6 s ends one, and one
 /// that runs to 8 s is cut at its quietest moment in the last 2 s, so a word is split as rarely as
-/// possible (Ming has no word timings to put it back together). Not thread-safe: fed from the
-/// listening worker only. Same numbers as the Windows Segmenter.
+/// possible (Ming has no word timings to put it back together). The first stretch of a meeting is
+/// cut at 4 s instead: with nothing on screen yet, a first line at ~6 s beats a whole sentence at
+/// ~10 s, and ListenEngine joins the rest onto it. Not thread-safe: fed from the listening worker
+/// only. Otherwise the same numbers as the Windows Segmenter.
 class Segmenter {
     companion object {
         const val RATE = 16000
@@ -17,6 +19,7 @@ class Segmenter {
         @Volatile var threshold = 0.01 // the Mac AudioRouter's gate (about -40 dBFS)
         @Volatile var pause = 0.6
         @Volatile var maxLength = 8.0
+        @Volatile var firstMaxLength = 4.0
         @Volatile var minSpeech = 0.25
         private const val PRE_ROLL = 0.15
         private const val TAIL = 0.15
@@ -72,7 +75,7 @@ class Segmenter {
 
         if (quietFrames * FRAME >= pause * RATE) {
             close(current.size - quietFrames * FRAME + (TAIL * RATE).toInt())
-        } else if (current.size >= maxLength * RATE) {
+        } else if (current.size >= (if (index == 0) firstMaxLength else maxLength) * RATE) {
             // The quietest frame in the last 2 s; the rest starts the next segment.
             val from = maxOf(1, levels.size - (CUT_WINDOW * RATE / FRAME).toInt())
             var cut = from

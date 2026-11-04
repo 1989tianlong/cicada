@@ -169,6 +169,8 @@ class ListenEngine(
     /// final notes. Blocks until the record is saved: call off the main thread.
     fun stop() {
         if (!listening) return
+        // This meeting's id now: a new one may start while this waits for Ming below.
+        val id = sessionId ?: return
         listening = false
         source?.let { it.onSamples = null; it.stop() }
         audio?.offer(END)
@@ -178,7 +180,6 @@ class ListenEngine(
         for (f in waiting) {
             try { f.get(maxOf(1, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS) } catch (_: Exception) {}
         }
-        val id = sessionId ?: return
         store.end(id)
         Log.d("listen: stopped $id, $lineCount lines")
         changed()
