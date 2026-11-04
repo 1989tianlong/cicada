@@ -18,6 +18,10 @@ public sealed class AppSettings
     [JsonPropertyName("onboarded")] public bool Onboarded { get; set; }
     /// The UI language: "system", "zh-Hans", "en", "ja" or "ko".
     [JsonPropertyName("uiLanguage")] public string UiLanguage { get; set; } = "system";
+    /// 字幕文字大小, in px.
+    [JsonPropertyName("subtitleSize")] public int SubtitleSize { get; set; } = 24;
+    /// The one-time "知了还在听" notice after the panel is first collapsed while listening.
+    [JsonPropertyName("toldStillListening")] public bool ToldStillListening { get; set; }
 
     [JsonIgnore] public string TargetCode => Target == "system" ? Languages.FromSystem(CultureInfo.CurrentUICulture.Name) : Target;
     [JsonIgnore] public string NotesCode => NotesLanguage == "system" ? TargetCode : NotesLanguage;

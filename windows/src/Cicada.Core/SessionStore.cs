@@ -84,6 +84,9 @@ public sealed class SessionStore
 
     public void Rename(string id, string title) => Mutate(id, s => { s.Title = title.Trim(); s.Renamed = true; });
 
+    /// Back to the default title, so the name the notes give the meeting shows again.
+    public void ResetTitle(string id) => Mutate(id, s => { s.Title = DefaultTitle(s.StartedAt); s.Renamed = false; });
+
     /// The meeting ended: kept if anything was said, removed otherwise.
     public void End(string id)
     {
@@ -156,34 +159,42 @@ public sealed class SessionStore
         var b = new StringBuilder();
         b.AppendLine($"# {DisplayTitle(s)}").AppendLine();
         b.AppendLine(s.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).AppendLine();
-        if (s.Notes is { IsEmpty: false } n)
-        {
-            b.AppendLine($"## {Strings.L("纪要")}").AppendLine().AppendLine(n.Summary).AppendLine();
-            foreach (var t in n.Topics)
-            {
-                b.AppendLine($"### {Languages.Clock(t.Start)} {t.Title}").AppendLine();
-                if (t.Summary.Length > 0) b.AppendLine(t.Summary).AppendLine();
-                foreach (var p in t.Points) b.AppendLine($"- {p}");
-                b.AppendLine();
-            }
-            if (n.Conclusions.Count > 0)
-            {
-                b.AppendLine($"### {Strings.L("结论")}").AppendLine();
-                foreach (var c in n.Conclusions) b.AppendLine($"- {c.Text}");
-                b.AppendLine();
-            }
-            if (n.Todos.Count > 0)
-            {
-                b.AppendLine($"### {Strings.L("待办")}").AppendLine();
-                foreach (var t in n.Todos) b.AppendLine($"- [ ] {t.Text}{(t.Owner is null ? "" : $"（{t.Owner}）")}");
-                b.AppendLine();
-            }
-        }
+        if (s.Notes is { IsEmpty: false } n) b.AppendLine($"## {Strings.L("纪要")}").AppendLine().Append(NotesBody(n));
         b.AppendLine($"## {Strings.L("文字记录")}").AppendLine();
         foreach (var l in s.Lines)
         {
             b.AppendLine($"**{Languages.Clock(l.T)}** {l.Src}  ");
             if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) b.AppendLine($"{l.Dst}");
+            b.AppendLine();
+        }
+        return b.ToString();
+    }
+
+    /// The notes alone (复制纪要): title, summary, topics, conclusions, to-dos.
+    public static string NotesMarkdown(Session s) =>
+        s.Notes is { IsEmpty: false } n ? $"# {DisplayTitle(s)}\n\n" + NotesBody(n) : "";
+
+    static string NotesBody(MeetingNotes n)
+    {
+        var b = new StringBuilder();
+        b.AppendLine(n.Summary).AppendLine();
+        foreach (var t in n.Topics)
+        {
+            b.AppendLine($"### {Languages.Clock(t.Start)} {t.Title}").AppendLine();
+            if (t.Summary.Length > 0) b.AppendLine(t.Summary).AppendLine();
+            foreach (var p in t.Points) b.AppendLine($"- {p}");
+            b.AppendLine();
+        }
+        if (n.Conclusions.Count > 0)
+        {
+            b.AppendLine($"### {Strings.L("结论")}").AppendLine();
+            foreach (var c in n.Conclusions) b.AppendLine($"- {c.Text}");
+            b.AppendLine();
+        }
+        if (n.Todos.Count > 0)
+        {
+            b.AppendLine($"### {Strings.L("待办")}").AppendLine();
+            foreach (var t in n.Todos) b.AppendLine($"- [ ] {t.Text}{(t.Owner is null ? "" : $"（{t.Owner}）")}");
             b.AppendLine();
         }
         return b.ToString();

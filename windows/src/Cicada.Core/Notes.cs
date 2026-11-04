@@ -23,6 +23,8 @@ public sealed class NotesEngine
 
     public MeetingNotes Notes { get; private set; } = new();
     public State Status { get; private set; } = State.Idle;
+    /// While a meeting runs and has notes: when the next live update is due.
+    public DateTime? NextUpdate { get { lock (gate) return sessionId is null || Notes.IsEmpty || inFlight ? null : lastAttempt.AddSeconds(Interval); } }
     /// The session the notes belong to (stays set after the meeting ends).
     public string? ShownId { get; private set; }
     /// The language notes are written in (English name), from 纪要语言.
@@ -308,9 +310,14 @@ public sealed class NotesEngine
                     pointTimes.Add(p is JsonObject po2 ? Time(po2["evidence"]) : null);
                 }
             }
+            // The model's "start" is sometimes misread (04:49 for 00:49); the lines it cites are not.
+            // So the earliest cited line wins, and a time past the last line is pulled back to it.
+            var cited = new[] { Time(t["evidence"]) }.Concat(pointTimes).Where(x => x is not null).Select(x => x!.Value).ToList();
+            var start = cited.Count > 0 ? cited.Min() : Num(t["start"]) ?? startedAt;
+            if (times.Count > 0 && start > times[^1]) start = times[^1];
             n.Topics.Add(new NoteTopic
             {
-                Start = Num(t["start"]) ?? startedAt, Title = topicTitle, Summary = Str(t["summary"]),
+                Start = start, Title = topicTitle, Summary = Str(t["summary"]),
                 Points = points, Fishbone = fish, PointTimes = pointTimes.Any(x => x is not null) ? pointTimes : null,
             });
         }

@@ -253,6 +253,15 @@ static class Tests
         Equal(null, NotesEngine.Parse("{}", [], 0), "empty notes");
     }
 
+    public static void TopicStartsAtItsFirstCitedLine()
+    {
+        double[] times = [5, 11, 49, 180];
+        var raw = "{\"summary\":\"s\",\"topics\":[{\"start\":289,\"title\":\"发布说明\",\"points\":[{\"text\":\"发给设计组\",\"evidence\":[\"L3\"]}]},{\"start\":999,\"title\":\"别的\",\"points\":[\"x\"]}]}";
+        var n = NotesEngine.Parse(raw, times, 0)!;
+        Equal(49.0, n.Topics[0].Start, "the cited line's time, not the model's 289");
+        Equal(180.0, n.Topics[1].Start, "never after the last line");
+    }
+
     public static void KeepsEarliestTimes()
     {
         var old = new MeetingNotes { Topics = [new NoteTopic { Title = "t", Points = ["a"], PointTimes = [3] }], Todos = [new NoteItem { Text = "x", T = 2 }] };

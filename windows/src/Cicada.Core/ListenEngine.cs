@@ -37,7 +37,14 @@ public sealed class ListenEngine
     /// Segments sent and not yet back: the UI shows "…" while this is above zero.
     public int Pending { get { lock (gate) return segments.Count; } }
     /// The last error worth showing ("key 无效", "网络不通"), cleared by the next good reply.
-    public string? Problem { get; private set; }
+    /// What last went wrong talking to Ling (null once a segment gets through); the windows word it.
+    public LingException.Kind? Problem { get; private set; }
+
+    /// The user pressed 重试: hide the bar until the next failure says otherwise.
+    public void ClearProblem() { Problem = null; Changed?.Invoke(); }
+
+    /// Debug pipe only: show a failure's bar without breaking the network ("network", "ratelimited"…).
+    public void SimulateProblem(string kind) { Problem = Enum.TryParse<LingException.Kind>(kind, true, out var k) ? k : null; Changed?.Invoke(); }
     public double Level { get; private set; }
     public event Action? Changed;
 
@@ -130,14 +137,7 @@ public sealed class ListenEngine
             }
             catch (LingException e)
             {
-                Problem = e.Failure switch
-                {
-                    LingException.Kind.NoKey => Strings.L("需要 Ling key 才能听"),
-                    LingException.Kind.InvalidKey => Strings.L("Ling key 无效"),
-                    LingException.Kind.RateLimited => Strings.L("Ling 太忙，稍后再试"),
-                    LingException.Kind.Network or LingException.Kind.Timeout => Strings.L("连不上 Ling，检查网络"),
-                    _ => null,
-                };
+                Problem = e.Failure is LingException.Kind.Hijacked or LingException.Kind.Parse ? null : e.Failure;
                 Log.Debug($"listen: segment {seg.Index} failed {e.Message}");
             }
             Log.Debug($"listen: segment {seg.Index} {seg.Seconds:F1}s -> {(heard is null ? "nothing" : heard.Lang)} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");
