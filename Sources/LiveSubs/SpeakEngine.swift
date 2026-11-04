@@ -133,6 +133,11 @@ final class SpeakEngine {
     init(settings: AppSettings) {
         self.settings = settings
         out.attach(player)
+        // Pointing the output at a device (the first sentence, BlackHole installed, headphones
+        // plugged in) stops the engine, and the player stays silent until it is wired up again.
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: out, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.outputChanged() }
+        }
     }
 
     var targetCode: String {
@@ -385,6 +390,10 @@ final class SpeakEngine {
         let from = settings.speakFromLang.code
         let to = targetCode
         let trace = TranslateTrace()
+        // Pick the voice and ready its output while the sentence is translated: the device switch
+        // (and the engine restart it causes) is then over before the first sound.
+        let route = route?(to) ?? .system(nil)
+        if case .stream = route { configureOutput(format: Self.streamFormat, device: outputDevice()); try? out.start() }
         // Ming hears the audio while the on-device transcriber finishes, so its fallback costs nothing.
         let ming = Task { () -> (original: String, translation: String)? in
             guard let wav, let interpret else { return nil }
@@ -440,7 +449,7 @@ final class SpeakEngine {
             if probe == nil { onUtterance?(text, translated, from, to, Date().timeIntervalSince(pressStarted)) }
             phase = .speaking
             onLive?(.speaking, text, translated)
-            await speak(translated, language: to)
+            await speak(translated, language: to, route: route)
             if let probe {
                 probe.firstAudioAt = firstAudioAt
                 probe.voice = lastVoice
@@ -523,17 +532,11 @@ final class SpeakEngine {
             debugLog("voice output failed: \(error)")
             return
         }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            for (i, b) in buffers.enumerated() {
-                if i == buffers.count - 1 {
-                    player.scheduleBuffer(b, completionCallbackType: .dataPlayedBack) { _ in cont.resume() }
-                } else {
-                    player.scheduleBuffer(b)
-                }
-            }
-            firstAudioAt = Date()
-            player.play()
-        }
+        for b in buffers.dropLast() { player.scheduleBuffer(b, completionHandler: nil) }
+        firstAudioAt = Date()
+        player.play()
+        let seconds = buffers.reduce(0) { $0 + Double($1.frameLength) / $1.format.sampleRate }
+        await waitPlayed(buffers[buffers.count - 1], limit: seconds + 2)
         var cur = AudioObjectID(0); var sz = UInt32(MemoryLayout<AudioObjectID>.size)
         if let unit = out.outputNode.audioUnit {
             AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &cur, &sz)
@@ -545,8 +548,9 @@ final class SpeakEngine {
     /// Plays 24 kHz mono 16-bit PCM chunks as they arrive. Returns false if nothing came, so the
     /// caller can fall back to the system voice.
     private func speakStream(_ stream: AsyncThrowingStream<Data, Error>, device: OutputDevice?) async -> Bool {
-        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false) else { return false }
+        let format = Self.streamFormat
         let started = Date()
+        var seconds = 0.0
         var carry = Data()
         var count = 0
         var firstAt: TimeInterval?
@@ -557,6 +561,7 @@ final class SpeakEngine {
                 let frames = bytes.count / 2
                 guard frames > 0, let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { continue }
                 buf.frameLength = AVAudioFrameCount(frames)
+                seconds += Double(frames) / format.sampleRate
                 bytes.withUnsafeBytes { raw in
                     let src = raw.bindMemory(to: Int16.self)
                     let dst = buf.floatChannelData![0]
@@ -578,14 +583,38 @@ final class SpeakEngine {
         }
         guard count > 0 else { return false }
         // Wait for the queued audio to finish before the next utterance.
-        if let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 240) {
+        if let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 240), let first = firstAudioAt {
             tail.frameLength = 240
-            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                player.scheduleBuffer(tail, completionCallbackType: .dataPlayedBack) { _ in cont.resume() }
-            }
+            await waitPlayed(tail, limit: max(0, seconds - Date().timeIntervalSince(first)) + 2)
         }
         debugLog("spoke ming \(count) chunks to \(device?.name ?? "default output") first audio \(String(format: "%.2f", firstAt ?? 0)) s")
         return true
+    }
+
+    private static let streamFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false)!
+
+    /// Schedules `buffer` last and waits until it has played, or `limit` seconds. A stalled output
+    /// never calls back, and would otherwise hold every later sentence; it is rebuilt instead.
+    private func waitPlayed(_ buffer: AVAudioPCMBuffer, limit: TimeInterval) async {
+        let once = Once()
+        let played = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in once.run { cont.resume(returning: true) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + limit) { once.run { cont.resume(returning: false) } }
+        }
+        if !played {
+            debugLog("voice output stalled (engine running=\(out.isRunning)), rebuilt")
+            resetOutput()
+        }
+    }
+
+    private func outputChanged() {
+        guard let format = outFormat else { return }
+        let playing = player.isPlaying
+        out.disconnectNodeOutput(player)
+        out.connect(player, to: out.mainMixerNode, format: format)
+        do { try out.start() } catch { debugLog("voice output restart failed: \(error)"); return }
+        if playing { player.play() }
+        debugLog("voice output: configuration changed, engine restarted (playing=\(playing))")
     }
 
     func resetOutput() {
@@ -614,6 +643,19 @@ final class SpeakEngine {
     /// Plays a short sample through the chosen output so the user can check it.
     func preview() {
         Task { await speak(targetCode.hasPrefix("zh") ? "这是对方会听到的声音。" : "This is the voice the room will hear.", language: targetCode) }
+    }
+}
+
+/// Runs its closure once, from whichever thread gets there first (the audio callback or a timer).
+final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func run(_ body: () -> Void) {
+        lock.lock()
+        let first = !done
+        done = true
+        lock.unlock()
+        if first { body() }
     }
 }
 
