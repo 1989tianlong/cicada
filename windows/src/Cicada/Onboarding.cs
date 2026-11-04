@@ -89,12 +89,15 @@ sealed class Onboarding : Window
             tap.Start();
             meter.Start();
         }
-        var bar = new ProgressBar { Minimum = 0, Maximum = 1, Value = Math.Min(1, level * 8), Height = 8, Foreground = Palette.Accent, Background = Palette.Ground, BorderThickness = new Thickness(0) };
+        var bar = new ProgressBar { Minimum = 0, Maximum = 1, Value = Loudness(level), Height = 8, Foreground = Palette.Accent, Background = Palette.Ground, BorderThickness = new Thickness(0) };
         var heard = peak >= 0.01;
         var body = Ui.Stack(12, bar, Ui.Text(heard ? L("听到了") : L("放一段视频或音乐，看这条有没有跳动"), 13, heard ? Palette.Ink : Palette.Secondary));
         return Frame(L("系统声音"), L("知了听的是电脑播放出来的声音，不用麦克风，也不用授权。"), body,
             Ui.Row(8, Ui.Button(L("继续"), Next, heard ? "primary" : "quiet")));
     }
+
+    /// -50 dBFS (a quiet room) to 0 dBFS on a log scale, so speech sits mid-bar instead of pinning it.
+    static double Loudness(double rms) => rms <= 0 ? 0 : Math.Clamp((20 * Math.Log10(rms) + 50) / 50, 0, 1);
 
     FrameworkElement SampleStep()
     {

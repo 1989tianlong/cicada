@@ -20,7 +20,19 @@ open(os.path.join(d, "..", "..", "src", "Cicada", "Assets", "cicada.ico"), "wb")
 PY
 
 # The onboarding sample as 16 kHz WAV: SoundPlayer and the file source both read WAV only.
-afconvert -f WAVE -d LEI16@16000 -c 1 "$root/Resources/sample/sample.m4a" src/Cicada/Assets/sample.wav
+# afconvert writes WAVE_FORMAT_EXTENSIBLE plus a FLLR chunk, which SoundPlayer refuses
+# (InvalidOperationException), so rewrite it as a plain PCM WAV.
+afconvert -f WAVE -d LEI16@16000 -c 1 "$root/Resources/sample/sample.m4a" build/icon/sample.wav
+python3 - build/icon/sample.wav src/Cicada/Assets/sample.wav <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read(); i = 12; pcm = b""
+while i < len(d):
+    n = int.from_bytes(d[i+4:i+8], "little")
+    if d[i:i+4] == b"data": pcm = d[i+8:i+8+n]
+    i += 8 + n + (n & 1)
+fmt = struct.pack("<HHIIHH", 1, 1, 16000, 32000, 2, 16)
+open(sys.argv[2], "wb").write(b"RIFF" + struct.pack("<I", 4 + 8 + len(fmt) + 8 + len(pcm)) + b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", len(pcm)) + pcm)
+PY
 
 config=Debug; [ "${RELEASE:-}" = 1 ] && config=Release
 for rid in win-x64 win-arm64; do
@@ -28,6 +40,10 @@ for rid in win-x64 win-arm64; do
   rm -rf "$out"
   scripts/dotnet.sh publish src/Cicada -c "$config" -r "$rid" -o "$out" -p:DebugType=embedded -v quiet -nologo 2>&1 | grep -E ' error |warning CS' | sort -u || true
   [ -f "$out/Cicada.exe" ] || { echo "build failed for $rid" >&2; exit 1; }
+  # Strings.Load reads both tables from Resources/; a misplaced one silently leaves the UI in Chinese.
+  for f in Resources/en.lproj/Localizable.strings Resources/en.lproj/Windows.strings; do
+    [ -f "$out/$f" ] || { echo "missing $f in $out" >&2; exit 1; }
+  done
   if [ "$config" = Debug ]; then
     printf '@echo off\r\nstart "" "%%~dp0Cicada.exe" --dev\r\n' > "$out/Cicada Dev.cmd"
     # Everything the VM test needs in the one folder: the capture probe, the control script and the clips.
