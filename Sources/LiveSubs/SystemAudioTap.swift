@@ -48,6 +48,23 @@ final class SystemAudioTap {
         return status == noErr && obj != kAudioObjectUnknown ? obj : nil
     }
 
+    /// How many input channels a device has: a headset, AirPods or a virtual machine's sound
+    /// device has a microphone on the same device as its speakers.
+    static func inputChannels(_ device: AudioObjectID) -> Int {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(device, &addr, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, raw) == noErr else { return 0 }
+        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
     private static func defaultOutputUID() -> String? {
         guard let device = defaultOutputDevice() else { return nil }
         var uid: CFString = "" as CFString
@@ -149,6 +166,17 @@ final class SystemAudioTap {
         status = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
                                       &asbd, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
         guard status == noErr else { throw fail(Int(status), L("无法设置音频格式（\(status)）")) }
+
+        // The aggregate's inputs are the output device's own inputs first, then the tap. When the
+        // output device has a microphone (a headset, AirPods, a virtual machine's sound device),
+        // the first two channels are that microphone, not what the Mac plays: skip past them.
+        let mics = Self.defaultOutputDevice().map(Self.inputChannels) ?? 0
+        if mics > 0 {
+            var map: [Int32] = [Int32(mics), Int32(mics + 1)]
+            status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 1,
+                                          &map, UInt32(MemoryLayout<Int32>.size * map.count))
+            debugLog("audio tap: output device has \(mics) input channels, reading the tap from channel \(mics) (\(status))")
+        }
 
         var callback = AURenderCallbackStruct(
             inputProc: { refCon, _, timestamp, bus, frames, _ in
