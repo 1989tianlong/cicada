@@ -12,8 +12,8 @@ extension View {
         }
     }
 
-    /// Where a scroll view's content sits against its bottom edge. macOS 14 doesn't report it:
-    /// there the transcript keeps following new lines even after the reader scrolls up.
+    /// Where a scroll view's content sits against its bottom edge (15 and later; 14 has
+    /// `onLegacyBottomDistance` below).
     @ViewBuilder func onScrollEdgeChange(_ action: @escaping (ScrollEdge, ScrollEdge) -> Void) -> some View {
         if #available(macOS 15, *) {
             onScrollGeometryChange(for: ScrollEdge.self) { g in
@@ -32,6 +32,52 @@ extension View {
         } else {
             self
         }
+    }
+}
+
+extension View {
+    /// macOS 14: how far `bottomMarker` (the content's last view) is below the visible area,
+    /// measured by geometry since `onScrollGeometryChange` is 15 and later. Does nothing on 15+.
+    @ViewBuilder func onLegacyBottomDistance(_ action: @escaping (CGFloat) -> Void) -> some View {
+        if #available(macOS 15, *) {
+            self
+        } else {
+            coordinateSpace(name: LegacyScrollEdge.space)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: LegacyScrollEdge.Container.self, value: g.size.height)
+                })
+                .onPreferenceChange(LegacyScrollEdge.Container.self) { LegacyScrollEdge.container = $0 }
+                // The lazy stack doesn't draw a marker scrolled far out of view: that's far from the bottom.
+                .onPreferenceChange(LegacyScrollEdge.Bottom.self) { y in
+                    action(y < 0 ? .greatestFiniteMagnitude : y - LegacyScrollEdge.container)
+                }
+        }
+    }
+
+    /// Put on the content's last view (macOS 14, with `onLegacyBottomDistance` on the scroll view).
+    @ViewBuilder func bottomMarker() -> some View {
+        if #available(macOS 15, *) {
+            self
+        } else {
+            background(GeometryReader { g in
+                Color.clear.preference(key: LegacyScrollEdge.Bottom.self,
+                                       value: g.frame(in: .named(LegacyScrollEdge.space)).maxY)
+            })
+        }
+    }
+}
+
+enum LegacyScrollEdge {
+    static let space = "cicada.scroll"
+    nonisolated(unsafe) static var container: CGFloat = 0
+    struct Container: PreferenceKey {
+        static let defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+    }
+    /// -1 while the marker isn't drawn.
+    struct Bottom: PreferenceKey {
+        static let defaultValue: CGFloat = -1
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
     }
 }
 

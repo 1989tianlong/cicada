@@ -619,9 +619,19 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                                     .frame(maxWidth: .infinity).padding(.top, 40)
                             }
                         }
-                        Color.clear.frame(height: 1).id("bottom")
+                        Color.clear.frame(height: 1).id("bottom").bottomMarker()
                     }
                     .padding(.top, 8).padding(.bottom, 12)
+                }
+                .onLegacyBottomDistance { distance in
+                    // macOS 14: only the reader's own scrolling changes following; anything else that
+                    // moves the bottom (new lines, translations, resizing) is followed.
+                    if UserScroll.recent {
+                        if distance < 40 { if !following { following = true } }
+                        else if following, distance > 60 { following = false; seenCount = lines.count }
+                    } else if following, distance > 1 {
+                        follow(proxy)
+                    }
                 }
                 .topFade()
                 .onScrollEdgeChange { old, new in
