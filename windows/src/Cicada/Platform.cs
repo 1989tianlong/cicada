@@ -45,7 +45,20 @@ static class AutoStart
 {
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     static string Name => Paths.Dev ? "Cicada Dev" : "Cicada";
-    static string Command(string exe) => $"\"{exe}\"" + (Paths.Dev ? " --dev" : "");
+    // --background: started with Windows, so stay in the tray; opened by hand, the main window shows.
+    static string Command(string exe) => $"\"{exe}\" --background" + (Paths.Dev ? " --dev" : "");
+
+    /// Rewrites an entry made before --background existed, which would open the main window at sign-in.
+    public static void Refresh()
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            var exe = Environment.ProcessPath ?? "";
+            if (k?.GetValue(Name) is string v && v.StartsWith($"\"{exe}\"", StringComparison.OrdinalIgnoreCase) && v != Command(exe)) { k.SetValue(Name, Command(exe)); Log.Debug("autostart: command updated"); }
+        }
+        catch (Exception e) { Log.Debug($"autostart: refresh failed {e.GetType().Name}"); }
+    }
 
     public static bool Enabled
     {

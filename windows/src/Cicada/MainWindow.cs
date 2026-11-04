@@ -44,6 +44,16 @@ sealed class MainWindow : Window
     double? jumpTo;
     string? shownKey;
     bool refreshQueued;
+    readonly ContentControl pill = new() { VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
+    readonly ColumnDefinition listColumn = new() { Width = new GridLength(260) };
+    readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    readonly double[] levels = new double[8];
+    FrameworkElement? left;
+    // The pill is rebuilt only when what it says changes (a rebuild between press and release
+    // would lose the click); the bars and the clock move in place.
+    string? pillKey;
+    readonly List<System.Windows.Shapes.Rectangle> bars = [];
+    TextBlock? clock;
 
     public MainWindow(Controller app, string? select = null)
     {
@@ -56,7 +66,7 @@ sealed class MainWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
+        grid.ColumnDefinitions.Add(listColumn);
         grid.ColumnDefinitions.Add(new ColumnDefinition());
 
         // The search box, with its icon and placeholder drawn over it
@@ -89,6 +99,7 @@ sealed class MainWindow : Window
         var logo = AppIcon.Small(20);
         logo.HorizontalAlignment = HorizontalAlignment.Left; logo.Margin = new Thickness(18, 14, 0, 6);
         var left = new DockPanel { Background = Palette.Mica };
+        this.left = left;
         DockPanel.SetDock(logo, Dock.Top);
         DockPanel.SetDock(searchBox, Dock.Top);
         left.Children.Add(logo);
@@ -98,7 +109,14 @@ sealed class MainWindow : Window
         var right = new Border { Background = Palette.Surface, Child = detail };
         Grid.SetColumn(right, 1);
         grid.Children.Add(left); grid.Children.Add(right);
+        // The Mac's toolbar pill, centred in the title bar: the brand is the listening switch.
+        System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(pill, true);
+        Grid.SetColumnSpan(pill, 2);
+        grid.Children.Add(pill);
         Content = Ui.Frameless(this, grid);
+        // The pill's clock and level move while listening; nothing else needs a timer.
+        tick.Tick += (_, _) => { if (app.Listen.Listening) Pill(); else { tick.Stop(); Pill(); } };
+        Closed += (_, _) => tick.Stop();
         Refresh();
     }
 
@@ -119,7 +137,11 @@ sealed class MainWindow : Window
 
     void Fill()
     {
+        Pill();
         var all = app.Store.All();
+        // No meetings yet: only the welcome. An empty list and search box are noise.
+        listColumn.Width = new GridLength(all.Count == 0 ? 0 : 260);
+        if (left is not null) left.Visibility = all.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         var q = search.Text.Trim();
         var shown = all.Where(s => Matches(s, q)).ToList();
         list.Children.Clear();
@@ -137,7 +159,7 @@ sealed class MainWindow : Window
             list.Children.Add(Item(s));
         }
         // An empty page replaces the meeting, so the next real one must draw again.
-        if (all.Count == 0) { selected = null; shownKey = null; detail.Content = Empty(L("还没有会议记录"), L("点任务栏里的知了图标，开始听第一场会。")); return; }
+        if (all.Count == 0) { selected = null; shownKey = null; detail.Content = Welcome(); return; }
         if (shown.Count == 0) { shownKey = null; detail.Content = Empty(L("没有找到"), ""); return; }
         if (selected is null || shown.All(s => s.Id != selected)) selected = shown[0].Id;
         foreach (var child in list.Children.OfType<Button>()) Paint(child);
@@ -187,6 +209,161 @@ sealed class MainWindow : Window
         hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Selected, "bg"));
         t.Triggers.Add(hover);
         return t;
+    }
+
+    // MARK: Welcome and the pill
+
+    /// No meetings yet (Views.swift › welcome): the logo, one line and the one thing to do; or,
+    /// not set up yet, what is left, each step opening the onboarding where it is.
+    FrameworkElement Welcome()
+    {
+        var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 480, Margin = new Thickness(24, 40, 24, 60) };
+        var mark = AppIcon.Small(72);
+        mark.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0xE8, 0x55, 0x2B), Opacity = 0.25, BlurRadius = 26, ShadowDepth = 8, Direction = 270 };
+        s.Children.Add(mark);
+        var left = app.SetupLeft;
+        var title = Ui.Text(left > 0 ? LF("还差 %@ 步就能用", left) : L("还没有会议"), 26, Palette.Ink, FontWeights.Bold, wrap: false);
+        title.HorizontalAlignment = HorizontalAlignment.Center; title.Margin = new Thickness(0, 26, 0, 8);
+        s.Children.Add(title);
+        var line = Ui.Text(left > 0 ? L("知了把电脑里放出来的会议声音变成字幕和纪要。") : L("打开会议或视频，开始听后，每一场都会存在这里。"), 15, Palette.Secondary);
+        line.TextAlignment = TextAlignment.Center;
+        s.Children.Add(line);
+        if (left > 0) { s.Children.Add(Checklist()); return s; }
+
+        var label = Ui.Row(10, Ui.Dot(Palette.Live, 9), Ui.Text(L("开始听"), 15, Brushes.White, Palette.Strong, wrap: false),
+            new Border { BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 0, 6, 1), Child = Ui.Text(Hotkey.Label.Replace('+', ' '), 12, Palette.NightText, wrap: false) });
+        var start = Capsule(label, Palette.Ink, null, 44, new Thickness(22, 0, 22, 0), () => _ = app.ToggleListening(), L("开始听"));
+        start.HorizontalAlignment = HorizontalAlignment.Center; start.Margin = new Thickness(0, 30, 0, 0);
+        s.Children.Add(start);
+        var sample = Ui.LinkText(L("先听一段示例"), () => _ = app.PlaySample(), 13);
+        sample.Foreground = Palette.Secondary; sample.HorizontalAlignment = HorizontalAlignment.Center; sample.Margin = new Thickness(0, 16, 0, 0);
+        s.Children.Add(sample);
+        return s;
+    }
+
+    FrameworkElement Checklist()
+    {
+        var (key, audio, sample) = app.SetupDone;
+        var first = !key ? 0 : !audio ? 1 : !sample ? 2 : 3;
+        (string title, string detail, bool done)[] steps =
+        [
+            (L("接上 Ling"), key ? L("key 已加密存在这台电脑上") : L("识别、翻译和纪要都靠它，约 1 分钟"), key),
+            (L("听一下电脑里的声音"), L("放一段测试声音，看音量条动起来"), audio),
+            (L("看看效果"), L("一段 9 秒的英文会议，字幕和纪要一句句出来"), sample),
+            (L("同声传译"), LF("按住%@说话，对方听到翻译后的声音", PushToTalk.Label), false),
+        ];
+        var list = new StackPanel();
+        for (int i = 0; i < steps.Length; i++)
+        {
+            var (title, detail, done) = steps[i];
+            var now = i == first;
+            var n = i;
+            var disc = new Border
+            {
+                Width = 26, Height = 26, CornerRadius = new CornerRadius(13), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0),
+                Background = done ? Palette.Ink : now ? Palette.Live : Palette.Surface, BorderBrush = done ? Palette.Ink : now ? Palette.Live : Palette.Line, BorderThickness = new Thickness(1),
+                Child = done ? Ui.Icon(Icons.Check, 13, Brushes.White, stroke: 2) : Center(Ui.Text((i + 1).ToString(), 12, now ? Brushes.White : Palette.Body, FontWeights.Bold, wrap: false)),
+            };
+            var head = Ui.Row(8, Ui.Text(title, 14, done ? Palette.Secondary : Palette.Ink, done ? FontWeights.Normal : Palette.Strong, wrap: false));
+            if (i == 3) ((StackPanel)head).Children.Add(Ui.Badge(L("可选"), Palette.Surface, Palette.Secondary));
+            var text = Ui.Stack(1, head, Ui.Helper(detail));
+            FrameworkElement? action = now ? Ui.Button(L("继续设置"), () => app.ShowOnboarding(n), Ui.Kind.Primary, height: 32)
+                : i == 3 && first == 3 ? Ui.Button(L("去设置"), () => app.ShowOnboarding(3), height: 32) : null;
+            var row = new DockPanel { Margin = new Thickness(0, 14, 0, 14) };
+            DockPanel.SetDock(disc, Dock.Left);
+            row.Children.Add(disc);
+            if (action is not null) { action.Margin = new Thickness(12, 0, 0, 0); DockPanel.SetDock(action, Dock.Right); row.Children.Add(action); }
+            row.Children.Add(text);
+            list.Children.Add(new Border { BorderBrush = Palette.Line, BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0), Child = row });
+        }
+        return new Border { Background = Palette.Page, CornerRadius = new CornerRadius(16), Padding = new Thickness(18, 2, 18, 2), Margin = new Thickness(0, 28, 0, 0), Child = list, MinWidth = 440 };
+        static FrameworkElement Center(FrameworkElement e) { e.HorizontalAlignment = HorizontalAlignment.Center; e.VerticalAlignment = VerticalAlignment.Center; return e; }
+    }
+
+    /// The title bar's switch (ListenPill.swift), led by the logo: a white pill while idle or not
+    /// set up, an ink one with the level, the time and 结束 while listening.
+    void Pill()
+    {
+        var listen = app.Listen;
+        var live = listen.Listening && listen.SessionId is { } id ? app.Store.Get(id) : null;
+        var left = app.SetupLeft;
+        var key = live is not null ? (app.Ending is { } e ? $"ending|{app.EndingTitle(e)}|{Controller.EndingLeft(e)}" : "live")
+            : left > 0 ? $"setup|{left}" : $"idle|{app.AutoEnded}";
+        if (live is not null)
+        {
+            if (!tick.IsEnabled) tick.Start();
+            Array.Copy(levels, 1, levels, 0, levels.Length - 1);
+            levels[^1] = Math.Max(listen.Level <= 0 ? 0 : Math.Clamp((20 * Math.Log10(listen.Level) + 50) / 50, 0, 1), levels[^2] * 0.7);
+        }
+        if (key != pillKey)
+        {
+            pillKey = key;
+            pill.Content = live is not null ? LivePill() : IdlePill(left);
+        }
+        for (int i = 0; i < bars.Count && i < levels.Length; i++) bars[i].Height = 3 + levels[i] * 12;
+        if (clock is not null && live is not null) clock.Text = Languages.Clock((DateTimeOffset.Now - live.StartedAt).TotalSeconds);
+    }
+
+    FrameworkElement IdlePill(int left)
+    {
+        bars.Clear(); clock = null;
+        var sep = new Border { Width = 1, Height = 14, Background = Palette.Line, VerticalAlignment = VerticalAlignment.Center };
+        var content = left > 0
+            ? Ui.Row(9, AppIcon.Small(22), Ui.Text(L("知了"), 13, Palette.Ink, FontWeights.Heavy, wrap: false), sep, Ui.Text(LF("还差 %@ 步", left), 13, Palette.AccentText, Palette.Strong, wrap: false), Ui.Text(L("继续设置"), 11, Palette.Secondary, wrap: false))
+            : Ui.Row(9, AppIcon.Small(22), Ui.Text(L("知了"), 13, Palette.Ink, FontWeights.Heavy, wrap: false), sep, Ui.Text(app.AutoEnded ? L("会议已自动结束") : L("开始听"), 13, Palette.Ink, Palette.Strong, wrap: false), Ui.Text(Hotkey.Label.Replace('+', ' '), 11, Palette.Secondary, wrap: false));
+        return Capsule(content, Palette.Surface, Palette.Line, 32, new Thickness(5, 0, 12, 0),
+            left > 0 ? () => app.ShowOnboarding() : () => _ = app.ToggleListening(), left > 0 ? L("继续设置") : L("开始听"));
+    }
+
+    FrameworkElement LivePill()
+    {
+        bars.Clear();
+        var mark = AppIcon.Small(22);
+        UIElement state;
+        if (app.Ending is { } p)
+        {
+            clock = null;
+            state = Ui.Row(10, mark, Ui.Text(app.EndingTitle(p), 13, Brushes.White, Palette.Strong, wrap: false), Ui.Text(LF("%lld 秒后结束", Controller.EndingLeft(p)), 13, new SolidColorBrush(Color.FromRgb(0xF4, 0xA5, 0x8C)), wrap: false));
+        }
+        else
+        {
+            var meter = new StackPanel { Orientation = Orientation.Horizontal, Height = 15, VerticalAlignment = VerticalAlignment.Center };
+            for (int i = 0; i < levels.Length; i++)
+            {
+                var r = new System.Windows.Shapes.Rectangle { Width = 3, Height = 3, RadiusX = 1, RadiusY = 1, Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Bottom, Fill = Palette.Live };
+                bars.Add(r); meter.Children.Add(r);
+            }
+            clock = Ui.Text("00:00", 13, Brushes.White, wrap: false);
+            state = Ui.Row(10, mark, Ui.Text(L("正在听"), 13, Brushes.White, Palette.Strong, wrap: false), meter, clock);
+        }
+        var show = Capsule(state, Brushes.Transparent, null, 32, new Thickness(0), app.ShowNotes, L("显示纪要"));
+        var end = app.Ending is not null
+            ? Capsule(Ui.Text(L("继续记录"), 12, Palette.Ink, Palette.Strong, wrap: false), Brushes.White, null, 24, new Thickness(12, 0, 12, 0), app.KeepRecording, L("继续记录"))
+            : Capsule(Ui.Text(L("结束"), 12, Brushes.White, Palette.Strong, wrap: false), new SolidColorBrush(Color.FromRgb(0x2F, 0x32, 0x3A)), null, 24, new Thickness(12, 0, 12, 0), app.RequestStop, L("结束会议"));
+        end.Margin = new Thickness(10, 0, 0, 0);
+        return new Border { Background = Palette.Ink, CornerRadius = new CornerRadius(16), Height = 32, Padding = new Thickness(5, 0, 4, 0), Child = Ui.Row(0, show, end) };
+    }
+
+    /// A rounded button with no theme chrome: the pill and its parts.
+    static Button Capsule(UIElement content, Brush background, Brush? border, double height, Thickness padding, Action click, string name)
+    {
+        var b = new Button { Content = content, Height = height, Padding = padding, Background = background, BorderBrush = border ?? Brushes.Transparent, BorderThickness = new Thickness(border is null ? 0 : 1), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false };
+        var t = new ControlTemplate(typeof(Button));
+        var bg = new FrameworkElementFactory(typeof(Border), "bg");
+        bg.SetValue(Border.CornerRadiusProperty, new CornerRadius(height / 2));
+        foreach (var (dp, path) in new[] { (Border.BackgroundProperty, "Background"), (Border.BorderBrushProperty, "BorderBrush"), (Border.BorderThicknessProperty, "BorderThickness"), (Border.PaddingProperty, "Padding") })
+            bg.SetBinding(dp, new System.Windows.Data.Binding(path) { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        bg.AppendChild(cp);
+        t.VisualTree = bg;
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.9));
+        t.Triggers.Add(hover);
+        b.Template = t;
+        b.Click += (_, _) => click();
+        System.Windows.Automation.AutomationProperties.SetName(b, name);
+        return b;
     }
 
     static FrameworkElement Empty(string title, string hint)

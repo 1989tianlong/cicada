@@ -37,7 +37,7 @@ static class Program
         app.ThemeMode = ThemeMode.Light;
 #pragma warning restore WPF0001
         app.DispatcherUnhandledException += (_, e) => { Log.Debug($"ui: unhandled {e.Exception.GetType().Name}: {e.Exception.Message}"); e.Handled = true; };
-        var controller = new Controller(app);
+        var controller = new Controller(app) { Background = args.Contains("--background") };
         app.Startup += (_, _) => controller.Launch();
         return app.Run();
     }
@@ -58,6 +58,9 @@ sealed class Controller
     public readonly SpeakEngine Speak;
     public readonly WindowsVoice WindowsVoice = new();
     public readonly UpdateChecker Updates;
+    /// Started with Windows (--background): stay in the tray. Opened by hand, the main window shows.
+    public bool Background { get; init; }
+    Onboarding? onboarding;
     /// 检查更新 in settings: null, or the result of the last manual check for a few seconds.
     public string? UpdateCheck { get; private set; }
     bool checksUpdates;
@@ -137,7 +140,16 @@ sealed class Controller
         var watch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         watch.Tick += (_, _) => _ = WatchEnd();
         watch.Start();
-        if (!Settings.Onboarded) new Onboarding(this, installed: Arrived == "--installed").Show();
+        if (AutoStart.Enabled) AutoStart.Refresh();
+        // The Mac shows its main window when opened by hand; a Windows user who double-clicks the
+        // exe expects a window too, not just a tray icon. Not set up yet: the onboarding on top.
+        if (!Background || !Settings.Onboarded) ShowRecords();
+        if (!Settings.Onboarded)
+        {
+            var later = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            later.Tick += (_, _) => { later.Stop(); ShowOnboarding(); };
+            later.Start();
+        }
         else
         {
             if (Ling.HasKey) _ = Ling.Check();
@@ -146,11 +158,11 @@ sealed class Controller
         }
     }
 
-    /// The installer ran again with this version (or an older one) already here: open the panel.
+    /// The installer ran again with this version (or an older one) already here: bring the main window.
     public void FromInstaller()
     {
-        ShowFlyout();
-        Toast(L("知了已经装好了"), L("下载的安装包可以删掉。"), ShowFlyout);
+        ShowRecords();
+        Toast(L("知了已经装好了"), L("下载的安装包可以删掉。"), ShowRecords);
     }
 
     void Changed() => Dispatch.BeginInvoke(() =>
@@ -294,7 +306,7 @@ sealed class Controller
     public void StartListening(IAudioSource source)
     {
         if (Listen.Listening) return;
-        if (!Ling.HasKey) { new Onboarding(this).Show(); return; }
+        if (!Ling.HasKey) { ShowOnboarding(0); return; }
         source.Ended += reason =>
         {
             if (reason is null) return;
@@ -516,6 +528,41 @@ sealed class Controller
         notesWindow.Refresh();
     }
 
+    // MARK: Setup (the main window's 还差几步 and the title bar's pill)
+
+    /// The setup steps, as the onboarding numbers them: what is done, by what really happened
+    /// rather than by "the onboarding was finished".
+    public (bool Key, bool Audio, bool Sample) SetupDone => (Ling.HasKey, Settings.HeardSystemAudio || Settings.Onboarded, Settings.SampleSeen || Settings.Onboarded);
+
+    /// Steps left before listening works; 0 once set up. 同声传译 is optional and never counted.
+    public int SetupLeft
+    {
+        get
+        {
+            var (k, a, sm) = SetupDone;
+            if (Settings.Onboarded && k) return 0;
+            return (k ? 0 : 1) + (a ? 0 : 1) + (sm ? 0 : 1);
+        }
+    }
+
+    /// The onboarding, at `step` or at the first step not done; one window at a time.
+    public void ShowOnboarding(int? step = null)
+    {
+        var (k, a, _) = SetupDone;
+        var at = step ?? (!k ? 0 : !a ? 1 : 2);
+        if (onboarding is null)
+        {
+            onboarding = new Onboarding(this, installed: Arrived == "--installed");
+            onboarding.Closed += (_, _) => { onboarding = null; Changed(); };
+            if (mainWindow?.IsVisible == true) { onboarding.Owner = mainWindow; onboarding.WindowStartupLocation = WindowStartupLocation.CenterOwner; }
+        }
+        onboarding.At(at);
+        onboarding.Show();
+        onboarding.Activate();
+    }
+
+    public void SetupChanged() => Changed();
+
     public void ShowRecords() => ShowRecords(null);
 
     public void ShowRecords(string? id)
@@ -716,7 +763,7 @@ static class DebugServer
                 else if (arg.StartsWith("settings")) { app.ShowSettings(); if (arg.Length > 9) app.SettingsPage(arg[9..]); }
                 else if (arg == "flyout") app.ShowFlyout();
                 else if (arg == "menu") app.ShowMenu();
-                else if (arg.StartsWith("onboarding")) { var o = new Onboarding(app); if (int.TryParse(arg[10..].Trim(), out var n)) o.At(n); o.Show(); }
+                else if (arg.StartsWith("onboarding")) app.ShowOnboarding(int.TryParse(arg[10..].Trim(), out var n) ? n : null);
                 else app.ShowNotes();
                 break;
             case "toast": app.Toast(L("纪要整理好了"), LF("%@ · 点这里打开", "Test"), () => app.ShowRecords()); break;

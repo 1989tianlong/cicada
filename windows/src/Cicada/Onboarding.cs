@@ -207,12 +207,6 @@ sealed class Onboarding : Window
         next.MinWidth = 108; next.HorizontalAlignment = HorizontalAlignment.Right;
         next.IsEnabled = !checking;
         var right = new StackPanel { Orientation = Orientation.Horizontal };
-        if (step == 1)
-        {
-            var hint = Ui.Text(L("音量条没动？放段视频或音乐试试"), 13, Palette.Secondary, wrap: false);
-            hint.VerticalAlignment = VerticalAlignment.Center; hint.Margin = new Thickness(0, 0, 16, 0);
-            right.Children.Add(hint);
-        }
         if (step == 3)
         {
             var later = Ui.Button(L("以后再说"), () => { LeaveSpeak(keep: false); speakBefore = null; step = 4; Render(); }, height: 44);
@@ -328,36 +322,96 @@ sealed class Onboarding : Window
         if (tap is null)
         {
             tap = new SystemAudioTap();
-            tap.Samples += buf =>
-            {
-                double sum = 0;
-                foreach (var s in buf) sum += (double)s * s;
-                var rms = buf.Length == 0 ? 0 : Math.Sqrt(sum / buf.Length) / 32768;
-                // The loudest buffer since the last bar, not the last one (often a silent fill).
-                level = Math.Max(level, rms);
-                peak = Math.Max(peak, rms);
-            };
+            tap.Samples += Heard;
             tap.Start();
             meter.Start();
         }
         Detach(meterHost); Detach(heardHost);
         heardHost.Tag = null;
         Meter();
-        var tile = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(12), Background = Palette.Mica, Margin = new Thickness(0, 0, 16, 0), Child = Ui.Icon(Icons.Speaker, 20, Palette.Ink) };
+        var tile = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(12), Background = Palette.AccentPale, Margin = new Thickness(0, 0, 16, 0), Child = Ui.Icon(Icons.Speaker, 20, Palette.AccentText) };
         var status = Ui.Row(18, meterHost, heardHost);
-        var device = AudioDevice.DefaultName();
-        var from = new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 6, 12, 6), Child = Ui.Text(device ?? L("默认扬声器"), 13, Palette.Ink, wrap: false), MaxWidth = 340 };
+        var device = AudioDevice.DefaultName() ?? L("默认扬声器");
+        var test = Ui.Button(testing ? L("正在播放…") : L("放一段测试声音"), () => _ = PlayTest(), Ui.Kind.Accent, Icons.Play, 36, iconFill: true);
+        test.IsEnabled = !testing;
         var card = StepCard(new StackPanel
         {
             Children =
             {
-                Numbered(tile, L("听电脑里的声音"), L("只听声音，不录屏幕画面，也不占麦克风"), status),
+                Numbered(tile, L("电脑播放的声音"), LF("%@ · 只听声音，不录屏幕", device), status),
                 Divider(16),
-                Ui.Spread(Ui.Text(L("从哪里听"), 14, Palette.Body, wrap: false), from),
+                Ui.Spread(Ui.Stack(2, Ui.Text(L("没有声音在放？"), 14, Palette.Ink, wrap: false), Ui.Helper(L("放 3 秒测试声音，从默认扬声器出来"))), test),
             },
         });
-        var note = Ui.Row(8, Ui.Icon(Icons.EyeOff, 15, Palette.Secondary), Ui.Text(L("纪要窗不会出现在截图和屏幕共享里"), 13, Palette.Secondary, wrap: false));
-        return Page(L("让知了听到电脑里的声音"), L("字幕和纪要都从这里来。Windows 上不用授权，放点声音就行。"), card, note);
+        // The two sounds side by side: people try speaking first, but this step hears the PC.
+        var sources = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+        sources.ColumnDefinitions.Add(new ColumnDefinition());
+        sources.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        sources.ColumnDefinitions.Add(new ColumnDefinition());
+        var theirs = Source(L("对方的声音"), Ui.Badge(L("这一步")), [L("会议软件"), L("扬声器"), L("知了：字幕和纪要")], on: true);
+        var yours = Source(L("你的声音 · 麦克风"), Ui.Badge(L("第 4 步再用"), Palette.Mica, Palette.Secondary), [L("麦克风"), L("同声传译"), L("对方听到译文")], on: false);
+        Grid.SetColumn(yours, 2);
+        sources.Children.Add(theirs); sources.Children.Add(yours);
+        return Page(L("让知了听到电脑里的声音"), L("会议里对方说的话从电脑扬声器放出来，字幕和纪要都从这里来。Windows 上不用授权。"), card, sources);
+    }
+
+    /// One of the two sounds: where it goes, outlined in ink when it is this step's.
+    static FrameworkElement Source(string title, FrameworkElement badge, string[] flow, bool on)
+    {
+        var path = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        for (int i = 0; i < flow.Length; i++)
+        {
+            var last = on && i == flow.Length - 1;
+            path.Children.Add(new Border { Background = last ? Palette.Ink : Palette.Mica, CornerRadius = new CornerRadius(6), Padding = new Thickness(7, 1, 7, 2), Margin = new Thickness(0, 0, 0, 4), Child = Ui.Text(flow[i], 12, last ? Brushes.White : Palette.Ink, wrap: false) });
+            if (i < flow.Length - 1) path.Children.Add(new TextBlock { Text = "→", FontSize = 12, Foreground = Palette.Secondary, Margin = new Thickness(6, 1, 6, 0) });
+        }
+        var head = Ui.Row(8, Ui.Text(title, 14, Palette.Ink, Palette.Strong, wrap: false), badge);
+        return new Border
+        {
+            Background = Palette.Surface, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 12, 16, 10),
+            BorderBrush = on ? Palette.Ink : Palette.Line, BorderThickness = new Thickness(on ? 2 : 1),
+            Child = new StackPanel { Children = { head, path } },
+        };
+    }
+
+    void Heard(short[] buf)
+    {
+        double sum = 0;
+        foreach (var s in buf) sum += (double)s * s;
+        var rms = buf.Length == 0 ? 0 : Math.Sqrt(sum / buf.Length) / 32768;
+        // The loudest buffer since the last bar, not the last one (often a silent fill).
+        level = Math.Max(level, rms);
+        peak = Math.Max(peak, rms);
+    }
+
+    bool testing;
+
+    /// 放一段测试声音: the sample's first seconds through the default speakers. The listening tap
+    /// leaves Cicada's own sound out, so a second tap that hears only Cicada feeds the same bars:
+    /// they still move only if Windows really hands the PC's sound over.
+    async Task PlayTest()
+    {
+        if (testing || Bundled.Sample() is not { } wav) return;
+        testing = true; Render();
+        var self = new SystemAudioTap { OnlySelf = true };
+        self.Samples += Heard;
+        self.Start();
+        var player = new System.Media.SoundPlayer(wav);
+        try
+        {
+            player.Play();
+            Log.Debug("onboarding: test sound");
+            await Task.Delay(3200);
+        }
+        catch (Exception e) { Log.Debug($"onboarding: test sound failed {e.GetType().Name}"); }
+        finally
+        {
+            player.Stop();
+            await Task.Delay(300);
+            self.Stop();
+            testing = false;
+            if (IsLoaded && step == 1) Render();
+        }
     }
 
     /// A few bars of the last moment's loudness, newest on the right, in the accent once there's sound.
@@ -373,6 +427,7 @@ sealed class Onboarding : Window
         System.Windows.Automation.AutomationProperties.SetName(bars, L("系统声音"));
         meterHost.Content = bars;
         var heard = peak >= 0.01;
+        if (heard && !app.Settings.HeardSystemAudio) { app.Settings.HeardSystemAudio = true; app.Settings.Save(); app.SetupChanged(); }
         if (heardHost.Tag as bool? != heard)
         {
             heardHost.Tag = heard;
@@ -411,7 +466,12 @@ sealed class Onboarding : Window
         Left = Math.Max(area.Left + 8, Math.Min(Left, room - Width));
         playing = true; Render();
         try { await app.PlaySample(); }
-        finally { playing = false; if (IsLoaded) Render(); }
+        finally
+        {
+            playing = false;
+            if (!app.Settings.SampleSeen) { app.Settings.SampleSeen = true; app.Settings.Save(); app.SetupChanged(); }
+            if (IsLoaded) Render();
+        }
     }
 
     // MARK: 4 · Speak into the meeting

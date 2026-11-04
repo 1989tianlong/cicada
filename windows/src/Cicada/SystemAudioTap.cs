@@ -14,6 +14,9 @@ sealed class SystemAudioTap : IAudioSource
 
     Thread? thread;
     volatile bool running;
+    /// Only Cicada's own sound instead of everything else: the onboarding's test sound, which the
+    /// normal tap leaves out by design. Proves process loopback works on this PC all the same.
+    public bool OnlySelf { get; init; }
     public event Action<short[]>? Samples;
     public event Action<string?>? Ended;
 
@@ -123,9 +126,9 @@ sealed class SystemAudioTap : IAudioSource
         return Wav.Resample(mono, rate);
     }
 
-    static IAudioClient Activate()
+    IAudioClient Activate()
     {
-        var p = new ActivationParams { ActivationType = 1, TargetProcessId = (uint)Environment.ProcessId, ProcessLoopbackMode = 1 /* exclude tree */ };
+        var p = new ActivationParams { ActivationType = 1, TargetProcessId = (uint)Environment.ProcessId, ProcessLoopbackMode = OnlySelf ? 0 /* include tree */ : 1 /* exclude tree */ };
         int size = Marshal.SizeOf<ActivationParams>();
         var blob = Marshal.AllocHGlobal(size);
         Marshal.StructureToPtr(p, blob, false);

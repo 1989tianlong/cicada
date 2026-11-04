@@ -18,6 +18,9 @@ public sealed class AppSettings
     /// 共享屏幕时让对方看到: let the notes window and subtitles show up in screen sharing.
     [JsonPropertyName("showInCapture")] public bool ShowInCapture { get; set; }
     [JsonPropertyName("onboarded")] public bool Onboarded { get; set; }
+    /// The setup checklist (主窗口 › 还差几步): the onboarding heard the PC's sound / played the sample.
+    [JsonPropertyName("heardSystemAudio")] public bool HeardSystemAudio { get; set; }
+    [JsonPropertyName("sampleSeen")] public bool SampleSeen { get; set; }
     /// The UI language: "system", "zh-Hans", "en", "ja" or "ko".
     [JsonPropertyName("uiLanguage")] public string UiLanguage { get; set; } = "system";
     /// 字幕文字大小, in px.
