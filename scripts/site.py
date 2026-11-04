@@ -29,7 +29,7 @@ REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
 # The author on X: the app is not notarized yet, so a real person to ask helps people trust the first launch.
 X = "https://x.com/wquguru"
-STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "img", "audio"]
+STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "og-en.png", "og-ja.png", "og-ko.png", "img", "audio"]
 # The home page's meeting with sound, in the language its reader listens to (the English page's is
 # Chinese): file, length in seconds, and who talks when as (person, start, end), one turn per
 # subtitle. Both clips come from scripts/make-sample.sh; the English one is the app's onboarding
@@ -178,6 +178,7 @@ def main():
         if alternates:
             hreflang += f'\n<link rel="alternate" hreflang="x-default" href="{SITE}en/{kind}">'
         v = dict(common, ROOT=root, HOME=root + prefix, LANG=code,
+                 OG_IMAGE=SITE + ("og.png" if code == "zh" else f"og-{code}.png"),  # share card in the page's language (scripts/site-og.html)
                  CHANGELOG=(root + "changelog/") if code == "zh" else REPO + "/releases",
                  START_CURRENT=' aria-current="page"' if current == "start" else "",
                  CANONICAL=SITE + rel, HREFLANG=hreflang, LANG_LINKS=links, LANG_LINKS_FOOT=foot_links,
