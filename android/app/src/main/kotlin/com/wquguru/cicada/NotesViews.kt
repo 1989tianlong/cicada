@@ -3,6 +3,7 @@ package com.wquguru.cicada
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.TextView
 import cicada.Languages
 import cicada.MeetingNotes
 import cicada.NotesEngine
@@ -29,7 +30,8 @@ object NotesViews {
         val listen = app.listen
         val line = listen.sessionId?.let { app.store.lines(it).lastOrNull() }
         return listOf(listen.listening, listen.sourceKind, listen.sessionId, listen.pending > 0, listen.problem, app.startProblem, silent(app), app.micSilenced,
-                      line?.id, line?.src, line?.dst, app.notes.status, app.notes.notes.updatedAt, app.notes.notes.covered).joinToString("|")
+                      line?.id, line?.src, line?.dst, app.notes.status, app.notes.notes.updatedAt, app.notes.notes.covered,
+                      app.ending?.deadline).joinToString("|")
     }
 
     /// "正在听 · 03:12" / "面对面 · 03:12".
@@ -58,6 +60,40 @@ object NotesViews {
     }
 
     /// The problem banner of the live screens, or null. `onMic` offers 面对面 when nothing is heard.
+    /// The meeting is about to end by itself (the Mac's MeetingEndingStrip): what's happening, the
+    /// seconds left (tagged ENDING_DETAIL, updated in place each second so the buttons keep their
+    /// touch), 继续记录 and 现在结束.
+    fun endingStrip(ui: Ui, app: CicadaApp, compact: Boolean = false): View? {
+        val p = app.ending ?: return null
+        return ui.stack(if (compact) 8 else 12).apply {
+            background = ui.rounded(Palette.accentPale, 16)
+            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            addView(ui.stack(3, ui.text(app.endingTitle(p), if (compact) 15f else 16f, Palette.ink, bold = true),
+                ui.text(app.endingDetail(p), 13f, Palette.secondary).apply { tag = ENDING_DETAIL }))
+            addView(LinearLayout(ui.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(ui.button(L("继续记录"), "primary", height = 44) { app.keepRecording() }, ui.weight())
+                addView(ui.button(L("现在结束"), "quiet", height = 44) { app.stopListening() }.apply { background = ui.rounded(Palette.card, 16) },
+                        ui.weight().apply { leftMargin = ui.dp(10) })
+            })
+        }
+    }
+
+    const val ENDING_DETAIL = "endingDetail"
+    const val ENDING_BAR = "endingBar"
+
+    /// The subtitle bar has no buttons (as on the Mac): it says what will happen, and speaking
+    /// keeps a silent meeting going.
+    fun endingBarText(app: CicadaApp): String? = app.ending?.let { app.endingTitle(it) + " · " + LF("%lld 秒后结束", app.endingLeft(it)) }
+
+    /// The countdown's seconds, without rebuilding the views around it.
+    fun tickEnding(root: View?, app: CicadaApp) {
+        val p = app.ending ?: return
+        (root?.findViewWithTag<TextView>(ENDING_DETAIL))?.text = app.endingDetail(p)
+        (root?.findViewWithTag<TextView>(ENDING_BAR))?.text = endingBarText(app)
+    }
+
     fun banner(ui: Ui, app: CicadaApp, onMic: (() -> Unit)?): View? {
         val problem = app.listen.problem
         val (iconRes, text) = when {
@@ -78,6 +114,73 @@ object NotesViews {
             if (silent(app) && onMic != null) addView(ui.textButton(L("换成面对面"), onClick = onMic))
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
+    }
+
+    /// An import's progress: the bar and "26:40 / 42:15".
+    fun progress(ui: Ui, file: FileSource): LinearLayout {
+        val box = ui.stack(8)
+        val frac = if (file.total > 0) (file.done / file.total).coerceIn(0.0, 1.0) else 0.0
+        box.addView(LinearLayout(ui.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = ui.rounded(android.graphics.Color.parseColor("#E7E9EE"), 4)
+            weightSum = 1f
+            addView(View(ui.context).apply { background = ui.rounded(Palette.accent, 4) }, LinearLayout.LayoutParams(0, -1, frac.toFloat()))
+            contentDescription = "${(frac * 100).toInt()}%"
+        }, LinearLayout.LayoutParams(-1, ui.dp(8)))
+        box.addView(ui.text("${Languages.clock(file.done)} / ${Languages.clock(file.total)}", 13f, Palette.secondary).apply { fontFeatureSettings = "tnum" })
+        return box
+    }
+
+    /// Speaker colours (the iOS design's): the first voices blue and clay, then green and violet;
+    /// 你 ink; 对方 / 未识别 grey. Each pair passes 4.5:1.
+    private val voiceColors = listOf(0xFFDCE7F7.toInt() to 0xFF1F4E8C.toInt(), 0xFFF6E2D6.toInt() to 0xFF8A3A16.toInt(),
+                                     0xFFDFF0E4.toInt() to 0xFF1E6B3A.toInt(), 0xFFEDE3F6.toInt() to 0xFF5B2E8A.toInt())
+    fun voiceColor(number: Int?): Pair<Int, Int> = number?.let { voiceColors[(it - 1) % voiceColors.size] } ?: (0xFFE7E9EE.toInt() to 0xFF3F434C.toInt())
+
+    /// A round initial for who said it.
+    fun avatar(ui: Ui, line: TranscriptLine, numbers: Map<String, Int>, name: String, size: Int = 22) = ui.text(
+        if (line.speaker == "me") L("你") else name.trim().firstOrNull()?.uppercase() ?: "?", 11f,
+        if (line.speaker == "me") android.graphics.Color.WHITE else voiceColor(numbers[line.id]).second, bold = true).apply {
+        gravity = Gravity.CENTER
+        background = ui.rounded(if (line.speaker == "me") Palette.ink else voiceColor(numbers[line.id]).first, size / 2)
+        layoutParams = LinearLayout.LayoutParams(ui.dp(size), ui.dp(size))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    /// One line as a white bubble: who and when, the original small and grey, the translation in
+    /// ink. The newest is outlined in the accent while more may come.
+    fun bubble(ui: Ui, line: TranscriptLine, numbers: Map<String, Int>, names: Map<Int, String>, newest: Boolean, listening: Boolean): LinearLayout {
+        val who = cicada.SpeakerLabels.speakerName(line, numbers, names)
+        val card = ui.stack(6)
+        card.background = if (newest && listening) ui.rounded(Palette.card, 22, android.graphics.Color.parseColor("#F2C3B2"), 1.5) else ui.rounded(Palette.card, 22)
+        card.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
+        // An initial only for someone known (你, a numbered or named voice); 对方 has no face.
+        val head = ui.text("$who · ${Languages.clock(line.t)}", 12f, Palette.secondary, lines = 1)
+        card.addView(if (line.speaker == "me" || numbers[line.id] != null) ui.row(8, avatar(ui, line, numbers, who), head) else head)
+        val translated = !line.dst.isNullOrEmpty() && line.dst != line.src
+        if (translated) card.addView(ui.text(line.src, Ui.Type.ORIGINAL, Palette.secondary).apply { leading(1.45f) })
+        card.addView(ui.text(line.dst?.takeIf { translated } ?: line.src, Ui.Type.TRANSLATION, Palette.ink).apply { leading(1.5f) })
+        if (newest) card.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        return card
+    }
+
+    /// The subtitle stream on 正在听: a bubble per line, the newest at the bottom.
+    fun bubbles(ui: Ui, app: CicadaApp, count: Int): LinearLayout {
+        val lines = currentLines(app)
+        val box = ui.stack(12)
+        if (lines.isEmpty()) return stream(ui, app, 0)
+        val numbers = cicada.SpeakerLabels.numbers(lines)
+        val names = app.listen.sessionId?.let { app.store.get(it) }?.let { cicada.SpeakerLabels.names(it) } ?: emptyMap()
+        val shown = lines.takeLast(count)
+        shown.forEachIndexed { i, l -> box.addView(bubble(ui, l, numbers, names, i == shown.lastIndex, app.listen.listening)) }
+        if (app.listen.listening) box.addView(LinearLayout(ui.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(ui.dp(8), 0, 0, 0)
+            listOf(1f, 0.6f, 0.3f).forEach { a -> addView(ui.dot(Palette.accent, 6).apply { alpha = a }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)).apply { rightMargin = ui.dp(5) }) }
+            addView(ui.text(L("正在听下一句…"), 13f, Palette.secondary), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(4) })
+        })
+        return box
     }
 
     /// The subtitle stream: earlier lines small, the newest as a large card at the bottom.
@@ -119,7 +222,7 @@ object NotesViews {
         val translated = !line.dst.isNullOrEmpty() && line.dst != line.src
         if (!translated && line.speaker == "me") card.addView(ui.text(L("你"), 14f, Palette.secondary))
         if (translated) card.addView(ui.text(said(line), 14f, Palette.secondary, lines = if (lines > 0) lines - 1 else 0))
-        card.addView(ui.text(line.dst ?: line.src, big, Palette.ink, bold = true, lines = lines).apply { setLineSpacing(0f, 1.25f) }, ui.lp(top = if (translated || line.speaker == "me") 8 else 0))
+        card.addView(ui.text(line.dst ?: line.src, big, Palette.ink, bold = true, lines = lines).apply { leading(1.25f) }, ui.lp(top = if (translated || line.speaker == "me") 8 else 0))
         if (dots && app.listen.listening) card.addView(LinearLayout(ui.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -148,25 +251,29 @@ object NotesViews {
             val head = LinearLayout(ui.context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(ui.heading(notes.title ?: L("纪要"), 19f).apply { maxLines = 2 }, ui.weight())
+                addView(ui.heading(notes.title ?: L("纪要"), Ui.Type.TITLE).apply { maxLines = 2; leading(1.3f) }, ui.weight())
                 val fresh = if (status == NotesEngine.State.Updating) L("正在整理纪要…") else updated(notes.updatedAt)
                 if (fresh != null) addView(ui.text(fresh, 12f, Palette.secondary), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(8) })
             }
             body.addView(head)
-            if (notes.summary.isNotEmpty()) body.addView(ui.text(notes.summary, 15f, Palette.body).apply { setLineSpacing(0f, 1.35f) }, ui.lp(top = 10))
+            if (notes.summary.isNotEmpty()) {
+                body.addView(ui.notesLabel(L("总结")), ui.lp(top = 16))
+                body.addView(ui.notesText(notes.summary), ui.lp(top = 6))
+            }
         }
         val topics = if (compact) notes.topics.takeLast(1) else notes.topics
         topics.forEachIndexed { i, t ->
-            body.addView(ui.row(10, ui.text(Languages.clock(t.start), 12f, Palette.link, bold = true), ui.text(t.title, 15f, Palette.ink, bold = true).apply { layoutParams = ui.weight() }),
-                         ui.lp(top = if (compact && i == 0) 0 else 18))
-            for (p in if (compact) t.points.takeLast(3) else t.points) body.addView(bullet(ui, p, if (compact) 14f else 15f), ui.lp(top = 6))
+            body.addView(ui.row(10, ui.text(Languages.clock(t.start), 12f, Palette.link, bold = true).apply { fontFeatureSettings = "tnum" },
+                                ui.text(t.title, if (compact) 15f else Ui.Type.BODY, Palette.ink, bold = true).apply { layoutParams = ui.weight() }),
+                         ui.lp(top = if (compact && i == 0) 0 else 20))
+            for (p in if (compact) t.points.takeLast(3) else t.points) body.addView(bullet(ui, p, if (compact) 14f else Ui.Type.BODY), ui.lp(top = 6))
         }
         if (!compact && notes.conclusions.isNotEmpty()) {
-            body.addView(ui.text(L("结论"), 13f, Palette.secondary, bold = true), ui.lp(top = 20))
-            for (c in notes.conclusions) body.addView(bullet(ui, c.text, 15f), ui.lp(top = 6))
+            body.addView(ui.notesLabel(L("结论")), ui.lp(top = 22))
+            for (c in notes.conclusions) body.addView(bullet(ui, c.text, Ui.Type.BODY), ui.lp(top = 6))
         }
         if (!compact && notes.todos.isNotEmpty()) {
-            body.addView(ui.text(L("待办"), 13f, Palette.secondary, bold = true), ui.lp(top = 20))
+            body.addView(ui.notesLabel(L("待办")), ui.lp(top = 22))
             for (t in notes.todos) body.addView(todo(ui, t.text, t.owner), ui.lp(top = 8))
         }
         return body
@@ -174,13 +281,13 @@ object NotesViews {
 
     fun bullet(ui: Ui, text: String, size: Float) = LinearLayout(ui.context).apply {
         orientation = LinearLayout.HORIZONTAL
-        addView(ui.dot(Palette.tertiary, 5), LinearLayout.LayoutParams(ui.dp(5), ui.dp(5)).apply { topMargin = ui.dp((size * 0.6).toInt()); rightMargin = ui.dp(10); leftMargin = ui.dp(2) })
-        addView(ui.text(text, size, Palette.body).apply { setLineSpacing(0f, 1.3f) }, ui.weight())
+        addView(ui.dot(Palette.tertiary, 5), LinearLayout.LayoutParams(ui.dp(5), ui.dp(5)).apply { topMargin = ui.dp((size * 0.72).toInt()); rightMargin = ui.dp(10); leftMargin = ui.dp(2) })
+        addView(ui.text(text, size, Palette.ink).apply { leading(if (size >= Ui.Type.BODY) Ui.Type.LINE else 1.35f) }, ui.weight())
     }
 
     fun todo(ui: Ui, text: String, owner: String?) = LinearLayout(ui.context).apply {
         orientation = LinearLayout.HORIZONTAL
-        addView(View(ui.context).apply { background = ui.rounded(0, 4, Palette.outline, 2) }, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)).apply { topMargin = ui.dp(3); rightMargin = ui.dp(10) })
-        addView(ui.text(text + (owner?.let { " · $it" } ?: ""), 15f, Palette.body), ui.weight())
+        addView(View(ui.context).apply { background = ui.rounded(0, 8, Palette.tertiary, 1.5) }, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)).apply { topMargin = ui.dp(5); rightMargin = ui.dp(10) })
+        addView(ui.notesText(text + (owner?.let { " · $it" } ?: "")), ui.weight())
     }
 }

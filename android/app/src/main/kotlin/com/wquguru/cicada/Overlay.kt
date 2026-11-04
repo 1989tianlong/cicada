@@ -33,11 +33,11 @@ class Overlay(private val app: CicadaApp) {
     private var params: WindowManager.LayoutParams? = null
     private var dismissTarget: View? = null
     private var clockText: TextView? = null
-    private var live: FrameLayout? = null
+    private var live: LinearLayout? = null
     private var notes: FrameLayout? = null
     private var shownKey: String? = null
     private val tick = object : Runnable {
-        override fun run() { if (root != null) { clockText?.text = NotesViews.clock(app); render(); app.main.postDelayed(this, 1000) } }
+        override fun run() { if (root != null) { clockText?.text = NotesViews.clock(app); render(); NotesViews.tickEnding(root, app); app.main.postDelayed(this, 1000) } }
     }
 
     /// Shown by a debug command regardless of the rules (screenshots of it over Cicada itself).
@@ -142,7 +142,7 @@ class Overlay(private val app: CicadaApp) {
         card.addView(handle, LinearLayout.LayoutParams(-1, ui.dp(12)))
         val head = header(dark = false)
         card.addView(head)
-        live = FrameLayout(app); notes = FrameLayout(app)
+        live = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }; notes = FrameLayout(app)
         card.addView(live, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = ui.dp(10); rightMargin = ui.dp(10) })
         card.addView(notes, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = ui.dp(16); rightMargin = ui.dp(16); topMargin = ui.dp(14) })
         frame.addView(card)
@@ -157,7 +157,7 @@ class Overlay(private val app: CicadaApp) {
         }
         val head = header(dark = true)
         bar.addView(head)
-        live = FrameLayout(app); notes = null
+        live = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }; notes = null
         bar.addView(live, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = ui.dp(12); rightMargin = ui.dp(16) })
         frame.addView(bar)
     }
@@ -317,13 +317,16 @@ class Overlay(private val app: CicadaApp) {
             box.removeAllViews()
             val line = NotesViews.currentLines(app).lastOrNull()
             val banner = NotesViews.banner(ui, app, null)
+            if (dark) NotesViews.endingBarText(app)?.let {
+                box.addView(ui.text(it, 13f, Palette.accentPale, bold = true).apply { tag = NotesViews.ENDING_BAR }, ui.lp().apply { bottomMargin = ui.dp(6) })
+            } else NotesViews.endingStrip(ui, app, compact = true)?.let { box.addView(it, ui.lp().apply { bottomMargin = ui.dp(8) }) }
             when {
                 banner != null && line == null -> box.addView(if (dark) ui.text((banner as LinearLayout).let { (it.getChildAt(1) as TextView).text }, 15f, Color.WHITE) else banner)
                 line == null -> box.addView(ui.text(L("等有人说话…"), 15f, if (dark) Palette.onScrim else Palette.secondary).apply { setPadding(ui.dp(if (dark) 0 else 14), ui.dp(10), 0, ui.dp(10)) })
                 dark -> {
                     val col = ui.stack(4)
                     if (!line.dst.isNullOrEmpty() && line.dst != line.src) col.addView(ui.text(line.src, 13f, Palette.onScrim, lines = 2))
-                    col.addView(ui.text(line.dst ?: line.src, 20f, Color.WHITE, bold = true, lines = 3).apply { setLineSpacing(0f, 1.2f) })
+                    col.addView(ui.text(line.dst ?: line.src, 20f, Color.WHITE, bold = true, lines = 3).apply { leading(1.2f) })
                     box.addView(col)
                 }
                 else -> box.addView(NotesViews.liveCard(ui, app, line, 18f, Palette.ground, lines = 3, dots = false).apply { setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12)) })

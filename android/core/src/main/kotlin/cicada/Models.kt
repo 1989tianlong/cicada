@@ -63,6 +63,13 @@ class Session(
     var renamed: Boolean? = null,
     var voiceNames: Map<String, String>? = null,
     var voiceGuesses: Map<String, VoiceGuess>? = null,
+    /// An imported recording or video on the Mac (its file name, where it was, true until
+    /// transcribed); Android imports too (ImportActivity) and writes these as the Mac does.
+    var sourceFile: String? = null,
+    var sourcePath: String? = null,
+    var importing: Boolean? = null,
+    /// Heard through the microphone in the room (会议室) for some or all of it.
+    var room: Boolean? = null,
 ) {
     val durationSeconds: Double get() = ((endedAt ?: Instant.now()).toEpochMilli() - startedAt.toEpochMilli()) / 1000.0
 
@@ -70,6 +77,7 @@ class Session(
         "id" to id, "title" to title, "startedAt" to Iso8601.write(startedAt), "endedAt" to endedAt?.let(Iso8601::write),
         "lines" to lines.map { it.toJson() }, "hasAudio" to hasAudio, "notes" to notes?.toJson(), "renamed" to renamed,
         "voiceNames" to voiceNames, "voiceGuesses" to voiceGuesses?.mapValues { it.value.toJson() },
+        "sourceFile" to sourceFile, "sourcePath" to sourcePath, "importing" to importing, "room" to room,
     )
 
     companion object {
@@ -81,6 +89,8 @@ class Session(
             renamed = o["renamed"].bool(),
             voiceNames = o["voiceNames"].obj()?.mapValues { it.value.str() ?: "" },
             voiceGuesses = o["voiceGuesses"].obj()?.mapValues { VoiceGuess.from(it.value.obj() ?: emptyMap()) },
+            sourceFile = o["sourceFile"].str(), sourcePath = o["sourcePath"].str(),
+            importing = o["importing"].bool(), room = o["room"].bool(),
         )
 
         fun read(text: String): Session? = Json.parseObject(text)?.let(::from)

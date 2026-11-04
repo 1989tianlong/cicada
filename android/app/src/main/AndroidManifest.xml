@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 导入录音或视频: transcribing a file goes on with another app in front. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The floating notes window / subtitle bar. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -31,6 +33,18 @@
         <activity android:name=".RecordActivity" android:exported="false" android:parentActivityName=".MainActivity" />
         <activity android:name=".SettingsActivity" android:exported="false" android:parentActivityName=".MainActivity" />
         <activity android:name=".OnboardingActivity" android:exported="false" />
+        <!-- 导入录音或视频: from 首页, or another app's share sheet (分享到知了). -->
+        <activity android:name=".ImportActivity" android:exported="true" android:parentActivityName=".MainActivity"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+        <!-- 面对面: the phone between two people, half of it turned to the other side. -->
+        <activity android:name=".FaceActivity" android:exported="false" android:parentActivityName=".ListeningActivity" />
         <activity android:name=".OverlayGuideActivity" android:exported="false" />
         <activity android:name=".ProjectionActivity" android:exported="false"
             android:theme="@style/Cicada.Translucent" android:excludeFromRecents="true" />
@@ -40,6 +54,6 @@
             <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
         </service>
         <service android:name=".ListenService" android:exported="false"
-            android:foregroundServiceType="mediaProjection|microphone" />
+            android:foregroundServiceType="mediaProjection|microphone|dataSync" />
     </application>
 </manifest>

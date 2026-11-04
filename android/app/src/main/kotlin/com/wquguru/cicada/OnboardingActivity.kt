@@ -128,7 +128,7 @@ class OnboardingActivity : Activity() {
         return root
     }
 
-    private fun intro(title: String, lead: String) = ui.stack(8, ui.title(title), ui.text(lead, 16f, Palette.body).apply { setLineSpacing(0f, 1.3f) })
+    private fun intro(title: String, lead: String) = ui.stack(8, ui.title(title), ui.text(lead, 16f, Palette.body).apply { leading(1.3f) })
 
     private fun keyStep(): View {
         val app = cicada
@@ -295,7 +295,7 @@ class OnboardingActivity : Activity() {
             }
             content.addView(notesCard, ui.lp(top = 12))
         } else if (playing) {
-            // Ming answers a stretch once it ends (~6 s in for the first): say it's coming.
+            // Ming answers a stretch once it ends (the sample's first, ~7 s in): say it's coming.
             content.addView(ui.stack(10, ui.text(L("字幕"), 13f, Palette.secondary, bold = true),
                 LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL

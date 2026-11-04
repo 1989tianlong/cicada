@@ -79,7 +79,9 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
 
     private fun tick() {
         val id = synchronized(gate) {
-            if (status == State.NoKey && ling.usable) status = State.Idle
+            // A key added or replaced since: clear the old complaint (an invalid key stays invalid
+            // until it's changed, which resets the client's keyState).
+            if ((status == State.NoKey || status == State.InvalidKey) && ling.usable) { status = State.Idle; changed() }
             val id = sessionId ?: return
             if (inFlight) return
             val s = store.get(id) ?: return

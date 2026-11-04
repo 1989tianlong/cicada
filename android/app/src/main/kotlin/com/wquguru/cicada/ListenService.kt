@@ -29,10 +29,15 @@ class ListenService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val app = cicada
         if (intent?.action == ACTION_STOP) { app.stopListening(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_KEEP) { app.keepRecording(); return START_NOT_STICKY }
         val kind = intent?.getStringExtra("kind") ?: run { stopSelf(); return START_NOT_STICKY }
         channel(this)
         // In the foreground with the right type first; only then may the projection be taken.
-        val type = if (kind == "playback") ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        val type = when (kind) {
+            "playback" -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            "import" -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
         try {
             startForeground(ID, notification(this), type)
         } catch (e: Exception) {
@@ -41,6 +46,11 @@ class ListenService : Service() {
             app.starting = 0
             app.changed()
             stopSelf()
+            return START_NOT_STICKY
+        }
+        if (kind == "import") {
+            val uri = intent.data ?: run { stopSelf(); return START_NOT_STICKY }
+            app.beginImport(uri)
             return START_NOT_STICKY
         }
         val source = if (kind == "playback") {
@@ -66,6 +76,7 @@ class ListenService : Service() {
     companion object {
         const val ID = 1
         const val ACTION_STOP = "com.wquguru.cicada.STOP"
+        const val ACTION_KEEP = "com.wquguru.cicada.KEEP"
         private const val CHANNEL = "listening"
         private var lastText: String? = null
 
@@ -85,26 +96,40 @@ class ListenService : Service() {
                 .addNextIntent(Intent(context, ListeningActivity::class.java))
                 .getPendingIntent(0, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val stop = PendingIntent.getService(context, 1, Intent(context, ListenService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-            val title = if (listen.sourceKind == "mic") L("知了 · 面对面") else L("知了 · 正在听手机里的声音")
-            return Notification.Builder(context, CHANNEL)
+            val ending = app.ending
+            val file = app.importing
+            val title = when {
+                file != null -> L("知了 · 正在转写") + " " + (session?.sourceFile ?: "")
+                ending != null -> app.endingTitle(ending)
+                listen.sourceKind == "mic" -> L("知了 · 面对面")
+                else -> L("知了 · 正在听手机里的声音")
+            }
+            val text = if (file != null) "${cicada.Languages.clock(file.done)} / ${cicada.Languages.clock(file.total)}"
+                else if (ending != null) app.endingDetail(ending) else listen.problem ?: line?.let { it.dst ?: it.src } ?: L("等有人说话…")
+            val b = Notification.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
-                .setContentText(listen.problem ?: line?.let { it.dst ?: it.src } ?: L("等有人说话…"))
+                .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setUsesChronometer(session != null)
                 .setWhen(session?.startedAt?.toEpochMilli() ?: System.currentTimeMillis())
                 .setContentIntent(open)
-                .addAction(Notification.Action.Builder(null, L("结束"), stop).build())
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .build()
+            // About to end by itself: the same two choices as the 正在听 strip.
+            if (ending != null) {
+                val keep = PendingIntent.getService(context, 2, Intent(context, ListenService::class.java).setAction(ACTION_KEEP), PendingIntent.FLAG_IMMUTABLE)
+                b.addAction(Notification.Action.Builder(null, L("继续记录"), keep).build())
+                b.addAction(Notification.Action.Builder(null, L("现在结束"), stop).build())
+            } else b.addAction(Notification.Action.Builder(null, L("结束"), stop).build())
+            return b.setCategory(Notification.CATEGORY_SERVICE).build()
         }
 
         /// The notification follows the newest line (only when its text changes).
         fun refresh(context: Context) {
             val app = context.cicada
-            if (!app.listen.listening || app.listen.sourceKind == "file") { lastText = null; return }
-            val text = app.listen.sessionId?.let { app.store.lines(it).lastOrNull()?.let { l -> l.dst ?: l.src } } + "|" + app.listen.problem
+            if (!app.listen.listening || (app.listen.sourceKind == "file" && app.importing == null)) { lastText = null; return }
+            val text = app.importing?.let { "${it.done.toInt()}" } + app.listen.sessionId?.let { app.store.lines(it).lastOrNull()?.let { l -> l.dst ?: l.src } } + "|" + app.listen.problem +
+                "|" + app.ending?.let { app.endingLeft(it) }
             if (text == lastText) return
             lastText = text
             if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && Build.VERSION.SDK_INT >= 33) return

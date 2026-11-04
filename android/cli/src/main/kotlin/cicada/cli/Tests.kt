@@ -22,19 +22,36 @@ object Tests {
         val tests: List<Pair<String, () -> Unit>> = listOf(
             "sessionJsonMatchesTheMac" to ::sessionJsonMatchesTheMac,
             "readsAMacRecordAndWritesItBackByteForByte" to ::readsAMacRecord,
+            "keepsTheMacsImportAndRoomFields" to ::keepsTheMacsImportAndRoomFields,
             "jsonEdgeCases" to ::jsonEdgeCases,
+            "renamesLikeTheMac" to ::renamesLikeTheMac,
+            "theLiveMeetingCantBeDeleted" to ::theLiveMeetingCantBeDeleted,
+            "followSystemLikeTheMac" to ::followSystemLikeTheMac,
+            "anUntranslatedSentenceIsNeitherSentNorRecorded" to ::anUntranslatedSentenceIsNeitherSentNorRecorded,
             "storeSavesAndDropsEmptyMeetings" to ::storeSavesAndDropsEmptyMeetings,
             "closesInterruptedMeetings" to ::closesInterruptedMeetings,
+            "exportsLikeTheMac" to ::exportsLikeTheMac,
+            "namesAVoiceLikeTheMac" to ::namesAVoiceLikeTheMac,
             "displayTitle" to ::displayTitle,
             "parsesMingReplies" to ::parsesMingReplies,
             "speaksOnlyTranslations" to ::speaksOnlyTranslations,
+            "hangUpEndsAfterTheGrace" to ::hangUpEndsAfterTheGrace,
+            "rejoiningWithinTheGraceKeepsGoing" to ::rejoiningWithinTheGraceKeepsGoing,
+            "speechDoesNotCancelAHangUp" to ::speechDoesNotCancelAHangUp,
+            "keepGoingForgetsTheHangUp" to ::keepGoingForgetsTheHangUp,
+            "silencePromptsThenEnds" to ::silencePromptsThenEnds,
+            "wordsCancelTheSilencePrompt" to ::wordsCancelTheSilencePrompt,
+            "silenceEndModeEndsAtOnceAndOffNever" to ::silenceEndModeEndsAtOnceAndOffNever,
+            "silenceDoesNotCountDuringACall" to ::silenceDoesNotCountDuringACall,
+            "nothingSaidStopsQuietlyAfterTheSilence" to ::nothingSaidStopsQuietlyAfterTheSilence,
+            "nothingSaidKeepsListening" to ::nothingSaidKeepsListening,
+            "endsAtTheGivenTime" to ::endsAtTheGivenTime,
             "holdToSayAndEchoGate" to ::holdToSayAndEchoGate,
             "normalizesLanguages" to ::normalizesLanguages,
             "cleansTranslations" to ::cleansTranslations,
             "joinsCutSentences" to ::joinsCutSentences,
             "segmentsOnPauses" to ::segmentsOnPauses,
             "cutsLongSpeechAtItsQuietestMoment" to ::cutsLongSpeech,
-            "cutsTheFirstStretchEarly" to ::cutsTheFirstStretchEarly,
             "ignoresClicks" to ::ignoresClicks,
             "wavRoundTrip" to ::wavRoundTrip,
             "parsesNotes" to ::parsesNotes,
@@ -152,6 +169,75 @@ object Tests {
         equal(MAC, Json.write(s.toJson()), "written back byte for byte")
     }
 
+    /// A Mac record of an imported file heard partly in the room: Android writes it back whole.
+    fun keepsTheMacsImportAndRoomFields() {
+        val mac = MAC.replace("  \"id\" : \"20261102-101639\",\n", "  \"id\" : \"20261102-101639\",\n  \"importing\" : true,\n")
+            .replace("  \"startedAt\"", "  \"room\" : true,\n  \"sourceFile\" : \"周会.m4a\",\n  \"sourcePath\" : \"\\/Users\\/me\\/周会.m4a\",\n  \"startedAt\"")
+        check(mac.contains("\"room\"") && mac.contains("\"importing\""), "test record has the fields")
+        val s = Session.read(mac)!!
+        equal("周会.m4a", s.sourceFile, "source file")
+        equal("/Users/me/周会.m4a", s.sourcePath, "source path")
+        equal(true, s.importing, "importing"); equal(true, s.room, "room")
+        equal(mac, Json.write(s.toJson()), "written back byte for byte")
+        val untitled = Session.read(mac.replace("\"title\" : \"标题\",\n", ""))!!
+        equal("周会", SessionStore.displayTitle(untitled), "an imported file is known by its name until the notes name it")
+    }
+
+    fun renamesLikeTheMac() {
+        val store = SessionStore(loadNow = false)
+        val s = store.begin(Instant.parse("2026-03-01T01:00:00Z"))
+        store.append(s.id, TranscriptLine(id = "h1-1", src = "hi", srcLang = "en", dstLang = "zh-CN"))
+        store.setNotes(s.id, MeetingNotes(title = "路线评审", summary = "x"))
+        val auto = SessionStore.displayTitle(s)
+        store.rename(s.id, auto)
+        check(s.renamed != true, "saving the title already shown is no rename")
+        store.rename(s.id, "  我的会 ")
+        equal("我的会", s.title, "trimmed"); equal(true, s.renamed, "renamed")
+        store.rename(s.id, "")
+        equal(false, s.renamed, "emptied goes back to the automatic title")
+        equal(auto, SessionStore.displayTitle(s), "the notes' name again")
+        check(s.title.startsWith("会议 "), "the stored default title")
+        store.end(s.id)
+    }
+
+    fun theLiveMeetingCantBeDeleted() {
+        val store = SessionStore(loadNow = false)
+        val s = store.begin(Instant.parse("2026-03-02T01:00:00Z"))
+        store.append(s.id, TranscriptLine(id = "h1-1", src = "hi", srcLang = "en", dstLang = "zh-CN"))
+        equal(s.id, store.liveId, "live")
+        store.delete(s.id)
+        check(store.get(s.id) != null, "kept while listening")
+        store.end(s.id)
+        equal(null, store.liveId, "not live once ended")
+        store.delete(s.id)
+        check(store.get(s.id) == null && !File(Paths.sessions, s.id).exists(), "deleted once ended")
+        val empty = store.begin(Instant.parse("2026-03-02T02:00:00Z"))
+        store.end(empty.id)
+        check(store.get(empty.id) == null, "an empty live meeting is still dropped when it ends")
+    }
+
+    /// The Mac's LanguagesTests for followSystemTarget / myLanguage.
+    fun followSystemLikeTheMac() {
+        equal("zh-CN", Languages.myLanguage(listOf("en-US", "zh-Hans-CN")), "Chinese when the list has it")
+        equal("ja", Languages.myLanguage(listOf("ja-JP", "en-US")), "else the first")
+        equal("zh-CN", Languages.fromSystem("zh-Hans-HK"), "the script decides")
+        equal("zh-TW", Languages.fromSystem("zh-HK"), "a region without a script")
+        val zhEn = listOf("zh-Hans-CN", "en-US")
+        equal("zh-CN", Languages.followSystemTarget("en", zhEn), "English into my language")
+        equal("en", Languages.followSystemTarget("zh-CN", zhEn), "my language into the next system one")
+        equal("en", Languages.followSystemTarget("zh-CN", listOf("zh-Hans-CN")), "only Chinese: English")
+        equal("zh-CN", Languages.followSystemTarget("en", listOf("en-US")), "only English: Chinese")
+        equal("zh-CN", Languages.followSystemTarget(null, zhEn), "not known yet: my language")
+        val old = AppSettings.systemLanguages
+        try {
+            AppSettings.systemLanguages = { zhEn }
+            val follow = AppSettings()
+            equal("zh-CN", follow.targetCode, "my language"); equal("en", follow.targetFor("zh-CN"), "follows")
+            equal("zh-CN", follow.notesCode, "notes in my language")
+            equal("zh-CN", AppSettings(target = "zh-CN").targetFor("zh-CN"), "a chosen language stays")
+        } finally { AppSettings.systemLanguages = old }
+    }
+
     fun jsonEdgeCases() {
         equal("3", Json.number(3.0), "whole doubles without .0")
         equal("0.0001", Json.number(0.0001), "small doubles without an exponent")
@@ -180,7 +266,49 @@ object Tests {
         check(SessionStore().get(s.id) != null, "loaded again")
         check(s.title.startsWith("会议 "), "default title is the Mac's Chinese form")
         val md = SessionStore.markdown(store.get(s.id)!!)
-        check(md.contains("## 文字记录") && md.contains("hi"), "markdown export")
+        check(md.contains("**[00:00] 对方**  \nhi\n"), "markdown export")
+    }
+
+    /// Markdown, SRT and Word as the Mac writes them; speaker numbers only once two voices
+    /// have said enough, and a name the user gives shows in them.
+    fun exportsLikeTheMac() {
+        val them = (1..5).flatMap { i ->
+            listOf(TranscriptLine(id = "a$i", t = i * 10.0, speaker = "them", src = "we should ship it now", dst = "我们现在就该发布", voice = 1),
+                   TranscriptLine(id = "b$i", t = i * 10.0 + 5, speaker = "them", src = "not before the freeze", dst = "封版前不行", voice = 2))
+        }
+        val s = Session(id = "20260103-040506", title = "会议 1月3日 04:05", startedAt = Instant.parse("2026-01-03T04:05:06Z"),
+                        lines = (them + TranscriptLine(id = "m1", t = 61.0, speaker = "me", src = "好的", dst = "OK")).toMutableList())
+        s.endedAt = Instant.parse("2026-01-03T04:07:06Z")
+        val numbers = SpeakerLabels.numbers(s.lines)
+        equal(1, numbers["a1"], "first voice to say five lines is 1")
+        equal(2, numbers["b5"], "second is 2")
+        equal(emptyMap<String, Int>(), SpeakerLabels.numbers(s.lines.filter { it.voice != 2 }), "one voice stays 对方")
+        s.voiceNames = mapOf("2" to "Ken")
+        val md = TranscriptExport.markdown(s)
+        check(md.contains("**[00:10] 说话人 1**  \nwe should ship it now\n> 我们现在就该发布\n"), "markdown speaker number")
+        check(md.contains("**[00:15] Ken**"), "markdown speaker name")
+        check(md.contains("**[01:01] 你**  \n好的\n> OK\n"), "markdown me")
+        val srt = TranscriptExport.srt(s)
+        check(srt.startsWith("1\n00:00:10,000 --> 00:00:15,000\nwe should ship it now\n我们现在就该发布\n\n2\n"), "srt cue")
+        check(srt.contains("11\n00:01:01,000 --> 00:01:05,000\n好的\nOK\n"), "srt last cue ends 4 s on")
+        val docx = TranscriptExport.docx(s)
+        val names = java.util.zip.ZipInputStream(docx.inputStream()).use { z -> generateSequence { z.nextEntry?.name }.toList() }
+        equal(listOf("[Content_Types].xml", "_rels/.rels", "word/document.xml"), names, "docx parts")
+        val doc = java.util.zip.ZipInputStream(docx.inputStream()).use { z -> while (z.nextEntry?.name != "word/document.xml") {}; z.readBytes().toString(Charsets.UTF_8) }
+        check(doc.contains(">[00:15] Ken<") && doc.contains(">我们现在就该发布<"), "docx text")
+        SpeakerLabels.voices = false
+        check(TranscriptExport.markdown(s).contains("**[00:15] 对方**"), "说话人识别 off: no numbers")
+        SpeakerLabels.voices = true
+    }
+
+    fun namesAVoiceLikeTheMac() {
+        val store = SessionStore()
+        val s = store.begin(Instant.parse("2026-01-04T02:00:00Z"))
+        store.append(s.id, TranscriptLine(id = "h1-1", src = "hi there everyone", voice = 3))
+        store.setVoiceName(s.id, 3, " Maya ")
+        equal(mapOf("3" to "Maya"), store.get(s.id)!!.voiceNames, "trimmed, by voice id")
+        store.setVoiceName(s.id, 3, null)
+        equal(emptyMap<String, String>(), store.get(s.id)!!.voiceNames, "null drops it")
     }
 
     fun closesInterruptedMeetings() {
@@ -278,13 +406,6 @@ object Tests {
         check(list[1].seconds in 6.9..7.4, "cut inside the dip, got ${list[1].seconds}")
         check(list.all { it.seconds <= 8.0 }, "no segment over 8 s")
         check(abs(list[2].start - (list[1].start + list[1].seconds)) < 0.001, "the rest carries on without a gap")
-    }
-
-    fun cutsTheFirstStretchEarly() {
-        // A meeting's first stretch is cut by 4 s (at its quietest moment), so a line shows soon.
-        val list = cut(tone(3.0), tone(0.3, 0.004), tone(4.0), silence(1.0))
-        equal(2, list.size, "split in two")
-        check(list[0].seconds in 2.9..3.5, "cut inside the dip, got ${list[0].seconds}")
     }
 
     fun ignoresClicks() {
@@ -552,5 +673,134 @@ object Tests {
             equal("m1", s.lines[1].id, "Mac-style id")
             check(s.lines[1].t >= 2.0, "my line's time is when I pressed")
         } finally { LingClient.spacing = old }
+    }
+
+    fun anUntranslatedSentenceIsNeitherSentNorRecorded() {
+        // Ming hears me but returns no translation, and Ling and Google both fail.
+        val fake = Fake { body ->
+            if (body.contains("Ming-3.0-audio-flash")) reply("LANG: zh-CN\nORIGINAL: 你好。")
+            else Transport.Response(500, "")
+        }
+        val old = LingClient.spacing
+        LingClient.spacing = 0.05
+        try {
+            val ling = client(fake)
+            val store = SessionStore(loadNow = false)
+            val engine = ListenEngine(ling, Translator(ling, fake), store, NotesEngine(ling, store), AppSettings(target = "zh-CN"))
+            var spoken: String? = null
+            engine.onSaid = { text, _ -> spoken = text }
+            val src = ManualSource()
+            engine.start(src, "mic")
+            engine.hold(); src.push(tone(1.2)); engine.release(); src.push(silence(0.3))
+            val until = System.currentTimeMillis() + 4000
+            while (engine.sayProblem == null && System.currentTimeMillis() < until) Thread.sleep(20)
+            equal("翻译失败，这句话未发送", engine.sayProblem, "the Mac's message")
+            equal(null, spoken, "nothing spoken")
+            check(store.get(engine.sessionId!!)!!.lines.none { it.speaker == "me" }, "nothing recorded")
+            engine.stop()
+        } finally { LingClient.spacing = old }
+    }
+
+    // MARK: Meeting end (MeetingEndTests.swift, the same cases)
+
+    private val zoom = mapOf("us.zoom.xos" to "Zoom")
+    private fun watch(silence: MeetingEndWatch.Silence = MeetingEndWatch.Silence.Prompt, followApps: Boolean = true) =
+        MeetingEndWatch(MeetingEndWatch.Config(followApps = followApps, silence = silence), 0.0)
+    private val none = emptyMap<String, String>()
+
+    fun hangUpEndsAfterTheGrace() {
+        val w = watch()
+        equal(null, w.tick(10.0, zoom, true), "in a call")
+        equal(null, w.tick(20.0, none, true), "hung up")
+        equal(MeetingEndWatch.Pending(MeetingEndWatch.Reason.AppLeft("Zoom"), 50.0), w.pending, "grace")
+        equal(null, w.tick(49.0, none, true), "not yet")
+        equal(MeetingEndWatch.Reason.AppLeft("Zoom"), w.tick(50.0, none, true), "ends")
+    }
+
+    fun rejoiningWithinTheGraceKeepsGoing() {
+        val w = watch()
+        w.tick(10.0, zoom, true); w.tick(20.0, none, true)
+        equal(null, w.tick(30.0, zoom, true), "rejoined")
+        equal(null, w.pending, "no pending")
+    }
+
+    fun speechDoesNotCancelAHangUp() {
+        val w = watch()
+        w.tick(10.0, zoom, true); w.tick(20.0, none, true)
+        w.heard(25.0)
+        equal(MeetingEndWatch.Reason.AppLeft("Zoom"), w.tick(50.0, none, true), "still ends")
+    }
+
+    fun keepGoingForgetsTheHangUp() {
+        val w = watch()
+        w.tick(10.0, zoom, true); w.tick(20.0, none, true)
+        w.keepGoing(30.0)
+        equal(null, w.tick(100.0, none, true), "kept going")
+        equal(null, w.pending, "no pending")
+    }
+
+    fun silencePromptsThenEnds() {
+        val w = watch()
+        w.heard(5.0)
+        equal(null, w.tick(604.0, none, true), "not yet")
+        equal(null, w.pending, "no prompt yet")
+        equal(null, w.tick(605.0, none, true), "prompts")
+        equal(MeetingEndWatch.Pending(MeetingEndWatch.Reason.Silence, 665.0), w.pending, "60 s countdown")
+        equal(MeetingEndWatch.Reason.Silence, w.tick(665.0, none, true), "ends")
+    }
+
+    fun wordsCancelTheSilencePrompt() {
+        val w = watch()
+        w.tick(600.0, none, true)
+        equal(MeetingEndWatch.Reason.Silence, w.pending?.reason, "prompting")
+        w.heard(620.0)
+        equal(null, w.pending, "words cancel it")
+        equal(null, w.tick(700.0, none, true), "and the clock restarts")
+    }
+
+    fun silenceEndModeEndsAtOnceAndOffNever() {
+        equal(MeetingEndWatch.Reason.Silence, watch(MeetingEndWatch.Silence.End).tick(600.0, none, true), "ends at once")
+        val off = watch(MeetingEndWatch.Silence.Off)
+        equal(null, off.tick(99_999.0, none, true), "off never ends")
+        equal(null, off.pending, "off never prompts")
+    }
+
+    fun silenceDoesNotCountDuringACall() {
+        val w = watch()
+        equal(null, w.tick(5_000.0, zoom, true), "a muted webinar is still a meeting")
+        equal(null, w.pending, "no prompt")
+        val plain = watch(followApps = false) // Android: a call says nothing
+        equal(null, plain.tick(600.0, zoom, true), "prompts")
+        equal(MeetingEndWatch.Reason.Silence, plain.pending?.reason, "silence counts")
+    }
+
+    fun nothingSaidStopsQuietlyAfterTheSilence() {
+        val w = watch()
+        equal(null, w.tick(599.0, none, false), "not yet")
+        equal(MeetingEndWatch.Reason.NobodySpoke, w.tick(600.0, none, false), "stops")
+        equal(null, w.pending, "without a countdown")
+        equal(MeetingEndWatch.Reason.NobodySpoke, watch(MeetingEndWatch.Silence.End).tick(600.0, none, false), "end mode too")
+        equal(null, watch(MeetingEndWatch.Silence.Off).tick(5_000.0, none, false), "off keeps listening")
+        equal(null, watch().tick(5_000.0, zoom, false), "a call keeps listening")
+    }
+
+    fun nothingSaidKeepsListening() {
+        val w = watch()
+        w.tick(10.0, zoom, false)
+        equal(null, w.tick(500.0, none, false), "a call that ended before anyone spoke")
+        equal(null, w.pending, "no pending")
+        w.heard(5_001.0)
+        equal(null, w.tick(5_002.0, none, true), "is forgotten once someone does")
+        equal(null, w.pending, "no pending")
+    }
+
+    fun endsAtTheGivenTime() {
+        // An ended-by-itself meeting is stored as ending at the time given, not when it stopped.
+        val store = SessionStore()
+        val s = store.begin(java.time.Instant.parse("2026-11-04T10:00:00Z"))
+        store.append(s.id, TranscriptLine(id = "h1-1", t = 1.0, src = "Hi", srcLang = "en", dstLang = "zh-CN"))
+        store.end(s.id, java.time.Instant.parse("2026-11-04T10:00:06Z"))
+        equal(java.time.Instant.parse("2026-11-04T10:00:06Z"), store.get(s.id)?.endedAt, "endedAt")
+        equal("已经 10 分钟没人说话", Strings.LF("已经 %lld 分钟没人说话", 10), "number placeholder")
     }
 }

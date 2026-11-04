@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 ///   state | start [playback|mic] | stop | feed <wav in files/> | sample | view notes|subtitles
 ///   capture on|off | overlay show|hide | show main|live|records|settings|onboarding|record [id] | overlay collapse|expand | key reload
 ///   hear|say <wav in files/> (面对面: the other side / me holding 我说) | tts <lang> <text>
-///   import <session.json in files/> | onboarded on|off | target <code> | ui <lang> | clip <text>
+///   import <session.json in files/> | importfile <audio or video in files/> | face | onboarded on|off | target <code> | ui <lang> | clip <text>
 class DebugReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!BuildConfig.DEBUG) return
@@ -56,12 +56,19 @@ class DebugReceiver : BroadcastReceiver() {
             "stop" -> app.stopListening()
             "feed" -> app.listenToFile(File(app.filesDir, arg), play = false)
             "sample" -> app.listenToFile(null, play = true)
+            // 导入录音或视频 without the file picker: any audio or video in files/.
+            "importfile" -> app.importFile(app, android.net.Uri.fromFile(File(app.filesDir, arg)))
+            "face" -> app.startActivity(Intent(app, FaceActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             "view" -> app.setView(if (arg == "subtitles") "subtitles" else "notes")
             "capture" -> { app.settings.showInCapture = arg == "on"; app.saveSettings(); app.overlay.rebuild() }
             "overlay" -> if (arg == "collapse") { app.overlay.collapsed = true; app.overlay.rebuild() } else if (arg == "expand") { app.overlay.collapsed = false; app.overlay.rebuild() } else if (arg == "hide") { app.overlay.forced = false; app.overlay.hide() } else { app.overlay.forced = true; app.overlay.show() }
             // 面对面 without a voice: `hear` plays a WAV as the other side, `say` as me holding 我说.
             "hear" -> app.listen.inject(Wav.read(File(app.filesDir, arg).inputStream()))
             "say" -> { app.holdToSay(); app.listen.inject(Wav.read(File(app.filesDir, arg).inputStream())); app.releaseToSay() }
+            // 会议自己结束 in seconds: `endtimes 20 10` (silence, countdown); `endtimes` alone resets.
+            "endtimes" -> { val v = arg.split(Regex("\\s+")).mapNotNull { it.toDoubleOrNull() }; app.endTimesOverride = if (v.size == 2) v[0] to v[1] else null }
+            "silence" -> { app.settings.silenceEnd = arg.ifEmpty { "prompt" }; app.saveSettings() }
+            "keep" -> app.keepRecording()
             "tts" -> {
                 val (lang, text) = arg.split(Regex("\\s+"), 2).let { it[0] to it.getOrElse(1) { "Hello." } }
                 app.background.execute { Log.d("debug: tts $lang -> ${app.voice.speak(text, lang, {}, {})}") }
@@ -101,6 +108,8 @@ class DebugReceiver : BroadcastReceiver() {
                 "lines" to (id?.let { app.store.lines(it).size } ?: 0),
                 "translated" to (id?.let { app.store.lines(it).count { l -> l.dst != null } } ?: 0),
                 "pending" to listen.pending,
+                "ending" to app.ending?.let { mapOf("reason" to it.reason.toString(), "left" to app.endingLeft(it)) },
+                "autoEnded" to app.autoEnded,
                 "say" to mapOf("can" to listen.canSay, "holding" to listen.holding, "saying" to listen.saying, "muted" to listen.muted, "speaking" to app.voice.speaking, "their" to listen.theirLanguage, "problem" to listen.sayProblem),
                 "spoken" to listen.spoken,
                 "target" to listen.target,

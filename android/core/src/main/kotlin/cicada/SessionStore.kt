@@ -20,6 +20,9 @@ class SessionStore(loadNow: Boolean = true) {
     private var pendingSave: ScheduledFuture<*>? = null
     private val listeners = mutableListOf<(String) -> Unit>()
 
+    /// The meeting being listened to (begin to end): it can't be deleted, as on the Mac.
+    @Volatile var liveId: String? = null; private set
+
     /// Whether the records on disk have been read (the app reads them off the main thread).
     @Volatile var loaded = false; private set
 
@@ -67,6 +70,7 @@ class SessionStore(loadNow: Boolean = true) {
         val id = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneId.systemDefault()).format(at)
         val s = Session(id = id, title = defaultTitle(at), startedAt = at.truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
         synchronized(gate) { sessions[id] = s }
+        liveId = id
         return s
     }
 
@@ -79,19 +83,48 @@ class SessionStore(loadNow: Boolean = true) {
 
     fun setNotes(id: String, notes: MeetingNotes) = mutate(id) { it.notes = notes }
 
-    fun rename(id: String, title: String) = mutate(id) { it.title = title.trim(); it.renamed = true }
-
-    /// The meeting ended: kept if anything was said, removed otherwise.
-    fun end(id: String) {
-        val empty = synchronized(gate) {
-            val s = sessions[id] ?: return
-            s.endedAt = Instant.now()
-            s.lines.isEmpty()
-        }
-        if (empty) delete(id) else { markDirty(id); flush() }
+    /// The Mac's rename: the title already shown changes nothing (so saving the dialog untouched
+    /// doesn't freeze the automatic title), and an empty one goes back to the automatic title.
+    fun rename(id: String, title: String) = mutate(id) { s ->
+        val t = title.trim()
+        if (t == displayTitle(s)) return@mutate
+        if (t.isEmpty()) { s.title = defaultTitle(s.startedAt); s.renamed = false }
+        else { s.title = t; s.renamed = true }
     }
 
+    /// The user names a voice (the Mac's setVoiceName): null drops their name (Ling's guess shows
+    /// again); "" keeps 说话人 N.
+    fun setVoiceName(id: String, voice: Int, name: String?) = mutate(id) { s ->
+        val names = (s.voiceNames ?: emptyMap()).toMutableMap()
+        if (name == null) names.remove(voice.toString()) else names[voice.toString()] = name.trim()
+        s.voiceNames = names
+    }
+
+    /// Fields set once around a meeting (its recording, an imported file's name and progress).
+    fun update(id: String, change: (Session) -> Unit) = mutate(id, change)
+
+    /// Where a meeting's recording is (the Mac's system.m4a: what was heard).
+    fun audioFile(id: String) = File(folder(id), "system.m4a")
+
+    /// The meeting ended (`at`: when it really did, for one that ended by itself): kept if
+    /// anything was said, removed otherwise.
+    fun end(id: String, at: Instant? = null) {
+        val empty = synchronized(gate) {
+            if (liveId == id) liveId = null
+            val s = sessions[id] ?: return
+            s.endedAt = at ?: Instant.now()
+            s.lines.isEmpty()
+        }
+        if (empty) deleteNow(id) else { markDirty(id); flush() }
+    }
+
+    /// Not the meeting being listened to: its next lines would vanish with it.
     fun delete(id: String) {
+        if (id == liveId) { Log.d("store: kept $id, it is live"); return }
+        deleteNow(id)
+    }
+
+    private fun deleteNow(id: String) {
         synchronized(gate) { sessions.remove(id); dirty.remove(id) }
         try { folder(id).deleteRecursively() } catch (e: Exception) { Log.d("store: delete failed ${e.javaClass.simpleName}") }
         fire(id)
@@ -148,6 +181,8 @@ class SessionStore(loadNow: Boolean = true) {
         fun displayTitle(s: Session): String {
             if (s.renamed ?: !s.title.startsWith("会议 ")) return s.title
             val name = s.notes?.title
+            // An imported file (from the Mac) is known by its name until the notes give it one.
+            if (name.isNullOrEmpty() && s.sourceFile != null) return s.sourceFile!!.substringBeforeLast('.')
             if (name.isNullOrEmpty()) return Strings.L("会议") + " " + localDate(s.startedAt, Strings.L("M月d日 HH:mm"))
             val thisYear = s.startedAt.atZone(ZoneId.systemDefault()).year == Instant.now().atZone(ZoneId.systemDefault()).year
             return localDate(s.startedAt, Strings.L(if (thisYear) "M月d日" else "yyyy年M月d日")) + " " + name
@@ -155,39 +190,7 @@ class SessionStore(loadNow: Boolean = true) {
 
         fun stamp(at: Instant): String = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(at)
 
-        /// The record as Markdown: notes, then the bilingual transcript (the Windows export).
-        fun markdown(s: Session): String {
-            val b = StringBuilder()
-            b.append("# ${s.notes?.title ?: s.title}\n\n")
-            b.append(stamp(s.startedAt)).append("\n\n")
-            val n = s.notes
-            if (n != null && !n.isEmpty) {
-                b.append("## ${Strings.L("纪要")}\n\n${n.summary}\n\n")
-                for (t in n.topics) {
-                    b.append("### ${Languages.clock(t.start)} ${t.title}\n\n")
-                    if (t.summary.isNotEmpty()) b.append(t.summary).append("\n\n")
-                    for (p in t.points) b.append("- $p\n")
-                    b.append("\n")
-                }
-                if (n.conclusions.isNotEmpty()) {
-                    b.append("### ${Strings.L("结论")}\n\n")
-                    for (c in n.conclusions) b.append("- ${c.text}\n")
-                    b.append("\n")
-                }
-                if (n.todos.isNotEmpty()) {
-                    b.append("### ${Strings.L("待办")}\n\n")
-                    for (t in n.todos) b.append("- [ ] ${t.text}${t.owner?.let { "（$it）" } ?: ""}\n")
-                    b.append("\n")
-                }
-            }
-            b.append("## ${Strings.L("文字记录")}\n\n")
-            for (l in s.lines) {
-                val who = if (l.speaker == "me") Strings.L("你") + " · " else ""
-                b.append("**${Languages.clock(l.t)}** $who${l.src}  \n")
-                if (!l.dst.isNullOrEmpty() && l.dst != l.src) b.append(l.dst).append("\n")
-                b.append("\n")
-            }
-            return b.toString()
-        }
+        /// The record as Markdown, as the Mac writes it (TranscriptExport.markdown).
+        fun markdown(s: Session): String = TranscriptExport.markdown(s)
     }
 }
