@@ -490,7 +490,7 @@
 "请在系统设置 › 键盘里打开“听写”" = "Turn on Dictation in System Settings › Keyboard";
 "请在系统设置里允许知了使用“语音识别”" = "Allow Cicada to use Speech Recognition in System Settings";
 "本机不支持%@识别" = "This Mac can't recognize %@";
-"请在系统设置 › 键盘 › 听写里添加%@" = "Add %@ to Dictation in System Settings › Keyboard";
+"请在系统设置 › 键盘 › 听写里添加%@，下载好后可用" = "Add %@ to Dictation in System Settings › Keyboard; it works once downloaded";
 
 /* RoomMic */
 "没有可用的麦克风" = "No microphone available";

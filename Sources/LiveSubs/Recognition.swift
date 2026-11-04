@@ -140,7 +140,7 @@ enum Recognition {
     static func addToDictation(_ locale: String) -> NSError {
         let name = sourceLanguages.first { $0.locale == locale }?.name ?? locale
         return NSError(domain: "LiveSubsSpeech", code: 4,
-                       userInfo: [NSLocalizedDescriptionKey: L("请在系统设置 › 键盘 › 听写里添加\(name)")])
+                       userInfo: [NSLocalizedDescriptionKey: L("请在系统设置 › 键盘 › 听写里添加\(name)，下载好后可用")])
     }
 
     static func unsupported(_ locale: String) -> NSError {
