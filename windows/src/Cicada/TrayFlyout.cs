@@ -88,7 +88,7 @@ sealed class TrayFlyout : Window
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
             grid.ColumnDefinitions.Add(new ColumnDefinition());
-            var end = Ui.Button(L("结束"), () => { Hide(); _ = app.StopListening(); }, Ui.Kind.Pale, Icons.Stop, 44, iconFill: true);
+            var end = Ui.Button(L("结束"), () => { Hide(); app.RequestStop(); }, Ui.Kind.Pale, Icons.Stop, 44, iconFill: true);
             var show = Ui.Button(L("显示纪要"), () => { Hide(); app.ShowNotes(); }, Ui.Kind.Standard, Icons.Notes, 44);
             Grid.SetColumn(show, 2);
             grid.Children.Add(end); grid.Children.Add(show);

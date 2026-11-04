@@ -31,7 +31,10 @@ public sealed class SessionStore
             if (!File.Exists(file)) continue;
             try
             {
-                if (Json.Read<Session>(File.ReadAllText(file)) is { } s) sessions[s.Id] = s;
+                if (Json.Read<Session>(File.ReadAllText(file)) is not { } s) continue;
+                // The app quit mid-meeting: it ended just after its last line (SessionStore.swift › load).
+                s.EndedAt ??= s.Lines.Count > 0 ? s.StartedAt.AddSeconds(s.Lines[^1].T + 5) : s.StartedAt;
+                sessions[s.Id] = s;
             }
             catch (Exception e) { Log.Debug($"store: skipped {Path.GetFileName(dir)}: {e.GetType().Name}"); }
         }
@@ -96,7 +99,15 @@ public sealed class SessionStore
 
     public void SetNotes(string id, MeetingNotes notes) => Mutate(id, s => s.Notes = notes);
 
-    public void Rename(string id, string title) => Mutate(id, s => { s.Title = title.Trim(); s.Renamed = true; });
+    /// An empty title, or the one shown already, goes back to / stays on the automatic one
+    /// (SessionStore.swift › rename): saving the dialog unchanged mustn't freeze the notes' name.
+    public void Rename(string id, string title)
+    {
+        var t = title.Trim();
+        if (Get(id) is not { } current || t == DisplayTitle(current)) return;
+        if (t.Length == 0) { ResetTitle(id); return; }
+        Mutate(id, s => { s.Title = t; s.Renamed = true; });
+    }
 
     /// Back to the default title, so the name the notes give the meeting shows again.
     public void ResetTitle(string id) => Mutate(id, s => { s.Title = DefaultTitle(s.StartedAt); s.Renamed = false; });
@@ -176,10 +187,11 @@ public sealed class SessionStore
         b.AppendLine(s.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).AppendLine();
         if (s.Notes is { IsEmpty: false } n) b.AppendLine($"## {Strings.L("纪要")}").AppendLine().Append(NotesBody(n));
         b.AppendLine($"## {Strings.L("文字记录")}").AppendLine();
-        var numbers = SpeakerLabels.Numbers(s.Lines);
+        var numbers = SpeakerLabels.Voices ? SpeakerLabels.Numbers(s.Lines) : [];
+        var names = SpeakerLabels.Names(s);
         foreach (var l in s.Lines.OrderBy(x => x.T))
         {
-            var who = l.Speaker == "me" ? Strings.L("你") : numbers.TryGetValue(l.Id, out var num) ? Strings.LF("说话人 %lld", num) : null;
+            var who = l.Speaker == "me" ? Strings.L("你") : numbers.TryGetValue(l.Id, out var num) ? names.GetValueOrDefault(num) ?? Strings.LF("说话人 %lld", num) : null;
             b.AppendLine($"**{Languages.Clock(l.T)}**{(who is null ? "" : $" {who}：")} {l.Src}  ");
             if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) b.AppendLine($"{l.Dst}");
             b.AppendLine();

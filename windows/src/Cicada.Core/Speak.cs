@@ -134,13 +134,13 @@ public sealed class SpeakEngine
             State = Phase.Translating; Said = Heard = Problem = null;
             Changed?.Invoke();
             Heard? heard = null;
-            try { heard = await translator.Hear(wav, to, MyLanguage); }
+            try { heard = await translator.Hear(wav, to, MyLanguage, Priority.Speak); }
             catch (LingException e) { Log.Debug($"speak: hear failed {e.Message}"); return Fail(e.Failure is LingException.Kind.Network or LingException.Kind.Timeout ? Strings.L("连不上 Ling，没有发出去") : Strings.L("没翻译成功，没有发出去")); }
             if (heard is null) return Fail(Strings.L("没听清，没有发出去"));
             Said = heard.Original;
             var text = heard.Translation;
             // Ming didn't translate it: the text translator gets one try; failing that, silence.
-            if (text is null && heard.Lang != to) text = await translator.Translate(heard.Original, heard.Lang, to, Translator.Kind.Sentence);
+            if (text is null && heard.Lang != to) text = await translator.Translate(heard.Original, heard.Lang, to, Translator.Kind.Sentence, Priority.Speak);
             if (string.IsNullOrWhiteSpace(text)) return Fail(Strings.L("没翻译成功，没有发出去"));
             var translatedAt = DateTime.UtcNow;
             Heard = text;

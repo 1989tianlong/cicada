@@ -126,7 +126,9 @@ sealed class NotesWindow : Window
     /// The window never takes focus, so a click lands on the buttons at once.
     FrameworkElement EndingStrip()
     {
-        if (!app.Listen.Listening || app.Ending is not { } p) return new Border();
+        if (!app.Listen.Listening) return new Border();
+        if (app.ConfirmingEnd) return ConfirmEnd();
+        if (app.Ending is not { } p) return new Border();
         Detach(endingDetail);
         var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.KeepRecording, Ui.Kind.Primary, height: 32),
                              Ui.Button(L("现在结束"), () => _ = app.StopListening(), height: 32));
@@ -135,6 +137,25 @@ sealed class NotesWindow : Window
         stack.Children.Add(buttons);
         Tick();
         return new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(12), Padding = new Thickness(14), Margin = new Thickness(12, 0, 12, 8), Child = stack };
+    }
+
+    /// 结束这场会议？ (NotesWindow.swift › meetingBar): below the header, away from the 结束 button,
+    /// so a double click can't confirm it; no timeout, so it never vanishes under the pointer.
+    FrameworkElement ConfirmEnd()
+    {
+        var stack = Ui.Stack(3, Ui.Text(L("结束这场会议？"), 14, Palette.Ink, FontWeights.Bold), Ui.Text(ConfirmEndDetail(), 12, Palette.Secondary));
+        var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.CancelStop, height: 32),
+                             Ui.Button(L("结束会议"), () => _ = app.StopListening(), Ui.Kind.Primary, height: 32));
+        buttons.Margin = new Thickness(0, 10, 0, 0);
+        stack.Children.Add(buttons);
+        return new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(12), Padding = new Thickness(14), Margin = new Thickness(12, 0, 12, 8), Child = stack };
+    }
+
+    string ConfirmEndDetail()
+    {
+        var s = app.Listen.SessionId is { } id ? app.Store.Get(id) : null;
+        return LF("已记录 %@ · %lld 句。结束后停止收听，并整理一份完整版纪要。",
+                  Languages.Clock(s is null ? 0 : (DateTimeOffset.Now - s.StartedAt).TotalSeconds), s?.Lines.Count ?? 0);
     }
 
     static void Detach(FrameworkElement e) { if (e.Parent is Panel p) p.Children.Remove(e); }
@@ -153,9 +174,9 @@ sealed class NotesWindow : Window
         if (key != headerKey) { headerKey = key; header.Content = Header(); }
         Tick();
         if (Subtitles) { live.Content = SubtitleLine(); return; }
-        var ek = app.Listen.Listening && app.Ending is { } p ? p.Reason.ToString() : null;
+        var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
-        var bk = $"{app.Listen.Problem}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
+        var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited ? app.Notes.Status : null)}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
         live.Content = LiveCard();
         var count = app.Listen.SessionId is { } sid ? app.Store.Get(sid)?.Lines.Count ?? 0 : 0;
@@ -195,7 +216,7 @@ sealed class NotesWindow : Window
         {
             var buttons = new StackPanel { Orientation = Orientation.Horizontal };
             buttons.Children.Add(Ui.IconButton(Icons.Notes, L("换成纪要"), () => app.SetView("notes"), Brushes.White, 40, 18, onDark: true));
-            if (listen.Listening) buttons.Children.Add(Ui.IconButton(Icons.Stop, L("结束"), () => _ = app.StopListening(), new SolidColorBrush(Color.FromRgb(0xFF, 0x9B, 0x78)), 40, 16, fill: true, onDark: true));
+            if (listen.Listening) buttons.Children.Add(Ui.IconButton(Icons.Stop, L("结束"), app.RequestStop, new SolidColorBrush(Color.FromRgb(0xFF, 0x9B, 0x78)), 40, 16, fill: true, onDark: true));
             buttons.Children.Add(Ui.IconButton(Icons.Close, L("收起（继续听）"), Collapse, Brushes.White, 40, 14, onDark: true));
             return buttons;
         }
@@ -218,7 +239,7 @@ sealed class NotesWindow : Window
         var right = new StackPanel { Orientation = Orientation.Horizontal };
         right.Children.Add(Ui.IconButton(Icons.Subtitles, L("换成字幕条"), () => app.SetView("subtitles"), Palette.Body, 40, 18));
         right.Children.Add(listen.Listening
-            ? Gap(Ui.Button(L("结束"), () => _ = app.StopListening(), Ui.Kind.Pale, Icons.Stop, 36, iconFill: true), 2)
+            ? Gap(Ui.Button(L("结束"), app.RequestStop, Ui.Kind.Pale, Icons.Stop, 36, iconFill: true), 2)
             : Gap(Ui.Button(L("开始听"), () => _ = app.ToggleListening(), Ui.Kind.Accent, Icons.Wave, 36), 2));
         right.Children.Add(Gap(Ui.IconButton(Icons.Close, L("收起（继续听）"), Collapse, Palette.Body, 40, 14), 2));
         var row = Ui.Spread(left, right);
@@ -245,12 +266,31 @@ sealed class NotesWindow : Window
                 Add(Ui.InfoBar(Ui.Severity.Error, L("Ling key 无效"), L("去设置里换一个 key。"), Ui.Button(L("打开设置"), app.ShowSettings, height: 32)));
                 break;
         }
+        // The notes' own trouble (NotesWindow.swift › banner): the last round didn't land.
+        if (app.Listen.Listening)
+            switch (app.Notes.Status)
+            {
+                case NotesEngine.State.RateLimited:
+                    Add(Ui.InfoBar(Ui.Severity.Warning, null, LF("请求过于频繁，稍后会自动重试。纪要停留在 %@。", NotesCoveredUntil())));
+                    break;
+                case NotesEngine.State.Failed:
+                    Add(Ui.InfoBar(Ui.Severity.Warning, null, L("这轮没整理好，下一轮会自动重试。")));
+                    break;
+            }
         if (app.Settings.ShowInCapture)
             Add(Ui.InfoBar(Ui.Severity.Warning, null, L("共享屏幕时，对方能看到这个窗口。"),
                 Ui.LinkText(L("改回只有我看得到"), () => app.SetShowInCapture(false))));
         else if (!hiddenFromCapture)
             Add(Ui.InfoBar(Ui.Severity.Warning, null, L("Windows 没能把这个窗口从屏幕共享里藏起来，对方可能看得到。")));
         return stack;
+    }
+
+    /// When the last line the notes cover was said, as mm:ss.
+    string NotesCoveredUntil()
+    {
+        var lines = app.Listen.SessionId is { } id ? app.Store.Get(id)?.Lines : null;
+        var covered = app.Notes.Notes.Covered;
+        return Languages.Clock(lines is not null && covered > 0 && covered <= lines.Count ? lines[covered - 1].T : 0);
     }
 
     /// The newest line: the original small, its translation large, then "在听下一句" while Ming works.
@@ -310,7 +350,7 @@ sealed class NotesWindow : Window
                 NotesEngine.State.Updating => (L("正在整理纪要…"), ""),
                 NotesEngine.State.NoKey => (L("生成纪要需要 API key"), ""),
                 NotesEngine.State.InvalidKey => (L("这个 key 无效，请检查是否复制完整，或重新创建一个"), ""),
-                _ => app.Listen.Listening ? (L("纪要会在开会几分钟后出现"), L("之后每 45 秒更新一次")) : ("", ""),
+                _ => app.Listen.Listening ? (L("纪要会在会议进行中自动生成"), "") : ("", ""),
             };
             var empty = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 48, 0, 0) };
             if (title.Length > 0) { var t = Ui.Text(title, 14, Palette.Body, FontWeights.SemiBold); t.TextAlignment = TextAlignment.Center; empty.Children.Add(t); }
@@ -442,6 +482,20 @@ sealed class NotesWindow : Window
             left.Children.Add(clockText);
         }
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 12, 0) };
+        // Asked to end: the one time the bar carries buttons, as the panel's card does.
+        if (listen.Listening && app.ConfirmingEnd)
+        {
+            text.Children.Add(Ui.Text(L("结束这场会议？"), 15, Brushes.White, FontWeights.Bold));
+            text.Children.Add(Gap(Ui.Text(ConfirmEndDetail(), 12, Palette.NightText), 2, top: true));
+            // On the dark bar the ink button would vanish: 结束会议 takes the 结束 button's pale look.
+            var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.CancelStop, height: 32), Ui.Button(L("结束会议"), () => _ = app.StopListening(), Ui.Kind.Pale, Icons.Stop, 32, iconFill: true));
+            buttons.Margin = new Thickness(0, 8, 0, 0);
+            text.Children.Add(buttons);
+            var bar = new DockPanel();
+            DockPanel.SetDock(left, Dock.Left);
+            bar.Children.Add(left); bar.Children.Add(text);
+            return bar;
+        }
         // The subtitle bar has no room for buttons: it says what will happen (the Mac's notice).
         if (listen.Listening && app.Ending is not null)
         {

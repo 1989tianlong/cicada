@@ -193,7 +193,16 @@ sealed class MainWindow : Window
         var top = new StackPanel { Margin = new Thickness(32, 24, 32, 0) };
 
         var title = Ui.Text(SessionStore.DisplayTitle(s), 26, Palette.Ink, FontWeights.Bold);
-        top.Children.Add(Ui.Row(6, title, Ui.IconButton(Icons.Pencil, L("重命名"), () => Rename(s), Palette.Secondary, 32, 16)));
+        var titleRow = Ui.Row(6, title, Ui.IconButton(Icons.Pencil, L("重命名"), () => Rename(s), Palette.Secondary, 32, 16));
+        // As the Mac's context menu: only when the notes have a name to go back to.
+        if ((s.Renamed ?? !s.Title.StartsWith("会议 ")) && !string.IsNullOrEmpty(s.Notes?.Title))
+        {
+            var reset = Ui.LinkText(L("恢复自动标题"), () => app.Store.ResetTitle(s.Id));
+            reset.VerticalAlignment = VerticalAlignment.Center;
+            reset.Margin = new Thickness(6, 0, 0, 0);
+            titleRow.Children.Add(reset);
+        }
+        top.Children.Add(titleRow);
         var spoken = s.Lines.Select(l => l.SrcLang).FirstOrDefault(x => x is not null);
         var into = s.Lines.Select(l => l.DstLang).FirstOrDefault(x => x is not null);
         var meta = new List<string> { Records.Meta(s, app), LF("%@ 句", s.Lines.Count) };
@@ -243,7 +252,7 @@ sealed class MainWindow : Window
     FrameworkElement Notes(Session s, bool live)
     {
         if (s.Notes is not { IsEmpty: false } n)
-            return Empty(live ? L("纪要会在开会几分钟后出现") : L("生成纪要"), "");
+            return Empty(live ? L("纪要会在会议进行中自动生成") : L("生成纪要"), "");
         var article = new StackPanel { MaxWidth = 680, HorizontalAlignment = HorizontalAlignment.Left };
         if (n.Summary.Length > 0) article.Children.Add(Ui.Text(n.Summary, 15, Palette.Body));
         foreach (var t in n.Topics)

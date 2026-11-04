@@ -35,13 +35,24 @@ public sealed class Session
     [JsonPropertyName("endedAt")] public DateTimeOffset? EndedAt { get; set; }
     [JsonPropertyName("hasAudio")] public bool HasAudio { get; set; }
     [JsonPropertyName("id")] public string Id { get; set; } = "";
+    /// Mac: an imported file still being transcribed. Kept so a Mac record round-trips.
+    [JsonPropertyName("importing")] public bool? Importing { get; set; }
     [JsonPropertyName("lines")] public List<TranscriptLine> Lines { get; set; } = [];
     [JsonPropertyName("notes")] public MeetingNotes? Notes { get; set; }
     [JsonPropertyName("renamed")] public bool? Renamed { get; set; }
+    /// Mac: heard through the microphone (会议室模式). Windows doesn't record rooms yet.
+    [JsonPropertyName("room")] public bool? Room { get; set; }
+    /// Mac: the imported file's name, and where its audio is; Windows doesn't import yet.
+    [JsonPropertyName("sourceFile")] public string? SourceFile { get; set; }
+    [JsonPropertyName("sourcePath")] public string? SourcePath { get; set; }
     [JsonPropertyName("startedAt")] public DateTimeOffset StartedAt { get; set; }
     [JsonPropertyName("title")] public string Title { get; set; } = "";
     [JsonPropertyName("voiceGuesses")] public Dictionary<string, VoiceGuess>? VoiceGuesses { get; set; }
     [JsonPropertyName("voiceNames")] public Dictionary<string, string>? VoiceNames { get; set; }
+
+    /// Keys a newer Mac (or port) added that this version doesn't know: written back as read, so
+    /// opening a record here never loses them. They go after the known keys rather than in order.
+    [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement>? Unknown { get; set; }
 
     [JsonIgnore] public TimeSpan Duration => (EndedAt ?? DateTimeOffset.Now) - StartedAt;
 }

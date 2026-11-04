@@ -155,6 +155,25 @@ public static class SpeakerLabels
 {
     public const int ShownAfter = 5;
 
+    /// 说话人识别 is on (AppSettings.SpeakerVoices; TranscriptExport.voices on the Mac): when off,
+    /// notes and exports name no speakers. Kept in step by the app.
+    public static bool Voices { get; set; } = true;
+
+    /// Speaker number → the name the user gave it, else Ling's guess (SpeakerLabels.names); an
+    /// empty name the user set clears the guess.
+    public static Dictionary<int, string> Names(Session s)
+    {
+        var outp = new Dictionary<int, string>();
+        if (s.VoiceNames is null && s.VoiceGuesses is null) return outp;
+        foreach (var (v, n) in VoiceNumbers(s.Lines))
+        {
+            var key = v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (s.VoiceNames?.TryGetValue(key, out var mine) == true) { if (mine.Length > 0) outp[n] = mine; }
+            else if (s.VoiceGuesses?.TryGetValue(key, out var g) == true) outp[n] = g.Name;
+        }
+        return outp;
+    }
+
     /// Long enough to say whose voice it is: three words, or four characters of CJK.
     public static bool Substantive(string text)
     {

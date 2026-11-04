@@ -65,6 +65,8 @@ sealed class Controller
     MeetingEndWatch? endWatch;
     public MeetingEndWatch.Pending? Ending { get; private set; }
     public bool AutoEnded { get; private set; }
+    /// 结束这场会议？ is showing in the notes window or subtitle bar (AppModel.requestStop).
+    public bool ConfirmingEnd { get; private set; }
     /// Dev: meeting apps pretending to be in a call, and (silence, countdown, grace) in seconds.
     public Dictionary<string, string>? FakeCalls;
     public (double Silence, double Countdown, double Grace)? EndTimes;
@@ -76,6 +78,7 @@ sealed class Controller
         var ui = Settings.UiLanguage == "system" ? null : Settings.UiLanguage;
         Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), ui);
         Ling = new LingClient(Key) { Model = Settings.Model };
+        SpeakerLabels.Voices = Settings.SpeakerVoices;
         Notes = new NotesEngine(Ling, Store);
         Translator = new Translator(Ling);
         Listen = new ListenEngine(Ling, Translator, Store, Notes, Settings);
@@ -193,7 +196,7 @@ sealed class Controller
             return item;
         }
         menu.Items.Add(Listen.Listening
-            ? Item(L("结束"), Icons.Stop, () => _ = StopListening(), Hotkey.Label, fill: true)
+            ? Item(L("结束"), Icons.Stop, RequestStop, Hotkey.Label, fill: true)
             : Item(L("开始听"), Icons.Wave, () => _ = ToggleListening(), Hotkey.Label));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item(L("显示纪要"), Icons.Notes, ShowNotes));
@@ -222,8 +225,27 @@ sealed class Controller
 
     public async Task ToggleListening()
     {
-        if (Listen.Listening) await StopListening();
+        if (Listen.Listening) RequestStop();
         else StartListening(new SystemAudioTap());
+        await Task.CompletedTask;
+    }
+
+    /// The user's 结束 (buttons, menu, hotkey): a meeting with lines ends only after asking, in the
+    /// notes window or subtitle bar, which never take focus, so no modal dialog fights them for it.
+    /// An empty one just stops.
+    public void RequestStop()
+    {
+        if (!Listen.Listening) return;
+        if (Listen.SessionId is not { } id || Store.Get(id) is not { Lines.Count: > 0 }) { _ = StopListening(); return; }
+        ConfirmingEnd = true;
+        ShowNotes();
+        Changed();
+    }
+
+    public void CancelStop()
+    {
+        ConfirmingEnd = false;
+        Changed();
     }
 
     public void StartListening(IAudioSource source)
@@ -248,6 +270,7 @@ sealed class Controller
         var id = Listen.SessionId;
         endWatch = null;
         Ending = null;
+        ConfirmingEnd = false;
         AutoEnded = auto;
         await Listen.Stop(endedAt);
         Changed();
@@ -481,7 +504,11 @@ sealed class Controller
     }
 
     public bool HotkeyRegistered => hotkey?.Registered ?? false;
-    public void SettingsChanged() => Changed();
+    public void SettingsChanged()
+    {
+        SpeakerLabels.Voices = Settings.SpeakerVoices;
+        Changed();
+    }
 
     public async Task Quit()
     {
@@ -512,6 +539,7 @@ sealed class Controller
         ["sessions"] = Store.All().Count,
         ["hotkey"] = HotkeyRegistered,
         ["speakerVoices"] = Settings.SpeakerVoices,
+        ["confirmingEnd"] = ConfirmingEnd,
         ["voices"] = Listen.SessionId is { } vid && Store.Get(vid) is { } vs ? string.Join(",", vs.Lines.Where(l => l.Speaker == "them").Select(l => SpeakerLabels.Numbers(vs.Lines).TryGetValue(l.Id, out var n) ? n.ToString() : l.Voice is { } v ? $"v{v}" : "-")) : "",
         ["speak"] = Settings.Speak,
         ["speakState"] = Speak.State.ToString(),
@@ -571,6 +599,8 @@ static class DebugServer
         {
             case "start": app.StartListening(new SystemAudioTap()); break;
             case "stop": _ = app.StopListening(); break;
+            case "end": app.RequestStop(); break;  // the user's 结束: asks first when anything was said
+            case "notesproblem": app.Notes.SimulateStatus(arg); break;
             case "feed": app.StartListening(new FileAudioSource(arg)); break;
             case "sample": _ = app.PlaySample(); break;
             case "view": app.SetView(arg == "subtitles" ? "subtitles" : "notes"); break;

@@ -25,6 +25,8 @@ public sealed class NotesEngine
 
     public MeetingNotes Notes { get; private set; } = new();
     public State Status { get; private set; } = State.Idle;
+    /// cicadactl notesproblem failed|ratelimited|idle: shows what a failed round looks like.
+    public void SimulateStatus(string state) { Status = Enum.TryParse<State>(state, true, out var s) ? s : State.Idle; Changed?.Invoke(); }
     /// While a meeting runs and has notes: when the next live update is due.
     public DateTime? NextUpdate { get { lock (gate) return sessionId is null || Notes.IsEmpty || inFlight ? null : lastAttempt.AddSeconds(Interval); } }
     /// The session the notes belong to (stays set after the meeting ends).
@@ -113,7 +115,7 @@ public sealed class NotesEngine
             // (The script check can't tell Chinese from Japanese, so extending them would keep the old.)
             if (!final && writtenIn is not null && writtenIn != lang) { baseNotes = new MeetingNotes(); Log.Debug($"notes: language now {lang}, rewriting"); }
             int from = final ? 0 : Math.Min(baseNotes.Covered, lines.Count);
-            var prompt = Prompt(baseNotes, lines, from, lang, final);
+            var prompt = Prompt(baseNotes, lines, from, lang, final, SpeakerLabels.Voices ? SpeakerLabels.Names(session) : null);
             MeetingNotes? next = null;
             for (int attempt = 1; attempt <= (final ? 2 : 1); attempt++)
             {
@@ -184,14 +186,16 @@ public sealed class NotesEngine
 
     // MARK: Prompt (Notes.swift › prompt, word for word)
 
-    public static string Prompt(MeetingNotes notes, IReadOnlyList<TranscriptLine> lines, int from, string language, bool final)
+    public static string Prompt(MeetingNotes notes, IReadOnlyList<TranscriptLine> lines, int from, string language, bool final,
+                                IReadOnlyDictionary<int, string>? names = null)
     {
-        var numbers = SpeakerLabels.Numbers(lines);
+        var numbers = SpeakerLabels.Voices ? SpeakerLabels.Numbers(lines) : [];
         string Line(int i)
         {
             var l = lines[i];
-            // As Notes.swift: 说话人N once voices are told apart, 未识别 for a voice not on show.
-            var who = l.Speaker == "me" ? "你" : numbers.TryGetValue(l.Id, out var n) ? $"说话人{n}" : numbers.Count == 0 ? "对方" : "未识别";
+            // As Notes.swift: a named voice as its name, else 说话人N once voices are told apart,
+            // 未识别 for a voice not on show.
+            var who = l.Speaker == "me" ? "你" : numbers.TryGetValue(l.Id, out var n) ? names?.GetValueOrDefault(n) ?? $"说话人{n}" : numbers.Count == 0 ? "对方" : "未识别";
             return $"[L{i + 1} {Languages.Clock(l.T)} {who}] {l.Src}";
         }
         var current = notes.IsEmpty ? "{}" : CompactJson(notes);

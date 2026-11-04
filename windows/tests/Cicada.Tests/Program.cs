@@ -254,6 +254,49 @@ static class Tests
         Check(SessionStore.Markdown(s).Split('\n')[0].TrimEnd() == "# 我的会", "the export is headed by the shown title");
     }
 
+    public static void KeepsTheMacsImportAndRoomFields()
+    {
+        // A Mac record of an imported room recording, plus a key no version knows yet.
+        const string mac = """
+        {"endedAt":"2026-01-01T02:10:00Z","futureKey":{"a":[1,2]},"hasAudio":true,"id":"20260101-100000","importing":false,"lines":[],"room":true,"sourceFile":"周会.m4a","sourcePath":"/Users/x/周会.m4a","startedAt":"2026-01-01T02:00:00Z","title":"会议 1月1日 10:00"}
+        """;
+        var s = Json.Read<Session>(mac)!;
+        Equal(true, s.Room, "room");
+        Equal("周会.m4a", s.SourceFile, "sourceFile");
+        Check(JsonNode.DeepEquals(JsonNode.Parse(mac), JsonNode.Parse(Json.Write(s))), "written back with every key: " + Json.Write(s));
+    }
+
+    public static void RenameLikeTheMac()
+    {
+        var store = new SessionStore();
+        var id = store.Begin(DateTimeOffset.Parse("2026-01-02T02:00:00Z")).Id;
+        store.Append(id, new TranscriptLine { Id = "h1-1", Src = "hi", SrcLang = "en", DstLang = "zh-CN" });
+        store.SetNotes(id, new MeetingNotes { Title = "路线评审", Summary = "x" });
+        var shown = SessionStore.DisplayTitle(store.Get(id)!);
+        store.Rename(id, " " + shown + " ");
+        Equal(null, store.Get(id)!.Renamed, "saving the shown title unchanged isn't a rename");
+        store.SetNotes(id, new MeetingNotes { Title = "预算", Summary = "y" });
+        Check(SessionStore.DisplayTitle(store.Get(id)!).EndsWith(" 预算"), "so a later name from the notes still shows");
+        store.Rename(id, "我的会");
+        Equal(true, store.Get(id)!.Renamed, "renamed");
+        store.Rename(id, "  ");
+        Equal(false, store.Get(id)!.Renamed, "an empty title goes back to the automatic one");
+        Check(SessionStore.DisplayTitle(store.Get(id)!).EndsWith(" 预算"), "the notes' name again");
+        store.Delete(id);
+    }
+
+    public static void MeetingCutShortEndsAfterItsLastLine()
+    {
+        var start = DateTimeOffset.Parse("2026-01-03T02:00:00Z");
+        var dir = Path.Combine(Paths.Sessions, "20260103-crash");
+        Directory.CreateDirectory(dir);
+        var s = new Session { Id = "20260103-crash", Title = "会议", StartedAt = start, Lines = [new() { Id = "h1-1", Src = "a", T = 3 }, new() { Id = "h1-2", Src = "b", T = 70 }] };
+        File.WriteAllText(Path.Combine(dir, "session.json"), Json.Write(s));
+        var store = new SessionStore();
+        Equal(start.AddSeconds(75), store.Get(s.Id)!.EndedAt, "last line + 5 s");
+        store.Delete(s.Id);
+    }
+
     // MARK: Hearing
 
     public static void ParsesMingReplies()
@@ -409,6 +452,27 @@ static class Tests
         NotesEngine.CarryTimes(old, next);
         Equal(3.0, next.Topics[0].PointTime(0), "a point keeps when it was first heard");
         Equal(2.0, next.Todos[0].T, "to-dos too");
+    }
+
+    public static void NotesAndExportNameSpeakersLikeTheMac()
+    {
+        // Two voices, five substantive lines each: 说话人 1 (voice 7) and 说话人 2 (voice 9).
+        var lines = Enumerable.Range(0, 10).Select(i => new TranscriptLine { Id = $"h{i}-1", T = i * 10, Src = $"we will ship line {i}", Voice = i % 2 == 0 ? 7 : 9, SrcLang = "en", DstLang = "zh-CN" }).ToList();
+        var s = new Session { Title = "会议 1月1日 10:00", StartedAt = DateTimeOffset.Now, Lines = lines,
+            VoiceNames = new() { ["7"] = "George" }, VoiceGuesses = new() { ["9"] = new VoiceGuess { Name = "Anna" } } };
+        var names = SpeakerLabels.Names(s);
+        Equal("George,Anna", $"{names[1]},{names[2]}", "the user's name, else Ling's guess");
+        var p = NotesEngine.Prompt(new MeetingNotes(), lines, 0, "English", final: true, names);
+        Check(p.Contains("[L1 00:00 George]") && p.Contains("[L2 00:10 Anna]"), "named in the notes prompt");
+        Check(SessionStore.Markdown(s).Contains("George："), "and in the export");
+        try
+        {
+            SpeakerLabels.Voices = false;
+            Check(NotesEngine.Prompt(new MeetingNotes(), lines, 0, "English", final: true).Contains("[L1 00:00 对方]"), "说话人识别 off: no speakers in the notes");
+            var md = SessionStore.Markdown(s);
+            Check(!md.Contains("George") && !md.Contains("说话人"), "nor in the export");
+        }
+        finally { SpeakerLabels.Voices = true; }
     }
 
     public static void NotesPromptIsTheMacs()
@@ -704,6 +768,28 @@ static class Tests
             var e2 = Speaker(Client(echo), voice2, new AppSettings { SpeakFrom = "zh-CN" });
             Check(await e2.Speak(Wav.Bytes(Tone(1)), quiet) is null, "no translation, nothing said");
             Check(quiet.Chunks.Count == 0 && voice2.Calls == 0 && e2.State == SpeakEngine.Phase.Failed, "and no voice at all");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task WhatISayGoesAheadOfTheMeeting()
+    {
+        var old = LingClient.Spacing;
+        LingClient.Spacing = 0.2;
+        try
+        {
+            var fake = new Fake(body => body.Contains(LingClient.AudioModel)
+                ? Reply("LANG: zh-CN\nORIGINAL: 好的\nTRANSLATION: OK")
+                : body.Contains(LingClient.VoiceModel) ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("data:{\"type\":\"speech.audio.done\"}\n\n") } : Reply("ok"));
+            var ling = Client(fake);
+            var first = ling.Chat("meeting 1", "i", Priority.Translate);
+            await Task.Delay(20);
+            var queued = ling.Chat("meeting 2", "i", Priority.Translate);
+            await Task.Delay(20);
+            var said = Speaker(ling, new NoVoice(), new AppSettings { SpeakFrom = "zh-CN" }).Speak(Wav.Bytes(Tone(1)), new Sink());
+            await Task.WhenAll(first, queued, (Task)said);
+            var order = fake.Calls.Select(c => c.body.Contains(LingClient.AudioModel) ? "hear" : c.body.Contains("meeting 2") ? "meeting 2" : c.body.Contains("meeting 1") ? "meeting 1" : "other").ToList();
+            Equal("meeting 1,hear,meeting 2", string.Join(",", order.Where(o => o != "other")), "my words jump the queue");
         }
         finally { LingClient.Spacing = old; }
     }

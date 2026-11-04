@@ -32,10 +32,11 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
     /// One stretch of speech (16 kHz mono WAV) heard and interpreted. `hint` is the language the
     /// meeting has been in, which keeps Ming from flipping on a short or accented stretch. Null
     /// when there was no speech or the reply wasn't in the three-line form; never a guess.
-    public async Task<Heard?> Hear(byte[] wav, string target, string? hint, CancellationToken cancel = default)
+    /// `priority` is Speak for what the user says, so it goes ahead of the meeting's lines.
+    public async Task<Heard?> Hear(byte[] wav, string target, string? hint, Priority priority = Priority.Translate, CancellationToken cancel = default)
     {
         var prompt = HearPrompt(target, hint, Glossary());
-        var reply = await ling.Chat(prompt, HearInstruction(target), Priority.Translate, maxTokens: 800, timeout: 12,
+        var reply = await ling.Chat(prompt, HearInstruction(target), priority, maxTokens: 800, timeout: 12,
                                     model: LingClient.AudioModel, audio: wav, cancel: cancel);
         return ParseHeard(reply, target, hint);
     }
@@ -102,7 +103,7 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
     public enum Kind { Draft, Sentence }
 
     /// Ling (finished sentences only) → Google. Null when both fail.
-    public async Task<string?> Translate(string text, string source, string target, Kind kind)
+    public async Task<string?> Translate(string text, string source, string target, Kind kind, Priority priority = Priority.Translate)
     {
         if (source == target) return text;
         if (kind != Kind.Draft && ling.Usable)
@@ -115,7 +116,7 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
                 var names = Glossary();
                 if (names.Count > 0) prompt += "\nKnown names and terms (use these spellings): " + string.Join("; ", names);
                 prompt += "\nSubtitle: " + text;
-                var out_ = await ling.Chat(prompt, "Translate.", Priority.Translate, maxTokens: 400, timeout: 6);
+                var out_ = await ling.Chat(prompt, "Translate.", priority, maxTokens: 400, timeout: 6);
                 if (CleanTranslation(out_, target) is { } clean) return clean;
             }
             catch (LingException e) { Log.Debug($"translate ling failed: {e.Message}"); }
