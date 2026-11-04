@@ -19,11 +19,12 @@ class Translator(private val ling: LingClient, private val transport: Transport 
     /// One stretch of speech (16 kHz mono, WAV or compressed) heard and interpreted. `hint` is the language the
     /// meeting has been in, which keeps Ming from flipping on a short or accented stretch. Null
     /// when there was no speech or the reply wasn't in the three-line form; never a guess.
-    fun hear(clip: Clip, target: String, hint: String?): Heard? {
+    /// `seconds` is the clip's length (0: unknown): it caps the reply and catches a runaway one.
+    fun hear(clip: Clip, target: String, hint: String?, seconds: Double = 0.0): Heard? {
         val reply = ling.chat(hearPrompt(target, hint, glossary()), hearInstruction(target), Priority.Translate,
-                              maxTokens = 800, timeout = 12.0, model = LingClient.AUDIO_MODEL,
+                              maxTokens = hearTokens(seconds), timeout = 12.0, model = LingClient.AUDIO_MODEL,
                               audio = clip.bytes, audioType = clip.type)
-        return parseHeard(reply, target, hint)
+        return parseHeard(reply, target, hint, seconds)
     }
 
     // MARK: Text
@@ -83,7 +84,7 @@ class Translator(private val ling: LingClient, private val transport: Transport 
         /// `LANG: … / ORIGINAL: … / TRANSLATION: …`. Drops replies without an original, "NONE" (music,
         /// silence), and translations not in the target's script; a dropped translation leaves the
         /// original for the text translator to try.
-        fun parseHeard(reply: String, target: String, hint: String?): Heard? {
+        fun parseHeard(reply: String, target: String, hint: String?, seconds: Double = 0.0): Heard? {
             var lang: String? = null; var original: String? = null; var translation: String? = null
             for (raw in reply.split('\n')) {
                 val line = raw.trim()
@@ -93,6 +94,7 @@ class Translator(private val ling: LingClient, private val transport: Transport 
             val o = original
             if (o.isNullOrBlank() || o.trim('.', '。', ' ').equals("NONE", ignoreCase = true)) return null
             if (o.none { it.isLetterOrDigit() }) return null
+            if (isNoise(o, seconds)) { Log.d("hear: noise dropped"); return null }
             val code = Languages.normalize(lang, hint ?: "en")
             var t = translation
             if (code == target) t = o
@@ -102,6 +104,61 @@ class Translator(private val ling: LingClient, private val transport: Transport 
             }
             return Heard(code, o, t)
         }
+
+        /// Room for a reply to `seconds` of audio: a fast talker's original and translation fit; a
+        /// reply that runs on repeating itself ("滴答" ×800 from typing) stops early. 0: unknown.
+        fun hearTokens(seconds: Double) = if (seconds <= 0) 800 else minOf(800, (60 + 40 * seconds).toInt())
+
+        /// Ming writes something for every stretch it is sent, speech or not (it can't be asked for
+        /// NONE, see hearInstruction): hold music, a ringback tone, a fan or typing came back as "嗯。",
+        /// "嗯，嗯，嗯…" or "滴答" ×800. That is noise: fillers only, one short sound six or more times
+        /// over, or more than anyone says in `seconds` (0: unknown). A short real answer ("对",
+        /// "好的", "喂，能听到吗") stays. Same rules and lists as the Windows and Linux ports.
+        fun isNoise(original: String, seconds: Double = 0.0): Boolean {
+            val text = original.lowercase().replace(ANNOTATION, " ")
+            if (NO_SPEECH.any { text.contains(it) }) return true
+            val words = mutableListOf<String>()
+            val word = StringBuilder()
+            for (c in text) {
+                if (c.isLetterOrDigit()) word.append(c) else if (word.isNotEmpty()) { words.add(word.toString()); word.clear() }
+            }
+            if (word.isNotEmpty()) words.add(word.toString())
+            if (words.isEmpty()) return true
+            if (words.all(::isFillerWord)) return true
+            // Each CJK character is a unit, as a word is elsewhere.
+            val units = words.flatMap { w -> if (w.any(::isCjk)) w.map { it.toString() } else listOf(w) }
+            val n = units.size
+            for (p in 1..4) if (n >= 6 * p && (p until n).all { units[it] == units[it - p] }) return true
+            return seconds > 0 && n > maxOf(12.0, 12 * seconds)
+        }
+
+        /// Ming describing the audio instead of transcribing it: "（无语音内容）", "[Music]", "这段音频是一段
+        /// 旋律，没有说话声。". A bracketed note beside real words ("（笑）好的") keeps the words.
+        private val ANNOTATION = Regex("[(（\\[【][^)）\\]】]*[)）\\]】]|♪")
+        private val NO_SPEECH = listOf(
+            "没有说话", "无语音", "没有语音", "没有人声", "无人声", "没有人说话", "无人说话",
+            "no speech", "no spoken", "no one is speaking", "nobody is speaking", "no audible speech", "no dialogue",
+            "音声がありません", "発話がありません", "話し声はありません", "음성이 없습니다", "말소리가 없습니다",
+        )
+
+        private val FILLERS = listOf(
+            "嗯", "啊", "呃", "额", "哦", "噢", "喔", "唔", "哈", "诶", "欸", "哎", "喂", "嘿", "哼",
+            "uh", "uhm", "um", "umm", "hmm", "hm", "mm", "mhm", "ah", "oh", "eh", "er", "erm", "huh",
+            "え", "えー", "あ", "あー", "う", "うー", "うん", "うーん", "ん", "えっと", "ええと", "あの",
+            "음", "어", "아", "응", "흠", "으",
+        )
+
+        /// Made of fillers only, a held sound shortened first: "嗯嗯嗯", "hmmmm", "えーと" is not.
+        private fun isFillerWord(raw: String): Boolean {
+            val w = StringBuilder()
+            for (c in raw) if (w.length < 2 || w[w.length - 1] != c || w[w.length - 2] != c) w.append(c)
+            val ok = BooleanArray(w.length + 1); ok[0] = true
+            for (i in 1..w.length) ok[i] = FILLERS.any { f -> f.length <= i && ok[i - f.length] && w.regionMatches(i - f.length, f, 0, f.length) }
+            return ok[w.length]
+        }
+
+        private fun isCjk(c: Char) = c.code in 0x3040..0x30FF || c.code in 0x3400..0x4DBF || c.code in 0x4E00..0x9FFF ||
+            c.code in 0xF900..0xFAFF || c.code in 0xAC00..0xD7AF
 
         private fun take(line: String, label: String) =
             if (line.startsWith(label, ignoreCase = true)) line.substring(label.length).trim() else null

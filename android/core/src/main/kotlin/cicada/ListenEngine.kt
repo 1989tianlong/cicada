@@ -218,7 +218,7 @@ class ListenEngine(
         val their = theirLanguage
         val me = target
         try {
-            val heard = translator.hear(encode(pcm), their, me)
+            val heard = translator.hear(encode(pcm), their, me, pcm.size / Segmenter.RATE.toDouble())
             if (heard == null) { sayProblem = Strings.L("没听清，再说一次"); return }
             var dst = heard.translation
             if (dst == null && !Languages.same(heard.lang, their)) dst = translator.translate(heard.original, heard.lang, their, Translator.Kind.Sentence)
@@ -272,7 +272,7 @@ class ListenEngine(
                 // Into what the meeting's language translates to; a segment that turns out to be
                 // in my own language under "follow system" is translated again (record).
                 val asked = settings.targetFor(lang)
-                heard = translator.hear(clip, asked, lang)?.let { h ->
+                heard = translator.hear(clip, asked, lang, seg.seconds)?.let { h ->
                     if (settings.targetFor(h.lang) == asked) h else h.copy(translation = null)
                 }
                 problem = null

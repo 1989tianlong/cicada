@@ -34,6 +34,7 @@ object Tests {
             "namesAVoiceLikeTheMac" to ::namesAVoiceLikeTheMac,
             "displayTitle" to ::displayTitle,
             "parsesMingReplies" to ::parsesMingReplies,
+            "dropsNoise" to ::dropsNoise,
             "speaksOnlyTranslations" to ::speaksOnlyTranslations,
             "hangUpEndsAfterTheGrace" to ::hangUpEndsAfterTheGrace,
             "rejoiningWithinTheGraceKeepsGoing" to ::rejoiningWithinTheGraceKeepsGoing,
@@ -341,6 +342,23 @@ object Tests {
         val wrong = Translator.parseHeard("LANG: en\nORIGINAL: Hi\nTRANSLATION: Hi again", "zh-CN", null)!!
         equal(null, wrong.translation, "a translation not in Chinese is dropped for the text translator")
         equal("ja", Translator.parseHeard("lang: ja-JP\noriginal: はい\ntranslation: 是", "zh-CN", null)!!.lang, "labels in any case")
+    }
+
+    // Same cases as the Windows and Linux ports' noise tests.
+    fun dropsNoise() {
+        for (o in listOf("嗯。", "Mm.", "uh, um", "呃呃呃呃呃", "嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯。", "滴答".repeat(50),
+                         "hmmmm", "うーん", "음…", "喂？", "No no no no no no",
+                         "（无语音内容）", "[Music]", "♪♪", "这段音频是一段旋律，没有说话声。", "There is no speech in this audio."))
+            check(Translator.isNoise(o), "noise: $o")
+        for (o in listOf("嗯，好的。", "OK.", "Oh no, it crashed.", "对", "对对对", "谢谢谢谢", "喂喂，能听到吗？", "No, no, no.",
+                         "えーと、来週の件ですが", "あの人です", "Okay, let's move on to the quarterly numbers.", "（笑）好的"))
+            check(!Translator.isNoise(o), "kept: $o")
+        val long = "我们今天讨论一下这个季度的数字和下个季度的计划安排"
+        check(Translator.isNoise(long, 1.0), "more than anyone says in a second")
+        check(!Translator.isNoise(long, 4.0), "said in four seconds")
+        equal(null, Translator.parseHeard("LANG: zh-CN\nORIGINAL: 嗯，嗯，嗯，嗯，嗯，嗯。\nTRANSLATION: 嗯，嗯，嗯，嗯，嗯，嗯。", "zh-CN", null), "hold music")
+        equal(800, Translator.hearTokens(0.0), "unknown length"); equal(380, Translator.hearTokens(8.0), "a full segment")
+        equal(800, Translator.hearTokens(30.0), "capped")
     }
 
     fun normalizesLanguages() {
