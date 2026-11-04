@@ -61,6 +61,7 @@ sealed class SettingsWindow : Window
             Card(null, L("字幕文字大小"), null, size),
             Card(Icons.Keyboard, L("开始或结束"), app.HotkeyRegistered ? L("在任何程序里都能按") : L("这个快捷键被别的程序占用了"), Keys(Hotkey.Label))));
         Section(page, "speak", L("同声传译"), SpeakCards());
+        Section(page, "end", L("结束会议"), EndCards());
         Section(page, "privacy", L("隐私与启动"), Group(
             Card(Icons.Eye, L("共享屏幕时让对方看到"), L("关着时，截图和屏幕共享里看不到纪要和字幕"), Ui.Switch(app.Settings.ShowInCapture, app.SetShowInCapture, L("共享屏幕时让对方看到"))),
             Card(Icons.List, L("说话人识别"), L("按声音标出说话人 1、2…，只在这台电脑上处理"), Ui.Switch(app.Settings.SpeakerVoices, v => { app.Settings.SpeakerVoices = v; Save(); }, L("说话人识别"))),
@@ -79,7 +80,7 @@ sealed class SettingsWindow : Window
         (string id, string icon, string label)[] items =
         [
             ("ling", Icons.Key, L("Ling")), ("lang", Icons.Globe, L("语言")), ("listen", Icons.Wave, L("听的时候")),
-            ("speak", Icons.Mic, L("同声传译")), ("privacy", Icons.Shield, L("隐私与启动")), ("about", Icons.Info, L("关于")),
+            ("speak", Icons.Mic, L("同声传译")), ("end", Icons.Stop, L("结束会议")), ("privacy", Icons.Shield, L("隐私与启动")), ("about", Icons.Info, L("关于")),
         ];
         foreach (var (id, icon, label) in items)
         {
@@ -159,6 +160,22 @@ sealed class SettingsWindow : Window
     string? cableProgress;
 
     /// 同声传译: the switch, the virtual mic, the two languages and the room's voice.
+    /// 结束会议: when a meeting ends by itself (MeetingEnd.cs), as the Mac's settings say it.
+    FrameworkElement EndCards()
+    {
+        var s = app.Settings;
+        var cards = new List<FrameworkElement>
+        {
+            Card(Icons.Stop, L("会议应用挂断后结束"), L("Zoom、腾讯会议、飞书、Teams 等"), Ui.Switch(s.EndWithApp, v => { s.EndWithApp = v; Save(); }, L("会议应用挂断后结束"))),
+            Card(null, L("没人说话时"), L("按识别出的话算，背景音乐不算"),
+                Ui.Segmented([("prompt", L("提醒后结束")), ("end", L("直接结束")), ("off", L("一直记录"))], s.SilenceEnd, v => { s.SilenceEnd = v; Save(); Render(); })),
+        };
+        if (s.SilenceEnd != "off")
+            cards.Add(Card(null, L("多久算没人说话"), null,
+                Ui.Segmented(new[] { 5, 10, 15, 30 }.Select(m => (m.ToString(), LF("%lld 分钟", m))), ((int)s.SilenceMinutes).ToString(), v => { s.SilenceMinutes = double.Parse(v); Save(); })));
+        return Group(cards.ToArray());
+    }
+
     FrameworkElement SpeakCards()
     {
         var s = app.Settings;

@@ -107,9 +107,10 @@ public sealed class ListenEngine
         return Math.Sqrt(sum / buf.Length) / 32768;
     }
 
-    /// Stops listening, waits (briefly) for segments still at Ming, ends the record and writes the
-    /// final notes. The task ends when the record is saved; the notes' final pass may run on.
-    public async Task Stop()
+    /// Stops listening, waits (briefly) for segments still at Ming, ends the record (at `endedAt` for
+    /// a meeting that ended by itself) and writes the final notes. The task ends when the record is
+    /// saved; the notes' final pass may run on.
+    public async Task Stop(DateTimeOffset? endedAt = null)
     {
         if (!Listening) return;
         Listening = false;
@@ -120,7 +121,7 @@ public sealed class ListenEngine
         lock (gate) waiting = inFlight.ToArray();
         await Task.WhenAny(Task.WhenAll(waiting), Task.Delay(15_000));
         var id = SessionId!;
-        store.End(id);
+        store.End(id, endedAt);
         Log.Debug($"listen: stopped {id}, {lineCount} lines");
         Changed?.Invoke();
         _ = notes.Finish();

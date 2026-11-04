@@ -110,6 +110,31 @@ sealed class NotesWindow : Window
         var session = app.Listen.SessionId is { } id ? app.Store.Get(id) : null;
         clockText.Text = app.Listen.Listening && session is not null ? Languages.Clock((DateTimeOffset.Now - session.StartedAt).TotalSeconds) : "";
         dueText.Text = Due() ?? "";
+        if (app.Ending is { } p)
+        {
+            endingDetail.Text = LF("%lld 秒后结束会议并整理纪要", Controller.EndingLeft(p));
+            endingNotice.Text = $"{app.EndingTitle(p)} · {LF("%lld 秒后结束", Controller.EndingLeft(p))}";
+        }
+    }
+
+    ContentControl ending = new();
+    string? endingKey;
+    readonly TextBlock endingDetail = Ui.Text("", 12, Palette.Secondary);
+    readonly TextBlock endingNotice = Ui.Text("", 13, Brushes.White, FontWeights.SemiBold, wrap: false);
+
+    /// 已经 10 分钟没人说话 · 60 秒后结束 (MeetingEndingStrip): what will happen, and 继续记录 / 现在结束.
+    /// The window never takes focus, so a click lands on the buttons at once.
+    FrameworkElement EndingStrip()
+    {
+        if (!app.Listen.Listening || app.Ending is not { } p) return new Border();
+        Detach(endingDetail);
+        var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.KeepRecording, Ui.Kind.Primary, height: 32),
+                             Ui.Button(L("现在结束"), () => _ = app.StopListening(), height: 32));
+        var stack = Ui.Stack(3, Ui.Text(app.EndingTitle(p), 14, Palette.Ink, FontWeights.Bold), endingDetail);
+        buttons.Margin = new Thickness(0, 10, 0, 0);
+        stack.Children.Add(buttons);
+        Tick();
+        return new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(12), Padding = new Thickness(14), Margin = new Thickness(12, 0, 12, 8), Child = stack };
     }
 
     static void Detach(FrameworkElement e) { if (e.Parent is Panel p) p.Children.Remove(e); }
@@ -120,7 +145,7 @@ sealed class NotesWindow : Window
         if (builtFor != mode)
         {
             builtFor = mode; headerKey = tabsKey = barsKey = null;
-            header = new ContentControl(); bars = new ContentControl(); live = new ContentControl(); tabs = new ContentControl(); footer = new ContentControl();
+            header = new ContentControl(); bars = new ContentControl(); ending = new ContentControl(); endingKey = null; live = new ContentControl(); tabs = new ContentControl(); footer = new ContentControl();
             scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 14, 12, 16) };
             Content = Subtitles ? SubtitleFrame() : PanelFrame();
         }
@@ -128,6 +153,8 @@ sealed class NotesWindow : Window
         if (key != headerKey) { headerKey = key; header.Content = Header(); }
         Tick();
         if (Subtitles) { live.Content = SubtitleLine(); return; }
+        var ek = app.Listen.Listening && app.Ending is { } p ? p.Reason.ToString() : null;
+        if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
         var bk = $"{app.Listen.Problem}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
         live.Content = LiveCard();
@@ -148,6 +175,7 @@ sealed class NotesWindow : Window
         var dock = new DockPanel();
         void Top(UIElement e) { DockPanel.SetDock(e, Dock.Top); dock.Children.Add(e); }
         Top(header);
+        Top(ending);
         Top(bars);
         Top(live);
         tabs.Margin = new Thickness(12, 10, 12, 0);
@@ -414,6 +442,15 @@ sealed class NotesWindow : Window
             left.Children.Add(clockText);
         }
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 12, 0) };
+        // The subtitle bar has no room for buttons: it says what will happen (the Mac's notice).
+        if (listen.Listening && app.Ending is not null)
+        {
+            Detach(endingNotice);
+            endingNotice.Foreground = new SolidColorBrush(Color.FromRgb(0xF4, 0xA5, 0x8C));
+            endingNotice.Margin = new Thickness(0, 0, 0, 4);
+            text.Children.Add(endingNotice);
+            Tick();
+        }
         if (line is null)
             text.Children.Add(Ui.Text(listen.Listening ? L("等有人说话") : L("点“开始听”，电脑里播放的声音会变成双语字幕和纪要"), 15, Palette.NightText));
         else

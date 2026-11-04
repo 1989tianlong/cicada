@@ -13,6 +13,9 @@ public sealed class SessionStore
     readonly HashSet<string> dirty = [];
     Timer? saveTimer;
     public event Action<string>? Changed;
+    /// The moment recognised words land in a record: a new line (theirs or mine) or a half sentence
+    /// that grew. What 结束会议 counts as someone speaking (MeetingEndWatch.Heard).
+    public event Action<string>? Words;
 
     public SessionStore() { Load(); }
 
@@ -72,13 +75,24 @@ public sealed class SessionStore
         return $"{date} {s.Notes!.Title}";
     }
 
-    public void Append(string id, TranscriptLine line) => Mutate(id, s => s.Lines.Add(line));
-
-    public void Replace(string id, TranscriptLine line) => Mutate(id, s =>
+    public void Append(string id, TranscriptLine line)
     {
-        int i = s.Lines.FindIndex(l => l.Id == line.Id);
-        if (i >= 0) s.Lines[i] = line;
-    });
+        Mutate(id, s => s.Lines.Add(line));
+        Words?.Invoke(id);
+    }
+
+    public void Replace(string id, TranscriptLine line)
+    {
+        bool grew = false;
+        Mutate(id, s =>
+        {
+            int i = s.Lines.FindIndex(l => l.Id == line.Id);
+            if (i < 0) return;
+            grew = line.Src.Length > s.Lines[i].Src.Length; // a half sentence joined, not a retranslation
+            s.Lines[i] = line;
+        });
+        if (grew) Words?.Invoke(id);
+    }
 
     public void SetNotes(string id, MeetingNotes notes) => Mutate(id, s => s.Notes = notes);
 
@@ -87,14 +101,15 @@ public sealed class SessionStore
     /// Back to the default title, so the name the notes give the meeting shows again.
     public void ResetTitle(string id) => Mutate(id, s => { s.Title = DefaultTitle(s.StartedAt); s.Renamed = false; });
 
-    /// The meeting ended: kept if anything was said, removed otherwise.
-    public void End(string id)
+    /// The meeting ended (at `endedAt` when it ended by itself a while ago): kept if anything was
+    /// said, removed otherwise.
+    public void End(string id, DateTimeOffset? endedAt = null)
     {
         bool empty;
         lock (gate)
         {
             if (!sessions.TryGetValue(id, out var s)) return;
-            s.EndedAt = DateTimeOffset.Now;
+            s.EndedAt = endedAt is { } at ? (at > s.StartedAt ? at : s.StartedAt) : DateTimeOffset.Now;
             empty = s.Lines.Count == 0;
         }
         if (empty) Delete(id);

@@ -32,6 +32,11 @@ public sealed class AppSettings
     [JsonPropertyName("speakVoices")] public Dictionary<string, string> SpeakVoices { get; set; } = [];
     /// The one-time "知了还在听" notice after the panel is first collapsed while listening.
     [JsonPropertyName("toldStillListening")] public bool ToldStillListening { get; set; }
+    /// 结束会议 (MeetingEnd.cs), the Mac's keys: end when the meeting app hangs up; when nobody
+    /// speaks, "prompt" (count down, then end), "end" or "off", after silenceMinutes.
+    [JsonPropertyName("endWithApp")] public bool EndWithApp { get; set; } = true;
+    [JsonPropertyName("silenceEnd")] public string SilenceEnd { get; set; } = "prompt";
+    [JsonPropertyName("silenceMinutes")] public double SilenceMinutes { get; set; } = 10;
 
     [JsonIgnore] public string TargetCode => Target == "system" ? Languages.FromSystem(CultureInfo.CurrentUICulture.Name) : Target;
     [JsonIgnore] public string NotesCode => NotesLanguage == "system" ? TargetCode : NotesLanguage;

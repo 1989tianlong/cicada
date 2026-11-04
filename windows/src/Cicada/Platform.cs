@@ -117,3 +117,34 @@ static class AudioDevice
 
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant value);
 }
+
+/// The meeting apps reading a microphone now (MicUse in Cicada.Core reads the entries): what
+/// Windows keeps for Settings › 隐私和安全性 › 麦克风, whose LastUsedTimeStop is 0 while an app has
+/// the mic open. Both desktop apps (NonPackaged) and Store apps (the new Teams).
+static class MicReaders
+{
+    const string Root = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
+
+    public static Dictionary<string, string> Calls()
+    {
+        var entries = new List<(string, long)>();
+        try
+        {
+            using var root = Registry.CurrentUser.OpenSubKey(Root);
+            if (root is null) return [];
+            void Read(RegistryKey parent)
+            {
+                foreach (var name in parent.GetSubKeyNames())
+                {
+                    if (name == "NonPackaged") continue;
+                    using var k = parent.OpenSubKey(name);
+                    if (k?.GetValue("LastUsedTimeStop") is long stop) entries.Add((name, stop));
+                }
+            }
+            Read(root);
+            using (var desktop = root.OpenSubKey("NonPackaged")) if (desktop is not null) Read(desktop);
+        }
+        catch (Exception e) { Log.Debug($"mic users: unreadable ({e.GetType().Name})"); }
+        return MicUse.Calls(entries);
+    }
+}

@@ -35,6 +35,138 @@ static class Tests
         if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"{what}: expected «{expected}», got «{actual}»");
     }
 
+    // MARK: 结束会议 (the Mac's MeetingEndTests, case for case)
+
+    static readonly DateTimeOffset T0 = DateTimeOffset.FromUnixTimeSeconds(1_000_000);
+    static readonly Dictionary<string, string> Zoom = new() { ["zoom.exe"] = "Zoom" };
+    static readonly Dictionary<string, string> NoCalls = [];
+    static MeetingEndWatch Watch(MeetingEndWatch.Silence silence = MeetingEndWatch.Silence.Prompt, bool followApps = true) =>
+        new(new MeetingEndWatch.Config(FollowApps: followApps, Silence: silence), T0);
+    static DateTimeOffset At(double s) => T0.AddSeconds(s);
+
+    public static void HangUpEndsAfterTheGrace()
+    {
+        var w = Watch();
+        Equal(null, w.Tick(At(10), Zoom, true), "in a call");
+        Equal(null, w.Tick(At(20), NoCalls, true), "hung up");
+        Equal(new MeetingEndWatch.Pending(MeetingEndWatch.Reason.AppLeft("Zoom"), At(50)), w.Waiting, "the grace");
+        Equal(null, w.Tick(At(49), NoCalls, true), "still in the grace");
+        Equal(MeetingEndWatch.Reason.AppLeft("Zoom"), w.Tick(At(50), NoCalls, true), "ends");
+    }
+
+    public static void RejoiningWithinTheGraceKeepsGoing()
+    {
+        var w = Watch();
+        w.Tick(At(10), Zoom, true); w.Tick(At(20), NoCalls, true);
+        Equal(null, w.Tick(At(30), Zoom, true), "rejoined");
+        Equal(null, w.Waiting, "nothing pending");
+    }
+
+    public static void SpeechDoesNotCancelAHangUp()
+    {
+        var w = Watch();
+        w.Tick(At(10), Zoom, true); w.Tick(At(20), NoCalls, true);
+        w.Heard(At(25));
+        Equal(MeetingEndWatch.Reason.AppLeft("Zoom"), w.Tick(At(50), NoCalls, true), "the next video would talk over it");
+    }
+
+    public static void KeepGoingForgetsTheHangUp()
+    {
+        var w = Watch();
+        w.Tick(At(10), Zoom, true); w.Tick(At(20), NoCalls, true);
+        w.KeepGoing(At(30));
+        Equal(null, w.Tick(At(100), NoCalls, true), "kept going");
+        Equal(null, w.Waiting, "nothing pending");
+    }
+
+    public static void SilencePromptsThenEnds()
+    {
+        var w = Watch();
+        w.Heard(At(5));
+        Equal(null, w.Tick(At(604), NoCalls, true), "not yet");
+        Equal(null, w.Waiting, "no prompt yet");
+        Equal(null, w.Tick(At(605), NoCalls, true), "the prompt");
+        Equal(new MeetingEndWatch.Pending(MeetingEndWatch.Reason.SilenceEnd, At(665)), w.Waiting, "a countdown");
+        Equal(MeetingEndWatch.Reason.SilenceEnd, w.Tick(At(665), NoCalls, true), "ends");
+    }
+
+    public static void WordsCancelTheSilencePrompt()
+    {
+        var w = Watch();
+        w.Tick(At(600), NoCalls, true);
+        Equal("silence", w.Waiting?.Reason.Kind, "prompted");
+        w.Heard(At(620));
+        Equal(null, w.Waiting, "words cancel it");
+        Equal(null, w.Tick(At(700), NoCalls, true), "and it starts over");
+    }
+
+    public static void SilenceEndModeEndsAtOnceAndOffNever()
+    {
+        Equal(MeetingEndWatch.Reason.SilenceEnd, Watch(MeetingEndWatch.Silence.End).Tick(At(600), NoCalls, true), "end");
+        var off = Watch(MeetingEndWatch.Silence.Off);
+        Equal(null, off.Tick(At(99_999), NoCalls, true), "off");
+        Equal(null, off.Waiting, "off: nothing pending");
+    }
+
+    public static void SilenceDoesNotCountDuringACall()
+    {
+        var w = Watch();
+        Equal(null, w.Tick(At(5_000), Zoom, true), "a muted call");
+        Equal(null, w.Waiting, "no prompt in a call");
+        var plain = Watch(followApps: false);
+        Equal(null, plain.Tick(At(600), Zoom, true), "not following apps");
+        Equal("silence", plain.Waiting?.Reason.Kind, "then a call says nothing");
+    }
+
+    public static void NothingSaidStopsQuietlyAfterTheSilence()
+    {
+        var w = Watch();
+        Equal(null, w.Tick(At(599), NoCalls, false), "not yet");
+        Equal(MeetingEndWatch.Reason.Nobody, w.Tick(At(600), NoCalls, false), "stops");
+        Equal(null, w.Waiting, "no countdown");
+        Equal(MeetingEndWatch.Reason.Nobody, Watch(MeetingEndWatch.Silence.End).Tick(At(600), NoCalls, false), "end mode too");
+        Equal(null, Watch(MeetingEndWatch.Silence.Off).Tick(At(5_000), NoCalls, false), "off keeps listening");
+        Equal(null, Watch().Tick(At(5_000), Zoom, false), "a muted webinar keeps listening");
+    }
+
+    public static void NothingSaidKeepsListening()
+    {
+        var w = Watch();
+        w.Tick(At(10), Zoom, false);
+        Equal(null, w.Tick(At(500), NoCalls, false), "a call that ended before anyone spoke");
+        Equal(null, w.Waiting, "nothing pending");
+        w.Heard(At(5_001));
+        Equal(null, w.Tick(At(5_002), NoCalls, true), "is forgotten once someone does");
+        Equal(null, w.Waiting, "still nothing pending");
+    }
+
+    public static void MicUseCountsOnlyMeetingAppsWithTheMicOpen()
+    {
+        var calls = MicUse.Calls([
+            ("C:#Program Files#Zoom#bin#Zoom.exe", 0), ("C:#Users#me#AppData#Roaming#Zoom#bin#Zoom.exe", 0),
+            ("C:#Program Files (x86)#Tencent#WeMeet#wemeetapp.exe", 133_000_000_000), // used earlier, closed now
+            ("C:#Program Files#Google#Chrome#Application#chrome.exe", 0),               // a browser isn't a meeting app
+            ("MSTeams_8wekyb3d8bbwe", 0),
+        ]);
+        Equal("Teams=msteams,Zoom=zoom.exe", string.Join(",", calls.OrderBy(p => p.Value).Select(p => $"{p.Value}={p.Key}")), "meeting apps reading a mic");
+        Equal(0, MicUse.Calls([]).Count, "none");
+    }
+
+    public static void WordsFireOnNewAndGrownLinesOnly()
+    {
+        var store = new SessionStore();
+        var id = store.Begin().Id;
+        int heard = 0;
+        store.Words += w => { if (w == id) heard++; };
+        store.Append(id, new TranscriptLine { Id = "h1-1", Src = "so we will", Dst = "所以我们会", SrcLang = "en", DstLang = "zh-CN" });
+        store.Append(id, new TranscriptLine { Id = "m1", Speaker = "me", Src = "好的", Dst = "OK", SrcLang = "zh-CN", DstLang = "en" });
+        store.Replace(id, new TranscriptLine { Id = "h1-1", Src = "so we will", Dst = "所以我们将", SrcLang = "en", DstLang = "zh-CN" });
+        Equal(2, heard, "a retranslation isn't speech");
+        store.Replace(id, new TranscriptLine { Id = "h1-1", Src = "so we will ship", Dst = "所以我们会发布", SrcLang = "en", DstLang = "zh-CN" });
+        Equal(3, heard, "a half sentence that grew is");
+        store.Delete(id);
+    }
+
     // MARK: Records
 
     public static void SessionJsonMatchesTheMac()

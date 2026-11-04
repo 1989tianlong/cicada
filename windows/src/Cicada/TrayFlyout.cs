@@ -59,6 +59,8 @@ sealed class TrayFlyout : Window
         // Who and how it is
         var status = listen.Listening && listen.SessionId is { } sid && app.Store.Get(sid) is { } live
             ? Ui.Row(6, Ui.LiveDot(6), Ui.Text($"{L("正在听")} {Languages.Clock((DateTimeOffset.Now - live.StartedAt).TotalSeconds)}", 12, Palette.Secondary, wrap: false))
+            : app.AutoEnded
+                ? Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("会议已自动结束"), 12, Palette.Secondary, wrap: false))
             : app.Ling.HasKey
                 ? Ui.Row(6, Ui.Dot(Palette.Success, 6), Ui.Text(L("就绪 · Ling 已连接"), 12, Palette.Secondary, wrap: false))
                 : Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("还没接上 Ling"), 12, Palette.Secondary, wrap: false));
@@ -69,6 +71,17 @@ sealed class TrayFlyout : Window
 
         // The one thing to do
         var main = new StackPanel { Margin = new Thickness(16, 4, 16, 16) };
+        if (listen.Listening && app.Ending is { } p)
+        {
+            // About to end by itself (MeetingEndingStrip, compact): the panel takes no focus either.
+            var strip = Ui.Stack(3, Ui.Text(app.EndingTitle(p), 13, Palette.Ink, FontWeights.Bold),
+                                 Ui.Text(LF("%lld 秒后结束会议并整理纪要", Controller.EndingLeft(p)), 12, Palette.Secondary));
+            var keep = Ui.Row(8, Ui.Button(L("继续记录"), app.KeepRecording, Ui.Kind.Primary, height: 32),
+                              Ui.Button(L("现在结束"), () => { Hide(); _ = app.StopListening(); }, height: 32));
+            keep.Margin = new Thickness(0, 8, 0, 0);
+            strip.Children.Add(keep);
+            main.Children.Add(new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(10), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 10), Child = strip });
+        }
         if (listen.Listening)
         {
             var grid = new Grid();

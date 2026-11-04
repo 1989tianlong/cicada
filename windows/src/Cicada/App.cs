@@ -60,6 +60,15 @@ sealed class Controller
     MainWindow? mainWindow;
     SettingsWindow? settingsWindow;
     Dispatcher Dispatch => application.Dispatcher;
+    // 结束会议 (MeetingEnd.cs): `Ending` while a meeting is about to end by itself, `AutoEnded` after
+    // one did (the tray says so, and the next call starts a new meeting).
+    MeetingEndWatch? endWatch;
+    public MeetingEndWatch.Pending? Ending { get; private set; }
+    public bool AutoEnded { get; private set; }
+    /// Dev: meeting apps pretending to be in a call, and (silence, countdown, grace) in seconds.
+    public Dictionary<string, string>? FakeCalls;
+    public (double Silence, double Countdown, double Grace)? EndTimes;
+    bool readingCalls;
 
     public Controller(Application application)
     {
@@ -77,6 +86,7 @@ sealed class Controller
         Listen.Changed += Changed;
         Notes.Changed += Changed;
         Store.Changed += _ => Changed();
+        Store.Words += id => Dispatch.BeginInvoke(() => HeardWords(id));
     }
 
     public void Launch()
@@ -96,6 +106,9 @@ sealed class Controller
         talk.Released += () => Dispatch.BeginInvoke(PressEnded);
         Log.Debug($"audio: speakers {Endpoints.Default(Endpoints.Flow.Render)?.Name ?? "none"}, mic {Endpoints.Microphone()?.Name ?? "none"}, cable {(Endpoints.Cable() is null ? "absent" : "present")}");
         DebugServer.Start(this);
+        var watch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        watch.Tick += (_, _) => _ = WatchEnd();
+        watch.Start();
         if (!Settings.Onboarded) new Onboarding(this).Show();
         else if (Ling.HasKey) _ = Ling.Check();
     }
@@ -223,17 +236,106 @@ sealed class Controller
             Log.Debug($"listen: source ended {reason}");
             Dispatch.BeginInvoke(() => _ = StopListening());
         };
+        AutoEnded = false;
+        Ending = null;
+        endWatch = new MeetingEndWatch(EndConfig(), DateTimeOffset.Now);
         Listen.Start(source);
         ShowNotes();
     }
 
-    public async Task StopListening()
+    public async Task StopListening(DateTimeOffset? endedAt = null, bool auto = false)
     {
         var id = Listen.SessionId;
-        await Listen.Stop();
+        endWatch = null;
+        Ending = null;
+        AutoEnded = auto;
+        await Listen.Stop(endedAt);
         Changed();
         if (id is not null) _ = TellWhenNotesReady(id);
     }
+
+    // MARK: 结束会议
+
+    MeetingEndWatch.Config EndConfig()
+    {
+        var c = new MeetingEndWatch.Config(Settings.EndWithApp, MeetingEndWatch.ParseSilence(Settings.SilenceEnd), Settings.SilenceMinutes * 60);
+        return EndTimes is { } t ? c with { SilenceAfter = t.Silence, Countdown = t.Countdown, AppGrace = t.Grace } : c;
+    }
+
+    /// Words recognised in the live meeting (theirs or mine): the silence countdown stops now.
+    void HeardWords(string id)
+    {
+        if (endWatch is null || !Listen.Listening || id != Listen.SessionId) return;
+        endWatch.Heard(DateTimeOffset.Now);
+        SetEnding(endWatch.Waiting);
+    }
+
+    /// Every 2 s: while listening, whether the meeting is over; after one ended by itself, whether a
+    /// meeting app started the next call. The registry is read off the UI thread.
+    async Task WatchEnd()
+    {
+        bool live = Listen.Listening && endWatch is not null, after = !Listen.Listening && AutoEnded;
+        if (readingCalls || !(live || after) || (!live && !Settings.EndWithApp)) return;
+        readingCalls = true;
+        Dictionary<string, string> calls = !Settings.EndWithApp ? new() : FakeCalls ?? await Task.Run(MicReaders.Calls);
+        readingCalls = false;
+        var now = DateTimeOffset.Now;
+        if (Listen.Listening && endWatch is { } w)
+        {
+            w.Settings = EndConfig();
+            var said = Listen.SessionId is { } id && Store.Get(id) is { Lines.Count: > 0 };
+            var reason = w.Tick(now, calls, said);
+            SetEnding(w.Waiting);
+            if (reason is not null) await AutoEnd(reason, w);
+        }
+        else if (!Listen.Listening && AutoEnded && Settings.EndWithApp && calls.Count > 0)
+        {
+            Log.Debug("meeting end: a meeting app started a call, starting a new meeting");
+            StartListening(new SystemAudioTap());
+        }
+    }
+
+    void SetEnding(MeetingEndWatch.Pending? p)
+    {
+        if (p == Ending) return;
+        if (p is not null) Log.Debug($"meeting end: pending {p.Reason}, ends in {(int)(p.Deadline - DateTimeOffset.Now).TotalSeconds} s");
+        else if (Ending is not null) Log.Debug("meeting end: pending cleared");
+        Ending = p;
+        Changed();
+    }
+
+    /// Ends where the meeting really ended: a little after the last words, or at the hang-up if that
+    /// was later.
+    async Task AutoEnd(MeetingEndWatch.Reason reason, MeetingEndWatch w)
+    {
+        if (reason.Kind == "nobody")
+        {
+            // Nothing to keep or summarise: back to 开始听, not 会议已自动结束.
+            Log.Debug($"meeting end: nobody spoke for {(int)w.Settings.SilenceAfter} s, stopped");
+            await StopListening();
+            return;
+        }
+        var now = DateTimeOffset.Now;
+        var at = w.LastSpeech.AddSeconds(5);
+        if (reason.Kind == "app" && now.AddSeconds(-w.Settings.AppGrace) > at) at = now.AddSeconds(-w.Settings.AppGrace);
+        if (at > now) at = now;
+        Log.Debug($"meeting end: ended by itself ({reason}), end time {(int)(now - at).TotalSeconds} s ago");
+        await StopListening(at, auto: true);
+    }
+
+    /// 继续记录 on the ending prompt.
+    public void KeepRecording()
+    {
+        endWatch?.KeepGoing(DateTimeOffset.Now);
+        SetEnding(null);
+        Log.Debug("meeting end: kept going");
+    }
+
+    public string EndingTitle(MeetingEndWatch.Pending p) => p.Reason.Kind == "app"
+        ? LF("%@ 已挂断", p.Reason.Name)
+        : LF("已经 %lld 分钟没人说话", Math.Max(1, (int)Math.Round(EndConfig().SilenceAfter / 60)));
+
+    public static int EndingLeft(MeetingEndWatch.Pending p) => Math.Max(0, (int)Math.Round((p.Deadline - DateTimeOffset.Now).TotalSeconds));
 
     /// The final notes take a few seconds after 结束; say so once they're written.
     async Task TellWhenNotesReady(string id)
@@ -420,6 +522,9 @@ sealed class Controller
         ["voice"] = Speak.LastVoice,
         ["cable"] = Endpoints.Cable() is not null,
         ["autostart"] = AutoStart.Enabled,
+        ["ending"] = Ending is { } p ? $"{EndingTitle(p)} · {EndingLeft(p)}" : null,
+        ["autoEnded"] = AutoEnded,
+        ["inCall"] = endWatch is { } w ? string.Join(",", w.InCall.Values) : null,
     };
 }
 
@@ -427,6 +532,7 @@ sealed class Controller
 /// counterpart of the Mac's `tools/lsctl`. One command per connection, one JSON line back.
 ///   state | start | stop | feed <wav> | sample | view notes|subtitles | capture on|off
 ///   show notes|records|settings | quit
+///   calls <program=name,…>|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
 static class DebugServer
 {
     static string Pipe => Paths.Dev ? "cicada-dev" : "cicada";
@@ -487,6 +593,14 @@ static class DebugServer
             case "fakemic": app.SetFakeMic(arg == "off" ? null : arg); break;
             case "record": _ = app.RecordCable(arg); break;
             case "preview": _ = app.Preview(arg.Length > 0 ? arg : app.Speak.Target); break;
+            case "calls":
+                app.FakeCalls = arg switch { "real" => null, "" or "none" => [], _ => arg.Split(',').Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => p[^1]) };
+                break;
+            case "realcalls": return new JsonObject { ["calls"] = string.Join(",", MicReaders.Calls().Select(p => $"{p.Key}={p.Value}")) };
+            case "endtimes":
+                app.EndTimes = arg is "" or "off" ? null : arg.Split(' ') is [var a, var b, var c] ? (double.Parse(a), double.Parse(b), double.Parse(c)) : null;
+                break;
+            case "endkeep": app.KeepRecording(); break;
             case "quit": _ = app.Quit(); break;
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };
