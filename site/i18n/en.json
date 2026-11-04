@@ -20,7 +20,7 @@
   "og_desc": "Live subtitles, interpreting and AI meeting notes on your Mac. Understand, speak up, remember.",
   "ld_desc": "Live translated subtitles, interpreting and AI meeting notes on the Mac, for any call or stream.",
   "feed_title": "Cicada changelog",
-  "pill": "Free and open source · macOS 26 · Apple silicon",
+  "pill": "Free and open source · macOS 14.4+ · Apple silicon",
   "kicker": "Cicada listens, speaks and remembers for you",
   "slogan": "Any call, any stream,<br>no language barrier.",
   "sub": "Understand. Speak up. Remember.",
@@ -145,7 +145,7 @@
   "start_desc": "Install Cicada, get a Ling API key (Ling gives ¥10 of credit every month), then follow the app’s first-run guide. About five minutes.",
   "start_h1": "Get started in three steps",
   "start_lead": "Install Cicada, get a Ling key, then follow the guide in the app. About five minutes.",
-  "start_req": "Requires macOS 26 or later on an Apple silicon Mac",
+  "start_req": "Requires macOS 14.4 or later on an Apple silicon Mac",
   "start_mac_q": "Will it run on my Mac?",
   "start_mob_h": "Install it on your Mac",
   "start_mob_p": "Send the download link to your Mac. You can sign up for a Ling key on your phone right now.",
@@ -193,7 +193,7 @@
   "more": "Models, shortcuts, uninstalling and other details are in the <a href=\"{{REPO}}/blob/main/README.en.md\">README on GitHub</a>.",
   "foot_slogan": "Cicada hears every meeting, and speaks up for you.",
   "foot_desc": "Named for the insect that’s never quiet. Live subtitles, interpreting and AI meeting notes for everything your Mac plays. Free and open source.",
-  "foot_meta": "macOS 26 · Apple silicon · Version",
+  "foot_meta": "macOS 14.4+ · Apple silicon · Version",
   "foot_label": "Footer",
   "f_product": "Product",
   "f_subtitles": "Live subtitles",
@@ -243,10 +243,6 @@
       "What you say out loud in the meeting goes into the notes too"
     ],
     [
-      "macOS 14.4 and later",
-      "Older systems use an earlier speech recognizer with fewer languages"
-    ],
-    [
       "Proper signing and notarization",
       "No more “Open Anyway” on first launch"
     ],
@@ -281,7 +277,7 @@
   "faq_ask": "Ask a question →",
   "req_h": "Requirements",
   "req_os_k": "System",
-  "req_os_v": "macOS 26 or later",
+  "req_os_v": "macOS 14.4 or later",
   "req_chip_k": "Chip",
   "req_chip_v": "Apple silicon (M series)",
   "req_intel_k": "Intel Mac",
@@ -290,7 +286,7 @@
   "faq": [
     [
       "Will it run on my Mac?",
-      "You need macOS 26 or later on an Apple silicon Mac. On-device speech recognition uses SpeechAnalyzer, which is new in macOS 26. Support back to macOS 14.4 is second on the roadmap; recognition will be a little weaker on older systems."
+      "You need macOS 14.4 or later on an Apple silicon Mac. macOS 26 uses the newer on-device speech recognizer, the most accurate; 14.4 to 15 use the system's earlier one, a little weaker, which needs Dictation turned on in System Settings › Keyboard, with each language you want heard added to it."
     ],
     [
       "Does it cost anything?",

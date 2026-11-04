@@ -20,7 +20,7 @@
   "og_desc": "Mac 上的实时字幕、同声传译和 AI 会议纪要。听得懂，说得出，记得住。",
   "ld_desc": "Mac 上的实时翻译字幕、同声传译和 AI 会议纪要，任意会议与直播都能用。",
   "feed_title": "知了更新日志",
-  "pill": "免费开源 · macOS 26 · Apple 芯片",
+  "pill": "免费开源 · macOS 14.4+ · Apple 芯片",
   "kicker": "知了，替你听、替你说、替你记",
   "slogan": "任何会议、任何直播<br>都没有语言障碍",
   "sub": "听得懂，说得出，记得住",
@@ -145,7 +145,7 @@
   "start_desc": "下载并安装知了，准备一个 Ling API key（Ling 每月赠送 ¥10 额度），再跟着 App 里的引导走一遍，大约 5 分钟。",
   "start_h1": "三步开始使用",
   "start_lead": "装好知了，准备一个 Ling key，再跟着 App 里的引导走一遍。大约 5 分钟。",
-  "start_req": "需要 macOS 26 及以上 · Apple 芯片的 Mac",
+  "start_req": "需要 macOS 14.4 及以上 · Apple 芯片的 Mac",
   "start_mac_q": "我的 Mac 能用吗？",
   "start_mob_h": "请在 Mac 上安装",
   "start_mob_p": "把下载链接发到你的 Mac。Ling key 可以现在就在手机上注册。",
@@ -193,7 +193,7 @@
   "more": "模型、快捷键、卸载等更多细节，见 <a href=\"{{REPO}}#readme\">GitHub 上的说明文档</a>。",
   "foot_slogan": "知了，知道了",
   "foot_desc": "听懂整台 Mac 的声音，再替你开口。Mac 上的实时字幕、同声传译和 AI 会议纪要，免费开源。",
-  "foot_meta": "macOS 26 · Apple 芯片 · 版本",
+  "foot_meta": "macOS 14.4+ · Apple 芯片 · 版本",
   "foot_label": "页脚",
   "f_product": "产品",
   "f_subtitles": "实时字幕",
@@ -243,10 +243,6 @@
       "不按翻译键、直接开口说的话也记进纪要"
     ],
     [
-      "支持 macOS 14.4+",
-      "旧系统改用上一代语音识别，支持的语言少一些"
-    ],
-    [
       "正式签名与公证",
       "首次打开不用再点“仍要打开”"
     ],
@@ -281,7 +277,7 @@
   "faq_ask": "提一个问题 →",
   "req_h": "系统要求",
   "req_os_k": "系统",
-  "req_os_v": "macOS 26 及以上",
+  "req_os_v": "macOS 14.4 及以上",
   "req_chip_k": "芯片",
   "req_chip_v": "Apple 芯片（M 系列）",
   "req_intel_k": "Intel Mac",
@@ -290,7 +286,7 @@
   "faq": [
     [
       "我的 Mac 能用吗？",
-      "需要搭载 Apple 芯片、升级到 macOS 26 或更新版本的 Mac，因为本地语音识别用到了 macOS 26 新增的 SpeechAnalyzer。对 macOS 14.4 等旧系统的支持排在路线图第二位，届时识别效果会比新系统稍弱一些。"
+      "需要搭载 Apple 芯片、macOS 14.4 或更新版本的 Mac。macOS 26 上用新的本机语音识别，最准；14.4 到 15 用系统较早的识别，效果稍弱，还要在系统设置 › 键盘里打开“听写”，并把要听的语言加进听写语言。"
     ],
     [
       "要花钱吗？",

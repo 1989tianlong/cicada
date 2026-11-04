@@ -212,7 +212,7 @@ def main():
             "@context": "https://schema.org", "@type": "SoftwareApplication",
             "name": "知了 Cicada", "alternateName": ["知了", "Cicada"], "inLanguage": t["html_lang"],
             "description": t["ld_desc"],
-            "applicationCategory": "BusinessApplication", "operatingSystem": "macOS 26",
+            "applicationCategory": "BusinessApplication", "operatingSystem": "macOS 14.4",
             "softwareVersion": latest["version"], "url": SITE + prefix, "downloadUrl": DOWNLOAD,
             "image": SITE + "icon.png", "license": "https://www.apache.org/licenses/LICENSE-2.0",
             "isAccessibleForFree": True, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},

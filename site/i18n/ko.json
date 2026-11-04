@@ -20,7 +20,7 @@
   "og_desc": "Mac에서 쓰는 실시간 자막, 동시통역, AI 회의록. 알아듣고, 말하고, 기록합니다.",
   "ld_desc": "Mac에서 쓰는 실시간 번역 자막, 동시통역, AI 회의록. 어떤 회의와 방송에서도 동작합니다.",
   "feed_title": "Cicada 업데이트 내역",
-  "pill": "무료 오픈 소스 · macOS 26 · Apple 실리콘",
+  "pill": "무료 오픈 소스 · macOS 14.4+ · Apple 실리콘",
   "kicker": "Cicada가 대신 듣고, 말하고, 기록합니다",
   "slogan": "어떤 회의도, 어떤 방송도<br>언어 장벽 없이",
   "sub": "알아듣고, 말하고, 기록합니다",
@@ -145,7 +145,7 @@
   "start_desc": "Cicada를 설치하고 Ling API 키를 준비한 뒤(Ling이 매달 ¥10 크레딧 제공) 앱의 첫 실행 가이드를 따라가면 됩니다. 약 5분.",
   "start_h1": "3단계로 시작하기",
   "start_lead": "Cicada를 설치하고 Ling 키를 준비한 뒤 앱 안의 가이드를 따라가세요. 약 5분이면 됩니다.",
-  "start_req": "macOS 26 이상, Apple 실리콘 Mac이 필요합니다",
+  "start_req": "macOS 14.4 이상, Apple 실리콘 Mac이 필요합니다",
   "start_mac_q": "내 Mac에서 쓸 수 있나요?",
   "start_mob_h": "Mac에 설치하세요",
   "start_mob_p": "다운로드 링크를 Mac으로 보내세요. Ling 키는 지금 휴대폰에서 가입해 둘 수 있습니다.",
@@ -193,7 +193,7 @@
   "more": "모델, 단축키, 삭제 방법 등 자세한 내용은 <a href=\"{{REPO}}/blob/main/README.en.md\">GitHub README(영어)</a>를 참고하세요.",
   "foot_slogan": "Cicada, 매미처럼 잘 듣고 잘 말합니다",
   "foot_desc": "Mac 전체의 소리를 듣고, 당신 대신 말합니다. Mac에서 쓰는 실시간 자막, 동시통역, AI 회의록. 무료 오픈 소스.",
-  "foot_meta": "macOS 26 · Apple 실리콘 · 버전",
+  "foot_meta": "macOS 14.4+ · Apple 실리콘 · 버전",
   "foot_label": "바닥글",
   "f_product": "제품",
   "f_subtitles": "실시간 자막",
@@ -243,10 +243,6 @@
       "회의에서 직접 한 말도 회의록에"
     ],
     [
-      "macOS 14.4 이상 지원",
-      "이전 OS에서는 예전 음성 인식을 써서 언어가 조금 적습니다"
-    ],
-    [
       "정식 서명과 공증",
       "첫 실행 시 ‘그래도 열기’ 불필요"
     ],
@@ -281,7 +277,7 @@
   "faq_ask": "질문하기 →",
   "req_h": "시스템 요구 사항",
   "req_os_k": "OS",
-  "req_os_v": "macOS 26 이상",
+  "req_os_v": "macOS 14.4 이상",
   "req_chip_k": "칩",
   "req_chip_v": "Apple 실리콘(M 시리즈)",
   "req_intel_k": "Intel Mac",
@@ -290,7 +286,7 @@
   "faq": [
     [
       "내 Mac에서 쓸 수 있나요?",
-      "macOS 26 이상, Apple 실리콘 Mac이 필요합니다. 로컬 음성 인식에 macOS 26에서 새로 생긴 SpeechAnalyzer를 쓰기 때문입니다. macOS 14.4 이상 지원은 로드맵 두 번째 항목이며, 이전 OS에서는 인식이 조금 약해집니다."
+      "macOS 14.4 이상, Apple 실리콘 Mac이 필요합니다. macOS 26에서는 새 온디바이스 음성 인식을 써서 가장 정확합니다. 14.4~15에서는 시스템의 이전 인식을 쓰므로 조금 약하고, 시스템 설정 › 키보드에서 ‘받아쓰기’를 켜고 들을 언어를 추가해야 합니다."
     ],
     [
       "비용이 드나요?",
