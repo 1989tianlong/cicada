@@ -204,7 +204,7 @@ class RecordActivity : Activity() {
             val l = lines[i]
             (row.getChildAt(0) as TextView).text = Languages.clock(l.t)
             val texts = row.getChildAt(1) as LinearLayout
-            (texts.getChildAt(0) as TextView).text = l.src
+            (texts.getChildAt(0) as TextView).text = NotesViews.said(l)
             val dst = texts.getChildAt(1) as TextView
             val translated = !l.dst.isNullOrEmpty() && l.dst != l.src
             dst.visibility = if (translated) View.VISIBLE else View.GONE

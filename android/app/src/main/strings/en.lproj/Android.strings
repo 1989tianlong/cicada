@@ -100,3 +100,13 @@
 "正在加载…" = "Loading…";
 "添加到快捷设置" = "Add to Quick Settings";
 "下拉通知栏，一键开始或结束听" = "Pull down from the top to start or end listening in one tap";
+"手机不会读这个语言" = "This phone can't speak that language";
+"没能读出来" = "Couldn't read it aloud";
+"松开，说给对方" = "Release to speak";
+"正在读…" = "Speaking…";
+"松开后用 {lang} 读出来" = "Release to say it in {lang}";
+"按住说完再松开" = "Hold until you've finished speaking";
+"没听清，再说一次" = "Didn't catch that. Try again";
+"这句已经是对方的语言" = "That's already in their language";
+"没翻译出来，再说一次" = "Couldn't translate. Try again";
+"没听到声音，靠近手机再说" = "Didn't hear anything. Move closer and try again";

@@ -27,6 +27,8 @@ object Tests {
             "closesInterruptedMeetings" to ::closesInterruptedMeetings,
             "displayTitle" to ::displayTitle,
             "parsesMingReplies" to ::parsesMingReplies,
+            "speaksOnlyTranslations" to ::speaksOnlyTranslations,
+            "holdToSayAndEchoGate" to ::holdToSayAndEchoGate,
             "normalizesLanguages" to ::normalizesLanguages,
             "cleansTranslations" to ::cleansTranslations,
             "joinsCutSentences" to ::joinsCutSentences,
@@ -476,4 +478,70 @@ object Tests {
         } finally { LingClient.spacing = old }
     }
 
+    fun speaksOnlyTranslations() {
+        fun me(src: String, dst: String?, from: String, to: String) =
+            ListenEngine.speakable(TranscriptLine(speaker = "me", src = src, dst = dst, srcLang = from, dstLang = to))
+        equal("Hello.", me("你好。", "Hello.", "zh-CN", "en"), "my translation is spoken")
+        equal(null, me("你好。", null, "zh-CN", "en"), "no translation, nothing spoken")
+        equal(null, me("Hello.", "Hello.", "en", "en"), "already their language: not spoken")
+        equal(null, me("你好。", "你好。", "zh-CN", "en"), "an echo of my words isn't a translation")
+        equal(null, me("你好", "  ", "zh", "en"), "blank")
+        equal(null, ListenEngine.speakable(TranscriptLine(speaker = "them", src = "Hi", dst = "嗨", srcLang = "en", dstLang = "zh-CN")), "never the other side")
+        check(Languages.same("zh", "zh-CN") && !Languages.same("zh-CN", "zh-TW") && !Languages.same("en", "ja"), "same language")
+    }
+
+    private class ManualSource : AudioSource {
+        override var onSamples: ((ShortArray) -> Unit)? = null
+        override var onEnded: ((String?) -> Unit)? = null
+        override fun start() {}
+        override fun stop() {}
+        fun push(pcm: ShortArray) { var i = 0; while (i < pcm.size) { onSamples?.invoke(pcm.copyOfRange(i, minOf(pcm.size, i + 1600))); i += 1600 } }
+    }
+
+    fun holdToSayAndEchoGate() {
+        // The other side speaks English; I hold and say something (a different length of tone),
+        // then the phone "speaks" while a tone plays: that must not become the other side's line.
+        val fake = Fake { body ->
+            val system = content(body, 0) as String
+            if (system.contains("into English")) reply("LANG: zh-CN\nORIGINAL: 你好。\nTRANSLATION: Hello.")
+            else if (body.contains("Ming-3.0-audio-flash")) {
+                val url = content(body, 1).arr()[0].obj()!!["audio_url"].obj()!!["url"] as String
+                reply(if (url.length < 60_000) "LANG: en\nORIGINAL: First one.\nTRANSLATION: 第一句。" else "LANG: en\nORIGINAL: Echo.\nTRANSLATION: 回声。")
+            } else reply("{}")
+        }
+        val old = LingClient.spacing
+        LingClient.spacing = 0.05
+        try {
+            val ling = client(fake)
+            val store = SessionStore()
+            val engine = ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target = "zh-CN"))
+            val said = CountDownLatch(1)
+            var spoken: Pair<String, String>? = null
+            engine.onSaid = { text, lang -> spoken = text to lang; said.countDown() }
+            val src = ManualSource()
+            engine.start(src, "mic")
+            check(engine.canSay, "面对面 can say")
+            equal("en", engine.theirLanguage, "English before anyone spoke")
+            src.push(concat(tone(1.0), silence(1.2)))
+            val until = System.currentTimeMillis() + 3000
+            while (engine.spoken == null && System.currentTimeMillis() < until) Thread.sleep(20)
+            engine.hold()
+            src.push(tone(1.2))
+            engine.release()
+            src.push(silence(0.3))
+            check(said.await(3, java.util.concurrent.TimeUnit.SECONDS), "said")
+            equal("Hello." to "en", spoken, "spoken in their language")
+            engine.muted = true
+            src.push(concat(tone(2.0), silence(1.2)))
+            Thread.sleep(300) // mute lasts as long as the voice plays: let the worker take what came in meanwhile
+            engine.muted = false
+            src.push(silence(1.0))
+            Thread.sleep(300)
+            engine.stop()
+            val s = store.get(engine.sessionId!!)!!
+            equal("them:First one.|me:你好。", s.lines.joinToString("|") { "${it.speaker}:${it.src}" }, "my line recorded, the echo dropped")
+            equal("m1", s.lines[1].id, "Mac-style id")
+            check(s.lines[1].t >= 2.0, "my line's time is when I pressed")
+        } finally { LingClient.spacing = old }
+    }
 }

@@ -182,7 +182,8 @@ class SessionStore(loadNow: Boolean = true) {
             }
             b.append("## ${Strings.L("文字记录")}\n\n")
             for (l in s.lines) {
-                b.append("**${Languages.clock(l.t)}** ${l.src}  \n")
+                val who = if (l.speaker == "me") Strings.L("你") + " · " else ""
+                b.append("**${Languages.clock(l.t)}** $who${l.src}  \n")
                 if (!l.dst.isNullOrEmpty() && l.dst != l.src) b.append(l.dst).append("\n")
                 b.append("\n")
             }

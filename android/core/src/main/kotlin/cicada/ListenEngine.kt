@@ -63,6 +63,62 @@ class ListenEngine(
     val target: String get() = settings.targetCode
 
     private val END = ShortArray(0)
+    // Hold and release go through the audio queue, so buffers recorded before the press stay the
+    // other side's and those recorded before the release are still mine.
+    private val HOLD = ShortArray(0)
+    private val RELEASE = ShortArray(0)
+
+    // MARK: 我说 (面对面 only): hold, say something, release → Ming → spoken in their language.
+
+    /// Speaks my words to the person in front of me: `text` is always a translation (see `speakable`).
+    var onSaid: ((text: String, lang: String) -> Unit)? = null
+    /// The button is down.
+    @Volatile var holding = false; private set
+    /// My words are at Ming.
+    @Volatile var saying = false; private set
+    /// Set while the phone speaks: the mic would hear the translation as the other side, so the
+    /// segmenter gets silence instead.
+    @Volatile var muted = false
+    /// Why the last press said nothing ("没听清，再说一次"); cleared by the next press.
+    @Volatile var sayProblem: String? = null; private set
+    private val mine = ArrayList<ShortArray>()
+    private var holdStart = 0.0
+    private var saidCount = 0
+
+    val canSay: Boolean get() = listening && sourceKind == "mic"
+
+    /// Who I'm talking to speaks the meeting's language; before they have said anything (or when
+    /// it is mine), English, or Chinese for an English speaker (the Mac always falls back to English).
+    val theirLanguage: String get() {
+        val me = target
+        val heard = spoken
+        if (heard != null && !Languages.same(heard, me)) return heard
+        return if (me.startsWith("en")) "zh-CN" else "en"
+    }
+
+    fun hold() {
+        if (!canSay || holding) return
+        holding = true
+        sayProblem = null
+        audio?.offer(HOLD)
+        changed()
+    }
+
+    /// The app couldn't speak a translation ("手机没有这个语言的语音").
+    fun sayFailed(why: String) { sayProblem = why; changed() }
+
+    /// Debug: audio as if the source had just delivered it (the emulator's microphone is silent).
+    fun inject(pcm: ShortArray) {
+        var i = 0
+        while (i < pcm.size) { audio?.offer(pcm.copyOfRange(i, minOf(pcm.size, i + 1600))); i += 1600 }
+    }
+
+    fun release() {
+        if (!holding) return
+        holding = false
+        audio?.offer(RELEASE)
+        changed()
+    }
 
     fun start(from: AudioSource, kind: String) {
         if (listening) return
@@ -74,6 +130,7 @@ class ListenEngine(
             nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0.0
             hint = null; candidate = null; candidateVotes = 0; problem = null
         }
+        holding = false; saying = false; muted = false; sayProblem = null; saidCount = 0
         heardSeconds = 0.0; peak = 0.0
         notes.language = { Languages.englishName(settings.notesCode) }
         notes.begin(session.id)
@@ -83,10 +140,15 @@ class ListenEngine(
         audio = queue
         // One worker owns the segmenter: audio callbacks only queue buffers.
         worker = Thread({
+            var mineOpen = false
             while (true) {
                 val buf = queue.take()
                 if (buf === END) break
-                segmenter.feed(buf)
+                if (buf === HOLD) { mineOpen = true; synchronized(mine) { mine.clear() }; holdStart = heardSeconds; continue }
+                if (buf === RELEASE) { if (mineOpen) { mineOpen = false; finishSaying() }; continue }
+                if (mineOpen) synchronized(mine) { mine.add(buf) }
+                // Silence, not nothing, so the segmenter's clock keeps step with the meeting's.
+                segmenter.feed(if (mineOpen || muted) ShortArray(buf.size) else buf)
                 level = Wav.rms(buf)
                 peak = maxOf(peak * 0.995, level)
                 heardSeconds += buf.size / Segmenter.RATE.toDouble()
@@ -121,6 +183,60 @@ class ListenEngine(
         Log.d("listen: stopped $id, $lineCount lines")
         changed()
         pool.execute { notes.finish() }
+    }
+
+    private fun finishSaying() {
+        val pcm = synchronized(mine) {
+            val all = ShortArray(mine.sumOf { it.size }); var at = 0
+            for (b in mine) { b.copyInto(all, at); at += b.size }
+            mine.clear(); all
+        }
+        if (pcm.size < Segmenter.RATE / 2 || Wav.rms(pcm) < 0.003) {
+            sayProblem = if (pcm.size < Segmenter.RATE / 2) Strings.L("按住说完再松开") else Strings.L("没听到声音，靠近手机再说")
+            changed(); return
+        }
+        saying = true
+        changed()
+        val t = Math.round(holdStart * 1000) / 1000.0
+        pool.execute { say(pcm, t) }
+    }
+
+    private fun say(pcm: ShortArray, t: Double) {
+        val id = sessionId ?: run { saying = false; return }
+        val their = theirLanguage
+        val me = target
+        try {
+            val heard = translator.hear(encode(pcm), their, me)
+            if (heard == null) { sayProblem = Strings.L("没听清，再说一次"); return }
+            var dst = heard.translation
+            if (dst == null && !Languages.same(heard.lang, their)) dst = translator.translate(heard.original, heard.lang, their, Translator.Kind.Sentence)
+            val n = synchronized(gate) { ++saidCount }
+            val line = TranscriptLine(id = "m$n", t = t, speaker = "me", src = heard.original, dst = dst,
+                                      srcLang = heard.lang, dstLang = their)
+            // The other side's next words start their own line, never joined onto mine.
+            synchronized(gate) { last = null }
+            store.append(id, line.copy())
+            val text = speakable(line)
+            Log.d("listen: said ${heard.lang} -> $their, ${if (text != null) "speaking" else "not spoken"}")
+            when {
+                text != null -> onSaid?.invoke(text, their)
+                Languages.same(heard.lang, their) -> sayProblem = Strings.L("这句已经是对方的语言")
+                else -> sayProblem = Strings.L("没翻译出来，再说一次")
+            }
+        } catch (e: LingException) {
+            sayProblem = when (e.kind) {
+                LingException.Kind.NoKey, LingException.Kind.InvalidKey -> Strings.L("Ling key 无效")
+                LingException.Kind.Network, LingException.Kind.Timeout -> Strings.L("连不上 Ling，检查网络")
+                else -> Strings.L("没听清，再说一次")
+            }
+            Log.d("listen: saying failed ${e.message}")
+        } catch (e: Exception) {
+            sayProblem = Strings.L("没听清，再说一次")
+            Log.d("listen: saying failed ${e.javaClass.simpleName}")
+        } finally {
+            saying = false
+            changed()
+        }
     }
 
     private fun encode(pcm: ShortArray): Clip {
@@ -222,6 +338,13 @@ class ListenEngine(
     }
 
     companion object {
+        /// What may be spoken into the room for a line: my words' translation, never my own words.
+        fun speakable(line: TranscriptLine): String? {
+            val dst = line.dst?.trim() ?: return null
+            if (line.speaker != "me" || dst.isEmpty() || Languages.same(line.srcLang, line.dstLang) || dst == line.src.trim()) return null
+            return dst
+        }
+
         /// A segment continues the last line when the cut came mid-sentence: no sentence end on the
         /// last line, a short gap, the same language, and the joined line not too long to read.
         fun continues(last: TranscriptLine, gap: Double, next: Heard): Boolean {

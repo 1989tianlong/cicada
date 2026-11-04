@@ -106,5 +106,12 @@ object Languages {
         return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%02d:%02d".format(s / 60, s % 60)
     }
 
+    /// The same language for speaking purposes: "zh" and "zh-CN" are, "zh-CN" and "zh-TW" aren't.
+    fun same(a: String, b: String): Boolean {
+        if (a.equals(b, ignoreCase = true)) return true
+        val (x, y) = a.substringBefore('-') to b.substringBefore('-')
+        return x.equals(y, ignoreCase = true) && (!a.contains('-') || !b.contains('-'))
+    }
+
     fun isCjkLanguage(code: String) = code.startsWith("zh") || code.startsWith("ja") || code.startsWith("ko")
 }

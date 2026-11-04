@@ -23,6 +23,11 @@ class ListeningActivity : Activity() {
     private lateinit var scroll: ScrollView
     private lateinit var badgeText: TextView
     private lateinit var sourceText: TextView
+    private lateinit var bottomHost: FrameLayout
+    private var bottomKind: String? = "-"
+    private var sayButton: LinearLayout? = null
+    private var sayLabel: TextView? = null
+    private var sayHelper: TextView? = null
     private var tab = 0
     private var shown: String? = null
     private var unobserve: (() -> Unit)? = null
@@ -56,10 +61,72 @@ class ListeningActivity : Activity() {
             addView(ui.divider(), LinearLayout.LayoutParams(-1, 1).apply { leftMargin = ui.dp(16); rightMargin = ui.dp(16) })
             addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        val bottom = ui.bottomBar(
-            ui.button(L("在视频上看"), "quiet", R.drawable.i_pip) { watchOver() },
-            ui.button(L("结束"), "primary", R.drawable.i_stop) { end() })
-        setContentView(ui.screen(this, null, back = true, ground = Palette.ground, center = badge, bottom = bottom, scroll = false, body = body))
+        bottomHost = FrameLayout(this)
+        buildBottom()
+        setContentView(ui.screen(this, null, back = true, ground = Palette.ground, center = badge, bottom = bottomHost, scroll = false, body = body))
+    }
+
+    /// 面对面 gets 我说 (hold, speak, release: the phone says it in their language) in place of
+    /// 在视频上看, which has no video to go back to.
+    private fun buildBottom() {
+        val kind = cicada.listen.sourceKind
+        if (kind == bottomKind) return
+        bottomKind = kind
+        bottomHost.removeAllViews()
+        sayButton = null; sayLabel = null; sayHelper = null
+        if (kind != "mic") {
+            bottomHost.addView(ui.bottomBar(
+                ui.button(L("在视频上看"), "quiet", R.drawable.i_pip) { watchOver() },
+                ui.button(L("结束"), "primary", R.drawable.i_stop) { end() }))
+            return
+        }
+        val helper = ui.helper("").apply { gravity = android.view.Gravity.CENTER }
+        val say = ui.button(L("按住说话"), "primary", R.drawable.i_mic) {}
+        val label = (0 until say.childCount).map { say.getChildAt(it) }.filterIsInstance<TextView>().first()
+        say.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    cicada.holdToSay(); updateSay(); true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    cicada.releaseToSay(); updateSay(); true
+                }
+                else -> true
+            }
+        }
+        // TalkBack's double tap is a click: press once to start, again to finish.
+        say.setOnClickListener { if (cicada.listen.holding) cicada.releaseToSay() else cicada.holdToSay(); updateSay() }
+        val bar = ui.bottomBar(ui.button(L("结束"), "quiet", R.drawable.i_stop) { end() }, say)
+        (say.layoutParams as LinearLayout.LayoutParams).weight = 1.6f
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(helper, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(8); leftMargin = ui.dp(16); rightMargin = ui.dp(16) })
+            addView(bar)
+        }
+        bottomHost.addView(box)
+        sayButton = say; sayLabel = label; sayHelper = helper
+        updateSay()
+    }
+
+    /// The button changes in place: rebuilding it under a finger would lose the hold.
+    private fun updateSay() {
+        val say = sayButton ?: return
+        val app = cicada
+        val l = app.listen
+        val their = NotesViews.languageName(l.theirLanguage)
+        val (text, live) = when {
+            l.holding -> L("松开，说给对方") to true
+            l.saying -> L("正在翻译…") to false
+            app.voice.speaking -> L("正在读…") to true
+            else -> L("按住说话") to false
+        }
+        sayLabel?.text = text
+        say.contentDescription = text
+        say.background = ui.rounded(if (live) Palette.accent else Palette.ink, 16)
+        sayHelper?.text = l.sayProblem ?: L("松开后用 {lang} 读出来").replace("{lang}", their)
+        sayHelper?.setTextColor(if (l.sayProblem != null) Palette.link else Palette.secondary)
     }
 
     override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); out.putInt("tab", tab) }
@@ -84,6 +151,8 @@ class ListeningActivity : Activity() {
         // Ended elsewhere (the notification, the floating window, Android's "stop sharing").
         if (!app.listen.listening && app.listen.pending == 0) { openRecord(); return }
         badgeText.text = NotesViews.status(app)
+        buildBottom()
+        updateSay()
         sourceText.text = NotesViews.sourceLine(app)
         val key = NotesViews.liveKey(app) + tab + app.listen.spoken
         if (key == shown) return

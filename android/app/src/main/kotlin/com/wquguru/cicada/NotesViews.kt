@@ -95,7 +95,7 @@ object NotesViews {
             return box
         }
         for (l in lines.dropLast(1).takeLast(earlier)) {
-            val texts = ui.stack(2, ui.text(l.src, 13f, Palette.secondary))
+            val texts = ui.stack(2, ui.text(said(l), 13f, Palette.secondary))
             if (!l.dst.isNullOrEmpty() && l.dst != l.src) texts.addView(ui.text(l.dst!!, 16f, Palette.ink), ui.lp(top = 2))
             box.addView(LinearLayout(ui.context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -108,14 +108,18 @@ object NotesViews {
     }
 
     /// The newest line as a card, with the "still listening" dots under it.
+    /// The original as shown above its translation: mine is marked, so it's clear who said it.
+    fun said(l: TranscriptLine) = if (l.speaker == "me") L("你") + " · " + l.src else l.src
+
     fun liveCard(ui: Ui, app: CicadaApp, line: TranscriptLine, big: Float, bg: Int = Palette.card, lines: Int = 0, dots: Boolean = true): LinearLayout {
         val card = ui.stack(0)
         card.background = ui.rounded(bg, 20)
         card.setPadding(ui.dp(18), ui.dp(16), ui.dp(18), ui.dp(16))
         card.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         val translated = !line.dst.isNullOrEmpty() && line.dst != line.src
-        if (translated) card.addView(ui.text(line.src, 14f, Palette.secondary, lines = if (lines > 0) lines - 1 else 0))
-        card.addView(ui.text(line.dst ?: line.src, big, Palette.ink, bold = true, lines = lines).apply { setLineSpacing(0f, 1.25f) }, ui.lp(top = if (translated) 8 else 0))
+        if (!translated && line.speaker == "me") card.addView(ui.text(L("你"), 14f, Palette.secondary))
+        if (translated) card.addView(ui.text(said(line), 14f, Palette.secondary, lines = if (lines > 0) lines - 1 else 0))
+        card.addView(ui.text(line.dst ?: line.src, big, Palette.ink, bold = true, lines = lines).apply { setLineSpacing(0f, 1.25f) }, ui.lp(top = if (translated || line.speaker == "me") 8 else 0))
         if (dots && app.listen.listening) card.addView(LinearLayout(ui.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

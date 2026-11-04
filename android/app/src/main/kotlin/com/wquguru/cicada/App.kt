@@ -37,6 +37,7 @@ class CicadaApp : Application() {
     lateinit var translator: Translator
     lateinit var listen: ListenEngine
     lateinit var overlay: Overlay
+    lateinit var voice: Voice
     val main = Handler(Looper.getMainLooper())
     val background = Executors.newCachedThreadPool { r -> Thread(r, "App").apply { isDaemon = true } }
     private val observers = LinkedHashSet<() -> Unit>()
@@ -74,6 +75,8 @@ class CicadaApp : Application() {
             AacEncoder.encode(pcm)?.also { Log.d("listen: ${pcm.size * 2 / 1024} KB PCM → ${it.bytes.size / 1024} KB ${it.type} in ${System.currentTimeMillis() - t} ms") }
         }
         overlay = Overlay(this)
+        voice = Voice(this)
+        listen.onSaid = ::speakAloud
         listen.onChange(::changed)
         notes.onChange(::changed)
         store.onChange { changed() }
@@ -164,7 +167,34 @@ class CicadaApp : Application() {
         overlayThisMeeting = false
         overlay.collapsed = false
         listen.start(source, kind)
+        if (kind == "mic") background.execute { voice.warm() }
         openLive()
+    }
+
+    // MARK: 我说 (面对面)
+
+    fun holdToSay() {
+        // Pressing again while the phone still speaks: stop it, it's my turn.
+        if (voice.speaking) { voice.stop(); listen.muted = false }
+        listen.hold()
+    }
+
+    fun releaseToSay() = listen.release()
+
+    /// My words in their language, out of the phone's speaker. The mic is muted for the segmenter
+    /// meanwhile (and a beat after, for the room's echo) so the phone doesn't hear itself as them.
+    private fun speakAloud(text: String, lang: String) {
+        listen.muted = true
+        changed()
+        val r = voice.speak(text, lang, onStart = { changed() }, onEnd = {
+            main.postDelayed({ if (!voice.speaking) { listen.muted = false; changed() } }, 400)
+        })
+        // A TTS engine that drops the utterance never calls back: don't stay deaf to the other side.
+        if (r == Voice.Result.Spoken) main.postDelayed({ if (listen.muted && !voice.speaking) { listen.muted = false; changed() } }, 3_000L + text.length * 150L)
+        if (r != Voice.Result.Spoken) {
+            listen.muted = false
+            listen.sayFailed(if (r == Voice.Result.NoVoice) Strings.L("手机不会读这个语言") else Strings.L("没能读出来"))
+        }
     }
 
     /// The 正在听 screen, brought to the front.
@@ -173,6 +203,7 @@ class CicadaApp : Application() {
     }
 
     fun stopListening(then: (() -> Unit)? = null) {
+        voice.stop()
         background.execute {
             listen.stop()
             main.post {
