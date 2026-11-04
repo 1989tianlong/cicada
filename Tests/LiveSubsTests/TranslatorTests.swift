@@ -47,4 +47,21 @@ import Testing
         #expect(TranslationService.cleanTranslation("We ship on Friday.", target: "zh-CN") == nil)
         #expect(TranslationService.cleanTranslation("我们周五发布。", target: "en-US") == nil)
     }
+
+    // What you say is spoken into the room only as Ming's translation; anything that is not
+    // clearly one sends the press to the on-device path instead.
+    @MainActor @Test func interpretationNeedsBothLinesAndARealTranslation() {
+        let good = TranslationService.parseInterpretation("ORIGINAL: 我们周五发布。\nTRANSLATION: We ship on Friday.", target: "en-US")
+        #expect(good?.original == "我们周五发布。")
+        #expect(good?.translation == "We ship on Friday.")
+        #expect(TranslationService.parseInterpretation("ORIGINAL: 我们周五发布。", target: "en-US") == nil)
+        #expect(TranslationService.parseInterpretation("ORIGINAL: 我们周五发布。\nTRANSLATION:", target: "en-US") == nil)
+        #expect(TranslationService.parseInterpretation("We ship on Friday.", target: "en-US") == nil)
+    }
+
+    @MainActor @Test func interpretationThatRepeatsTheOriginalIsDropped() {
+        #expect(TranslationService.parseInterpretation("ORIGINAL: OK.\nTRANSLATION: OK.", target: "zh-CN") == nil)
+        #expect(TranslationService.parseInterpretation("ORIGINAL: 我们周五发布。\nTRANSLATION: 我们周五发布。", target: "en-US") == nil)
+        #expect(TranslationService.parseInterpretation("ORIGINAL: We ship on Friday.\nTRANSLATION: We ship on Friday", target: "zh-CN") == nil)
+    }
 }

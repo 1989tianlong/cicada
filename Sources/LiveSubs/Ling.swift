@@ -13,8 +13,12 @@ import Security
 enum AIKey {
     private static var cached: String??
 
+    /// Tests only: keep the key in this folder instead, and leave the Keychain alone, so a test
+    /// run never touches the user's real key.
+    static var folderOverride: URL? { didSet { cached = nil } }
+
     private static var folder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        folderOverride ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(DevBuild.supportFolder)
     }
     private static var file: URL { folder.appendingPathComponent("ling-api-key") }
@@ -23,7 +27,7 @@ enum AIKey {
         if let cached { return cached }
         var value = (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
         if value?.isEmpty ?? true { value = nil }
-        if value == nil, let old = LegacyKeychain.take() {
+        if value == nil, folderOverride == nil, let old = LegacyKeychain.take() {
             // One last Keychain prompt, then the key lives in the file.
             value = old
             write(old)
@@ -41,7 +45,7 @@ enum AIKey {
 
     static func remove() {
         try? FileManager.default.removeItem(at: file)
-        LegacyKeychain.delete()
+        if folderOverride == nil { LegacyKeychain.delete() }
         cached = .some(nil)
     }
 
@@ -150,6 +154,9 @@ final class LingClient: ObservableObject {
 
     /// Debug control only: act as if there were no key, without touching the key file.
     var hideKey = false
+
+    /// Tests swap in a session with a stub protocol.
+    var session: URLSession = .shared
 
     var hasKey: Bool { key != nil }
     var key: String? { hideKey ? nil : AIKey.read() }
@@ -315,7 +322,7 @@ final class LingClient: ObservableObject {
                 if let language { body["language_id"] = language }
                 req.httpBody = try? JSONSerialization.data(withJSONObject: body)
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    let (bytes, response) = try await self.session.bytes(for: req)
                     switch (response as? HTTPURLResponse)?.statusCode ?? 0 {
                     case 200: break
                     case 401, 403:
@@ -352,7 +359,7 @@ final class LingClient: ObservableObject {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: req)
+            (data, response) = try await session.data(for: req)
         } catch let e as URLError where e.code == .timedOut {
             throw Failure.timeout
         } catch {

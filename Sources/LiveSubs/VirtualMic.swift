@@ -48,6 +48,8 @@ final class VirtualMicInstaller: ObservableObject {
     var speakThrough: ((_ text: String, _ language: String, _ device: OutputDevice) async -> Void)?
     /// Called once Core Audio has the device (after an install or reload).
     var onLoaded: (() -> Void)?
+    /// Tests swap in a session with a stub protocol.
+    var session: URLSession = .shared
 
     var device: OutputDevice? { AudioDevices.virtualMic }
     var isLoaded: Bool { device != nil }
@@ -120,7 +122,7 @@ final class VirtualMicInstaller: ObservableObject {
     private func download() async -> URL? {
         state = .downloading
         do {
-            let (tmp, response) = try await URLSession.shared.download(from: Self.packageURL)
+            let (tmp, response) = try await session.download(from: Self.packageURL)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                 state = .failed(L("下载失败，请检查网络"))
                 return nil
