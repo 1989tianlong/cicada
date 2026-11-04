@@ -1051,6 +1051,9 @@ final class AppModel: ObservableObject {
         }
         guard let prev = lastHeard, store.session(store.liveID ?? "")?.lines.last?.id == prev.line,
               prev.seg.clock == seg.clock, prev.seg.sourceCode == seg.sourceCode,
+              // macOS 14/15: the older recognizer ends a line only at a real pause and often drops
+              // the full stop, so a missing one says nothing; only a line Cicada cut is a half sentence.
+              !Recognition.legacy || prev.seg.cut,
               HeardText.continues(prev.seg.text, seg.text, gap: seg.start - prev.seg.end, cut: prev.seg.cut) else {
             appendHeard(seg, t: t, tag: true)
             return
