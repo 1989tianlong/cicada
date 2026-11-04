@@ -502,6 +502,13 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     var speakers: [String: Int] = [:]
     /// When listening began, for the start mark shown before the first line.
     var startedAt: Date?
+    /// Speech is coming in but its language isn't known yet: 此刻 says so instead of waiting.
+    var identifying = false
+    /// Voice → speaker number on show; with `onAssign`, a paragraph's name opens "这段是谁说的".
+    var voices: [Int: Int] = [:]
+    /// The voice being edited above: its paragraphs are tinted.
+    var marked: Int?
+    var onAssign: ((Set<String>, Int) -> Void)?
     @ViewBuilder var partial: Partial
 
     @State private var following = true
@@ -593,7 +600,7 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                         }
                         if lines.isEmpty && !partialShown {
                             if live {
-                                TranscriptWaitingView(startedAt: startedAt)
+                                TranscriptWaitingView(startedAt: startedAt, identifying: identifying)
                             } else {
                                 Text("说话的内容会出现在这里").font(.system(size: 13)).foregroundStyle(Palette.tertiary)
                                     .frame(maxWidth: .infinity).padding(.top, 40)
@@ -802,6 +809,7 @@ extension View {
 /// lines will take, and 此刻 waiting for the first words.
 struct TranscriptWaitingView: View {
     var startedAt: Date?
+    var identifying = false
 
     private static let time: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; return f }()
 
@@ -827,7 +835,7 @@ struct TranscriptWaitingView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("此刻").font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.accentInk)
                 HStack(spacing: 3) {
-                    Text("等有人开口").font(.system(size: 15)).foregroundStyle(Palette.tertiary)
+                    Text(identifying ? L("正在识别语言…") : L("等有人开口")).font(.system(size: 15)).foregroundStyle(Palette.tertiary)
                     BlinkingCaret()
                 }
             }

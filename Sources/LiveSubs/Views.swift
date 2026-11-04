@@ -164,6 +164,9 @@ struct MenuPanelView: View {
             }
 
             if let p = model.ending { MeetingEndingStrip(model: model, pending: p, compact: true) }
+            // In subtitle-bar mode this is where the bar sends you to pick.
+            if model.running { LanguageNotice(model: model) }
+            if model.roomPrompt { roomPromptStrip }
 
             VStack(spacing: 8) {
                 ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, sections: sourceSections) {
@@ -854,7 +857,7 @@ struct MainWindowView: View {
     /// 此刻: the sentence being heard, pinned under the page while the meeting is live.
     @ViewBuilder private var liveNow: some View {
         let src = model.liveSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !src.isEmpty {
+        if !src.isEmpty || !model.languageAsk.isEmpty || model.modelFetch != nil {
             HStack(alignment: .top, spacing: 14) {
                 HStack(spacing: 6) {
                     BreathingDot(size: 6)
@@ -864,10 +867,12 @@ struct MainWindowView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(src).font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         .lineLimit(2).truncationMode(.head)
-                    if !model.liveTranslation.isEmpty {
+                    // 听不出 replaces the stuck 正在识别语言…; it says what to do instead.
+                    if !model.liveTranslation.isEmpty, model.languageAsk.isEmpty {
                         Text(model.liveTranslation).font(.system(size: 15)).foregroundStyle(Palette.ink)
                             .lineLimit(2).truncationMode(.head)
                     }
+                    LanguageNotice(model: model).padding(.top, 4)
                 }
                 Spacer(minLength: 0)
             }
@@ -1146,6 +1151,121 @@ struct SessionNotesView: View {
             .frame(maxWidth: 600, alignment: .leading)
             .padding(.horizontal, 44).padding(.top, 52).padding(.bottom, 64)
             .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+/// Under 此刻 while "auto" can't tell the language yet: the second speech model coming in, or,
+/// when nothing more will settle it, 听不出 with the likely languages to pick from.
+struct LanguageNotice: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let problem = model.modelProblem, !model.languageAsk.isEmpty || model.modelBlocked {
+            problemCard(problem)
+        } else if model.languageNotInstalled {
+            notInstalledCard
+        } else if !model.languageAsk.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("听不出是哪种语言，你来选一下").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                HStack(spacing: 8) {
+                    ForEach(model.languageAsk, id: \.locale) { lang in
+                        SoftButton(lang.name) { model.pickLanguage(lang) }
+                    }
+                    Menu {
+                        ForEach(sourceLanguages.filter { !model.languageAsk.contains($0) }, id: \.locale) { lang in
+                            Button(lang.name) { model.pickLanguage(lang) }
+                        }
+                    } label: {
+                        Text("更多…").font(.system(size: 12, weight: .semibold))
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .foregroundStyle(Palette.secondary)
+                }
+            }
+        } else if let fetch = model.modelFetch {
+            HStack(spacing: 10) {
+                ProgressView(value: max(0.02, fetch.fraction)).progressViewStyle(.linear).tint(Palette.tertiary).frame(width: 96)
+                Text("正在补装 \(fetch.name) 语音模型，装好后自动判断语言").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .lineLimit(1).truncationMode(.tail)
+            }
+        }
+    }
+
+    /// None of the installed models hear their language: the likely ones not installed come first
+    /// (picking one downloads it and replays the start), the installed ones in case the check was wrong.
+    private var notInstalledCard: some View {
+        let installed = model.candidates
+        let names = installed.map(\.name)
+        let title = names.count == 1 ? L("听着不像 \(names[0])")
+            : names.count == 2 ? L("听着不像 \(names[0]) 或 \(names[1])") : L("听着不像已装的语言")
+        return VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text("选了就下载它的语音模型，开头这段也会补上").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                ForEach(model.languageAsk, id: \.locale) { lang in
+                    SoftButton(lang.name) { model.pickLanguage(lang) }
+                }
+                Menu {
+                    ForEach(sourceLanguages.filter { !model.languageAsk.contains($0) && !installed.contains($0) }, id: \.locale) { lang in
+                        Button(lang.name) { model.pickLanguage(lang) }
+                    }
+                } label: {
+                    Text("更多…").font(.system(size: 12, weight: .semibold))
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .foregroundStyle(Palette.secondary)
+            }
+            HStack(spacing: 10) {
+                Text("其实是：").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                ForEach(installed, id: \.locale) { lang in
+                    Button(lang.name) { model.pickLanguage(lang) }
+                        .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.secondary).underline()
+                }
+            }
+        }
+    }
+
+    /// The model 听不出 needed couldn't be had: why, the one thing that helps, and the languages
+    /// already on the Mac to go on with meanwhile.
+    private func problemCard(_ p: ModelProblem) -> some View {
+        // Chosen in settings, the language isn't swapped from here.
+        let installed = model.settings.sourceMode == .auto ? model.candidates.filter { $0 != p.lang } : []
+        return VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("没能下载 \(p.lang.name) 语音模型").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                if let reason = reason(p.cause) {
+                    Text(reason).font(.system(size: 12)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack(spacing: 8) {
+                switch p.cause {
+                case .disk: SoftButton(L("打开存储空间"), dark: true) { model.openStorageSettings() }
+                case .dictation: SoftButton(L("打开听写设置"), dark: true) { model.openDictationSettings() }
+                case .other, .limit: SoftButton(L("再试一次"), dark: true) { model.retryModel() }
+                case .offline: EmptyView()
+                }
+                if !installed.isEmpty {
+                    Text("先用已装的：").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    ForEach(installed, id: \.locale) { lang in
+                        SoftButton(lang.name) { model.pickLanguage(lang) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func reason(_ cause: ModelProblem.Cause) -> String? {
+        switch cause {
+        case .offline: return L("网络连不上，连上后会自动继续")
+        case .disk: return L("这台 Mac 的磁盘空间不够了")
+        case .limit: return L("这台 Mac 上的语音模型已满 5 种")
+        case .dictation(let message), .other(let message?): return message
+        case .other(nil): return nil
         }
     }
 }

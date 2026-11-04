@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreMedia
-import Speech
+import Network
 
 struct Segment {
     let id: Int
@@ -40,9 +40,37 @@ final class ListenEngine {
     private(set) var detecting = false
     private(set) var candidates: [Lang] = []
     private(set) var installedLocales: Set<String> = []
+    /// The speech model fetched in the background so "auto" has two to compare.
+    private(set) var fetchingModel: (lang: Lang, progress: Progress)?
+    private var fetchFailed: Set<String> = []
+    /// Debug (`models:`): treat only these as installed, plus what is fetched meanwhile, and these as the Mac's languages.
+    var simulatedModels: Set<String>?
+    var simulatedSystemLanguages: [String]?
+    /// Debug (`models:…@<s>`): a background download takes at least this long, like a slow network.
+    var simulatedFetchDelay: Double = 0
+    /// Debug (`modelFail:`): every model download fails this way (offline, disk, limit, other).
+    var simulatedModelFailure: String?
+    /// Debug (`network:`): pretend to be on or offline; nil follows the real network.
+    var simulatedOnline: Bool? { didSet { networkChanged() } }
+    /// A model that couldn't be had while it was needed, shown in 听不出 with what to do.
+    private(set) var modelProblem: ModelProblem?
+    private let pathMonitor = NWPathMonitor()
+    private var realOnline = true
+    private var online: Bool { simulatedOnline ?? realOnline }
+    private var systemLanguages: [String] { simulatedSystemLanguages ?? Locale.preferredLanguages }
+    /// When words were first heard this run: 听不出 is offered once the language stays unknown long after.
+    private var firstHeardAt: Date?
+    private var askShown = false
 
-    private var audioTap: SystemAudioTap?
-    private var analyzer: SpeechAnalyzer?
+    private var audioTap: AudioSource?
+    /// 会议室: the microphone Cicada listens to the room with; nil leaves the input on its default.
+    var roomDevice: (() -> OutputDevice?)?
+    /// The Mac reading a translation aloud, or the talk key held: the room mic hears silence then.
+    private var roomMuted = false
+    private var startedAt = Date()
+    /// Listening to the Mac, and it has played nothing since the start: maybe the meeting is in the room.
+    private(set) var macSilent = false
+    private var recognizer: RecognitionStream?
     private var resultsTask: Task<Void, Never>?
     private var generation = 0
     private var pendingSwitch: Lang?
@@ -54,7 +82,28 @@ final class ListenEngine {
     /// Sentences finished before detection settled the language: recorded once it confirms the
     /// language they were heard in, dropped on a switch (the replay into the new model redoes them).
     private var unconfirmed: [(seg: Segment, at: Date, duration: Double)] = []
-    private var recordable: Bool { settings.sourceMode != .auto || languageConfirmed || ambiguousDetections >= 2 }
+    private var recordable: Bool {
+        settings.sourceMode != .auto || languageConfirmed || (ambiguousDetections >= 2 && !mismatch)
+    }
+    /// The only model there is checked the audio and it isn't its language: what it writes is
+    /// noise, neither shown nor kept, until another model or a pick settles it.
+    private(set) var mismatch = false
+    private var unsureStreak = 0
+    private var sureStreak = 0
+    /// The model for the language it starts with couldn't be had, and there is none to fall back
+    /// on: nothing is listening, so the problem shows without waiting for 听不出.
+    var blockedByModel: Bool { isRunning && modelProblem?.picked == true && recognizer == nil && modelProblem?.lang == activeLang }
+    var hidesSource: Bool { mismatch && !recordable }
+    /// Someone has spoken and the language isn't settled yet: what 此刻 says instead of 等有人开口.
+    var identifyingLanguage: Bool {
+        isRunning && settings.sourceMode == .auto && !recordable && firstHeardAt != nil
+    }
+    /// How much audio a switch can replay: all of it since the start while the language is unknown.
+    /// Three minutes (≈6 MB): a model download seen taking 106 s fits with room to spare.
+    private static let holdUnknown = 180.0
+    private func updateHold() {
+        router.holdAudio(settings.sourceMode == .auto && !languageConfirmed ? Self.holdUnknown : 10)
+    }
     private var failureStreak = 0
 
     private var segments: [Segment] = []
@@ -82,6 +131,18 @@ final class ListenEngine {
 
     init(settings: AppSettings) {
         self.settings = settings
+        // A download that failed for want of a network resumes when there is one again.
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let up = path.status == .satisfied
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.realOnline != up else { return }
+                    self.realOnline = up
+                    self.networkChanged()
+                }
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "cicada.network"))
     }
 
     var resolvedTarget: String { settings.resolvedTarget(source: activeLang?.code) }
@@ -112,6 +173,65 @@ final class ListenEngine {
         candidates = sourceLanguages.filter { installedLocales.contains($0.locale) }
         debugLog("installed speech models: \(installedLocales.sorted()) candidates=\(candidates.map(\.locale))")
         onStateChange?()
+        // Also when not listening: at launch the Mac's language and English come in quietly, so
+        // the first meeting already has two models to compare.
+        fetchSecondModel()
+    }
+
+    /// Detection needs two models: a Mac with fewer fetches the likeliest missing ones in the
+    /// background, one at a time (each one's end refreshes the list and asks for the next).
+    private func fetchSecondModel(besides starting: Lang? = nil) {
+        guard settings.sourceMode == .auto, fetchingModel == nil, candidates.count < 2 else { return }
+        let last = UserDefaults.standard.string(forKey: "lastDetected")
+        // The model being started is fetched by `ensureModel` already. At a start that is `starting`:
+        // `activeLang` is still the last run's then, and may be a model since taken away.
+        let busy = starting ?? (isRunning ? activeLang : nil)
+        guard let lang = likelySourceLanguages(last: last, systemLanguages: systemLanguages).first(where: {
+            !installedLocales.contains($0.locale) && !fetchFailed.contains($0.locale) && $0 != busy
+        }) else { return }
+        fetchingModel = (lang, Progress())
+        Task { [weak self] in
+            var ok = false
+            do {
+                if await Recognition.status(lang.locale) == .unsupported {
+                    debugLog("model fetch: \(lang.locale) unsupported")
+                } else {
+                    try await Recognition.install(lang.locale) { progress in
+                        self?.fetchingModel = (lang, progress)
+                        self?.onStateChange?()
+                        debugLog("model fetch: downloading \(lang.locale)")
+                    }
+                    if let delay = self?.simulatedFetchDelay, delay > 0 { try await Task.sleep(for: .seconds(delay)) }
+                    if let fail = self?.simulatedModelFailure { throw ModelProblem.simulated(fail) }
+                    ok = true
+                }
+            } catch {
+                debugLog("model fetch \(lang.locale) failed: \(error)")
+                if let self, await self.modelFailed(lang, error, picked: false) {
+                    // A slot was given back: try again straight away.
+                    self.fetchingModel = nil
+                    self.fetchSecondModel()
+                    return
+                }
+            }
+            guard let self else { return }
+            debugLog("model fetch: \(lang.locale) \(ok ? "ready" : "gave up")")
+            self.fetchingModel = nil
+            // The new model gets its 20 s to settle the language before 听不出 is offered.
+            if self.firstHeardAt != nil { self.firstHeardAt = Date() }
+            if ok {
+                self.mismatch = false
+                self.unsureStreak = 0
+                self.sureStreak = 0
+                self.simulatedModels?.insert(lang.locale)
+                if self.modelProblem?.lang == lang { self.modelProblem = nil }
+            } else {
+                self.fetchFailed.insert(lang.locale)
+            }
+            self.needsDetection = true
+            await self.refreshInstalledLocales()
+            if ok { self.detectHeld() }
+        }
     }
 
     // MARK: Start / stop
@@ -131,8 +251,18 @@ final class ListenEngine {
         needsDetection = true
         nextPeriodicDetection = 30
         ambiguousDetections = 0
+        unsureStreak = 0
+        sureStreak = 0
         unconfirmed = []
         lastDetectionAt = .distantPast
+        firstHeardAt = nil
+        askShown = false
+        fetchFailed = []
+        modelProblem = nil
+        mismatch = false
+        startedAt = Date()
+        macSilent = false
+        updateHold()
         debugLog("listen start mode=\(settings.sourceMode) target=\(resolvedTarget)")
 
         guard startTap() else { return }
@@ -146,13 +276,25 @@ final class ListenEngine {
             initial = lang
         case .auto:
             let last = UserDefaults.standard.string(forKey: "lastDetected")
-            initial = candidates.first(where: { $0.locale == last }) ?? candidates.first ?? sourceLanguages[0]
+            let likely = likelySourceLanguages(last: last, systemLanguages: systemLanguages)
+            // No model at all: start with the likeliest; the second follows in the background.
+            initial = candidates.first(where: { $0.locale == last }) ?? candidates.first ?? likely.first ?? sourceLanguages[0]
         }
         setStatus(L("正在听"))
         Task { await switchTranscriber(to: initial) }
+        fetchSecondModel(besides: initial)
     }
 
+    /// The last run heard speech (a few seconds of it), read when its meeting ends.
+    private(set) var heardSpeech = false
+
     func stop() {
+        // Lines still waiting for the language are recorded rather than dropped: the meeting
+        // ended before detection settled it. Not when the only model said the audio isn't its
+        // language: those lines are noise, and the recording keeps what was said.
+        if settings.sourceMode == .auto, !recordable, !mismatch { flushUnconfirmed() }
+        unconfirmed = []
+        heardSpeech = isRunning && (router.stats().voicedTotal >= 3 || firstHeardAt != nil)
         isRunning = false
         generation += 1
         tickTimer?.invalidate()
@@ -209,6 +351,8 @@ final class ListenEngine {
 
     func sourceModeChanged() {
         languageConfirmed = false
+        mismatch = false
+        updateHold()
         pendingSwitch = nil
         needsDetection = true
         if isRunning, case .fixed(let lang) = settings.sourceMode {
@@ -216,6 +360,7 @@ final class ListenEngine {
             if lang == activeLang { flushUnconfirmed() }
             Task { await switchTranscriber(to: lang) }
         }
+        fetchSecondModel()
         onStateChange?()
     }
 
@@ -227,28 +372,35 @@ final class ListenEngine {
     func redetect() {
         guard isRunning, settings.sourceMode == .auto else { return }
         languageConfirmed = false
+        updateHold()
         pendingSwitch = nil
         needsDetection = true
         ambiguousDetections = 0
+        unsureStreak = 0
+        sureStreak = 0
         lastDetectionAt = .distantPast
         onStateChange?()
     }
 
     // MARK: Transcriber
 
-    private func ensureModel(for transcriber: SpeechTranscriber, lang: Lang) async throws {
-        let status = await AssetInventory.status(forModules: [transcriber])
-        if status == .installed { return }
-        debugLog("model status for \(lang.locale): \(status)")
-        guard status != .unsupported else {
-            throw NSError(domain: "LiveSubsSpeech", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: L("本机不支持\(lang.name)识别")])
-        }
-        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+    private func ensureModel(for lang: Lang) async throws {
+        // Already coming in the background (fetched at launch): wait for it rather than ask twice.
+        while fetchingModel?.lang == lang {
             setStatus(L("正在下载 \(lang.name) 语音模型…"))
-            try await request.downloadAndInstall()
-            await refreshInstalledLocales()
+            try await Task.sleep(for: .milliseconds(300))
         }
+        let status = await Recognition.status(lang.locale)
+        if status == .installed {
+            if simulatedModels?.insert(lang.locale).inserted == true { await refreshInstalledLocales() }
+            return
+        }
+        debugLog("model status for \(lang.locale): \(status)")
+        guard status != .unsupported else { throw Recognition.unsupported(lang.locale) }
+        if let fail = simulatedModelFailure { throw ModelProblem.simulated(fail) }
+        try await Recognition.install(lang.locale) { _ in self.setStatus(L("正在下载 \(lang.name) 语音模型…")) }
+        simulatedModels?.insert(lang.locale)
+        await refreshInstalledLocales()
     }
 
     private func switchTranscriber(to lang: Lang, replaySeconds: Double = 0) async {
@@ -263,9 +415,11 @@ final class ListenEngine {
         }
         guard isRunning, gen == generation else { return }
 
+        let previous = activeLang
         if activeLang != lang {
             segments.removeAll()
             unconfirmed = []
+            mismatch = false
         }
         activeLang = lang
         volatileText = ""
@@ -278,7 +432,36 @@ final class ListenEngine {
         onStateChange?()
 
         do {
-            try await ensureModel(for: transcriber, lang: lang)
+            do {
+                try await ensureModel(for: lang)
+            } catch where settings.sourceMode == .auto && previous != nil && previous != lang {
+                // A model that can't be had (no network, or the Mac's five reserved languages taken):
+                // retrying would fail the same way every 30 s. Go back to the one that works, unsure again.
+                debugLog("model for \(lang.locale) unavailable, back to \(previous!.locale): \(error)")
+                if await modelFailed(lang, error, picked: true) {
+                    guard isRunning, gen == generation else { return }
+                    Task { await switchTranscriber(to: lang, replaySeconds: replaySeconds) }
+                    return
+                }
+                fetchFailed.insert(lang.locale)
+                languageConfirmed = false
+                // macOS 14/15: a language is added in Dictation settings, which only the user can do.
+                setStatus(Recognition.needsUser(error) ? error.localizedDescription : L("没能下载 \(lang.name) 语音模型"))
+                guard isRunning, gen == generation else { return }
+                Task { await switchTranscriber(to: previous!) }
+                return
+            } catch {
+                // Nothing to fall back on (a language chosen in settings, or the first model on this
+                // Mac): say why instead of retrying every 30 s; the network back or 再试一次 resumes.
+                debugLog("model for \(lang.locale) unavailable, nothing to fall back on: \(error)")
+                if await modelFailed(lang, error, picked: true) {
+                    guard isRunning, gen == generation else { return }
+                    Task { await switchTranscriber(to: lang, replaySeconds: replaySeconds) }
+                    return
+                }
+                setStatus(Recognition.needsUser(error) ? error.localizedDescription : L("没能下载 \(lang.name) 语音模型"))
+                return
+            }
             guard isRunning, gen == generation else { return }
             let stream = try await Recognition.start(lang.locale, drafts: true, confidence: true)
             guard isRunning, gen == generation else {
@@ -309,8 +492,14 @@ final class ListenEngine {
         guard gen == generation, isRunning else { return }
         debugLog("recognition error: \(error)")
         failureStreak += 1
-        let delay = min(30.0, 2.0 * pow(2.0, Double(failureStreak - 1)))
-        setStatus(L("识别出错，\(Int(delay)) 秒后重试"))
+        var delay = min(30.0, 2.0 * pow(2.0, Double(failureStreak - 1)))
+        if Recognition.needsUser(error) {
+            // Fixed in System Settings, not by waiting: say what to do, and try again soon after.
+            delay = 3
+            setStatus(error.localizedDescription)
+        } else {
+            setStatus(L("识别出错，\(Int(delay)) 秒后重试"))
+        }
         guard let lang = activeLang else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             MainActor.assumeIsolated {
@@ -366,7 +555,9 @@ final class ListenEngine {
             // Only confirmed-language sentences go into the meeting record; earlier ones wait.
             let spoken = duration.isFinite ? duration : 0
             if recordable {
-                onFinal?(seg, spoken)
+                // A replayed line was spoken longer ago than it lasted: the audio clock knows when.
+                let since = router.fedSeconds() - seg.start
+                onFinal?(seg, since.isFinite && since > spoken + 5 ? since : spoken)
             } else {
                 unconfirmed.append((seg, Date(), spoken))
                 // Held lines keep their audio only while recent: an undecided language must not pile up minutes of it.
@@ -378,6 +569,7 @@ final class ListenEngine {
             }
             checkForeignLetters(text)
         } else {
+            if firstHeardAt == nil, text.contains(where: \.isLetter) { firstHeardAt = Date() }
             if volatileText.isEmpty { volatileStartedAt = Date(); volatileStartClock = router.fedSeconds() }
             if text != volatileText { volatileChangedAt = Date() }
             volatileText = text
@@ -391,8 +583,8 @@ final class ListenEngine {
         let srcJoin = joiner(for: activeLang?.code ?? "en")
         let source = [segments.last?.text ?? "", volatileText].filter { !$0.isEmpty }
             .joined(separator: srcJoin.isEmpty ? " " : srcJoin)
-        if settings.sourceMode == .auto, !languageConfirmed, ambiguousDetections < 2 {
-            onSubtitle?(source, L("正在识别语言…"))
+        if settings.sourceMode == .auto, !recordable {
+            onSubtitle?(source, asksLanguage ? L("听不出是哪种语言，到菜单栏里选一下") : L("正在识别语言…"))
             return
         }
         let tgtJoin = joiner(for: resolvedTarget)
@@ -418,7 +610,9 @@ final class ListenEngine {
     }
 
     private func maybeDetectLanguage() {
-        guard isRunning, settings.sourceMode == .auto, !detecting, candidates.count >= 2 else { return }
+        // One model can still tell whether the audio is its language, until the language is known.
+        guard isRunning, settings.sourceMode == .auto, !detecting,
+              candidates.count >= 2 || (!languageConfirmed && candidates.first == activeLang && activeLang != nil) else { return }
         var stats = router.stats(window: 6)
         if stats.silenceRun >= AudioRouter.gapSeconds { needsDetection = true }
         if stats.voicedTotal >= nextPeriodicDetection { needsDetection = true }
@@ -428,12 +622,24 @@ final class ListenEngine {
         stats = router.stats(window: clipSeconds)
         guard stats.recentVoiced >= 2.5 else { return }
 
+        nextPeriodicDetection = stats.voicedTotal + 20
+        runDetection(router.snapshot(seconds: clipSeconds))
+    }
+
+    /// A model that just arrived checks the speech held back, without waiting for someone to talk again.
+    private func detectHeld() {
+        guard isRunning, settings.sourceMode == .auto, !languageConfirmed, !detecting, candidates.count >= 2 else { return }
+        let held = router.voicedSnapshot(seconds: 6)
+        guard held.seconds >= 2.5 else { return }
+        debugLog(String(format: "detect: new model, checking %.1f s of held speech", held.seconds))
+        runDetection(held.buffers)
+    }
+
+    private func runDetection(_ clip: [AVAudioPCMBuffer]) {
         needsDetection = false
         lastDetectionAt = Date()
         detecting = true
-        nextPeriodicDetection = stats.voicedTotal + 20
         onStateChange?()
-        let clip = router.snapshot(seconds: clipSeconds)
         let candidates = self.candidates
         Task { [weak self] in
             let started = Date()
@@ -450,6 +656,45 @@ final class ListenEngine {
 
     private func applyDetection(_ ranked: [LanguageDetector.Candidate]) {
         guard let best = ranked.first else { return }
+        if ranked.count == 1 {
+            // The right model is ≥0.85 sure; English heard by a French model scored 0.12.
+            guard best.lang == activeLang, best.confidence >= 0.6, best.score >= 0.6 else {
+                // Asked again only by the usual triggers (a pause, 20 s more speech), or when a model arrives.
+                if !mismatch { debugLog("detect: not \(best.lang.locale), holding lines for another model") }
+                mismatch = true
+                // Checked on speech: someone is talking even if the model wrote nothing down.
+                if firstHeardAt == nil { firstHeardAt = Date() }
+                renderSubtitles()
+                return
+            }
+            mismatch = false
+        }
+        // Every model unsure: a language with no model here, not a close call. On their own language
+        // English scored 0.95, Chinese 0.84, Korean 0.97; Japanese heard by the Chinese model 0.66,
+        // German and Spanish heard by English or Chinese at most 0.48.
+        // Twice in a row, so one noisy clip doesn't ask; nothing is kept meanwhile.
+        if ranked.count >= 2, best.score < 0.72 {
+            unsureStreak += 1
+            sureStreak = 0
+            if unsureStreak >= 2, !mismatch, !languageConfirmed {
+                debugLog("detect: none of \(ranked.map(\.lang.locale).joined(separator: ",")), holding lines")
+                mismatch = true
+                if firstHeardAt == nil { firstHeardAt = Date() }
+            }
+            if !languageConfirmed { needsDetection = true }
+            renderSubtitles()
+            return
+        }
+        unsureStreak = 0
+        // Said no once: Japanese heard by the Chinese model reached 0.73 now and then, so one sure
+        // answer doesn't take it back; two in a row do.
+        if mismatch, ranked.count >= 2 {
+            sureStreak += 1
+            if sureStreak < 2 {
+                needsDetection = true
+                return
+            }
+        }
         let runnerUp = ranked.dropFirst().first?.score ?? 0
         guard best.confidence >= 0.6, best.score - runnerUp >= 0.08 else {
             debugLog("detect: ambiguous, keeping \(activeLang?.locale ?? "-")")
@@ -461,6 +706,8 @@ final class ListenEngine {
         }
         if best.lang == activeLang {
             languageConfirmed = true
+            mismatch = false
+            updateHold()
             flushUnconfirmed()
             pendingSwitch = nil
             UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected")
@@ -471,14 +718,130 @@ final class ListenEngine {
         let overwhelming = best.score - currentScore >= 0.30
         if !languageConfirmed || overwhelming || pendingSwitch == best.lang {
             debugLog("detect: switching \(activeLang?.locale ?? "-") → \(best.lang.locale)")
+            // The first answer replays everything held back; a later switch, the last sentence or so.
+            let replay = languageConfirmed ? 8 : Self.holdUnknown
             languageConfirmed = true
             unconfirmed = []
             pendingSwitch = nil
             UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected")
-            Task { await switchTranscriber(to: best.lang, replaySeconds: 8) }
+            Task { await switchTranscriber(to: best.lang, replaySeconds: replay) }
         } else {
             pendingSwitch = best.lang
             needsDetection = true
+        }
+    }
+
+    /// Why a model couldn't be had. At the five-model limit a model Cicada isn't using is given
+    /// back first: true means one was, and the caller tries again; otherwise the problem is kept
+    /// for 听不出 to show.
+    private func modelFailed(_ lang: Lang, _ error: Error, picked: Bool) async -> Bool {
+        let cause = ModelProblem.cause(of: error, online: online, freeBytes: ModelProblem.freeBytes())
+        debugLog("model problem \(lang.locale): \(cause)")
+        if cause == .limit, simulatedModelFailure == nil, await freeModelSlot(for: lang) { return true }
+        modelProblem = ModelProblem(lang: lang, cause: cause, picked: picked)
+        onStateChange?()
+        return false
+    }
+
+    /// Gives back a reserved model that isn't in use and isn't a likely language, oldest guess first.
+    private func freeModelSlot(for wanted: Lang) async -> Bool {
+        let keep = Set(likelySourceLanguages(last: UserDefaults.standard.string(forKey: "lastDetected"),
+                                             systemLanguages: systemLanguages).map(\.locale)
+                       + [wanted.locale, activeLang?.locale].compactMap { $0 })
+        for locale in await Recognition.reservedLocales() where !keep.contains(locale) {
+            if await Recognition.release(locale) {
+                debugLog("model limit: gave back \(locale) for \(wanted.locale)")
+                await refreshInstalledLocales()
+                return true
+            }
+        }
+        return false
+    }
+
+    /// 再试一次, or the network back for a download that needed it.
+    func retryModel() {
+        guard let p = modelProblem else { return }
+        debugLog("model retry: \(p.lang.locale)")
+        modelProblem = nil
+        fetchFailed.remove(p.lang.locale)
+        if p.picked, isRunning, p.lang == activeLang, recognizer == nil {
+            // Nothing is listening: start the language again, with all the speech held since the start.
+            Task { await switchTranscriber(to: p.lang, replaySeconds: languageConfirmed ? 0 : Self.holdUnknown) }
+        } else if p.picked, isRunning {
+            languageConfirmed = false
+            pickLanguage(p.lang)
+        } else {
+            fetchSecondModel()
+        }
+        onStateChange?()
+    }
+
+    /// macOS 14/15: the language added in Dictation settings carries on by itself, as the network does.
+    private func checkDictation() {
+        guard isRunning, let p = modelProblem, case .dictation = p.cause, Recognition.dictationEnabled else { return }
+        Task {
+            guard await Recognition.status(p.lang.locale) == .installed, self.modelProblem == p else { return }
+            self.retryModel()
+        }
+    }
+
+    private func networkChanged() {
+        debugLog("network \(online ? "up" : "down")")
+        if online, modelProblem?.cause == .offline { retryModel() }
+    }
+
+    /// 听不出: the language is still unknown 20 s after the first words, with nothing under way that
+    /// could settle it (no check running, no model coming). Too quiet for a check, two models that
+    /// keep disagreeing, a model that couldn't be fetched: one click ends each.
+    var asksLanguage: Bool {
+        guard isRunning, settings.sourceMode == .auto, !languageConfirmed, fetchingModel == nil,
+              let firstHeardAt else { return false }
+        // Once offered it stays until answered: a check running meanwhile doesn't make it blink.
+        if askShown { return true }
+        // The one model said no and no other is coming: nothing is shown or kept, so ask now.
+        if mismatch { return true }
+        return !detecting && Date().timeIntervalSince(firstHeardAt) >= 20
+    }
+
+    /// What 听不出 offers first; the rest sit under 更多.
+    var askChoices: [Lang] {
+        // None of the installed ones: offer what isn't installed; they are a 其实是 aside.
+        if mismatch {
+            let others = (likelySourceLanguages(last: nil, systemLanguages: systemLanguages) + sourceLanguages)
+                .filter { !candidates.contains($0) && !fetchFailed.contains($0.locale) }
+            var out: [Lang] = []
+            for lang in others where !out.contains(lang) { out.append(lang) }
+            if !out.isEmpty { return Array(out.prefix(3)) }
+        }
+        var out = likelySourceLanguages(last: activeLang?.locale, systemLanguages: systemLanguages)
+        for lang in candidates + sourceLanguages where !out.contains(lang) { out.append(lang) }
+        return Array(out.filter { !fetchFailed.contains($0.locale) }.prefix(3))
+    }
+
+    /// The language picked from 听不出: confirmed for this run (settings stay on auto). A model
+    /// not on the Mac yet is downloaded as when it is detected.
+    func pickLanguage(_ lang: Lang) {
+        guard isRunning, settings.sourceMode == .auto else { return }
+        debugLog("language picked: \(lang.locale) (was \(activeLang?.locale ?? "-"))")
+        let replay = languageConfirmed ? 8 : Self.holdUnknown
+        languageConfirmed = true
+        mismatch = false
+        pendingSwitch = nil
+        needsDetection = false
+        askShown = false
+        unsureStreak = 0
+        sureStreak = 0
+        modelProblem = nil
+        UserDefaults.standard.set(lang.locale, forKey: "lastDetected")
+        if lang == activeLang, recognizer != nil {
+            updateHold()
+            flushUnconfirmed()
+            renderSubtitles()
+            onStateChange?()
+        } else {
+            // The hold shrinks once the new model is attached, after it took the replay.
+            unconfirmed = []
+            Task { await switchTranscriber(to: lang, replaySeconds: replay) }
         }
     }
 

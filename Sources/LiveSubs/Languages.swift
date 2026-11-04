@@ -66,6 +66,22 @@ func followSystemTarget(source: String?, systemLanguages prefs: [String]) -> Str
         ?? (mine.hasPrefix("zh") ? "en" : "zh-CN")
 }
 
+/// The languages "auto" most likely hears, most likely first: the last one detected, the Mac's
+/// own languages, then English. Detection compares two or more models, so a Mac with fewer
+/// fetches the first ones of these it lacks; and they are what 听不出 offers to pick from.
+func likelySourceLanguages(last: String?, systemLanguages prefs: [String]) -> [Lang] {
+    var out: [Lang] = []
+    func add(_ lang: Lang?) { if let lang, !out.contains(lang) { out.append(lang) } }
+    add(sourceLanguages.first { $0.locale == last })
+    for id in prefs {
+        let code = translationCode(forSystemLanguage: id)
+        // The only Chinese model listed is Mandarin (zh-CN); it hears Taiwanese Mandarin as well.
+        add(sourceLanguages.first { $0.code == (code.hasPrefix("zh") ? "zh-CN" : code) })
+    }
+    add(sourceLanguages.first { $0.code == "en" })
+    return out
+}
+
 /// The speech locale to listen for when I speak my language (English when it isn't one we recognize).
 func speakLocale(forLanguage code: String) -> String {
     if code.hasPrefix("zh") { return "zh-CN" }

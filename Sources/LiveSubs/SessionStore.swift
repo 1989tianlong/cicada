@@ -68,10 +68,11 @@ final class SessionStore: ObservableObject {
     let root: URL
     private var saveWork: DispatchWorkItem?
 
-    init() {
+    /// `root`: tests keep their meetings in a folder of their own.
+    init(root: URL? = nil) {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        root = base.appendingPathComponent("\(DevBuild.supportFolder)/Sessions", isDirectory: true)
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        self.root = root ?? base.appendingPathComponent("\(DevBuild.supportFolder)/Sessions", isDirectory: true)
+        try? FileManager.default.createDirectory(at: self.root, withIntermediateDirectories: true)
         load()
     }
 
@@ -115,20 +116,22 @@ final class SessionStore: ObservableObject {
     }
 
     /// `at`: when the meeting really ended, for one that ended by itself after a hang-up or a
-    /// long silence; the recordings are cut there too.
-    func end(at: Date? = nil) {
+    /// long silence; the recordings are cut there too. `heardSpeech`: the recording holds speech,
+    /// so a meeting is kept for it even when no line made it into the record (the language was
+    /// never settled, say): an hour of a meeting must not vanish with its audio.
+    func end(at: Date? = nil, heardSpeech: Bool = false) {
         guard let id = liveID, let i = index(id) else { liveID = nil; return }
         let now = Date()
         sessions[i].endedAt = at.map { min(now, max(sessions[i].startedAt, $0)) } ?? now
         liveID = nil
-        if sessions[i].lines.isEmpty {
+        sessions[i].hasAudio = [systemAudioURL(id), micAudioURL(id)].contains {
+            FileManager.default.fileExists(atPath: $0.path) || FileManager.default.fileExists(atPath: AudioFileWriter.partial($0).path)
+        }
+        if sessions[i].lines.isEmpty, !(heardSpeech && sessions[i].hasAudio) {
             // Nothing was said: don't keep an empty meeting around.
             try? FileManager.default.removeItem(at: folder(id))
             sessions.remove(at: i)
             return
-        }
-        sessions[i].hasAudio = [systemAudioURL(id), micAudioURL(id)].contains {
-            FileManager.default.fileExists(atPath: $0.path) || FileManager.default.fileExists(atPath: AudioFileWriter.partial($0).path)
         }
         saveNow(id)
         finishAudio(id, until: at == nil ? nil : sessions[i].duration)

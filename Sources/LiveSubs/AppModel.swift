@@ -52,6 +52,21 @@ final class AppModel: ObservableObject {
     @Published var summary = ""
     @Published var installed: Set<String> = []
     @Published var candidates: [Lang] = []
+    /// 听不出: the languages offered while "auto" can't tell (empty when it can).
+    @Published var languageAsk: [Lang] = []
+    /// The second speech model coming in the background: its name and how far along.
+    @Published var modelFetch: ModelFetch?
+    @Published var identifyingLanguage = false
+    /// 在会议室里开会？ in the panel: the Mac has played nothing for a minute of listening.
+    @Published var roomPrompt = false
+    /// Answered (or 听哪里 changed) in this meeting: not asked again until the next one.
+    var roomPromptDismissed = false
+    /// Why the model 听不出 needed couldn't be had, when that is so.
+    @Published var modelProblem: ModelProblem?
+    /// That model was the one to start with and there is none to fall back on: nothing is listening.
+    @Published var modelBlocked = false
+    /// 听不出 because none of the installed models hear their language: it offers ones not installed.
+    @Published var languageNotInstalled = false
     @Published var outputs: [OutputDevice] = []
     @Published var speakPhase: SpeakEngine.Phase = .idle
     @Published var settingsSection: SettingsSection =
@@ -118,12 +133,14 @@ final class AppModel: ObservableObject {
 
     init() {
         listen.onSubtitle = { [weak self] src, dst in
-            self?.liveSource = src
+            // Someone is speaking either way; only the wrong model's words aren't shown.
+            let visible = self?.listen.hidesSource == true ? "" : src
+            self?.liveSource = visible
             self?.liveTranslation = dst
             if !src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self?.heardSpeech(); self?.heardWords() }
             guard let self, self.settings.displayMode == "bar" else { return }
             self.overlay.clearStatus()
-            let shown = self.displayed(src, dst)
+            let shown = self.displayed(visible, dst)
             self.overlay.setSubtitle(source: shown.source, translation: shown.translation)
         }
         listen.onStatus = { [weak self] text in
@@ -243,6 +260,15 @@ final class AppModel: ObservableObject {
         RunLoop.main.add(watch, forMode: .common)
     }
 
+    func pickLanguage(_ lang: Lang) { listen.pickLanguage(lang) }
+    func retryModel() { listen.retryModel() }
+    func openDictationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") { NSWorkspace.shared.open(url) }
+    }
+    func openStorageSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.settings.Storage") { NSWorkspace.shared.open(url) }
+    }
+
     func setOverlayAuto(_ on: Bool) {
         settings.overlayAuto = on
         overlay.modeChanged()
@@ -263,6 +289,18 @@ final class AppModel: ObservableObject {
         summary = listen.languageSummary()
         candidates = listen.candidates
         installed = listen.installedLocales
+        let ask = listen.asksLanguage ? listen.askChoices : []
+        if ask != languageAsk { languageAsk = ask }
+        let fetch = listen.fetchingModel.map { ModelFetch(name: $0.lang.name, fraction: $0.progress.fractionCompleted) }
+        if fetch != modelFetch { modelFetch = fetch }
+        if listen.identifyingLanguage != identifyingLanguage { identifyingLanguage = listen.identifyingLanguage }
+        let roomAsk = listen.isRunning && RoomPrompt.shows(silent: listen.macSilent, answered: roomPromptDismissed,
+                                                           inCall: listen.macSilent && !(fakeCalls ?? MicUsers.currentCalls()).isEmpty)
+        if roomAsk != roomPrompt { roomPrompt = roomAsk }
+        if listen.modelProblem != modelProblem { modelProblem = listen.modelProblem }
+        if listen.blockedByModel != modelBlocked { modelBlocked = listen.blockedByModel }
+        let notInstalled = !ask.isEmpty && listen.mismatch && ask.allSatisfy { !listen.candidates.contains($0) }
+        if notInstalled != languageNotInstalled { languageNotInstalled = notInstalled }
         if running { status = listen.statusText }
     }
 
@@ -454,7 +492,7 @@ final class AppModel: ObservableObject {
         }
         // Read the whole meeting for names once more (the id outlives store.end).
         let ended = store.liveID
-        store.end(at: endedAt)
+        store.end(at: endedAt, heardSpeech: listen.heardSpeech)
         if settings.speakerVoices, let ended { speakerNamer.guess(ended, force: true) }
         notes.finish()
         overlay.hide()
@@ -1034,6 +1072,41 @@ final class AppModel: ObservableObject {
         let arg = parts.count > 1 ? parts[1] : ""
         switch parts.first ?? "" {
         case "start": start()
+        case "models":
+            // models:<installed,…>/<system languages,…> pretends the Mac has only these speech models
+            // and languages, to test the fetch of a second model and 听不出; models:off ends it.
+            // models:none/zh-Hans-CN is a Mac with no model at all.
+            let parts = arg.split(separator: "@", maxSplits: 1).map(String.init)
+            listen.simulatedFetchDelay = parts.count > 1 ? Double(parts[1]) ?? 0 : 0
+            let p = parts[0].split(separator: "/", omittingEmptySubsequences: false)
+                .map { $0.split(separator: ",").map(String.init).filter { $0 != "none" } }
+            listen.simulatedModels = arg == "off" ? nil : Set(p.first ?? [])
+            listen.simulatedSystemLanguages = arg == "off" || p.count < 2 ? nil : p[1]
+            Task { await listen.refreshInstalledLocales() }
+        case "recognizer":
+            // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26; recognizer:auto ends it.
+            // Takes effect from the next start.
+            Recognition.forceLegacy = arg == "legacy"
+            debugLog("recognizer: \(Recognition.name)")
+            Task { await listen.refreshInstalledLocales() }
+        case "releaseModel":
+            // releaseModel:<locale> gives back a speech model this app reserved (macOS keeps five per app).
+            guard #available(macOS 26, *) else { break }
+            guard #available(macOS 26, *) else { break }
+            Task {
+                let ok = await AssetInventory.release(reservedLocale: Locale(identifier: arg.replacingOccurrences(of: "-", with: "_")))
+                debugLog("releaseModel \(arg): \(ok) reserved now=\(await AssetInventory.reservedLocales.map { $0.identifier })")
+                await listen.refreshInstalledLocales()
+            }
+        case "modelFail":
+            // modelFail:<offline|disk|limit|other> makes every model download fail that way; modelFail:off ends it.
+            listen.simulatedModelFailure = arg == "off" || arg.isEmpty ? nil : arg
+        case "network":
+            // network:<on|off> pretends the network came or went; network:real follows the real one.
+            listen.simulatedOnline = arg == "on" ? true : arg == "off" ? false : nil
+        case "modelRetry": listen.retryModel()
+        case "pickLanguage":
+            if let lang = sourceLanguages.first(where: { $0.locale == arg }) { listen.pickLanguage(lang) }
         case "stop": stop()
         case "open": openMainWindow?()
         case "panel": showPanel?()
@@ -1605,4 +1678,9 @@ struct LiveSubsMain {
             app.run()
         }
     }
+}
+
+struct ModelFetch: Equatable {
+    let name: String
+    let fraction: Double
 }

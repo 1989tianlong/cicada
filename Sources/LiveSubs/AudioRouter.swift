@@ -54,7 +54,12 @@ final class AudioRouter: @unchecked Sendable {
     private var sink: RecognitionStream?
     private var ring: [(buffer: AVAudioPCMBuffer, seconds: Double, voiced: Bool)] = []
     private var ringSeconds = 0.0
-    private let ringLimit = 10.0
+    private var ringLimit = 10.0
+    /// While the language is unknown the audio is kept longer: the right model, once it is known
+    /// or fetched, hears it all again instead of the wrong model's guesses being kept.
+    func holdAudio(_ seconds: Double) {
+        queue.async { [self] in ringLimit = seconds }
+    }
     private var voicedTotal = 0.0
     private var silenceRun = 0.0
     private var sinceGap = 0.0
@@ -234,6 +239,21 @@ final class AudioRouter: @unchecked Sendable {
                 if item.voiced { voiced += item.seconds }
             }
             return Stats(voicedTotal: voicedTotal, silenceRun: silenceRun, sinceGap: sinceGap, recentVoiced: voiced)
+        }
+    }
+
+    /// The last `seconds` of speech with the silences left out: what was said, even when nobody is
+    /// speaking now (a model that arrives after the talk stopped can still check it).
+    func voicedSnapshot(seconds: Double) -> (buffers: [AVAudioPCMBuffer], seconds: Double) {
+        queue.sync {
+            var acc = 0.0
+            var out: [AVAudioPCMBuffer] = []
+            for item in ring.reversed() where item.voiced {
+                if acc >= seconds { break }
+                acc += item.seconds
+                out.append(item.buffer)
+            }
+            return (out.reversed(), acc)
         }
     }
 
