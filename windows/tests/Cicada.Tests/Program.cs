@@ -313,10 +313,22 @@ static class Tests
         Equal("ja", Translator.ParseHeard("lang: ja-JP\noriginal: はい\ntranslation: 是", "zh-CN", null)!.Lang, "labels in any case");
     }
 
-    public static void DropsLoneFillers()
+    // Same cases as the Android and Linux ports' noise tests.
+    public static void DropsNoise()
     {
-        Check(Translator.IsFiller("嗯。") && Translator.IsFiller("Mm.") && Translator.IsFiller("uh, um") && Translator.IsFiller("呃呃呃呃呃"), "fillers");
-        Check(!Translator.IsFiller("嗯，好的。") && !Translator.IsFiller("OK.") && !Translator.IsFiller("Oh no, it crashed."), "real lines stay");
+        foreach (var o in new[] { "嗯。", "Mm.", "uh, um", "呃呃呃呃呃", "嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯。", string.Concat(Enumerable.Repeat("滴答", 50)),
+                                  "hmmmm", "うーん", "음…", "喂？", "No no no no no no",
+                         "（无语音内容）", "[Music]", "♪♪", "这段音频是一段旋律，没有说话声。", "There is no speech in this audio." })
+            Check(Translator.IsNoise(o), $"noise: {o}");
+        foreach (var o in new[] { "嗯，好的。", "OK.", "Oh no, it crashed.", "对", "对对对", "谢谢谢谢", "喂喂，能听到吗？", "No, no, no.",
+                                  "えーと、来週の件ですが", "あの人です", "Okay, let's move on to the quarterly numbers.", "（笑）好的" })
+            Check(!Translator.IsNoise(o), $"kept: {o}");
+        var spoken = "我们今天讨论一下这个季度的数字和下个季度的计划安排";
+        Check(Translator.IsNoise(spoken, 1.0), "more than anyone says in a second");
+        Check(!Translator.IsNoise(spoken, 4.0), "said in four seconds");
+        Equal(null, Translator.ParseHeard("LANG: zh-CN\nORIGINAL: 嗯，嗯，嗯，嗯，嗯，嗯。\nTRANSLATION: 嗯，嗯，嗯，嗯，嗯，嗯。", "zh-CN", null), "hold music");
+        Equal(800, Translator.HearTokens(0), "unknown length"); Equal(380, Translator.HearTokens(8), "a full segment");
+        Equal(800, Translator.HearTokens(30), "capped");
     }
 
     public static void NormalizesLanguages()

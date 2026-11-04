@@ -35,21 +35,75 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
     /// `priority` is Speak for what the user says, so it goes ahead of the meeting's lines.
     public async Task<Heard?> Hear(byte[] wav, string target, string? hint, Priority priority = Priority.Translate, CancellationToken cancel = default)
     {
+        // 16 kHz mono 16-bit after the 44-byte header: the length caps the reply and catches a runaway one.
+        var seconds = Math.Max(0, wav.Length - 44) / 32000.0;
         var prompt = HearPrompt(target, hint, Glossary());
-        var reply = await ling.Chat(prompt, HearInstruction(target), priority, maxTokens: 800, timeout: 12,
+        var reply = await ling.Chat(prompt, HearInstruction(target), priority, maxTokens: HearTokens(seconds), timeout: 12,
                                     model: LingClient.AudioModel, audio: wav, cancel: cancel);
-        return ParseHeard(reply, target, hint);
+        return ParseHeard(reply, target, hint, seconds);
     }
 
-    static readonly HashSet<string> Fillers = ["嗯", "啊", "呃", "哦", "噢", "唔", "额", "哈", "uh", "um", "umm", "hmm", "mm", "mhm", "ah", "oh", "eh", "えー", "あー", "うん", "ええと", "음", "어"];
+    /// Room for a reply to `seconds` of audio: a fast talker's original and translation fit; a
+    /// reply that runs on repeating itself ("滴答" ×800 from typing) stops early. 0: unknown.
+    public static int HearTokens(double seconds) => seconds <= 0 ? 800 : Math.Min(800, (int)(60 + 40 * seconds));
 
-    public static bool IsFiller(string text)
+    /// Ming writes something for every stretch it is sent, speech or not (it can't be asked for
+    /// NONE, see HearInstruction): hold music, a ringback tone, a fan or typing came back as "嗯。",
+    /// "嗯，嗯，嗯…" or "滴答" ×800. That is noise: fillers only, one short sound six or more times
+    /// over, or more than anyone says in `seconds` (0: unknown). A short real answer ("对",
+    /// "好的", "喂，能听到吗") stays. Same rules and lists as the Android and Linux ports.
+    public static bool IsNoise(string original, double seconds = 0)
     {
-        var words = text.ToLowerInvariant().Split([' ', ',', '，', '、', '.', '。', '!', '！', '?', '？', '…', '~', '-'], StringSplitOptions.RemoveEmptyEntries);
-        // "呃呃呃呃": the same sound held, which is what Ming makes of near-silence.
-        static bool Held(string w) => w.Length > 1 && w.All(c => c == w[0]) && Fillers.Contains(w[..1]);
-        return words.Length > 0 && words.Length <= 3 && words.All(w => Fillers.Contains(w) || Held(w));
+        var text = Annotation.Replace(original.ToLowerInvariant(), " ");
+        if (NoSpeech.Any(text.Contains)) return true;
+        var words = new List<string>();
+        var word = new System.Text.StringBuilder();
+        foreach (var c in text)
+        {
+            if (char.IsLetterOrDigit(c)) word.Append(c);
+            else if (word.Length > 0) { words.Add(word.ToString()); word.Clear(); }
+        }
+        if (word.Length > 0) words.Add(word.ToString());
+        if (words.Count == 0) return true;
+        if (words.All(IsFillerWord)) return true;
+        // Each CJK character is a unit, as a word is elsewhere.
+        var units = words.SelectMany(w => w.Any(IsCjk) ? w.Select(c => c.ToString()) : [w]).ToList();
+        var n = units.Count;
+        for (var p = 1; p <= 4; p++)
+            if (n >= 6 * p && Enumerable.Range(p, n - p).All(i => units[i] == units[i - p])) return true;
+        return seconds > 0 && n > Math.Max(12.0, 12 * seconds);
     }
+
+    /// Ming describing the audio instead of transcribing it: "（无语音内容）", "[Music]", "这段音频是一段
+    /// 旋律，没有说话声。". A bracketed note beside real words ("（笑）好的") keeps the words.
+    static readonly System.Text.RegularExpressions.Regex Annotation = new("[(（\\[【][^)）\\]】]*[)）\\]】]|♪");
+    static readonly string[] NoSpeech = [
+        "没有说话", "无语音", "没有语音", "没有人声", "无人声", "没有人说话", "无人说话",
+        "no speech", "no spoken", "no one is speaking", "nobody is speaking", "no audible speech", "no dialogue",
+        "音声がありません", "発話がありません", "話し声はありません", "음성이 없습니다", "말소리가 없습니다",
+    ];
+
+    static readonly string[] Fillers = [
+        "嗯", "啊", "呃", "额", "哦", "噢", "喔", "唔", "哈", "诶", "欸", "哎", "喂", "嘿", "哼",
+        "uh", "uhm", "um", "umm", "hmm", "hm", "mm", "mhm", "ah", "oh", "eh", "er", "erm", "huh",
+        "え", "えー", "あ", "あー", "う", "うー", "うん", "うーん", "ん", "えっと", "ええと", "あの",
+        "음", "어", "아", "응", "흠", "으",
+    ];
+
+    /// Made of fillers only, a held sound shortened first: "嗯嗯嗯", "hmmmm"; "えーと" is not.
+    static bool IsFillerWord(string raw)
+    {
+        var w = new System.Text.StringBuilder();
+        foreach (var c in raw) if (w.Length < 2 || w[^1] != c || w[^2] != c) w.Append(c);
+        var s = w.ToString();
+        var ok = new bool[s.Length + 1]; ok[0] = true;
+        for (var i = 1; i <= s.Length; i++)
+            ok[i] = Fillers.Any(f => f.Length <= i && ok[i - f.Length] && string.CompareOrdinal(s, i - f.Length, f, 0, f.Length) == 0);
+        return ok[s.Length];
+    }
+
+    static bool IsCjk(char c) => c is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF'
+        or >= '\uF900' and <= '\uFAFF' or >= '\uAC00' and <= '\uD7AF';
 
     public static string HearPrompt(string target, string? hint, IReadOnlyList<string> names)
     {
@@ -71,7 +125,7 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
     /// `LANG: … / ORIGINAL: … / TRANSLATION: …`. Drops replies without an original, "NONE" (music,
     /// silence), and translations not in the target's script; a dropped translation leaves the
     /// original for the text translator to try.
-    public static Heard? ParseHeard(string reply, string target, string? hint)
+    public static Heard? ParseHeard(string reply, string target, string? hint, double seconds = 0)
     {
         string? lang = null, original = null, translation = null;
         foreach (var raw in reply.Split('\n'))
@@ -83,8 +137,7 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
         }
         if (string.IsNullOrWhiteSpace(original) || original.Trim('.', '。', ' ').Equals("NONE", StringComparison.OrdinalIgnoreCase)) return null;
         if (!original.Any(char.IsLetterOrDigit)) return null;
-        // A system sound or a cough comes back as a lone filler ("嗯。", "Mm."): not a line anyone said.
-        if (IsFiller(original)) return null;
+        if (IsNoise(original, seconds)) { Log.Debug("hear: noise dropped"); return null; }
         var code = Languages.Normalize(lang, hint ?? "en");
         if (code == target) translation = original;
         else if (translation is not null)
