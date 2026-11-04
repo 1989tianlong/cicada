@@ -120,7 +120,7 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
-    /// Experimental: tell the other side's voices apart (说话人 1、2…). Off by default.
+    /// Tell the other side's voices apart (说话人 1、2…). On by default.
     @Published var speakerVoices: Bool {
         didSet { save() }
     }
@@ -174,7 +174,15 @@ final class AppSettings: ObservableObject {
         listenSource = defaults.string(forKey: "listenSource") == "room" ? "room" : "system"
         diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
         notesCapturable = defaults.bool(forKey: "notesCapturable")
-        speakerVoices = defaults.bool(forKey: "speakerVoices")
+        // Off by default while it was an experiment, and save() stores every key, so a stored false
+        // mostly means "never touched": turn it on once for everyone when it became a regular feature.
+        if defaults.bool(forKey: "speakerVoicesRegular") {
+            speakerVoices = defaults.bool(forKey: "speakerVoices")
+        } else {
+            speakerVoices = true
+            defaults.set(true, forKey: "speakerVoices")
+            defaults.set(true, forKey: "speakerVoicesRegular")
+        }
     }
 
     private func save() {

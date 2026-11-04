@@ -91,7 +91,7 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 | Checking the key | Ling `Ling-3.0-tiny` (one token) | — |
 | Interpreting: hearing and translating what you say | Ming `Ming-3.0-audio-flash`, one step | Apple on-device transcript, then the translation chain above |
 | Interpreting: the voice the room hears, voice cloning | Ming `Ming-3.0-tts-0.5B` | macOS system voices (`AVSpeechSynthesizer`); no cloning |
-| Speaker identification (说话人识别, experimental, off by default) | WeSpeaker ResNet34-LM voiceprints, bundled, on device (Core ML) | same |
+| Speaker identification (说话人识别, on by default) | WeSpeaker ResNet34-LM voiceprints, bundled, on device (Core ML) | same |
 
 <a id="ling-api-key"></a>
 ## Setting up a Ling API key
@@ -119,7 +119,7 @@ In rough order; tell us what you need in Issues.
 
 - **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
 - **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
-- **Speaker recognition**, building on today's experimental speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
+- **Speaker recognition**, building on today's speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
 - **Local notes without an API key** using Apple's on-device model on supported Macs, plus **custom AI providers** for any OpenAI-compatible endpoint.
 - **Windows and Android**, sharing the same notes and meeting-record formats (iPhone and iPad are not planned due to iOS audio capture restrictions).
 

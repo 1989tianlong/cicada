@@ -721,6 +721,10 @@ struct SettingsView: View {
                     Toggle("保存会议录音", isOn: $settings.recordAudio)
                         .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
                 }
+                SettingsRow(title: L("说话人识别"), detail: L("按声音标出说话人 1、2…，只在这台 Mac 上处理")) {
+                    Toggle("说话人识别", isOn: $settings.speakerVoices)
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+                }
                 SettingsRow(title: L("记录文件夹"), divider: false) {
                     SoftButton(L("打开")) { NSWorkspace.shared.open(model.store.root) }
                 }
@@ -757,32 +761,6 @@ struct SettingsView: View {
                 }
             }
             AppRows(updates: model.updates, loginItem: model.loginItem, model: model)
-            experiments
-        }
-    }
-
-    /// Features still being tuned: off by default, each one switch, safe to turn off.
-    private var experiments: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("实验功能").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
-                Text("还在打磨，可能出错；随时能关，关掉不影响别的功能。").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-            }
-            .padding(.top, 4)
-            SettingsCard {
-                HStack(spacing: 12) {
-                    HStack(spacing: 6) {
-                        Text("说话人识别").font(.system(size: 13)).foregroundStyle(Palette.ink)
-                        ExperimentBadge()
-                    }
-                    Spacer(minLength: 12)
-                    Toggle("说话人识别", isOn: $settings.speakerVoices)
-                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
-                }
-                .padding(.horizontal, 16).padding(.vertical, 6).frame(minHeight: 46)
-                .contentShape(Rectangle())
-                .help(L("按声音标出说话人 1、2…，只在这台 Mac 上处理"))
-            }
         }
     }
 }

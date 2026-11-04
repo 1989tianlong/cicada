@@ -4,7 +4,7 @@ import CoreML
 import Foundation
 import SwiftUI
 
-// Experimental 说话人识别: telling the other side's voices apart (设置 › 通用 › 实验功能). Each heard line's
+// 说话人识别: telling the other side's voices apart (设置 › 通用). Each heard line's
 // audio becomes a voiceprint (WeSpeaker ResNet34-LM, VoxCeleb, CC BY 4.0, bundled as Core ML),
 // voiceprints are grouped as they arrive, and a voice is only named once it has a few lines. The
 // thresholds were tuned on AMI meetings; the model comes from `scripts/convert-voiceprint.py`.
@@ -482,18 +482,10 @@ struct UnknownSpeakerTag: View {
     }
 }
 
-/// The small orange "实验" mark on experimental features.
-struct ExperimentBadge: View {
-    var body: some View {
-        Text("实验").font(.system(size: 10, weight: .semibold)).foregroundStyle(Palette.accentInk)
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 4).fill(Palette.accentPale))
-    }
-}
-
-/// Above the transcript once voices are told apart: who is speaking, that it's an experiment, and a
-/// one-click way out. Each person opens `SpeakerEditor`: in the records window right there; the notes
-/// window never takes focus, so there it opens the records window instead (`edit`).
+/// Above the transcript once voices are told apart: who is speaking, and a one-click way out. Each
+/// person opens `SpeakerEditor`: a popover in the records window; in the notes window (`editing`
+/// set) a card right below the row, since a popover in a panel that never activates the app closes
+/// as soon as it opens.
 struct SpeakerStrip: View {
     @ObservedObject var model: AppModel
     let session: Session

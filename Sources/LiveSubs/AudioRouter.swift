@@ -66,7 +66,7 @@ final class AudioRouter: @unchecked Sendable {
     /// The last short pause between words, on the analyzer's clock: where it ended and how long it was.
     private var pause: (end: Double, length: Double) = (0, 0)
 
-    /// Experimental voiceprints: the last `voiceLimit` seconds as 16 kHz mono floats, placed on
+    /// Voiceprints (说话人识别): the last `voiceLimit` seconds as 16 kHz mono floats, placed on
     /// the analyzer clock so a result's time range finds its audio.
     private let voiceConverter = PCMConverter()
     private let voiceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!

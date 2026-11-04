@@ -11,7 +11,7 @@ struct TranscriptLine: Codable, Identifiable, Equatable {
     var dst: String?
     var srcLang: String
     var dstLang: String
-    /// Experimental: which of the other side's voices said it (SpeakerID.swift); nil when unknown.
+    /// Which of the other side's voices said it (SpeakerID.swift); nil when unknown.
     var voice: Int? = nil
 }
 
@@ -32,7 +32,7 @@ struct Session: Codable, Identifiable, Equatable {
     var notes: MeetingNotes?
     /// The user renamed it; nil in older sessions, where any title but the default counts as renamed.
     var renamed: Bool?
-    /// Experimental 说话人识别: names the user gave voices, keyed by voice id. An empty name means
+    /// 说话人识别: names the user gave voices, keyed by voice id. An empty name means
     /// "not Ling's guess": the voice shows as 说话人 N.
     var voiceNames: [String: String]? = nil
     /// Names Ling read from the conversation, keyed by voice id; shown until the user says otherwise.
@@ -345,7 +345,7 @@ enum TranscriptExport {
                          : String(format: "%02d:%02d", s / 60, s % 60)
     }
 
-    /// Experimental speaker numbers on (设置 › 通用 › 实验功能); kept in step by AppModel.
+    /// Speaker numbers on (设置 › 通用 › 说话人识别); kept in step by AppModel.
     nonisolated(unsafe) static var voices = false
 
     static func speakerName(_ line: TranscriptLine, _ numbers: [String: Int] = [:], _ names: [Int: String] = [:]) -> String {
