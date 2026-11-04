@@ -5,6 +5,11 @@ plugins { id("com.android.application") }
 val appVersion = rootProject.file("../VERSION").readText().trim()
 val appVersionCode = appVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 
+// Release signing: the key never enters the repo. scripts/keystore.sh makes it once
+// (~/.cicada-android/release.jks, its password in the Keychain); scripts/build.sh and CI hand it
+// over in these variables. Without them the release build stays unsigned: never the debug key.
+val releaseKeystore = System.getenv("CICADA_KEYSTORE")?.let { file(it) }?.takeIf { it.isFile }
+
 android {
     namespace = "com.wquguru.cicada"
     compileSdk = 36
@@ -15,12 +20,23 @@ android {
         versionCode = appVersionCode
         versionName = appVersion
     }
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = releaseKeystore
+            // PKCS12 has one password for the store and the key.
+            storePassword = System.getenv("CICADA_KEYSTORE_PASSWORD")
+            keyPassword = System.getenv("CICADA_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("CICADA_KEY_ALIAS") ?: "cicada"
+        }
+    }
     buildTypes {
         // The dev build has its own id (so its own records and key), log and the debug receiver
         // that scripts/cicadactl.sh drives.
         debug { applicationIdSuffix = ".dev"; versionNameSuffix = "-dev" }
-        // Unsigned until M3 (release signing): never ship a debug-signed build under the real id.
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { buildConfig = true }

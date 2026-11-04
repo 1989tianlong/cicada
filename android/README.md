@@ -22,7 +22,8 @@ Cicada 的 Android 版：把手机里播放的声音（或面对面时麦克风�
 ```bash
 scripts/install-sdk.sh        # 一次：JDK、Gradle、Android SDK、模拟器装到 ~/.cicada-android，不用 sudo；版本固定，下载都校验哈希；--old 再装一个 Android 10 模拟器
 scripts/test.sh               # 单元测试
-scripts/build.sh              # 开发版 build/Cicada-dev.apk（com.wquguru.cicada.dev）；RELEASE=1 出未签名的 build/Cicada-unsigned.apk（签名在 M3）
+scripts/build.sh              # 开发版 build/Cicada-dev.apk（com.wquguru.cicada.dev）；RELEASE=1 出签名的 build/Cicada-<版本>-Android.apk
+scripts/keystore.sh           # 一次：生成发布签名密钥（~/.cicada-android/release.jks，密码在钥匙串）；--github 顺便存进 Actions secrets。文件和密码都要备份，丢了就没法给已装的人升级
 python3 scripts/strings.py    # 查缺翻译的文案（--write 追加 TODO）
 scripts/cli.sh listen ../windows/spike/clips/en.wav --target zh-CN --notes   # 真实调用 Ming 和 Ling
 scripts/cli.sh roundtrip ~/Library/Application\ Support/LiveSubs/Sessions/*/session.json

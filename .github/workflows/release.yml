@@ -2,7 +2,8 @@ name: release
 
 # One tag, one version for every platform (VERSION). The CHANGELOG.md section says which platforms
 # changed (scripts/release_platforms.sh); only those are built and attached, so an app with no
-# change finds no new release for itself. Android waits for release signing (M3).
+# change finds no new release for itself. Android ships only once its signing key is in the
+# secrets (android/scripts/keystore.sh --github).
 on:
   push:
     tags: ["v*.*.*"]
@@ -26,6 +27,7 @@ jobs:
       mac: ${{ steps.platforms.outputs.mac }}
       windows: ${{ steps.platforms.outputs.windows }}
       linux: ${{ steps.platforms.outputs.linux }}
+      android: ${{ steps.platforms.outputs.android }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,11 +38,17 @@ jobs:
           [[ "v$VERSION" == "$TAG" ]] || { echo "tag $TAG != VERSION $VERSION"; exit 1; }
       - id: platforms
         name: Platforms in this release
+        env:
+          HAS_ANDROID_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         run: |
           shipped=$(scripts/release_platforms.sh "${TAG#v}")
+          if grep -qx android <<< "$shipped" && [[ "$HAS_ANDROID_KEY" != true ]]; then
+            echo "::warning::Android left out: no ANDROID_KEYSTORE_BASE64 secret (android/scripts/keystore.sh --github)"
+            shipped=$(grep -vx android <<< "$shipped" || true)
+          fi
           echo "$shipped"
-          grep -qxE "mac|windows|linux" <<< "$shipped" || { echo "nothing to build: Android has no release build yet"; exit 1; }
-          for p in mac windows linux; do
+          grep -qxE "mac|windows|linux|android" <<< "$shipped" || { echo "nothing to build"; exit 1; }
+          for p in mac windows linux android; do
             grep -qx "$p" <<< "$shipped" && echo "$p=true" >> "$GITHUB_OUTPUT" || echo "$p=false" >> "$GITHUB_OUTPUT"
           done
 
@@ -132,8 +140,43 @@ jobs:
           name: linux
           path: dist/*.tar.gz
 
+  # Signed with the one release key; a debug-signed APK fails the check.
+  android:
+    needs: plan
+    if: needs.plan.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.8.2"
+      - name: Build and sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          CICADA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          export CICADA_KEYSTORE="$RUNNER_TEMP/release.jks"
+          base64 -d <<< "$ANDROID_KEYSTORE_BASE64" > "$CICADA_KEYSTORE"
+          gradle --console=plain -q :app:assembleRelease
+          mkdir -p ../dist && cp app/build/outputs/apk/release/app-release.apk "../dist/Cicada-${TAG#v}-Android.apk"
+          scripts/check-release.sh "../dist/Cicada-${TAG#v}-Android.apk"
+          rm -f "$CICADA_KEYSTORE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*.apk
+
   publish:
-    needs: [plan, mac, windows, linux]
+    needs: [plan, mac, windows, linux, android]
     # Skipped platforms are fine; a failed or cancelled one stops the release.
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
