@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Media;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using static Cicada.Strings;
 using Forms = System.Windows.Forms;
@@ -18,6 +19,11 @@ static class Program
         using var single = new Mutex(true, Paths.Dev ? "com.wquguru.cicada.dev" : "com.wquguru.cicada", out bool first);
         if (!first) { Native.LetOthersTakeForeground(); DebugServer.Send("show records"); return 0; }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        // WPF's own Windows 11 (Fluent) look for the stock controls: menus, combo boxes, text boxes,
+        // check boxes and scroll bars. Light only for now; Cicada draws its own surfaces on top.
+#pragma warning disable WPF0001
+        app.ThemeMode = ThemeMode.Light;
+#pragma warning restore WPF0001
         app.DispatcherUnhandledException += (_, e) => { Log.Debug($"ui: unhandled {e.Exception.GetType().Name}: {e.Exception.Message}"); e.Handled = true; };
         var controller = new Controller(app);
         app.Startup += (_, _) => controller.Launch();
@@ -38,10 +44,15 @@ sealed class Controller
     public readonly Translator Translator;
     public readonly ListenEngine Listen;
     readonly Forms.NotifyIcon tray = new();
+    System.Drawing.Icon? idleIcon, liveIcon;
+    Action? balloonClicked;
+    Hotkey? hotkey;
+    TrayFlyout? flyout;
+    Window? menuHost;
     NotesWindow? notesWindow;
     MainWindow? mainWindow;
     SettingsWindow? settingsWindow;
-    Dispatcher Ui => application.Dispatcher;
+    Dispatcher Dispatch => application.Dispatcher;
 
     public Controller(Application application)
     {
@@ -68,15 +79,17 @@ sealed class Controller
         }
         Log.Debug($"app: launch {(Paths.Dev ? "dev" : "release")} {Environment.OSVersion.Version}");
         SetUpTray();
+        hotkey = new Hotkey(() => Dispatch.BeginInvoke(() => _ = ToggleListening()));
         DebugServer.Start(this);
         if (!Settings.Onboarded) new Onboarding(this).Show();
         else if (Ling.HasKey) _ = Ling.Check();
     }
 
-    void Changed() => Ui.BeginInvoke(() =>
+    void Changed() => Dispatch.BeginInvoke(() =>
     {
         notesWindow?.Refresh();
         mainWindow?.Refresh();
+        if (flyout?.IsVisible == true) flyout.Refresh();
         UpdateTray();
     });
 
@@ -84,10 +97,18 @@ sealed class Controller
 
     void SetUpTray()
     {
-        tray.Icon = LoadIcon();
+        idleIcon = LoadIcon();
+        liveIcon = WithDot(idleIcon);
+        tray.Icon = idleIcon;
         tray.Text = L("知了");
         tray.Visible = true;
-        tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Ui.BeginInvoke(ShowNotes); };
+        // Left click: the flyout. Right click: the menu. Both are WPF, so they look like Windows 11.
+        tray.MouseUp += (_, e) =>
+        {
+            if (e.Button == Forms.MouseButtons.Left) Dispatch.BeginInvoke(ShowFlyout);
+            else if (e.Button == Forms.MouseButtons.Right) Dispatch.BeginInvoke(ShowMenu);
+        };
+        tray.BalloonTipClicked += (_, _) => Dispatch.BeginInvoke(() => { balloonClicked?.Invoke(); balloonClicked = null; });
         UpdateTray();
     }
 
@@ -96,25 +117,77 @@ sealed class Controller
         try
         {
             var info = Application.GetResourceStream(new Uri("pack://application:,,,/cicada.ico"));
-            return new System.Drawing.Icon(info!.Stream);
+            return new System.Drawing.Icon(info!.Stream, 32, 32);
         }
         catch { return System.Drawing.SystemIcons.Application; }
     }
 
+    /// The tray icon while listening: the logo with the live dot on its corner.
+    static System.Drawing.Icon WithDot(System.Drawing.Icon icon)
+    {
+        using var bmp = new System.Drawing.Bitmap(32, 32);
+        using (var g = System.Drawing.Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.DrawIcon(icon, new System.Drawing.Rectangle(0, 0, 32, 32));
+            using var ring = new System.Drawing.SolidBrush(System.Drawing.Color.White);
+            using var dot = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0xE8, 0x55, 0x2B));
+            g.FillEllipse(ring, 16, 16, 16, 16);
+            g.FillEllipse(dot, 19, 19, 10, 10);
+        }
+        return System.Drawing.Icon.FromHandle(bmp.GetHicon());
+    }
+
     void UpdateTray()
     {
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add(Listen.Listening ? L("结束") : L("开始听"), null, (_, _) => Ui.BeginInvoke(() => _ = ToggleListening()));
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(L("显示纪要"), null, (_, _) => Ui.BeginInvoke(ShowNotes));
-        menu.Items.Add(L("会议记录"), null, (_, _) => Ui.BeginInvoke(ShowRecords));
-        menu.Items.Add(L("设置"), null, (_, _) => Ui.BeginInvoke(ShowSettings));
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(L("退出"), null, (_, _) => Ui.BeginInvoke(() => _ = Quit()));
-        var old = tray.ContextMenuStrip;
-        tray.ContextMenuStrip = menu;
-        old?.Dispose();
+        tray.Icon = Listen.Listening ? liveIcon : idleIcon;
         tray.Text = Listen.Listening ? L("知了") + " · " + L("正在听") : L("知了");
+    }
+
+    public void ShowFlyout()
+    {
+        flyout ??= new TrayFlyout(this);
+        flyout.Toggle();
+    }
+
+    /// The right-click menu needs a window of ours in front, or it won't close on an outside click.
+    public void ShowMenu()
+    {
+        menuHost ??= new Window { WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = System.Windows.Media.Brushes.Transparent, ShowInTaskbar = false, Width = 1, Height = 1, Left = -10000, Top = -10000, Topmost = true };
+        menuHost.Show();
+        menuHost.Activate();
+        var menu = new ContextMenu { Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint, FontFamily = Palette.Font };
+        MenuItem Item(string label, string? icon, Action act, string? keys = null, bool fill = false)
+        {
+            var item = new MenuItem { Header = label, InputGestureText = keys ?? "" };
+            if (icon is not null) item.Icon = Ui.Icon(icon, 16, Palette.Ink, fill);
+            item.Click += (_, _) => act();
+            return item;
+        }
+        menu.Items.Add(Listen.Listening
+            ? Item(L("结束"), Icons.Stop, () => _ = StopListening(), Hotkey.Label, fill: true)
+            : Item(L("开始听"), Icons.Wave, () => _ = ToggleListening(), Hotkey.Label));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(L("显示纪要"), Icons.Notes, ShowNotes));
+        menu.Items.Add(Settings.View == "subtitles" ? Item(L("换成纪要"), Icons.Notes, () => SetView("notes")) : Item(L("换成字幕条"), Icons.Subtitles, () => SetView("subtitles")));
+        var share = new MenuItem { Header = L("共享屏幕时让对方看到"), IsCheckable = true, IsChecked = Settings.ShowInCapture, Icon = Ui.Icon(Icons.Eye, 16, Palette.Ink) };
+        share.Click += (_, _) => SetShowInCapture(share.IsChecked);
+        menu.Items.Add(share);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(L("查看记录"), Icons.List, () => ShowRecords()));
+        menu.Items.Add(Item(L("打开设置"), Icons.Gear, ShowSettings));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(L("退出"), Icons.Power, () => _ = Quit()));
+        menu.Closed += (_, _) => menuHost.Hide();
+        menu.IsOpen = true;
+    }
+
+    /// A Windows notification from the tray icon; a click on it runs `clicked`.
+    public void Toast(string title, string body, Action? clicked = null)
+    {
+        balloonClicked = clicked;
+        tray.ShowBalloonTip(6000, title, body, Forms.ToolTipIcon.None);
+        Log.Debug("toast: shown");
     }
 
     // MARK: Listening
@@ -133,7 +206,7 @@ sealed class Controller
         {
             if (reason is null) return;
             Log.Debug($"listen: source ended {reason}");
-            Ui.BeginInvoke(() => _ = StopListening());
+            Dispatch.BeginInvoke(() => _ = StopListening());
         };
         Listen.Start(source);
         ShowNotes();
@@ -141,8 +214,34 @@ sealed class Controller
 
     public async Task StopListening()
     {
+        var id = Listen.SessionId;
         await Listen.Stop();
         Changed();
+        if (id is not null) _ = TellWhenNotesReady(id);
+    }
+
+    /// The final notes take a few seconds after 结束; say so once they're written.
+    async Task TellWhenNotesReady(string id)
+    {
+        for (int i = 0; i < 120; i++)
+        {
+            await Task.Delay(1000);
+            var s = Store.Get(id);
+            if (s is null || Listen.SessionId == id && Listen.Listening) return;
+            if (s.Notes is { Final: true, IsEmpty: false })
+            {
+                Dispatch.Invoke(() => Toast(L("纪要整理好了"), LF("%@ · 点这里打开", SessionStore.DisplayTitle(s)), () => ShowRecords(id)));
+                return;
+            }
+        }
+    }
+
+    /// The panel was closed while listening: the first time, say that listening goes on.
+    public void CollapsedWhileListening()
+    {
+        if (!Listen.Listening || Settings.ToldStillListening) return;
+        Settings.ToldStillListening = true; Settings.Save();
+        Toast(L("知了还在听"), L("点任务栏右下角的知了图标再打开纪要。"), ShowNotes);
     }
 
     /// The onboarding sample: heard straight from the file (Cicada's own sound is left out of
@@ -170,9 +269,13 @@ sealed class Controller
         notesWindow.Refresh();
     }
 
-    public void ShowRecords()
+    public void ShowRecords() => ShowRecords(null);
+
+    public void ShowRecords(string? id)
     {
-        if (mainWindow is null) { mainWindow = new MainWindow(this); mainWindow.Closed += (_, _) => mainWindow = null; }
+        if (mainWindow is null) { mainWindow = new MainWindow(this, id); mainWindow.Closed += (_, _) => mainWindow = null; }
+        else if (id is not null) mainWindow.Select(id);
+        if (mainWindow.WindowState == WindowState.Minimized) mainWindow.WindowState = WindowState.Normal;
         mainWindow.Show();
         mainWindow.Activate();
     }
@@ -194,12 +297,30 @@ sealed class Controller
     }
 
     public void CaptureSettingChanged() => notesWindow?.ApplyCaptureSetting();
+
+    public void SetShowInCapture(bool on)
+    {
+        Settings.ShowInCapture = on;
+        Settings.Save();
+        CaptureSettingChanged();
+        Changed();
+    }
+
+    public void SetTarget(string target)
+    {
+        Settings.Target = target;
+        Settings.Save();
+        Changed();
+    }
+
+    public bool HotkeyRegistered => hotkey?.Registered ?? false;
     public void SettingsChanged() => Changed();
 
     public async Task Quit()
     {
         if (Listen.Listening) await StopListening();
         Store.Flush();
+        hotkey?.Dispose();
         tray.Visible = false;
         tray.Dispose();
         application.Shutdown();
@@ -214,13 +335,15 @@ sealed class Controller
         ["pending"] = Listen.Pending,
         ["spoken"] = Listen.Spoken,
         ["target"] = Listen.Target,
-        ["problem"] = Listen.Problem,
+        ["problem"] = Listen.Problem?.ToString(),
         ["notes"] = Notes.Status.ToString(),
         ["topics"] = Notes.Notes.Topics.Count,
         ["key"] = Ling.KeyState.ToString(),
         ["view"] = Settings.View,
         ["showInCapture"] = Settings.ShowInCapture,
         ["sessions"] = Store.All().Count,
+        ["hotkey"] = HotkeyRegistered,
+        ["autostart"] = AutoStart.Enabled,
     };
 }
 
@@ -271,8 +394,15 @@ static class DebugServer
             case "view": app.SetView(arg == "subtitles" ? "subtitles" : "notes"); break;
             case "capture": app.Settings.ShowInCapture = arg == "on"; app.Settings.Save(); app.CaptureSettingChanged(); break;
             case "show":
-                if (arg == "records") app.ShowRecords(); else if (arg == "settings") app.ShowSettings(); else app.ShowNotes();
+                if (arg == "records") app.ShowRecords();
+                else if (arg == "settings") app.ShowSettings();
+                else if (arg == "flyout") app.ShowFlyout();
+                else if (arg == "menu") app.ShowMenu();
+                else if (arg == "onboarding") new Onboarding(app).Show();
+                else app.ShowNotes();
                 break;
+            case "toast": app.Toast(L("纪要整理好了"), LF("%@ · 点这里打开", "Test"), () => app.ShowRecords()); break;
+            case "problem": app.Listen.SimulateProblem(arg); break;
             case "quit": _ = app.Quit(); break;
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };
