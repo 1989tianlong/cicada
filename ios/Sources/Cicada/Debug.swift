@@ -80,8 +80,8 @@ extension AppModel {
             searchPath = []
             query = arg
         case "mainShow":
-            // mainShow:<id>[,transcript|notes]
-            let parts = arg.split(separator: ",").map(String.init)
+            // mainShow:<id>[,transcript|notes]; an empty id is the newest meeting
+            let parts = arg.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
             tab = .records
             selection = parts.first.flatMap { id in store.sessions.contains(where: { $0.id == id }) ? id : nil }
                 ?? store.sessions.first?.id
