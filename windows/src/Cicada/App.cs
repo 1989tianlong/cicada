@@ -15,9 +15,21 @@ static class Program
     static int Main(string[] args)
     {
         Paths.Dev = Paths.Dev || args.Contains("--dev");
+        // Before the single-instance check: the installer must run while the installed copy does.
+        if (!Paths.Dev)
+        {
+            if (args.Contains("--uninstall")) return SetupWindow.Run(SetupWindow.Mode.Uninstall);
+            switch (SetupPlan.Decide(false, Environment.ProcessPath ?? "", Install.Exe, Install.InstalledVersion(), Controller.Version))
+            {
+                case SetupPlan.Step.Install: return SetupWindow.Run(SetupWindow.Mode.Install);
+                case SetupPlan.Step.Upgrade: return SetupWindow.Run(SetupWindow.Mode.Upgrade);
+                case SetupPlan.Step.Open: Native.LetOthersTakeForeground(); Install.Launch("--opened"); return 0;
+            }
+        }
         // One Cicada per user: a second launch just opens the records of the running one.
-        using var single = new Mutex(true, Paths.Dev ? "com.wquguru.cicada.dev" : "com.wquguru.cicada", out bool first);
-        if (!first) { Native.LetOthersTakeForeground(); DebugServer.Send("show records"); return 0; }
+        using var single = new Mutex(true, Paths.Dev ? "com.wquguru.cicada.dev" : Install.Mutex, out bool first);
+        if (!first) { Native.LetOthersTakeForeground(); DebugServer.Send(args.Contains("--opened") ? "setup opened" : "show records"); return 0; }
+        Controller.Arrived = args.FirstOrDefault(a => a is "--installed" or "--updated" or "--opened");
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         // WPF's own Windows 11 (Fluent) look for the stock controls: menus, combo boxes, text boxes,
         // check boxes and scroll bars. Light only for now; Cicada draws its own surfaces on top.
@@ -52,6 +64,8 @@ sealed class Controller
     /// The tray panel opened: check in the background once the last answer is an hour old.
     public void PanelOpened() { if (checksUpdates) _ = Updates.CheckIfDue(UpdateChecker.Stale); }
     public static string Version => typeof(Controller).Assembly.GetName().Version?.ToString(3) ?? "0";
+    /// How the installer started this copy: --installed, --updated or --opened (it was already installed).
+    public static string? Arrived;
     PushToTalk? talk;
     SpeakBar? speakBar;
     DeviceRecorder? mic;
@@ -83,7 +97,7 @@ sealed class Controller
     {
         this.application = application;
         var ui = Settings.UiLanguage == "system" ? null : Settings.UiLanguage;
-        Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), ui);
+        Strings.Load(Bundled.Strings, ui);
         Ling = new LingClient(Key) { Model = Settings.Model };
         SpeakerLabels.Voices = Settings.SpeakerVoices;
         Notes = new NotesEngine(Ling, Store);
@@ -123,8 +137,20 @@ sealed class Controller
         var watch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         watch.Tick += (_, _) => _ = WatchEnd();
         watch.Start();
-        if (!Settings.Onboarded) new Onboarding(this).Show();
-        else if (Ling.HasKey) _ = Ling.Check();
+        if (!Settings.Onboarded) new Onboarding(this, installed: Arrived == "--installed").Show();
+        else
+        {
+            if (Ling.HasKey) _ = Ling.Check();
+            if (Arrived == "--updated") Toast(LF("知了已更新到 %@", Version), L("会议记录、设置和 Ling key 都在。"));
+            else if (Arrived is not null) FromInstaller();
+        }
+    }
+
+    /// The installer ran again with this version (or an older one) already here: open the panel.
+    public void FromInstaller()
+    {
+        ShowFlyout();
+        Toast(L("知了已经装好了"), L("下载的安装包可以删掉。"), ShowFlyout);
     }
 
     void Changed() => Dispatch.BeginInvoke(() =>
@@ -405,8 +431,7 @@ sealed class Controller
     /// the system capture) while it plays aloud for the user.
     public async Task PlaySample()
     {
-        var wav = Path.Combine(AppContext.BaseDirectory, "Resources", "sample.wav");
-        if (!File.Exists(wav) || Listen.Listening) return;
+        if (Bundled.Sample() is not { } wav || Listen.Listening) return;
         var source = new FileAudioSource(wav);
         var done = new TaskCompletionSource();
         source.Ended += _ => done.TrySetResult();
@@ -544,7 +569,7 @@ sealed class Controller
     public void DownloadUpdate()
     {
         if (Updates.Available is not { } u) return;
-        Open(u.Zip ?? u.Page);
+        Open(u.Download ?? u.Page);
         Log.Debug($"update: download {u.Version}");
     }
 
@@ -647,8 +672,9 @@ static class DebugServer
                     using var reader = new StreamReader(server);
                     using var writer = new StreamWriter(server) { AutoFlush = true };
                     var line = reader.ReadLine() ?? "";
-                    // A release build only takes "show records" (a second launch); the rest is for dev builds.
-                    if (!Paths.Dev && line != "show records") { writer.WriteLine("{\"error\":\"dev builds only\"}"); continue; }
+                    // A release build only takes a second launch's and the installer's few commands; the
+                    // rest is for dev builds.
+                    if (!Paths.Dev && line is not ("show records" or "setup status" or "setup quit" or "setup opened")) { writer.WriteLine("{\"error\":\"dev builds only\"}"); continue; }
                     var reply = app.Dispatcher().Invoke(() => Run(app, line));
                     writer.WriteLine(reply.ToJsonString());
                 }
@@ -659,13 +685,24 @@ static class DebugServer
 
     static Dispatcher Dispatcher(this Controller _) => Application.Current.Dispatcher;
 
+    static JsonObject Quitting(Controller app) { _ = app.Quit(); return new JsonObject { ["ok"] = true }; }
+    static JsonObject Opened(Controller app) { app.FromInstaller(); return new JsonObject { ["ok"] = true }; }
+
     static JsonObject Run(Controller app, string line)
     {
         var parts = line.Trim().Split(' ', 2);
         var arg = parts.Length > 1 ? parts[1].Trim() : "";
-        Log.Debug($"debug: {parts[0]}");
+        // The installer asks for status every 2 seconds while its window is open: not worth a line each.
+        if (line != "setup status") Log.Debug($"debug: {parts[0]}");
         switch (parts[0])
         {
+            // Cicada-Setup.exe (Install.cs): is a meeting on, quit for the new copy, show yourself.
+            case "setup": return arg switch
+            {
+                "status" => new JsonObject { ["listening"] = app.Listen.Listening },
+                "quit" => Quitting(app),
+                _ => Opened(app),
+            };
             case "start": app.StartListening(new SystemAudioTap()); break;
             case "stop": _ = app.StopListening(); break;
             case "end": app.RequestStop(); break;  // the user's 结束: asks first when anything was said

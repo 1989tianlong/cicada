@@ -25,15 +25,16 @@
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
     <Using Include="System.IO" />
-    <None Include="../../../Resources/**/Localizable.strings" LinkBase="Resources" CopyToOutputDirectory="PreserveNewest" />
-    <!-- LinkBase only moves files from outside the project, so these name their place explicitly. -->
-    <None Include="Strings/**/Windows.strings" Link="Resources/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The UI text, inside the exe (Bundled.cs reads it): Cicada-Setup.exe is this one file, so it
+         must speak the user's language before anything is installed. -->
+    <EmbeddedResource Include="../../../Resources/**/Localizable.strings" LogicalName="strings/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Strings/**/Windows.strings" LogicalName="strings/%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- Both made by scripts/build.sh from docs/icon.png and Resources/sample/sample.m4a; committed so CI on Windows needs no Mac tools. -->
     <Resource Include="Assets/cicada.ico" Link="cicada.ico" />
     <!-- The voiceprint model (scripts/compress-voiceprint.py; WeSpeaker, CC BY 4.0), inside the exe so
          single-file compression shrinks it too. -->
     <EmbeddedResource Include="Assets/voiceprint.onnx" LogicalName="voiceprint.onnx" />
-    <None Include="Assets/sample.wav" Link="Resources/sample.wav" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets/sample.wav" LogicalName="sample.wav" />
     <ProjectReference Include="../Cicada.Core/Cicada.Core.csproj" />
   </ItemGroup>
 </Project>

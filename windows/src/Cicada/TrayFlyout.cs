@@ -81,7 +81,7 @@ sealed class TrayFlyout : Window
         {
             var size = update.Size > 0 ? $"{update.Size / 1_048_576.0:0} MB · " : "";
             var text = Ui.Stack(2, Ui.Text(LF("新版本 %@", update.Version), 13, Palette.Ink, Palette.Strong, wrap: false),
-                                Ui.Text(size + L("下载后解压，替换旧的知了"), 11, Palette.Secondary),
+                                Ui.Text(size + SettingsWindow.UpdateHint(update), 11, Palette.Secondary),
                                 Ui.LinkText(L("更新说明"), () => Do(app.OpenReleaseNotes), 11));
             var download = Ui.Button(L("下载"), () => Do(app.DownloadUpdate), Ui.Kind.Standard, height: 30);
             var dock = new DockPanel();

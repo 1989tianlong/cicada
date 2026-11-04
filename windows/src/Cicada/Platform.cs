@@ -45,7 +45,7 @@ static class AutoStart
 {
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     static string Name => Paths.Dev ? "Cicada Dev" : "Cicada";
-    static string Command => $"\"{Environment.ProcessPath}\"" + (Paths.Dev ? " --dev" : "");
+    static string Command(string exe) => $"\"{exe}\"" + (Paths.Dev ? " --dev" : "");
 
     public static bool Enabled
     {
@@ -54,16 +54,19 @@ static class AutoStart
             try { using var k = Registry.CurrentUser.OpenSubKey(RunKey); return k?.GetValue(Name) is string; }
             catch { return false; }
         }
-        set
+        set => Set(Environment.ProcessPath ?? "", value);
+    }
+
+    /// The installer sets it for the copy it put in place, not for itself in Downloads.
+    public static void Set(string exe, bool on)
+    {
+        try
         {
-            try
-            {
-                using var k = Registry.CurrentUser.CreateSubKey(RunKey);
-                if (value) k.SetValue(Name, Command); else k.DeleteValue(Name, throwOnMissingValue: false);
-                Log.Debug($"autostart: {(value ? "on" : "off")}");
-            }
-            catch (Exception e) { Log.Debug($"autostart: failed {e.GetType().Name}"); }
+            using var k = Registry.CurrentUser.CreateSubKey(RunKey);
+            if (on) k.SetValue(Name, Command(exe)); else k.DeleteValue(Name, throwOnMissingValue: false);
+            Log.Debug($"autostart: {(on ? "on" : "off")}");
         }
+        catch (Exception e) { Log.Debug($"autostart: failed {e.GetType().Name}"); }
     }
 }
 

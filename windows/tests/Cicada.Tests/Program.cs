@@ -35,6 +35,35 @@ static class Tests
         if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"{what}: expected «{expected}», got «{actual}»");
     }
 
+    // MARK: Cicada-Setup.exe
+
+    public static void SetupDecidesFromWhereItRuns()
+    {
+        const string home = @"C:\Users\a\AppData\Local\Programs\Cicada\Cicada.exe";
+        const string download = @"C:\Users\a\Downloads\Cicada-Setup.exe";
+        Equal(SetupPlan.Step.Run, SetupPlan.Decide(false, home, home, "1.4.0", "1.4.0"), "the installed copy just runs");
+        Equal(SetupPlan.Step.Run, SetupPlan.Decide(false, @"c:\users\A\appdata\local\programs\cicada\CICADA.EXE", home, "1.4.0", "1.4.0"), "paths compare without case");
+        Equal(SetupPlan.Step.Run, SetupPlan.Decide(true, download, home, null, "1.4.0"), "a dev build never installs");
+        Equal(SetupPlan.Step.Install, SetupPlan.Decide(false, download, home, null, "1.4.0"), "nothing installed: install");
+        Equal(SetupPlan.Step.Upgrade, SetupPlan.Decide(false, download, home, "1.3.9", "1.4.0"), "older installed: upgrade");
+        Equal(SetupPlan.Step.Open, SetupPlan.Decide(false, download, home, "1.4.0", "1.4.0"), "same version: open it");
+        Equal(SetupPlan.Step.Open, SetupPlan.Decide(false, download, home, "1.10.0", "1.9.0"), "never downgrade");
+        Equal("知了", SetupPlan.ShortcutName("zh-Hans"), "Chinese shortcut");
+        Equal("Cicada", SetupPlan.ShortcutName("ja"), "other languages");
+    }
+
+    public static void StringsLoadFromAReader()
+    {
+        var files = new Dictionary<string, string> { ["en.lproj/Localizable.strings"] = "\"知了\" = \"Cicada\";", ["en.lproj/Windows.strings"] = "\"安装\" = \"Install\";" };
+        try
+        {
+            Strings.Load(p => files.GetValueOrDefault(p), "en");
+            Equal("Cicada", Strings.L("知了"), "the Mac table");
+            Equal("Install", Strings.L("安装"), "the Windows table over it");
+        }
+        finally { Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), "zh-Hans"); }
+    }
+
     // MARK: 结束会议 (the Mac's MeetingEndTests, case for case)
 
     static readonly DateTimeOffset T0 = DateTimeOffset.FromUnixTimeSeconds(1_000_000);
@@ -881,6 +910,21 @@ static class Tests
         Equal(1, UpdateChecker.Decode(Rel("v1.5.0"))!.Count, "a single release");
         Equal(null, UpdateChecker.Decode("{\"message\":\"Not Found\"}"), "GitHub's 404");
         Equal(null, UpdateChecker.Decode("<html>"), "not JSON");
+        // A release with the installer: it's what to download, on each architecture.
+        var withSetup = UpdateChecker.Decode("""
+            [{"tag_name":"v1.6.0","html_url":"https://example.com/r","assets":[
+              {"name":"Cicada-1.6.0-Windows-x64.zip","browser_download_url":"https://example.com/z","size":5},
+              {"name":"Cicada-Setup.exe","browser_download_url":"https://example.com/setup","size":7},
+              {"name":"Cicada-Setup-arm64.exe","browser_download_url":"https://example.com/setup-arm","size":8}]},
+             {"tag_name":"v1.7.0","html_url":"https://example.com/r2","assets":[
+              {"name":"Cicada-Setup.exe","browser_download_url":"https://example.com/setup2","size":9}]}]
+            """)!;
+        var x = UpdateChecker.NewestWindows(withSetup, "x64")!;
+        Equal("1.7.0", x.Version, "a release with only the installer counts");
+        Equal("https://example.com/setup2", x.Download, "the installer is the download");
+        var older = UpdateChecker.NewestWindows(withSetup.Take(1), "ARM64")!;
+        Equal("https://example.com/setup-arm", older.Download, "ARM's installer");
+        Equal(8L, older.Size, "its size");
     }
 
     public static void UpdateDueAfterTheAge()

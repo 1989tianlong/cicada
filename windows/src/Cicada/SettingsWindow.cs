@@ -65,9 +65,14 @@ sealed class SettingsWindow : Window
             Card(Icons.List, L("说话人识别"), L("按声音标出说话人 1、2…，只在这台电脑上处理"), Ui.Switch(app.Settings.SpeakerVoices, v => { app.Settings.SpeakerVoices = v; Save(); }, L("说话人识别"))),
             Card(Icons.Power, L("开机时启动知了"), null, Ui.Switch(AutoStart.Enabled, v => AutoStart.Enabled = v, L("开机时启动知了"))),
             Card(Icons.Folder, L("会议记录存放位置"), $"{Paths.Sessions} · {L("和 Mac 版格式相同")}", Ui.Button(L("打开文件夹"), () => OpenFolder(Paths.Sessions), height: 32))));
-        Section(page, "about", L("关于"), Group(
+        // 卸载 as in Settings › Apps, with the same confirmation; only an installed copy offers it.
+        FrameworkElement[] about =
+        [
             Card(null, LF("知了 %@", Controller.Version), UpdateDetail(), UpdateControl(), AppIcon.Small(24)),
-            Card(null, L("日志"), null, Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!)))),
+            Card(null, L("日志"), null, Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!))),
+            .. (!Paths.Dev && File.Exists(Install.Exe) ? new[] { Card(null, L("卸载知了"), L("会议记录默认留着"), Ui.LinkText(L("卸载…"), () => Install.Launch("--uninstall"))) } : []),
+        ];
+        Section(page, "about", L("关于"), Group(about),
             Credit());
         scroll.Content = page;
         scroll.ScrollToVerticalOffset(shownPage == current ? offset : 0);
@@ -76,6 +81,9 @@ sealed class SettingsWindow : Window
     }
 
     string? shownPage;
+
+    /// What to do with the download: the installer upgrades itself; an older release has only the zip.
+    public static string UpdateHint(UpdateChecker.Update u) => u.Setup is not null ? L("下载后打开，知了会自己更新") : L("下载后解压，替换旧的知了");
 
     static FrameworkElement Credit() { var t = Ui.Helper(L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）")); t.Margin = new Thickness(6, 0, 0, 0); return t; }
 
@@ -88,7 +96,7 @@ sealed class SettingsWindow : Window
     // The Mac's AppRows version row: what the last check found, and 检查更新 or 下载.
     string? UpdateDetail()
     {
-        if (app.Updates.Available is { } u) return LF("有新版本 %@", u.Version) + " · " + L("下载后解压，替换旧的知了");
+        if (app.Updates.Available is { } u) return LF("有新版本 %@", u.Version) + " · " + UpdateHint(u);
         if (app.UpdateCheck is { } c) return c;
         if (app.Updates.LastChecked is not { } d) return null;
         var local = d.ToLocalTime();

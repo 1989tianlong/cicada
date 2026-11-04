@@ -309,6 +309,29 @@ static class Ui
         Padding = padding ?? new Thickness(20), Child = child,
     };
 
+    /// The design's check box: an ink box, not the theme's blue one; still a CheckBox for keys and readers.
+    public static CheckBox Check(string label, bool on, Action<bool> changed)
+    {
+        var box = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(4) };
+        void Paint(bool v)
+        {
+            box.Background = v ? Palette.Ink : Palette.Surface;
+            box.BorderBrush = v ? Palette.Ink : Palette.Secondary;
+            box.BorderThickness = new Thickness(v ? 0 : 1.5);
+            box.Child = v ? Icon(Icons.Check, 14, Brushes.White, stroke: 2.2) : null;
+        }
+        Paint(on);
+        var c = new CheckBox
+        {
+            IsChecked = on, Content = Row(10, box, Text(label, 14, Palette.Ink, wrap: false)),
+            Template = new ControlTemplate(typeof(CheckBox)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) }, Cursor = Cursors.Hand,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        AutomationName(c, label);
+        c.Click += (_, _) => { var v = c.IsChecked == true; Paint(v); changed(v); };
+        return c;
+    }
+
     public enum Severity { Error, Warning }
 
     /// Fluent's InfoBar: an icon, a bold title, one line of body, and up to one action.

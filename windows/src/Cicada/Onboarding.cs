@@ -31,9 +31,16 @@ sealed class Onboarding : Window
     readonly ContentControl keyStatus = new();
     bool checking;
 
-    public Onboarding(Controller app)
+    /// Opened by the installer: step 1 says so, and 开机时启动知了 shows what the installer set.
+    readonly bool installed;
+    /// The first page after installing carries 已装好: the installer's window becomes this one.
+    readonly int badgeStep;
+
+    public Onboarding(Controller app, bool installed = false)
     {
         this.app = app;
+        this.installed = installed;
+        if (installed) autoStart = AutoStart.Enabled;
         Title = L("设置知了");
         Width = 860; Height = 640; ResizeMode = ResizeMode.CanMinimize;
         Background = Palette.Page; FontFamily = Palette.Font; Icon = AppIcon.Image;
@@ -51,6 +58,7 @@ sealed class Onboarding : Window
         keyBox.PasswordChanged += (_, _) => { if (keyText.Text != keyBox.Password) keyText.Text = keyBox.Password; };
         keyText.TextChanged += (_, _) => { if (keyBox.Password != keyText.Text) keyBox.Password = keyText.Text; };
         step = app.Ling.HasKey ? 1 : 0;
+        badgeStep = installed ? step : -1;
         Render();
     }
 
@@ -117,11 +125,19 @@ sealed class Onboarding : Window
     FrameworkElement Page(string title, string text, params UIElement[] body)
     {
         var s = new StackPanel { Margin = new Thickness(64, 30, 64, 0) };
+        if (step == badgeStep)
+        {
+            var note = Ui.Row(10, Ui.Badge(L("已装好"), new SolidColorBrush(Color.FromRgb(0xE3, 0xF1, 0xE8)), Palette.Success),
+                Ui.Text(L("开始菜单里有知了了，安装包可以删掉"), 12, Palette.Secondary, wrap: false));
+            note.Margin = new Thickness(0, 0, 0, 14);
+            s.Children.Add(note);
+        }
         s.Children.Add(Ui.Text(title, 30, Palette.Ink, FontWeights.Bold));
         var p = Ui.Text(text, 14, Palette.Secondary);
         p.Margin = new Thickness(0, 8, 0, 0); p.LineHeight = 22;
         s.Children.Add(p);
-        foreach (var b in body) { if (b is FrameworkElement f) f.Margin = new Thickness(f.Margin.Left, f.Margin.Top + (s.Children.Count == 2 ? 24 : 16), f.Margin.Right, f.Margin.Bottom); s.Children.Add(b); }
+        var head = s.Children.Count;
+        foreach (var b in body) { if (b is FrameworkElement f) f.Margin = new Thickness(f.Margin.Left, f.Margin.Top + (s.Children.Count == head ? 24 : 16), f.Margin.Right, f.Margin.Bottom); s.Children.Add(b); }
         return s;
     }
 
@@ -479,25 +495,8 @@ sealed class Onboarding : Window
             },
         });
         FrameworkElement Key(string what, string keys) => Gap(Ui.Spread(Ui.Text(what, 14, Palette.Ink, wrap: false), Ui.Keycap(keys)), 14);
-        // An ink box like the design's, not the theme's blue one; still a CheckBox for keys and readers.
-        var box = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(4) };
-        void Paint()
-        {
-            box.Background = autoStart ? Palette.Ink : Palette.Surface;
-            box.BorderBrush = autoStart ? Palette.Ink : Palette.Secondary;
-            box.BorderThickness = new Thickness(autoStart ? 0 : 1.5);
-            box.Child = autoStart ? Ui.Icon(Icons.Check, 14, Brushes.White, stroke: 2.2) : null;
-        }
-        Paint();
-        var face = new FrameworkElementFactory(typeof(ContentPresenter));
-        var startup = new CheckBox
-        {
-            IsChecked = autoStart, Content = Ui.Row(10, box, Ui.Text(L("开机时启动知了"), 14, Palette.Ink, wrap: false)),
-            Template = new ControlTemplate(typeof(CheckBox)) { VisualTree = face }, Cursor = System.Windows.Input.Cursors.Hand,
-            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 28, 0, 0),
-        };
-        System.Windows.Automation.AutomationProperties.SetName(startup, L("开机时启动知了"));
-        startup.Click += (_, _) => { autoStart = startup.IsChecked == true; Paint(); };
+        var startup = Ui.Check(L("开机时启动知了"), autoStart, v => autoStart = v);
+        startup.Margin = new Thickness(0, 28, 0, 0);
         var keys = StepCard(new StackPanel
         {
             Children =

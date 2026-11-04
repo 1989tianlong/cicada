@@ -16,7 +16,12 @@ public static class Strings
 
     /// Loads the table for `language` ("en", "ja", "ko"; anything else is Chinese) from
     /// `folder`/<lang>.lproj/Localizable.strings.
-    public static void Load(string folder, string? language = null)
+    public static void Load(string folder, string? language = null) =>
+        Load(path => File.Exists(Path.Combine(folder, path)) ? File.ReadAllText(Path.Combine(folder, path), Encoding.UTF8) : null, language);
+
+    /// The same from `read("<lang>.lproj/<name>")`: the app reads the tables from inside its exe,
+    /// so the installer is one file that already speaks the user's language.
+    public static void Load(Func<string, string?> read, string? language = null)
     {
         var ui = language ?? CultureInfo.CurrentUICulture.Name;
         var head = ui.Split('-')[0];
@@ -26,9 +31,8 @@ public static class Strings
         table = [];
         foreach (var name in new[] { "Localizable.strings", "Windows.strings" })
         {
-            var file = Path.Combine(folder, $"{Language}.lproj", name);
-            if (!File.Exists(file)) continue;
-            foreach (var (k, v) in Parse(File.ReadAllText(file, Encoding.UTF8))) table[k] = v;
+            if (read($"{Language}.lproj/{name}") is not { } text) continue;
+            foreach (var (k, v) in Parse(text)) table[k] = v;
         }
     }
 

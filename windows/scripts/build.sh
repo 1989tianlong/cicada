@@ -1,7 +1,8 @@
 #!/bin/bash
 # Builds the Windows app on the Mac: build/Cicada-win-x64/ and build/Cicada-win-arm64/, each a
-# self-contained Cicada.exe plus Resources/. RELEASE=1 for a release build (else a dev build,
-# which keeps its records under "Cicada Dev" and opens the debug pipe).
+# self-contained Cicada.exe with everything inside it. RELEASE=1 for a release build, which also
+# writes build/Cicada-Setup.exe and Cicada-Setup-arm64.exe (the same exe, for people to download);
+# else a dev build, which keeps its records under "Cicada Dev" and opens the debug pipe.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=..
@@ -40,10 +41,12 @@ for rid in win-x64 win-arm64; do
   rm -rf "$out"
   scripts/dotnet.sh publish src/Cicada -c "$config" -r "$rid" -o "$out" -p:DebugType=embedded -v quiet -nologo 2>&1 | grep -E ' error |warning CS' | sort -u || true
   [ -f "$out/Cicada.exe" ] || { echo "build failed for $rid" >&2; exit 1; }
-  # Strings.Load reads both tables from Resources/; a misplaced one silently leaves the UI in Chinese.
-  for f in Resources/en.lproj/Localizable.strings Resources/en.lproj/Windows.strings; do
-    [ -f "$out/$f" ] || { echo "missing $f in $out" >&2; exit 1; }
-  done
+  # The exe is the whole app (the UI text and the sample are inside it): Cicada-Setup.exe is a copy.
+  [ "$(ls "$out" | grep -v '^Cicada.exe$' | grep -v '^test$' | grep -v '^Cicada Dev.cmd$' || true)" = "" ] || { echo "unexpected files beside Cicada.exe in $out: $(ls "$out")" >&2; exit 1; }
+  if [ "$config" = Release ]; then
+    setup=build/Cicada-Setup.exe; [ "$rid" = win-arm64 ] && setup=build/Cicada-Setup-arm64.exe
+    cp "$out/Cicada.exe" "$setup"; echo "$setup"
+  fi
   if [ "$config" = Debug ]; then
     printf '@echo off\r\nstart "" "%%~dp0Cicada.exe" --dev\r\n' > "$out/Cicada Dev.cmd"
     # Everything the VM test needs in the one folder: the capture probe, the control script and the clips.

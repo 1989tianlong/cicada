@@ -8,10 +8,15 @@ namespace Cicada;
 /// UpdateChecker: at launch, then whenever the last answer is 4 hours old (a 15-minute tick, so a
 /// laptop that sleeps a lot still checks), and when the tray panel opens once it is an hour old.
 /// Failures (offline, rate-limited, the repository not public: 404) are silent. This only finds
-/// the update; the app offers the zip for download (no in-place install yet).
+/// the update; the app offers Cicada-Setup.exe for download, which upgrades the installed copy
+/// when opened (older releases only have the zip).
 public sealed class UpdateChecker
 {
-    public sealed record Update(string Version, string Page, string? Zip, long Size);
+    /// `Setup` is this PC's Cicada-Setup exe when the release has one; `Size` is the download's.
+    public sealed record Update(string Version, string Page, string? Zip, long Size, string? Setup = null)
+    {
+        public string? Download => Setup ?? Zip;
+    }
 
     public static readonly TimeSpan Every = TimeSpan.FromHours(4);
     public static readonly TimeSpan Stale = TimeSpan.FromHours(1);
@@ -107,8 +112,9 @@ public sealed class UpdateChecker
         catch (JsonException) { return null; }
     }
 
-    /// The newest published release with a Windows zip. A release without one only carries other
-    /// platforms (Windows had no change), so it is skipped. On ARM, an x64-only release still counts.
+    /// The newest published release with a Windows build (installer or zip). A release without one
+    /// only carries other platforms (Windows had no change), so it is skipped. On ARM, an x64-only
+    /// release still counts.
     public static Update? NewestWindows(IEnumerable<Release> releases, string arch)
     {
         Update? best = null;
@@ -116,13 +122,17 @@ public sealed class UpdateChecker
         {
             if (r.Draft || r.Prerelease || r.Assets is null) continue;
             var zip = r.Assets.FirstOrDefault(a => IsZip(a.Name, arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => IsZip(a.Name, "x64")));
-            if (zip is null) continue;
-            var u = new Update(r.TagName.TrimStart('v'), r.HtmlUrl, zip.Url, zip.Size);
+            var setup = r.Assets.FirstOrDefault(a => a.Name == SetupName(arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => a.Name == SetupName("x64")));
+            if (zip is null && setup is null) continue;
+            var u = new Update(r.TagName.TrimStart('v'), r.HtmlUrl, zip?.Url, (setup ?? zip)!.Size, setup?.Url);
             if (best is null || IsNewer(u.Version, best.Version)) best = u;
         }
         return best;
         static bool IsZip(string name, string arch) => name.StartsWith("Cicada-") && name.EndsWith($"-Windows-{arch}.zip");
     }
+
+    /// The installer's release asset: no version in the name, so the site's link never goes stale.
+    public static string SetupName(string arch) => arch == "ARM64" ? "Cicada-Setup-arm64.exe" : "Cicada-Setup.exe";
 
     /// Dotted numeric versions: "2.10.0" is newer than "2.9.1".
     public static bool IsNewer(string a, string b)
