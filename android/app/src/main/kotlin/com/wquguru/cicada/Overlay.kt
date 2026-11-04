@@ -100,6 +100,9 @@ class Overlay(private val app: CicadaApp) {
             "subtitles" -> buildSubtitles(frame, p)
             else -> buildNotes(frame, p)
         }
+        // A video in picture-in-picture moves out of the way of keep-clear areas (Android 13+),
+        // so 在视频上看 doesn't hide the very video it is about. The bubble is small enough to sit on it.
+        if (mode != "bubble" && android.os.Build.VERSION.SDK_INT >= 33) frame.isPreferKeepClear = true
         try {
             wm.addView(frame, p)
             root = frame

@@ -7,6 +7,11 @@
     "image": null,
     "items": [
       {
+        "kind": "fixed",
+        "title": "Android 上点“在视频上看”，悬浮窗不再盖住小窗里的视频。",
+        "text": "Android 13 以上，画中画小窗会自动让到悬浮窗旁边；收成小圆点时照旧。"
+      },
+      {
         "kind": "new",
         "title": "用不了 Ling 时可以换成 OpenRouter、ZenMux、OpenAI 或任何 OpenAI 兼容服务。",
         "text": "在设置 › AI 服务右上角切换，纪要和整句翻译都能用，模型已经按效果和价格选好；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆仍然只有 Ling 有。"
