@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -46,6 +47,8 @@ class Overlay(private val app: CicadaApp) {
     val shown get() = root != null
     private val subtitles get() = app.settings.view == "subtitles"
     private val mode get() = if (collapsed) "bubble" else if (subtitles) "subtitles" else "notes"
+    /// Where the person dragged the card and the subtitle bar, kept while Cicada runs.
+    private val placed = HashMap<String, Pair<Int, Int>>()
 
     fun show() {
         if (root != null || !app.canOverlay) return
@@ -87,9 +90,11 @@ class Overlay(private val app: CicadaApp) {
                 "bubble" -> { gravity = Gravity.TOP or Gravity.START; x = dm.widthPixels - ui.dp(76); y = (dm.heightPixels * 0.45).toInt() }
                 else -> { gravity = Gravity.TOP or Gravity.START; x = left; y = (dm.heightPixels * 0.32).toInt() }
             }
+            placed[mode]?.let { (px, py) -> x = px; y = py }
         }
         params = p
-        val frame = FrameLayout(app).apply { setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(8)) }
+        val frame = (if (mode == "bubble") FrameLayout(app) else DragFrame(p, fromBottom = mode == "subtitles"))
+            .apply { setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(8)) }
         when (mode) {
             "bubble" -> buildBubble(frame, p)
             "subtitles" -> buildSubtitles(frame, p)
@@ -141,7 +146,6 @@ class Overlay(private val app: CicadaApp) {
         card.addView(live, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = ui.dp(10); rightMargin = ui.dp(10) })
         card.addView(notes, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = ui.dp(16); rightMargin = ui.dp(16); topMargin = ui.dp(14) })
         frame.addView(card)
-        draggable(handle, frame, p); draggable(head, frame, p)
     }
 
     private fun buildSubtitles(frame: FrameLayout, p: WindowManager.LayoutParams) {
@@ -156,7 +160,6 @@ class Overlay(private val app: CicadaApp) {
         live = FrameLayout(app); notes = null
         bar.addView(live, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = ui.dp(12); rightMargin = ui.dp(16) })
         frame.addView(bar)
-        draggable(head, frame, p, fromBottom = true)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -256,20 +259,48 @@ class Overlay(private val app: CicadaApp) {
         dismissTarget = null
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun draggable(handle: View, frame: View, p: WindowManager.LayoutParams, fromBottom: Boolean = false) {
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
-        handle.setOnTouchListener { _, e ->
+    /// The card or the subtitle bar, dragged from anywhere on it: a finger that moves past the
+    /// touch slop takes the gesture from the buttons underneath, so taps still reach them. (A
+    /// listener on the header alone never moved it: it turned the first touch down, and Android
+    /// then sends that view nothing more of the gesture.)
+    @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
+    private inner class DragFrame(private val p: WindowManager.LayoutParams, private val fromBottom: Boolean) : FrameLayout(app) {
+        private val slop = ViewConfiguration.get(app).scaledTouchSlop
+        private var downX = 0f; private var downY = 0f; private var startX = 0; private var startY = 0
+        private var dragging = false
+
+        private fun down(e: MotionEvent) { downX = e.rawX; downY = e.rawY; startX = p.x; startY = p.y; dragging = false }
+
+        override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; startX = p.x; startY = p.y; false }
-                MotionEvent.ACTION_MOVE -> {
-                    p.x = startX + (e.rawX - downX).toInt()
-                    p.y = startY + (if (fromBottom) -1 else 1) * (e.rawY - downY).toInt()
-                    try { wm.updateViewLayout(frame, p) } catch (_: Exception) {}
-                    true
-                }
-                else -> false
+                MotionEvent.ACTION_DOWN -> down(e)
+                MotionEvent.ACTION_MOVE -> if (!dragging && hypot(e.rawX - downX, e.rawY - downY) > slop) dragging = true
             }
+            return dragging
+        }
+
+        override fun onTouchEvent(e: MotionEvent): Boolean {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> down(e)
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging && hypot(e.rawX - downX, e.rawY - downY) > slop) dragging = true
+                    if (dragging) move(e)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) placed[mode] = p.x to p.y
+                    dragging = false
+                }
+            }
+            return true
+        }
+
+        /// Follows the finger, kept on the screen and clear of the status and gesture bars.
+        private fun move(e: MotionEvent) {
+            val dm = app.resources.displayMetrics
+            val edge = ui.dp(28)
+            p.x = (startX + (e.rawX - downX).toInt()).coerceIn(0, maxOf(0, dm.widthPixels - width))
+            p.y = (startY + (if (fromBottom) -1 else 1) * (e.rawY - downY).toInt()).coerceIn(edge, maxOf(edge, dm.heightPixels - height - edge))
+            try { wm.updateViewLayout(this, p) } catch (_: Exception) {}
         }
     }
 
@@ -321,5 +352,6 @@ class Overlay(private val app: CicadaApp) {
         "secure" to params?.let { it.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 },
         "focusable" to params?.let { it.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0 },
         "view" to app.settings.view,
+        "x" to params?.x, "y" to params?.y,
     )
 }

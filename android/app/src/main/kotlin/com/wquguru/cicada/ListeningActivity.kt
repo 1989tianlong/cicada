@@ -28,7 +28,7 @@ class ListeningActivity : Activity() {
     private var sayButton: LinearLayout? = null
     private var sayLabel: TextView? = null
     private var sayHelper: TextView? = null
-    private var tab = 0
+    private var tab = 0 // 0 实时纪要, 1 字幕
     private var shown: String? = null
     private var unobserve: (() -> Unit)? = null
     private val tick = object : Runnable {
@@ -39,7 +39,9 @@ class ListeningActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = Ui(this)
-        tab = savedInstanceState?.getInt("tab") ?: 0
+        // 实时纪要 first and by default, as on the Mac; 面对面 opens on 字幕, where each line is read
+        // as it comes (and 我说's replies show).
+        tab = savedInstanceState?.getInt("tab") ?: if (cicada.listen.sourceKind == "mic") 1 else 0
         badgeText = ui.text(NotesViews.status(cicada), 14f, Palette.link, bold = true, lines = 1)
         val badge = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -158,10 +160,10 @@ class ListeningActivity : Activity() {
         if (key == shown) return
         shown = key
         tabsHost.removeAllViews()
-        tabsHost.addView(ui.tabs(listOf(L("字幕"), L("实时纪要")), tab) { tab = it; render() })
+        tabsHost.addView(ui.tabs(listOf(L("实时纪要"), L("字幕")), tab) { tab = it; render() })
         content.removeAllViews()
         NotesViews.banner(ui, app) { switchToMic() }?.let { content.addView(it) }
-        if (tab == 0) {
+        if (tab == 1) {
             content.addView(ui.spacer(), LinearLayout.LayoutParams(-1, 0, 1f))
             content.addView(NotesViews.stream(ui, app, 6))
             scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
