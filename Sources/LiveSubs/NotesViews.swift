@@ -983,12 +983,18 @@ struct TermChips: View {
         let extra = list.count - Self.shown
         FlowLayout(spacing: 6) {
             ForEach(all || extra <= 0 ? list : Array(list.prefix(Self.shown))) { t in
-                (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)")
-                    + Text(!showHeard || t.heard.isEmpty ? "" : L(" · 原识别 \(t.heard.prefix(2).joined(separator: "、"))"))
-                    .foregroundColor(Palette.tertiary))
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 9).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
+                // What was misheard goes on its own small line, so a long note wraps beside the name.
+                VStack(alignment: .leading, spacing: 1) {
+                    (Text(t.name).bold() + Text(t.note.isEmpty ? "" : " \(t.note)"))
+                        .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                    if showHeard, !t.heard.isEmpty {
+                        Text("原识别 \(t.heard.prefix(2).joined(separator: "、"))")
+                            .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
             }
             if extra > 0 {
                 Button(all ? L("收起") : L("展开全部 \(list.count) 个")) { all.toggle() }
@@ -1009,15 +1015,21 @@ struct FramedList<Content: View>: View {
     }
 }
 
-/// Wraps chips onto as many lines as needed.
+/// Wraps chips onto as many lines as needed. A chip wider than the row is given the row's width,
+/// so its text wraps inside it instead of running past the edge.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
+
+    private func size(_ v: LayoutSubview, _ width: CGFloat) -> CGSize {
+        let ideal = v.sizeThatFits(.unspecified)
+        return ideal.width <= width ? ideal : v.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 400
         var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = size(v, width)
             if x + s.width > width, x > 0 { x = 0; y += row + spacing; row = 0 }
             x += s.width + spacing
             row = max(row, s.height)
@@ -1028,7 +1040,7 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = size(v, bounds.width)
             if x + s.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += row + spacing; row = 0 }
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing
