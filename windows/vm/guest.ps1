@@ -65,7 +65,8 @@ switch ($Verb) {
   'launch' {
     $exe = $Rest[0]; $args2 = ($Rest | Select-Object -Skip 1) -join ' '
     $argPart = if ($args2) { "-ArgumentList '$args2'" } else { '' }
-    Desk "Start-Process '$exe' $argPart -WorkingDirectory (Split-Path '$exe')" -NoWait
+    $dirPart = if (Split-Path $exe) { "-WorkingDirectory '$(Split-Path $exe)'" } else { '' }
+    Desk "Start-Process '$exe' $argPart $dirPart" -NoWait
   }
   'shot' {
     $png = $Rest[0]
