@@ -149,6 +149,13 @@ final class SessionStore: ObservableObject {
 
     var liveStart: Date? { liveID.flatMap { index($0) }.map { sessions[$0].startedAt } }
 
+    /// The live meeting is (now) heard in the room: its record says 会议室.
+    func markLiveInRoom() {
+        guard let id = liveID, let i = index(id), sessions[i].room != true else { return }
+        sessions[i].room = true
+        scheduleSave(id)
+    }
+
     func append(_ line: TranscriptLine) {
         guard let id = liveID, let i = index(id) else { return }
         sessions[i].lines.append(line)

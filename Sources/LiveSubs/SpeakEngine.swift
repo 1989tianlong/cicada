@@ -466,6 +466,11 @@ final class SpeakEngine {
 
     func outputDevice() -> OutputDevice? {
         let all = AudioDevices.outputs()
+        // 会议室: the people are in the room, so the translation comes out of the Mac's speakers.
+        if settings.listensToRoom {
+            if let d = all.first(where: { $0.uid == settings.speakOutput }), !d.isVirtualMic { return d }
+            return AudioDevices.defaultOutput
+        }
         if !settings.speakOutput.isEmpty, let d = all.first(where: { $0.uid == settings.speakOutput }) { return d }
         return all.first(where: \.isVirtualMic)
     }

@@ -40,6 +40,10 @@ While the meeting runs, the notes window organizes a summary, topics and key poi
 
 Cicada detects the spoken language on device within seconds and translates into your system language, and pressing `⌃⌥S` switches between the notes window, a compact subtitle bar, and hidden. The subtitle bar appears only when someone speaks and turns see-through under your pointer so you can click right through it.
 
+### Meetings in the room
+
+For a meeting around a table, set **Listen to** in the menu bar panel to **Room** and Cicada listens through the Mac's microphone, with the same subtitles, notes and records as an online meeting. Speak-back then reads the translation out of the speakers, no virtual mic needed, and the microphone stops listening while it does so the translation isn't recorded as someone else. If nothing plays on the Mac for a minute while it listens to the computer, the panel asks whether to listen to the room instead; every launch starts with the computer again.
+
 ### Speak back in their language
 
 Hold the right `⌥` key and speak so the room hears your translated voice through BlackHole 2ch, a virtual microphone you can install from the app with one click and that Cicada switches to automatically while interpreting is on. With a Ling API key, the other side hears natural Ming voices or a clone of your own voice from an 8 to 30 second sample, and without a key it uses macOS system voices.
@@ -65,7 +69,7 @@ Cicada asks for a permission only when you use the feature that needs it, and ev
 | Permission | What it's for | When it's asked | Without it |
 |---|---|---|---|
 | System audio recording (Screen & System Audio Recording) | Hearing what your Mac plays, for subtitles. Never records the screen or its own sound | Onboarding step 1, or the first time it listens | No subtitles or notes |
-| Microphone | Recording only while you hold the talk key, for speak-back | When you turn on speak-back | No speak-back |
+| Microphone | Your voice while you hold the talk key, for speak-back; the people in the room when **Listen to** is **Room** | When you turn on speak-back or first listen to the room | No speak-back, no listening to the room |
 | Input Monitoring | Only to tell whether the right `⌥` was pressed on its own (listen-only; nothing is blocked or logged) | The first time you talk with right `⌥` | Pick a `⌃`/`⌘` combination in Settings instead; it needs no permission |
 | Administrator password | Installing the BlackHole 2ch virtual microphone and restarting the system audio service | When you click Install in onboarding or Settings, once | The room can't hear your translation; everything else works |
 

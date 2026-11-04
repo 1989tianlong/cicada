@@ -7,6 +7,7 @@
 
 - `lsctl <命令>`：通过分布式通知 `com.wquguru.cicada.debug` 遥控 App。
   - 开关字幕：`start` / `stop`
+  - 听哪里：`listenSource:<system|room>`（room 用麦克风听会议室，日志里 `room mic started: <设备>`，念译文时 `room mic muted` / `open`），`roomPrompt:<room|no>` 等于在“在会议室里开会？”里点“改听会议室”或“不是”（听电脑 60 秒没声音才出现，日志 `mac silent true`）
   - 打开界面：`open`（主窗口）、`panel`（菜单栏面板）、`settings[:speak]`（设置，可指定栏目）
   - 虚拟麦克风：`micTest` 试音（往虚拟麦克风播一句再听回来，结果写进日志），`micNext` 做清单里的下一步
   - 会议软件的麦克风：`micUsers` 把每个读麦克风的进程和列表写进日志，`micGuide:<bundle id 或名字>` 打开怎么改，`micGuideRender:<bundle id>=<png>`

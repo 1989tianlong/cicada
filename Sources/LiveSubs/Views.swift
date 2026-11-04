@@ -43,20 +43,22 @@ struct ChoiceRow: View {
     let label: String
     let value: String
     var badge: String? = nil
+    /// 40pt instead of 44, for the menu bar panel where four rows sit one above the other.
+    var compact = false
     /// Groups the menu separates; a header is its grey section title.
     let sections: [(header: String?, options: [ChoiceOption])]
     let onPick: (String) -> Void
 
-    init(label: String, value: String, badge: String? = nil,
+    init(label: String, value: String, badge: String? = nil, compact: Bool = false,
          sections: [(header: String?, options: [ChoiceOption])], onPick: @escaping (String) -> Void) {
-        self.label = label; self.value = value; self.badge = badge
+        self.label = label; self.value = value; self.badge = badge; self.compact = compact
         self.sections = sections.filter { !$0.options.isEmpty }
         self.onPick = onPick
     }
 
-    init(label: String, value: String, badge: String? = nil,
+    init(label: String, value: String, badge: String? = nil, compact: Bool = false,
          options: [ChoiceOption], onPick: @escaping (String) -> Void) {
-        self.init(label: label, value: value, badge: badge, sections: [(nil, options)], onPick: onPick)
+        self.init(label: label, value: value, badge: badge, compact: compact, sections: [(nil, options)], onPick: onPick)
     }
 
     var body: some View {
@@ -86,7 +88,7 @@ struct ChoiceRow: View {
                 Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Palette.tertiary)
             }
             .padding(.horizontal, 12)
-            .frame(height: 44)
+            .frame(height: compact ? 40 : 44)
             .background(RoundedRectangle(cornerRadius: 11).fill(Palette.ground))
             .contentShape(Rectangle())
         }
@@ -133,8 +135,26 @@ struct MenuPanelView: View {
         }
     }
 
+    /// The panel's natural height, measured; past what the screen can show it scrolls.
+    @State private var contentHeight: CGFloat = 0
+
+    /// A popover taller than the screen is cut off at the top (a small screen, the menu bar on it).
+    private var maxHeight: CGFloat { (NSScreen.main?.visibleFrame.height ?? 900) - 24 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let measured = panel.background(GeometryReader { g in
+            Color.clear.preference(key: PanelHeightKey.self, value: g.size.height)
+        })
+        .onPreferenceChange(PanelHeightKey.self) { contentHeight = $0 }
+        if contentHeight > maxHeight {
+            ScrollView { measured }.frame(width: 320, height: maxHeight).background(Color.white)
+        } else {
+            measured
+        }
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 LogoTile(size: 34)
                 VStack(alignment: .leading, spacing: 3) {
@@ -168,20 +188,20 @@ struct MenuPanelView: View {
             if model.running { LanguageNotice(model: model) }
             if model.roomPrompt { roomPromptStrip }
 
-            VStack(spacing: 8) {
-                ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, sections: sourceSections) {
+            VStack(spacing: 6) {
+                ChoiceRow(label: L("听哪里"), value: settings.listensToRoom ? L("会议室") : L("电脑声音"),
+                          compact: true, options: [("system", L("电脑声音（线上会议、视频）")), ("room", L("会议室（用麦克风听桌边的人）"))]) {
+                    model.listenSourceSelection = $0
+                }
+                ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, compact: true, sections: sourceSections) {
                     model.sourceSelection = $0
                 }
                 ChoiceRow(label: L("翻译成"),
                           value: targetName(model.listen.resolvedTarget),
                           // "Follow system" leaves no room for the language name in the panel.
                           badge: settings.target == "system" ? (uiIsChinese ? L("跟随系统") : L("系统")) : nil,
-                          options: targetOptions) {
+                          compact: true, options: targetOptions) {
                     model.targetSelection = $0
-                }
-                ChoiceRow(label: L("内容"), value: subtitleOptions.first { $0.id == model.subtitles }?.title ?? L("原文 + 译文"),
-                          badge: model.meetingSubtitles != nil ? L("仅本场") : nil, options: subtitleOptions) {
-                    model.setSubtitles($0)
                 }
             }
 
@@ -216,28 +236,94 @@ struct MenuPanelView: View {
                 }
                 HStack(spacing: 8) {
                     ForEach(DisplayTile.modes, id: \.self) { mode in
-                        DisplayTile(mode: mode, selected: settings.displayMode == mode) { model.setDisplayMode(mode) }
+                        DisplayTile(mode: mode, selected: settings.displayMode == mode, caption: tileCaption(mode)) {
+                            pickDisplay(mode)
+                        }
                     }
                 }
-                displayCard
+                .fixedSize(horizontal: false, vertical: true)
+                if settings.displayMode != "notes" || !model.ling.hasKey { displayCard }
             }
 
             UpdateBanner(updates: model.updates, model: model)
 
             Divider()
 
-            HStack {
-                Button("会议记录") { model.openMainWindow?() }
-                Spacer()
-                Button("退出") { NSApp.terminate(nil) }
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 13))
-            .foregroundStyle(Palette.secondary)
+            footer
         }
-        .padding(18)
+        .padding(16)
         .frame(width: 320)
         .background(Color.white)
+    }
+
+    /// The panel's actions as three equal buttons, so they read as buttons rather than loose
+    /// grey words. No version line: an update shows its own strip above, and 设置 › 会议记录 checks.
+    private var footer: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                PanelAction(L("会议记录"), symbol: "doc.text") { model.openMainWindow?() }
+                PanelAction(L("导入文件…"), symbol: "square.and.arrow.down") { model.chooseImportFiles() }
+                PanelAction(L("退出"), symbol: "power", quiet: true) { NSApp.terminate(nil) }
+            }
+        }
+    }
+
+    /// The picked 实时纪要 tile is also the notes window's open/close switch, so the panel
+    /// needs no separate row for it.
+    private func pickDisplay(_ mode: String) {
+        if mode == "notes", settings.displayMode == "notes" {
+            model.notesShown ? model.hideNotesWindow() : model.openNotesWindow()
+        } else {
+            model.setDisplayMode(mode)
+        }
+    }
+
+    private func tileCaption(_ mode: String) -> String? {
+        guard mode == "notes", settings.displayMode == "notes" else { return nil }
+        return model.notesShown ? L("再点收起") : L("再点打开")
+    }
+}
+
+private struct PanelHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+extension MenuPanelView {
+    /// 在会议室里开会？: the Mac has played nothing for a minute. Asked once a meeting.
+    var roomPromptStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("在会议室里开会？").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text("电脑里 1 分钟没放出声音").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+            }
+            HStack(spacing: 8) {
+                SoftButton(L("改听会议室"), dark: true) { model.answerRoomPrompt(true) }
+                SoftButton(L("不是")) { model.answerRoomPrompt(false) }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Palette.accentPale))
+    }
+}
+
+/// Under the panel's status: the file being transcribed in the background, if any.
+struct PanelImportLine: View {
+    @ObservedObject var importer: FileImporter
+    @ObservedObject var store: SessionStore
+
+    var body: some View {
+        if let job = importer.current {
+            let name = store.session(job.id)?.displayTitle ?? job.url.lastPathComponent
+            HStack(spacing: 6) {
+                ProgressView(value: importer.progress).progressViewStyle(.circular).controlSize(.mini).tint(Palette.ink)
+                    .frame(width: 10, height: 10)
+                Text(importer.queue.isEmpty ? L("后台转写 \(name) · \(Int(importer.progress * 100))%")
+                     : L("后台转写 \(name) · \(Int(importer.progress * 100))%，还有 \(importer.queue.count) 个"))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1).truncationMode(.middle)
+            }
+        }
     }
 }
 
@@ -261,37 +347,10 @@ extension MenuPanelView {
                     .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             default:
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.notesShown ? L("纪要窗口已打开") : L("纪要窗口已收起"))
-                            .font(.system(size: 12)).foregroundStyle(Palette.ink)
-                        if !model.ling.hasKey {
-                            Text("填入 API key 后可生成纪要；文字记录照常保存")
-                                .font(.system(size: 11)).foregroundStyle(Palette.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    Spacer(minLength: 4)
-                    SoftButton(model.notesShown ? L("收起") : L("打开"), dark: !model.notesShown, onGrey: true) {
-                        model.notesShown ? model.hideNotesWindow() : model.openNotesWindow()
-                    }
-                }
-                Divider()
-                // Tinted while on: sharing the screen shows the notes too.
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("共享屏幕时让对方看到").font(.system(size: 12)).foregroundStyle(Palette.ink)
-                        if settings.notesCapturable {
-                            Text("对方现在能看到纪要窗口").font(.system(size: 11)).foregroundStyle(Palette.accentInk)
-                        }
-                    }
-                    Spacer(minLength: 4)
-                    Toggle("共享屏幕时让对方看到", isOn: Binding(get: { settings.notesCapturable }, set: { model.setNotesCapturable($0) }))
-                        .toggleStyle(.switch).controlSize(.mini).labelsHidden().tint(Palette.accent)
-                }
-                .padding(.horizontal, 6).padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 8).fill(settings.notesCapturable ? Palette.accentPale : .clear))
-                .padding(.horizontal, -6)
+                // Shown only without a Ling key: the notes window itself opens and closes from the tile.
+                Text("填入 API key 后可生成纪要；文字记录照常保存")
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
@@ -334,6 +393,7 @@ extension MenuPanelView {
 
     /// What the switch changes, on hover and in the one-time question.
     private var speakMicLine: String {
+        if settings.listensToRoom { return L("译文从扬声器念出来") }
         guard let mic = model.virtualMic?.name else { return L("先装好虚拟麦克风，对方才听得到") }
         return settings.autoSystemMic ? L("系统麦克风换成 \(mic)") : L("译文送进 \(mic)")
     }
@@ -368,7 +428,7 @@ extension MenuPanelView {
                 speakQuestion
             } else if settings.speakEnabled {
                 talkCard
-                if model.lastSpeakLatency == nil, model.virtualMic != nil, model.speakPhase == .idle {
+                if model.lastSpeakLatency == nil, model.virtualMic != nil, !settings.listensToRoom, model.speakPhase == .idle {
                     Button("先试一句 →") { model.openSettings(.speak); model.speakTestShown = true }
                         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
                 }
@@ -422,6 +482,8 @@ extension MenuPanelView {
         if model.talkNeedsPermission {
             return (L("按键还需要“输入监控”权限"), L("去允许"), model.allowTalkKey)
         }
+        // In 会议室 the translation is read out loud: no virtual mic, no meeting app to set up.
+        if settings.listensToRoom { return nil }
         if model.virtualMic == nil {
             return (L("虚拟麦克风还没装好"), L("设置"), { model.openSettings(.speak) })
         }
@@ -447,6 +509,7 @@ extension MenuPanelView {
         let hearer = model.micUsers.first { $0.state == .virtualMic }?.name
         let detail = phase == .listening ? L("松开后播出\(speakTarget)")
             : live ? L("说\(speakFrom) → \(speakTarget)")
+            : settings.listensToRoom ? L("扬声器念出\(speakTarget)")
             : hearer.map { L("对方听到 \(speakTarget) · \($0)") } ?? L("对方听到 \(speakTarget)")
         return HStack(spacing: 12) {
             TalkKeyCap(text: talkKeyName, pressed: phase == .listening, live: live)
@@ -504,6 +567,8 @@ struct DisplayTile: View {
     static let modes = ["notes", "bar", "none"]
     let mode: String
     let selected: Bool
+    /// Under the picked tile's name: what clicking it again does.
+    var caption: String? = nil
     let action: () -> Void
 
     private var title: String {
@@ -522,9 +587,15 @@ struct DisplayTile: View {
                     .font(.system(size: 12, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected ? Palette.ink : Palette.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let caption {
+                    Text(caption).font(.system(size: 10)).foregroundStyle(Palette.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.8).padding(.top, -4)
+                }
             }
             .padding(.top, 10).padding(.bottom, 8).padding(.horizontal, 4)
-            .frame(maxWidth: .infinity)
+            // The row grows by the caption; every tile takes the row's height.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(RoundedRectangle(cornerRadius: 11).fill(selected ? Color.white : Palette.ground))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(selected ? Palette.ink : .clear, lineWidth: 2))
             .contentShape(Rectangle())
@@ -571,6 +642,35 @@ struct KeyCap: View {
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(RoundedRectangle(cornerRadius: 5).fill(Color.white))
             .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.82), lineWidth: 1))
+    }
+}
+
+/// One of the panel's footer buttons: an icon over its name on a grey tile.
+struct PanelAction: View {
+    let title: String
+    let symbol: String
+    /// 退出: grey ink, it ends the app rather than opening something.
+    var quiet = false
+    let action: () -> Void
+    @State private var hover = false
+
+    init(_ title: String, symbol: String, quiet: Bool = false, action: @escaping () -> Void) {
+        self.title = title; self.symbol = symbol; self.quiet = quiet; self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 14, weight: .medium))
+                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(quiet ? Palette.secondary : Palette.ink)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(RoundedRectangle(cornerRadius: 10).fill(hover ? Palette.line : Palette.ground))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
     }
 }
 

@@ -122,6 +122,8 @@ final class AppModel: ObservableObject {
     var openMainWindow: (() -> Void)?
     var openSettingsWindow: (() -> Void)?
     var showPanel: (() -> Void)?
+    /// Opens the menu bar panel, leaving it open if it already is.
+    var openPanel: (() -> Void)?
 
     private var lineForSegment: [Int: String] = [:]
     private var lineCounter = 0
@@ -201,10 +203,12 @@ final class AppModel: ObservableObject {
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
         speak.inputDevice = { [weak self] in self?.systemMic.recordingDevice }
+        listen.roomDevice = { AudioDevices.roomMic }
         applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
+            self.muteRoomWhileSpeaking(phase)
             self.speakPhase = phase
             // A 试一句 rehearsal shows in its own sheet: no notes window, caption or subtitle bar.
             if self.speakTester.busy { return }
@@ -278,6 +282,9 @@ final class AppModel: ObservableObject {
     func launch() async {
         await listen.refreshInstalledLocales()
         refresh()
+        // Listening starts by itself at launch: never with the microphone open. 会议室 is chosen
+        // for the meeting at hand, not kept for the next login.
+        if settings.listensToRoom { settings.listenSource = "system" }
         start()
         if settings.speakEnabled { enableSpeaking(true) }
     }
@@ -285,8 +292,8 @@ final class AppModel: ObservableObject {
     func refresh() {
         running = listen.isRunning
         // Once the tap has run, the permission is there: pausing doesn't take it away.
-        systemAudioOK = systemAudioOK || listen.isRunning
-        summary = listen.languageSummary()
+        systemAudioOK = systemAudioOK || (listen.isRunning && !settings.listensToRoom)
+        summary = settings.listensToRoom ? L("会议室 · \(listen.languageSummary())") : listen.languageSummary()
         candidates = listen.candidates
         installed = listen.installedLocales
         let ask = listen.asksLanguage ? listen.askChoices : []
@@ -317,7 +324,15 @@ final class AppModel: ObservableObject {
         if mic != micStatus { micStatus = mic }
         let devices = AudioDevices.outputs()
         if devices.map(\.uid) != outputs.map(\.uid) { outputs = devices }
-        if listen.isRunning && !systemAudioOK { systemAudioOK = true }
+        if listen.isRunning && !settings.listensToRoom && !systemAudioOK { systemAudioOK = true }
+        // Refused (in the prompt, or turned off in System Settings later): the tap would only hear silence.
+        if let p = SystemAudioPermission.status() {
+            let ok = p == .granted || (p == .unknown && systemAudioOK)
+            if ok != systemAudioOK { systemAudioOK = ok }
+            if (p == .denied) != systemAudioRefused { systemAudioRefused = p == .denied }
+        }
+        let speech = Recognition.ready
+        if speech != speechOK { speechOK = speech }
         refreshMicUsers()
         refreshSystemMic()
     }
@@ -326,7 +341,8 @@ final class AppModel: ObservableObject {
 
     /// Switching the system mic only helps when our voice goes into the virtual mic.
     var wantsSystemMic: Bool {
-        guard settings.speakEnabled, settings.autoSystemMic, virtualMic != nil else { return false }
+        // In 会议室 the translation is read out of the speakers: nothing goes into a call.
+        guard settings.speakEnabled, settings.autoSystemMic, !settings.listensToRoom, virtualMic != nil else { return false }
         return settings.speakOutput.isEmpty || (outputs.first { $0.uid == settings.speakOutput }?.isVirtualMic ?? true)
     }
 
@@ -459,6 +475,7 @@ final class AppModel: ObservableObject {
         lastHeard = nil
         heldJoin = nil
         speechHeard = false
+        roomPromptDismissed = false
         meetingSubtitles = nil
         autoEnded = false
         endWatch = MeetingEndWatch(config: endConfig, start: Date())
@@ -468,6 +485,7 @@ final class AppModel: ObservableObject {
             speak.setRecording(store.micAudioURL(session.id))
         }
         listen.start()
+        if settings.listensToRoom { store.markLiveInRoom() }
         notes.begin(session.id)
         if listen.isRunning {
             showDisplay()
@@ -653,6 +671,44 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: Settings actions
+
+    /// 听哪里 in the panel: "system" or "room".
+    var listenSourceSelection: String {
+        get { settings.listenSource }
+        set {
+            guard newValue != settings.listenSource else { return }
+            settings.listenSource = newValue == "room" ? "room" : "system"
+            roomPromptDismissed = true
+            if listen.isRunning && settings.listensToRoom { store.markLiveInRoom() }
+            listen.listenSourceChanged()
+            applySystemMic()
+            refreshMicUsers()
+            refresh()
+            objectWillChange.send()
+        }
+    }
+
+    /// 改听会议室 / 不是 on the 在会议室里开会？ strip.
+    func answerRoomPrompt(_ room: Bool) {
+        debugLog("room prompt answered: \(room ? "room" : "no")")
+        roomPromptDismissed = true
+        if room { listenSourceSelection = "room" } else { refresh() }
+    }
+
+    /// The room mic hears silence from the talk key going down until the translation has been
+    /// read out, and a moment after, so neither your voice nor the Mac's comes back as the room.
+    private func muteRoomWhileSpeaking(_ phase: SpeakEngine.Phase) {
+        if phase != .idle {
+            listen.setRoomMuted(true)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.speak.phase == .idle else { return }
+                self.listen.setRoomMuted(false)
+            }
+        }
+    }
 
     var sourceSelection: String {
         get {
@@ -868,6 +924,8 @@ final class AppModel: ObservableObject {
             if let reason { autoEnd(reason, watch: w) }
         } else if !listen.isRunning, autoEnded, settings.endWithApp, !(fakeCalls ?? MicUsers.currentCalls()).isEmpty {
             debugLog("meeting end: a meeting app started a call, starting a new meeting")
+            // A call is on the Mac, not in the room.
+            if settings.listensToRoom { settings.listenSource = "system"; applySystemMic() }
             start()
         }
     }
@@ -1108,6 +1166,9 @@ final class AppModel: ObservableObject {
         case "pickLanguage":
             if let lang = sourceLanguages.first(where: { $0.locale == arg }) { listen.pickLanguage(lang) }
         case "stop": stop()
+        case "source": sourceSelection = arg
+        case "listenSource": listenSourceSelection = arg
+        case "roomPrompt": answerRoomPrompt(arg == "room")
         case "open": openMainWindow?()
         case "panel": showPanel?()
         case "onboarding":
@@ -1423,6 +1484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.openMainWindow = { [weak self] in self?.showMainWindow() }
         model.openSettingsWindow = { [weak self] in self?.showSettingsWindow() }
         model.showPanel = { [weak self] in self?.togglePopover() }
+        model.openPanel = { [weak self] in if self?.popover.isShown == false { self?.togglePopover() } }
         model.openOnboarding = { [weak self] in self?.showOnboarding() }
         runningObserver = model.$running.combineLatest(model.updates.$update).sink { [weak self] live, update in
             self?.statusItem.button?.image = BrandImage.menuBar(live: live, badge: update != nil)

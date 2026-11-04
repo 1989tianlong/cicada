@@ -118,6 +118,12 @@ final class AppSettings: ObservableObject {
     }
 
     /// Record per-sentence timings (never text) and show the 诊断 tab. On by default in dev builds.
+    /// 听哪里: "system" (what the Mac plays) or "room" (a real microphone, for a meeting in the room).
+    @Published var listenSource: String {
+        didSet { save() }
+    }
+    var listensToRoom: Bool { listenSource == "room" }
+
     @Published var diagnostics: Bool {
         didSet { save() }
     }
@@ -155,6 +161,7 @@ final class AppSettings: ObservableObject {
         endWithApp = defaults.object(forKey: "endWithApp") as? Bool ?? true
         silenceEnd = defaults.string(forKey: "silenceEnd") ?? "prompt"
         silenceMinutes = defaults.object(forKey: "silenceMinutes") as? Double ?? 10
+        listenSource = defaults.string(forKey: "listenSource") == "room" ? "room" : "system"
         diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
         notesCapturable = defaults.bool(forKey: "notesCapturable")
         speakerVoices = defaults.bool(forKey: "speakerVoices")
@@ -187,6 +194,7 @@ final class AppSettings: ObservableObject {
         defaults.set(endWithApp, forKey: "endWithApp")
         defaults.set(silenceEnd, forKey: "silenceEnd")
         defaults.set(silenceMinutes, forKey: "silenceMinutes")
+        defaults.set(listenSource, forKey: "listenSource")
         defaults.set(diagnostics, forKey: "diagnostics")
         defaults.set(notesCapturable, forKey: "notesCapturable")
         defaults.set(speakerVoices, forKey: "speakerVoices")

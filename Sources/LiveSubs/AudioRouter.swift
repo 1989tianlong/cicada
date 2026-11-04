@@ -107,8 +107,12 @@ final class AudioRouter: @unchecked Sendable {
     private var recordURL: URL?
     private var recorder: AVAudioFile?
 
-    /// Below this RMS the block counts as silence (≈ -40 dBFS).
-    private let voiceThreshold: Float = 0.01
+    /// When a block counts as speech (pauses, language detection, the silence that ends a meeting).
+    private var gate = VoiceGate()
+    func setRoomGate(_ on: Bool) {
+        queue.async { [self] in gate = VoiceGate(adaptive: on) }
+    }
+    func gateThreshold() -> Float { queue.sync { gate.threshold } }
 
     /// Loudest buffer since the last `takeLevel()`, for the level meter.
     private var peak: Float = 0
@@ -131,7 +135,7 @@ final class AudioRouter: @unchecked Sendable {
         let rms = (sum / Float(n)).squareRoot()
         peak = max(peak, rms)
         let seconds = Double(n) / mono.format.sampleRate
-        let voiced = rms >= voiceThreshold
+        let voiced = gate.voiced(rms)
         if voiced {
             if silenceRun >= 0.12, sink != nil { pause = (fed, silenceRun) }
             if silenceRun >= Self.gapSeconds { sinceGap = 0 }

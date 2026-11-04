@@ -280,7 +280,8 @@ final class ListenEngine {
             // No model at all: start with the likeliest; the second follows in the background.
             initial = candidates.first(where: { $0.locale == last }) ?? candidates.first ?? likely.first ?? sourceLanguages[0]
         }
-        setStatus(L("正在听"))
+        // 会议室 the first time: nothing is heard until macOS's microphone question is answered.
+        setStatus(audioTap == nil ? L("等你允许使用麦克风") : L("正在听"))
         Task { await switchTranscriber(to: initial) }
         fetchSecondModel(besides: initial)
     }
@@ -331,13 +332,21 @@ final class ListenEngine {
 
     @discardableResult
     private func startTap() -> Bool {
+        router.setRoomGate(settings.listensToRoom)
+        if settings.listensToRoom { return startRoomMic() }
+        if SystemAudioPermission.status() == .denied {
+            debugLog("audio tap: system audio recording was refused")
+            isRunning = false
+            setStatus(L("请在系统设置里允许“系统音频录制”，再重新打开知了"))
+            return false
+        }
         let tap = SystemAudioTap()
         let router = self.router
         tap.onAudio = { pcm in router.push(pcm) }
         do {
             try tap.start()
             audioTap = tap
-            debugLog("audio tap started")
+            debugLog("audio tap started, permission \(SystemAudioPermission.status().map { "\($0)" } ?? "unreadable")")
             return true
         } catch {
             debugLog("audio tap start failed: \(error)")
@@ -345,6 +354,69 @@ final class ListenEngine {
             setStatus(L("无法读取系统音频，请在系统设置里允许“系统音频录制”"))
             return false
         }
+    }
+
+    /// 会议室. The first time, macOS asks for the microphone; listening starts once it is allowed.
+    private func startRoomMic() -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: break
+        case .notDetermined:
+            debugLog("room mic: asking for the microphone")
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self, self.isRunning, self.settings.listensToRoom, self.audioTap == nil else { return }
+                        if granted { if self.startRoomMic() { self.setStatus(L("正在听")) } } else { self.roomMicDenied() }
+                    }
+                }
+            }
+            return true
+        default:
+            roomMicDenied()
+            return false
+        }
+        let mic = RoomMic(device: roomDevice?())
+        mic.muted = roomMuted
+        let router = self.router
+        mic.onAudio = { pcm in router.push(pcm) }
+        do {
+            try mic.start()
+            audioTap = mic
+            debugLog("room mic started: \(mic.deviceName)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.audioTap === mic else { return }
+                    debugLog("room mic speech threshold \(String(format: "%.4f", self.router.gateThreshold()))")
+                }
+            }
+            return true
+        } catch {
+            debugLog("room mic start failed: \(error)")
+            isRunning = false
+            setStatus(L("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风"))
+            return false
+        }
+    }
+
+    private func roomMicDenied() {
+        debugLog("room mic: microphone not allowed")
+        if isRunning { stop() }
+        setStatus(L("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风"))
+    }
+
+    /// While the Mac speaks into the room (or you hold the talk key) the room mic hears silence.
+    func setRoomMuted(_ on: Bool) {
+        guard on != roomMuted else { return }
+        roomMuted = on
+        (audioTap as? RoomMic)?.muted = on
+        if settings.listensToRoom { debugLog("room mic \(on ? "muted" : "open")") }
+    }
+
+    /// 听哪里 changed: while listening, the new source takes over in the same meeting.
+    func listenSourceChanged() {
+        debugLog("listen source=\(settings.listenSource)")
+        reconnectAudio()
+        onStateChange?()
     }
 
     // MARK: Settings changes
@@ -870,6 +942,24 @@ final class ListenEngine {
                 guard self.ticks % 4 == 0 else { return }
                 self.translateVolatile()
                 self.maybeDetectLanguage()
+                let silent = RoomPrompt.asks(room: self.settings.listensToRoom,
+                                             listened: Date().timeIntervalSince(self.startedAt),
+                                             voiced: self.router.stats().voicedTotal)
+                if silent != self.macSilent {
+                    self.macSilent = silent
+                    debugLog("mac silent \(silent)")
+                    self.onStateChange?()
+                }
+                if self.ticks % 20 == 0 { self.checkDictation() }
+                // The fetch's progress, and 听不出 coming or going, redraw the windows.
+                let ask = self.asksLanguage
+                if ask != self.askShown || self.fetchingModel != nil {
+                    if ask != self.askShown { debugLog("language ask \(ask ? "shown" : "hidden")") }
+                    let flipped = ask != self.askShown
+                    self.askShown = ask
+                    self.onStateChange?()
+                    if flipped { self.renderSubtitles() }
+                }
             }
         }
         tickTimer = timer
