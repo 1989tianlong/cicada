@@ -6,13 +6,14 @@ using static Cicada.Strings;
 
 namespace Cicada.App;
 
-/// 设置, laid out as Windows 11 Settings: categories on the left, one card per setting with its
-/// control on the right, switches for on/off.
+/// 设置, as the Mac's settings window with no title bar: the categories as plain words on the left,
+/// the chosen one on a white pill, and its page on the right under a big title, the settings in
+/// white cards on the grey ground with each control at the right.
 sealed class SettingsWindow : Window
 {
     readonly Controller app;
-    readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 0, 32, 32) };
-    readonly StackPanel nav = new() { Margin = new Thickness(12, 8, 12, 12) };
+    readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(40, 44, 40, 40) };
+    readonly StackPanel nav = new() { Margin = new Thickness(12, 52, 12, 12) };
     readonly Dictionary<string, FrameworkElement> sections = [];
     readonly PasswordBox keyBox = new();
     bool editingKey;
@@ -22,16 +23,16 @@ sealed class SettingsWindow : Window
     {
         this.app = app;
         Title = L("设置") + " · " + L("知了");
-        Width = 1000; Height = Math.Min(760, SystemParameters.WorkArea.Height - 24); MinWidth = 760; MinHeight = 480;
+        Width = 1000; Height = Math.Min(780, SystemParameters.WorkArea.Height - 24); MinWidth = 760; MinHeight = 480;
         Background = Palette.Page; FontFamily = Palette.Font; Icon = AppIcon.Image;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         System.Windows.Automation.AutomationProperties.SetName(keyBox, L("Ling key"));
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         Grid.SetColumn(scroll, 1);
         grid.Children.Add(nav); grid.Children.Add(scroll);
-        Content = grid;
+        Content = Ui.Frameless(this, grid);
         app.Ling.Changed += OnLingChanged;
         Closed += (_, _) => app.Ling.Changed -= OnLingChanged;
         Render();
@@ -43,10 +44,7 @@ sealed class SettingsWindow : Window
     {
         var offset = scroll.VerticalOffset;
         sections.Clear();
-        var page = new StackPanel { MaxWidth = 860, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var title = Ui.Text(L("设置"), 28, Palette.Ink, FontWeights.Bold);
-        title.Margin = new Thickness(0, 4, 0, 8);
-        page.Children.Add(title);
+        var page = new StackPanel { MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
         Section(page, "ling", L("Ling"), KeyCard(), Group(Card(Icons.Notes, L("纪要和翻译用的模型"), L("3.1 更准；3.0 更快、更省。语音识别固定用 Ming。"),
             Ui.Choice([("Ling-3.1-flash", "Ling-3.1-flash"), ("Ling-3.0-flash", "Ling-3.0-flash")], app.Settings.Model, v => { app.Settings.Model = v; app.Ling.Model = v; Save(); }))));
         Section(page, "lang", L("语言"), Group(
@@ -60,7 +58,7 @@ sealed class SettingsWindow : Window
             Card(Icons.Subtitles, L("听的时候显示"), null, Ui.Segmented([("notes", L("纪要")), ("subtitles", L("字幕条"))], app.Settings.View, app.SetView)),
             Card(null, L("字幕文字大小"), null, size),
             Card(Icons.Keyboard, L("开始或结束"), app.HotkeyRegistered ? L("在任何程序里都能按") : L("这个快捷键被别的程序占用了"), Keys(Hotkey.Label))));
-        Section(page, "speak", L("同声传译"), SpeakCards());
+        Section(page, "speak", L("同声传译"), SpeakCards().ToArray());
         Section(page, "end", L("结束会议"), EndCards());
         Section(page, "privacy", L("隐私与启动"), Group(
             Card(Icons.Eye, L("共享屏幕时让对方看到"), L("关着时，截图和屏幕共享里看不到纪要和字幕"), Ui.Switch(app.Settings.ShowInCapture, app.SetShowInCapture, L("共享屏幕时让对方看到"))),
@@ -70,9 +68,12 @@ sealed class SettingsWindow : Window
         var version = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3) ?? "";
         Section(page, "about", L("关于"), Group(Card(null, LF("知了 %@", version), L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）"), Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!)), AppIcon.Small(24))));
         scroll.Content = page;
-        scroll.ScrollToVerticalOffset(offset);
+        scroll.ScrollToVerticalOffset(shownPage == current ? offset : 0);
+        shownPage = current;
         Nav();
     }
+
+    string? shownPage;
 
     void Nav()
     {
@@ -87,15 +88,11 @@ sealed class SettingsWindow : Window
             var on = id == current;
             var content = new Grid();
 
-            content.Children.Add(Ui.Row(12, Ui.Icon(icon, 18, Palette.Ink), Ui.Text(label, 14, Palette.Ink, on ? FontWeights.SemiBold : FontWeights.Normal, wrap: false)));
-            var b = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, Content = content, Height = 40, Padding = new Thickness(12, 0, 12, 0), HorizontalContentAlignment = HorizontalAlignment.Left, Background = on ? Palette.Line : Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Margin = new Thickness(0, 0, 0, 2) };
+            _ = icon;
+            content.Children.Add(Ui.Text(label, 14, Palette.Ink, on ? FontWeights.Bold : FontWeights.Normal, wrap: false));
+            var b = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, Content = content, Height = 38, Padding = new Thickness(12, 0, 12, 0), HorizontalContentAlignment = HorizontalAlignment.Left, Background = on ? Palette.Surface : Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Margin = new Thickness(0, 0, 0, 2) };
             b.Template = NavTemplate();
-            b.Click += (_, _) =>
-            {
-                current = id; Nav();
-                if (sections.TryGetValue(id, out var target))
-                    scroll.ScrollToVerticalOffset(target.TransformToAncestor((Visual)scroll.Content).Transform(new Point(0, 0)).Y - 8);
-            };
+            b.Click += (_, _) => { current = id; Render(); };
             System.Windows.Automation.AutomationProperties.SetName(b, label);
             nav.Children.Add(b);
         }
@@ -115,37 +112,43 @@ sealed class SettingsWindow : Window
         var hover = new MultiTrigger();
         hover.Conditions.Add(new Condition(UIElement.IsMouseOverProperty, true));
         hover.Conditions.Add(new Condition(Control.BackgroundProperty, Brushes.Transparent));
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Mica, "bg"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Selected, "bg"));
         t.Triggers.Add(hover);
         return t;
     }
 
+    /// One category's page: only the chosen one is shown, under its name in big type (and, for
+    /// 同声传译, its on/off switch beside it).
     void Section(StackPanel page, string id, string title, params FrameworkElement[] groups)
     {
-        var h = Ui.Text(title, 13, Palette.Secondary, FontWeights.Bold);
-        h.Margin = new Thickness(0, 20, 0, 8);
+        if (id != current) return;
+        FrameworkElement h = Ui.Text(title, 28, Palette.Ink, FontWeights.Bold);
+        if (id == "speak") h = Ui.Spread(h, Ui.Switch(app.Settings.Speak, v => { app.Settings.Speak = v; Save(); }, L("同声传译")));
+        h.Margin = new Thickness(0, 0, 0, 20);
         sections[id] = h;
         page.Children.Add(h);
-        foreach (var g in groups) { g.Margin = new Thickness(0, 0, 0, 6); page.Children.Add(g); }
+        foreach (var g in groups) { g.Margin = new Thickness(0, 0, 0, 12); page.Children.Add(g); }
     }
 
-    /// Cards that belong together share one border, with hairlines between them.
+    /// A grey label over a group, as the Mac's settings sections.
+    static FrameworkElement Label(string text) { var t = Ui.Text(text, 13, Palette.Secondary); t.Margin = new Thickness(6, 8, 0, 0); return t; }
+
+    /// Cards that belong together on one white card, with hairlines between them.
     static FrameworkElement Group(params FrameworkElement[] cards)
     {
         var s = new StackPanel();
         for (int i = 0; i < cards.Length; i++)
-            s.Children.Add(new Border { BorderBrush = Palette.StrokeSoft, BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0), Child = cards[i] });
-        return new Border { Background = Palette.Surface, BorderBrush = Palette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), Child = s, Padding = new Thickness(4, 2, 4, 2) };
+            s.Children.Add(new Border { BorderBrush = Palette.Line, BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0), Margin = new Thickness(20, 0, 20, 0), Child = cards[i] });
+        return new Border { Background = Palette.Surface, CornerRadius = new CornerRadius(16), Child = s, Padding = new Thickness(0, 2, 0, 2) };
     }
 
     /// One setting: icon, name, one grey line, and its control on the right.
     static FrameworkElement Card(string? icon, string title, string? description, FrameworkElement control, FrameworkElement? image = null)
     {
-        var dock = new DockPanel { MinHeight = 48, Margin = new Thickness(16, 10, 16, 10) };
-        var lead = image ?? (icon is null ? new Border { Width = 20 } : Ui.Icon(icon, 20, Palette.Body));
-        lead.Margin = new Thickness(0, 0, 16, 0);
-        DockPanel.SetDock(lead, Dock.Left);
-        dock.Children.Add(lead);
+        // No icons: the Mac's rows are words and a control. (`icon` stays for the call sites.)
+        _ = icon;
+        var dock = new DockPanel { MinHeight = 40, Margin = new Thickness(0, 10, 0, 10) };
+        if (image is not null) { image.Margin = new Thickness(0, 0, 14, 0); DockPanel.SetDock(image, Dock.Left); dock.Children.Add(image); }
         control.VerticalAlignment = VerticalAlignment.Center;
         control.Margin = new Thickness(16, 0, 0, 0);
         DockPanel.SetDock(control, Dock.Right);
@@ -176,12 +179,12 @@ sealed class SettingsWindow : Window
         return Group(cards.ToArray());
     }
 
-    FrameworkElement SpeakCards()
+    IEnumerable<FrameworkElement> SpeakCards()
     {
         var s = app.Settings;
         var cable = Endpoints.Cable() is not null;
         FrameworkElement cableControl = cable
-            ? Ui.Row(6, new System.Windows.Controls.Grid { Width = 16, Height = 16, Children = { new System.Windows.Shapes.Ellipse { Fill = Palette.Success }, Ui.Icon(Icons.Check, 16, Brushes.White, stroke: 2) } }, Ui.Text(L("已装好"), 13, Palette.Success, wrap: false))
+            ? new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 7, 12, 8), Child = Ui.Row(8, Ui.Dot(Palette.Success, 7), Ui.Text(L("VB-Cable 已装好"), 13, Palette.Ink, wrap: false)) }
             : cableProgress is { } busy ? Ui.Text(busy, 13, Palette.Secondary, wrap: false)
             : Ui.Button(L("安装"), () => _ = InstallCable(), Ui.Kind.Primary, height: 32);
         var target = app.Speak.Target;
@@ -191,13 +194,16 @@ sealed class SettingsWindow : Window
             Ui.Choice(voices, chosen, v => { s.SpeakVoices[VoiceCatalog.Key(target)] = v; Save(); }, 280),
             Ui.Button(L("试听"), () => _ = app.Preview(target), height: 32));
         var mine = Languages.Sources.FirstOrDefault(x => x.Code == Languages.FromSystem(System.Globalization.CultureInfo.CurrentUICulture.Name))?.Name ?? "";
-        return Group(
-            Card(Icons.Mic, L("同声传译"), LF("按住%@说话，对方听到的是翻译后的声音", PushToTalk.Label), Ui.Switch(s.Speak, v => { s.Speak = v; Save(); }, L("同声传译"))),
-            Card(Icons.Speaker, L("虚拟麦克风"), cable ? L("在会议软件里把麦克风选成 CABLE Output") : L("需要装免费的 VB-Cable；装的时候 Windows 会请你确认"), cableControl),
+        yield return Label(L("说话"));
+        yield return Group(
+            Card(null, L("按住说话"), LF("按住%@说话，对方听到的是翻译后的声音", PushToTalk.Label), Ui.Keycap(PushToTalk.Label, big: true)),
             Card(null, L("我说的语言"), null, Ui.Choice([("system", LF("跟随系统（%@）", mine)), .. Languages.Sources.Select(x => (x.Code, x.Name))], s.SpeakFrom, v => { s.SpeakFrom = v; Save(); Render(); })),
             Card(null, L("对方听到的语言"), s.SpeakTo == "room" ? LF("现在是 %@", Ui.TargetName(target)) : null,
                 Ui.Choice([("room", L("对方说的语言")), .. Languages.Targets.Select(t => (t.Code, t.Name))], s.SpeakTo, v => { s.SpeakTo = v; Save(); Render(); })),
             Card(null, LF("对方听到的声音（%@）", Ui.TargetName(target)), null, voice));
+        yield return Label(L("麦克风"));
+        yield return Group(
+            Card(null, L("译文送进会议"), cable ? L("在会议软件里把麦克风选成 CABLE Output") : L("需要装免费的 VB-Cable；装的时候 Windows 会请你确认"), cableControl));
     }
 
     async Task InstallCable()
@@ -258,14 +264,7 @@ sealed class SettingsWindow : Window
 
     static FrameworkElement Keys(string combo)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var k in combo.Split('+'))
-            row.Children.Add(new Border
-            {
-                Background = Palette.SurfaceAlt, BorderBrush = Palette.ControlStroke, BorderThickness = new Thickness(1, 1, 1, 2), CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(4, 0, 0, 0), Child = Ui.Text(k, 12, Palette.Ink, wrap: false),
-            });
-        return row;
+        return Ui.Shortcut(combo);
     }
 
     void Save() { app.Settings.Save(); app.SettingsChanged(); }

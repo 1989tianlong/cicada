@@ -133,10 +133,11 @@ sealed class Controller
         tray.Icon = idleIcon;
         tray.Text = L("知了");
         tray.Visible = true;
-        // Left click: the flyout. Right click: the menu. Both are WPF, so they look like Windows 11.
+        // Left click: the panel, or while listening the notes window (both live in this corner, so
+        // the panel would cover the notes). Right click: the menu, any time.
         tray.MouseUp += (_, e) =>
         {
-            if (e.Button == Forms.MouseButtons.Left) Dispatch.BeginInvoke(ShowFlyout);
+            if (e.Button == Forms.MouseButtons.Left) Dispatch.BeginInvoke(() => { if (Listen.Listening && Settings.View == "notes") ToggleNotes(); else ShowFlyout(); });
             else if (e.Button == Forms.MouseButtons.Right) Dispatch.BeginInvoke(ShowMenu);
         };
         tray.BalloonTipClicked += (_, _) => Dispatch.BeginInvoke(() => { balloonClicked?.Invoke(); balloonClicked = null; });
@@ -187,28 +188,29 @@ sealed class Controller
         menuHost ??= new Window { WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = System.Windows.Media.Brushes.Transparent, ShowInTaskbar = false, Width = 1, Height = 1, Left = -10000, Top = -10000, Topmost = true };
         menuHost.Show();
         menuHost.Activate();
-        var menu = new ContextMenu { Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint, FontFamily = Palette.Font };
-        MenuItem Item(string label, string? icon, Action act, string? keys = null, bool fill = false)
+        var menu = new ContextMenu { Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint, FontFamily = Palette.Font, MinWidth = 260 };
+        MenuItem Item(string label, Action act, string? keys = null, System.Windows.Media.Brush? ink = null)
         {
             var item = new MenuItem { Header = label, InputGestureText = keys ?? "" };
-            if (icon is not null) item.Icon = Ui.Icon(icon, 16, Palette.Ink, fill);
+            if (ink is not null) item.Foreground = ink;
             item.Click += (_, _) => act();
             return item;
         }
-        menu.Items.Add(Listen.Listening
-            ? Item(L("结束"), Icons.Stop, RequestStop, Hotkey.Label, fill: true)
-            : Item(L("开始听"), Icons.Wave, () => _ = ToggleListening(), Hotkey.Label));
+        // The Mac's status menu: where it stands, then what to do, then the windows, then 退出.
+        if (Listen.Listening && Listen.SessionId is { } sid && Store.Get(sid) is { } live)
+        {
+            var head = new MenuItem { Header = Ui.Row(8, Ui.Dot(Palette.Live, 6), Ui.Text($"{L("正在听")} · {Languages.Clock((DateTimeOffset.Now - live.StartedAt).TotalSeconds)}", 13, Palette.Secondary, wrap: false)), IsEnabled = false };
+            menu.Items.Add(head);
+            menu.Items.Add(Item(L("结束"), RequestStop, Hotkey.Label.Replace('+', ' '), Palette.AccentText));
+            if (Settings.View == "notes") menu.Items.Add(NotesVisible ? Item(L("隐藏纪要窗"), ToggleNotes) : Item(L("显示纪要"), ShowNotes));
+        }
+        else menu.Items.Add(Item(L("开始听"), () => _ = ToggleListening(), Hotkey.Label.Replace('+', ' ')));
+        menu.Items.Add(Settings.View == "subtitles" ? Item(L("换成纪要"), () => SetView("notes")) : Item(L("换成字幕条"), () => SetView("subtitles")));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item(L("显示纪要"), Icons.Notes, ShowNotes));
-        menu.Items.Add(Settings.View == "subtitles" ? Item(L("换成纪要"), Icons.Notes, () => SetView("notes")) : Item(L("换成字幕条"), Icons.Subtitles, () => SetView("subtitles")));
-        var share = new MenuItem { Header = L("共享屏幕时让对方看到"), IsCheckable = true, IsChecked = Settings.ShowInCapture, Icon = Ui.Icon(Icons.Eye, 16, Palette.Ink) };
-        share.Click += (_, _) => SetShowInCapture(share.IsChecked);
-        menu.Items.Add(share);
+        menu.Items.Add(Item(L("会议记录"), () => ShowRecords()));
+        menu.Items.Add(Item(L("设置"), ShowSettings));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item(L("查看记录"), Icons.List, () => ShowRecords()));
-        menu.Items.Add(Item(L("打开设置"), Icons.Gear, ShowSettings));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(Item(L("退出"), Icons.Power, () => _ = Quit()));
+        menu.Items.Add(Item(L("退出知了"), () => _ = Quit()));
         menu.Closed += (_, _) => menuHost.Hide();
         menu.IsOpen = true;
     }
@@ -452,6 +454,21 @@ sealed class Controller
 
     // MARK: Windows
 
+    /// The tray icon while listening: the notes window comes and goes.
+    public void ToggleNotes()
+    {
+        if (NotesVisible) notesWindow!.Hide(); else ShowNotes();
+        Changed();
+    }
+
+    /// The first time a window's × is clicked: closing it doesn't quit, Cicada stays in the tray.
+    public void WindowClosed()
+    {
+        if (Settings.TrayHintShown) return;
+        Settings.TrayHintShown = true; Settings.Save();
+        Toast(L("知了还在任务栏右下角"), LF("关掉窗口不会退出，按 %@ 随时开始听。", Hotkey.Label.Replace('+', ' ')));
+    }
+
     public void ShowNotes()
     {
         notesWindow ??= new NotesWindow(this);
@@ -463,7 +480,7 @@ sealed class Controller
 
     public void ShowRecords(string? id)
     {
-        if (mainWindow is null) { mainWindow = new MainWindow(this, id); mainWindow.Closed += (_, _) => mainWindow = null; }
+        if (mainWindow is null) { mainWindow = new MainWindow(this, id); mainWindow.Closed += (_, _) => { mainWindow = null; WindowClosed(); }; }
         else if (id is not null) mainWindow.Select(id);
         if (mainWindow.WindowState == WindowState.Minimized) mainWindow.WindowState = WindowState.Normal;
         mainWindow.Show();
@@ -472,7 +489,7 @@ sealed class Controller
 
     public void ShowSettings()
     {
-        if (settingsWindow is null) { settingsWindow = new SettingsWindow(this); settingsWindow.Closed += (_, _) => settingsWindow = null; }
+        if (settingsWindow is null) { settingsWindow = new SettingsWindow(this); settingsWindow.Closed += (_, _) => { settingsWindow = null; WindowClosed(); }; }
         settingsWindow.Show();
         settingsWindow.Activate();
     }
@@ -610,7 +627,7 @@ static class DebugServer
                 else if (arg == "settings") app.ShowSettings();
                 else if (arg == "flyout") app.ShowFlyout();
                 else if (arg == "menu") app.ShowMenu();
-                else if (arg == "onboarding") new Onboarding(app).Show();
+                else if (arg.StartsWith("onboarding")) { var o = new Onboarding(app); if (int.TryParse(arg[10..].Trim(), out var n)) o.At(n); o.Show(); }
                 else app.ShowNotes();
                 break;
             case "toast": app.Toast(L("纪要整理好了"), LF("%@ · 点这里打开", "Test"), () => app.ShowRecords()); break;

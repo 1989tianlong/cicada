@@ -50,6 +50,10 @@ static class Palette
     static readonly SolidColorBrush[] inks = [B(0x0F7B6C), B(0x7A4CC2), B(0xB03A7A), B(0x8A5A00)];
     public static SolidColorBrush Speaker(int n) => inks[(Math.Max(1, n) - 1) % inks.Length];
     public static readonly FontFamily Font = new("Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Yu Gothic UI, Malgun Gothic");
+    /// Two weights only. Microsoft YaHei UI, which draws all the Chinese, has Regular and Bold and
+    /// nothing between: a semibold label renders Bold and the window reads black and cramped. So
+    /// levels come from size and grey, and Bold is for headings and the one main button.
+    public static readonly FontWeight Strong = FontWeights.Bold;
 }
 
 /// Stroke icons on a 20×20 grid (Fluent's outline style), drawn with Ui.Icon.
@@ -81,6 +85,8 @@ static class Icons
     public const string Check = "M4.5,10.5 L8,14 L15.5,6";
     public const string Info = "M17,10 A7,7 0 1 1 3,10 A7,7 0 1 1 17,10 Z M10,9 V14 M10,6.5 V7";
     public const string Mic = "M10,2.5 A2.5,2.5 0 0 1 12.5,5 V10 A2.5,2.5 0 0 1 7.5,10 V5 A2.5,2.5 0 0 1 10,2.5 Z M5,9.5 A5,5 0 0 0 15,9.5 M10,14.5 V17.5";
+    public const string Lock = "M5.5,9 H14.5 V16.5 H5.5 Z M7.5,9 V6.5 A2.5,2.5 0 0 1 12.5,6.5 V9";
+    public const string Arrow = "M4,10 H15.5 M11,5.5 L15.5,10 L11,14.5";
     public const string OpenExternal = "M8,4 H4.5 V15.5 H16 V12 M11,3.5 H16.5 V9 M16.5,3.5 L9,11";
 }
 
@@ -144,8 +150,8 @@ static class Ui
 
     /// The Mac's buttons (Views.swift › SoftButton and friends): Standard is a soft grey fill with no
     /// border, Primary ink, Accent live orange (开始听 only), Subtle no fill until hover, Danger red,
-    /// Pale the 结束 pill. Corners 10, or 12 on the big ones; labels semibold.
-    public static Button Button(string label, Action onClick, Kind kind = Kind.Standard, string? icon = null, double height = 36, bool iconFill = false)
+    /// Pale the 结束 pill. Corners 10, or 12 on the big ones; filled labels bold, the rest regular.
+    public static Button Button(string label, Action onClick, Kind kind = Kind.Standard, string? icon = null, double height = 36, bool iconFill = false, bool iconAfter = false)
     {
         var (bg, fg) = kind switch
         {
@@ -157,10 +163,12 @@ static class Ui
             _ => (Palette.Mica, Palette.Ink),
         };
         var content = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        if (icon is not null) content.Children.Add(Icon(icon, height >= 48 ? 20 : 16, fg, iconFill));
-        var text = new TextBlock { Text = label, FontSize = height >= 48 ? 16 : 14, FontWeight = kind == Kind.Subtle ? FontWeights.Normal : FontWeights.SemiBold, FontFamily = Palette.Font, VerticalAlignment = VerticalAlignment.Center, Foreground = fg };
-        if (icon is not null) text.Margin = new Thickness(8, 0, 0, 0);
+        var glyph = icon is null ? null : Icon(icon, height >= 48 ? 20 : iconAfter ? 14 : 16, fg, iconFill, stroke: iconAfter ? 1.8 : 1.5);
+        if (glyph is not null && !iconAfter) content.Children.Add(glyph);
+        var text = new TextBlock { Text = label, FontSize = height >= 48 ? 16 : 14, FontWeight = kind is Kind.Primary or Kind.Accent or Kind.Danger ? FontWeights.Bold : FontWeights.Normal, FontFamily = Palette.Font, VerticalAlignment = VerticalAlignment.Center, Foreground = fg };
+        if (glyph is not null && !iconAfter) text.Margin = new Thickness(8, 0, 0, 0);
         content.Children.Add(text);
+        if (glyph is not null && iconAfter) { glyph.Margin = new Thickness(8, 0, 0, 0); content.Children.Add(glyph); }
         var b = new Button
         {
             Content = content, Foreground = fg, Background = bg, BorderThickness = new Thickness(0),
@@ -228,7 +236,7 @@ static class Ui
     /// window doesn't start a drag instead.
     public static TextBlock LinkText(string label, Action onClick, double size = 13)
     {
-        var t = Text(label, size, Palette.AccentText, FontWeights.SemiBold, wrap: false);
+        var t = Text(label, size, Palette.AccentText, wrap: false);
         t.Cursor = Cursors.Hand;
         t.MouseLeftButtonDown += (_, e) => { e.Handled = true; onClick(); };
         t.MouseEnter += (_, _) => t.TextDecorations = TextDecorations.Underline;
@@ -265,7 +273,7 @@ static class Ui
     public static Border Badge(string text, Brush? bg = null, Brush? fg = null) => new()
     {
         Background = bg ?? Palette.AccentPale, CornerRadius = new CornerRadius(9), Padding = new Thickness(9, 3, 9, 4), VerticalAlignment = VerticalAlignment.Center,
-        Child = Text(text, 12, fg ?? Palette.AccentText, FontWeights.SemiBold, wrap: false),
+        Child = Text(text, 12, fg ?? Palette.AccentText, wrap: false),
     };
 
     /// Room around a floating window's card for its shadow.
@@ -311,7 +319,7 @@ static class Ui
         icon.Children.Add(new Ellipse { Fill = error ? Palette.Danger : Palette.WarnIcon });
         icon.Children.Add(Icon(error ? "M7,7 L13,13 M13,7 L7,13" : "M10,5.5 V11 M10,14 V14.5", 18, Brushes.White, stroke: 1.8));
         var text = new StackPanel { Margin = new Thickness(10, 0, 8, 0) };
-        if (title is not null) text.Children.Add(Text(title, 14, Palette.Ink, FontWeights.SemiBold));
+        if (title is not null) text.Children.Add(Text(title, 14, Palette.Ink, FontWeights.Bold));
         var bodyText = Text(body, 13, Palette.Body);
         if (title is not null) bodyText.Margin = new Thickness(0, 2, 0, 0);
         text.Children.Add(bodyText);
@@ -331,7 +339,7 @@ static class Ui
     /// The Mac's switch: an ink track when on, a grey one when off, a white knob; no 开/关 beside it.
     public static FrameworkElement Switch(bool on, Action<bool> changed, string name)
     {
-        var knob = new Ellipse { Width = 18, Height = 18, Fill = Brushes.White, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 3, ShadowDepth = 1, Opacity = 0.25 } };
+        var knob = new Ellipse { Width = 18, Height = 18, Fill = Brushes.White, Stroke = new SolidColorBrush(Color.FromArgb(0x1A, 0, 0, 0)), StrokeThickness = 0.5 };
         var track = new Border { Width = 38, Height = 22, CornerRadius = new CornerRadius(11), Child = knob, Padding = new Thickness(2) };
         void Paint(bool v)
         {
@@ -347,10 +355,12 @@ static class Ui
     }
 
     /// A segmented control: one choice of a few, the chosen one raised on a grey track.
-    public static FrameworkElement Segmented(IEnumerable<(string value, string label)> options, string selected, Action<string> changed)
+    /// No blur on the raised one (the notes panel redraws in software): a white fill and a hairline.
+    /// `fill` spreads the options over the full width in equal parts, as the notes panel's 纪要 / 文字记录.
+    public static FrameworkElement Segmented(IEnumerable<(string value, string label)> options, string selected, Action<string> changed, bool fill = false, double height = 30)
     {
         var track = new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(10), Padding = new Thickness(3) };
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        Panel row = fill ? new UniformGrid { Rows = 1 } : new StackPanel { Orientation = Orientation.Horizontal };
         track.Child = row;
         var buttons = new List<(Button b, string v)>();
         void Paint(string v)
@@ -359,14 +369,13 @@ static class Ui
             {
                 var on = value == v;
                 b.Background = on ? Palette.Surface : Brushes.Transparent;
-                b.Effect = on ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 4, ShadowDepth = 1, Opacity = 0.10 } : null;
-                ((TextBlock)b.Content).FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
-                ((TextBlock)b.Content).Foreground = on ? Palette.Ink : Palette.Body;
+                b.BorderBrush = on ? Palette.Line : Brushes.Transparent;
+                ((TextBlock)b.Content).Foreground = on ? Palette.Ink : Palette.Secondary;
             }
         }
         foreach (var (value, label) in options)
         {
-            var b = new Button { Content = Text(label, 13, Palette.Body, wrap: false), Height = 30, Padding = new Thickness(14, 0, 14, 0), BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
+            var b = new Button { Content = Text(label, 13, Palette.Body, wrap: false), Height = height, HorizontalAlignment = fill ? HorizontalAlignment.Stretch : HorizontalAlignment.Left, Padding = new Thickness(14, 0, 14, 0), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, HorizontalContentAlignment = HorizontalAlignment.Center };
             b.Template = Template(plain: false, radius: 8);
             b.Click += (_, _) => { Paint(value); changed(value); };
             buttons.Add((b, value));
@@ -383,11 +392,11 @@ static class Ui
         foreach (var (value, label) in options)
         {
             var on = value == selected;
-            var text = Text(label, size, on ? Palette.Ink : Palette.Secondary, on ? FontWeights.SemiBold : FontWeights.Normal, wrap: false);
-            var underline = new Border { Height = 3, CornerRadius = new CornerRadius(2), Background = on ? Palette.Ink : Brushes.Transparent, Margin = new Thickness(0, 6, 0, 0) };
+            var text = Text(label, size, on ? Palette.Ink : Palette.Secondary, wrap: false);
+            var underline = new Border { Height = 2, CornerRadius = new CornerRadius(1), Background = on ? Palette.Ink : Brushes.Transparent, Margin = new Thickness(0, 8, 0, 0) };
             var stack = new StackPanel { Children = { text, underline } };
-            var b = new Button { Content = stack, Padding = new Thickness(12, 8, 12, 0), Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
-            b.Template = Template(plain: true);
+            var b = new Button { Content = stack, Padding = new Thickness(0, 8, 0, 0), Margin = new Thickness(0, 0, 24, 0), Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
+            b.Template = Template(plain: false, radius: 0);
             b.Click += (_, _) => changed(value);
             row.Children.Add(b);
         }
@@ -399,7 +408,7 @@ static class Ui
     public static Button Choice(IEnumerable<(string value, string label)> options, string selected, Action<string> changed, double width = 200)
     {
         var list = options.ToList();
-        var label = Text(list.FirstOrDefault(o => o.value == selected).label ?? "", 14, Palette.Ink, FontWeights.SemiBold, wrap: false);
+        var label = Text(list.FirstOrDefault(o => o.value == selected).label ?? "", 14, Palette.Ink, wrap: false);
         var chevron = Icon(Icons.Chevron, 14, Palette.Secondary, stroke: 1.8);
         var dock = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(chevron, Dock.Right);
@@ -457,6 +466,66 @@ static class Ui
         host.SetValue(ScrollViewer.VerticalAlignmentProperty, VerticalAlignment.Center);
         box.Template = new ControlTemplate(box.GetType()) { VisualTree = host };
         return box;
+    }
+
+    /// A key as printed on the keyboard (右 Ctrl, Ctrl Alt L): white, a hairline, a thicker bottom
+    /// edge. `big` is the one the user is asked to press.
+    public static Border Keycap(string label, bool big = false) => new()
+    {
+        Background = Brushes.White, BorderBrush = Palette.ControlStroke, BorderThickness = new Thickness(1, 1, 1, big ? 3 : 2),
+        CornerRadius = new CornerRadius(big ? 9 : 6), Padding = big ? new Thickness(18, 8, 18, 7) : new Thickness(7, 2, 7, 2), VerticalAlignment = VerticalAlignment.Center,
+        Child = Text(label, big ? 15 : 12, Palette.Ink, big ? FontWeights.Bold : FontWeights.Normal, wrap: false),
+    };
+
+    /// Shortcut text ("Ctrl+Alt+L") as keycaps: Ctrl Alt L.
+    public static Border Shortcut(string keys) => Keycap(keys.Replace('+', ' '));
+
+    /// A window without Windows' title bar, as the Mac's: the content runs to the top edge and only
+    /// the three caption buttons stay, drawn by us at the top right. WindowChrome keeps what the
+    /// system frame gave: dragging by the top strip, snap, resizing at the edges, and on Windows 11
+    /// DWM's rounded corners and shadow (a one-pixel glass frame).
+    public static FrameworkElement Frameless(Window w, FrameworkElement content, bool resizable = true, double captionHeight = 44, Action? close = null)
+    {
+        System.Windows.Shell.WindowChrome.SetWindowChrome(w, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = captionHeight, ResizeBorderThickness = resizable ? new Thickness(6) : new Thickness(0),
+            GlassFrameThickness = new Thickness(0, 0, 0, 1), CornerRadius = new CornerRadius(0), UseAeroCaptionButtons = false,
+        });
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
+        Button Caption(string glyph, string name, Action act, bool danger = false)
+        {
+            var b = new Button
+            {
+                Content = Icon(glyph, 16, Palette.Body, stroke: 1), Width = 46, Height = 36, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+                ToolTip = name, Focusable = false,
+            };
+            var t = new ControlTemplate(typeof(Button));
+            var bg = new FrameworkElementFactory(typeof(Border), "bg");
+            bg.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+            cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            bg.AppendChild(cp);
+            t.VisualTree = bg;
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, danger ? Palette.Danger : new SolidColorBrush(Color.FromArgb(0x0F, 0, 0, 0)), "bg"));
+            t.Triggers.Add(hover);
+            b.Template = t;
+            if (danger) { b.MouseEnter += (_, _) => b.Content = Icon(glyph, 16, Brushes.White, stroke: 1); b.MouseLeave += (_, _) => b.Content = Icon(glyph, 16, Palette.Body, stroke: 1); }
+            b.Click += (_, _) => act();
+            System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(b, true);
+            AutomationName(b, name);
+            return b;
+        }
+        buttons.Children.Add(Caption("M5,10 H15", L("最小化"), () => w.WindowState = WindowState.Minimized));
+        if (resizable)
+            buttons.Children.Add(Caption("M5.5,5.5 H14.5 V14.5 H5.5 Z", L("最大化"), () => w.WindowState = w.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized));
+        buttons.Children.Add(Caption(Icons.Close, L("关闭"), close ?? w.Close, danger: true));
+        var root = new Grid { Children = { content, buttons } };
+        // Maximized, Windows puts the frame's invisible border off screen; keep the content inside.
+        void Fit() => root.Margin = w.WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+        w.StateChanged += (_, _) => Fit();
+        return root;
     }
 
     public static IEnumerable<(string, string)> TargetOptions() =>

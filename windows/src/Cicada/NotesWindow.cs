@@ -167,7 +167,7 @@ sealed class NotesWindow : Window
         {
             builtFor = mode; headerKey = tabsKey = barsKey = null;
             header = new ContentControl(); bars = new ContentControl(); ending = new ContentControl(); endingKey = null; live = new ContentControl(); tabs = new ContentControl(); footer = new ContentControl();
-            scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 14, 12, 16) };
+            scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(20, 16, 16, 12) };
             Content = Subtitles ? SubtitleFrame() : PanelFrame();
         }
         var key = $"{app.Listen.Listening}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
@@ -195,15 +195,18 @@ sealed class NotesWindow : Window
     {
         var dock = new DockPanel();
         void Top(UIElement e) { DockPanel.SetDock(e, Dock.Top); dock.Children.Add(e); }
+        // The Mac's layout: the header, 纪要 / 文字记录 as a two-part switch, the notes, and the
+        // sentence being said now on a dark card along the bottom, where the eye rests.
         Top(header);
         Top(ending);
         Top(bars);
-        Top(live);
-        tabs.Margin = new Thickness(12, 10, 12, 0);
+        tabs.Margin = new Thickness(12, 0, 12, 0);
         Top(tabs);
-        Top(new Border { Height = 1, Background = Palette.StrokeSoft, Margin = new Thickness(0, 4, 0, 0) });
         DockPanel.SetDock(footer, Dock.Bottom);
         dock.Children.Add(footer);
+        live.Margin = new Thickness(12, 8, 12, 0);
+        DockPanel.SetDock(live, Dock.Bottom);
+        dock.Children.Add(live);
         dock.Children.Add(scroll);
         return Ui.Floating(dock, Palette.Surface);
     }
@@ -214,17 +217,22 @@ sealed class NotesWindow : Window
         var session = listen.SessionId is { } id ? app.Store.Get(id) : null;
         if (Subtitles)
         {
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-            buttons.Children.Add(Ui.IconButton(Icons.Notes, L("换成纪要"), () => app.SetView("notes"), Brushes.White, 40, 18, onDark: true));
-            if (listen.Listening) buttons.Children.Add(Ui.IconButton(Icons.Stop, L("结束"), app.RequestStop, new SolidColorBrush(Color.FromRgb(0xFF, 0x9B, 0x78)), 40, 16, fill: true, onDark: true));
-            buttons.Children.Add(Ui.IconButton(Icons.Close, L("收起（继续听）"), Collapse, Brushes.White, 40, 14, onDark: true));
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+            buttons.Children.Add(Ui.IconButton(Icons.Notes, L("换成纪要"), () => app.SetView("notes"), Palette.NightText, 32, 16, onDark: true));
+            if (listen.Listening)
+            {
+                var stop = Ui.IconButton("M7,7 H13 V13 H7 Z", L("结束"), app.RequestStop, NightAccent, 32, 14, fill: true, onDark: true);
+                stop.Background = new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+                buttons.Children.Add(Gap(stop, 6));
+            }
+            else buttons.Children.Add(Gap(Ui.IconButton(Icons.Close, L("收起（继续听）"), Collapse, Palette.NightText, 32, 14, onDark: true), 6));
             return buttons;
         }
         var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (listen.Listening && session is not null)
         {
             left.Children.Add(Ui.LiveDot());
-            left.Children.Add(Gap(Ui.Text(L("正在听"), 14, Palette.Ink, FontWeights.SemiBold, wrap: false), 8));
+            left.Children.Add(Gap(Ui.Text(L("正在听"), 14, Palette.Ink, FontWeights.Bold, wrap: false), 8));
             Detach(clockText);
             clockText.FontSize = 13; clockText.Foreground = Palette.Secondary; clockText.HorizontalAlignment = HorizontalAlignment.Left;
             left.Children.Add(Gap(clockText, 8));
@@ -232,19 +240,19 @@ sealed class NotesWindow : Window
         else
         {
             left.Children.Add(AppIcon.Small(18));
-            left.Children.Add(Gap(Ui.Text(L("知了"), 14, Palette.Ink, FontWeights.SemiBold, wrap: false), 8));
+            left.Children.Add(Gap(Ui.Text(L("知了"), 14, Palette.Ink, FontWeights.Bold, wrap: false), 8));
         }
-        if (app.Settings.ShowInCapture) left.Children.Add(Gap(Ui.Badge(L("对方可见")), 8));
-
         var right = new StackPanel { Orientation = Orientation.Horizontal };
-        right.Children.Add(Ui.IconButton(Icons.Subtitles, L("换成字幕条"), () => app.SetView("subtitles"), Palette.Body, 40, 18));
-        right.Children.Add(listen.Listening
-            ? Gap(Ui.Button(L("结束"), app.RequestStop, Ui.Kind.Pale, Icons.Stop, 36, iconFill: true), 2)
-            : Gap(Ui.Button(L("开始听"), () => _ = app.ToggleListening(), Ui.Kind.Accent, Icons.Wave, 36), 2));
-        right.Children.Add(Gap(Ui.IconButton(Icons.Close, L("收起（继续听）"), Collapse, Palette.Body, 40, 14), 2));
+        right.Children.Add(Ui.IconButton(Icons.Subtitles, L("换成字幕条"), () => app.SetView("subtitles"), Palette.Body, 34, 16));
+        var main = listen.Listening
+            ? Ui.Button(L("结束"), app.RequestStop, Ui.Kind.Pale, Icons.Stop, 32, iconFill: true)
+            : Ui.Button(L("开始听"), () => _ = app.ToggleListening(), Ui.Kind.Accent, Icons.Wave, 32);
+        main.MinWidth = 0; main.Padding = new Thickness(12, 0, 12, 0);
+        right.Children.Add(Gap(main, 8));
+        right.Children.Add(Gap(Ui.IconButton("M5,10 H15", L("收起（继续听）"), Collapse, Palette.Body, 34, 16), 4));
         var row = Ui.Spread(left, right);
         row.Height = 56;
-        row.Margin = new Thickness(16, 0, 8, 0);
+        row.Margin = new Thickness(18, 0, 10, 0);
         return row;
     }
 
@@ -277,10 +285,8 @@ sealed class NotesWindow : Window
                     Add(Ui.InfoBar(Ui.Severity.Warning, null, L("这轮没整理好，下一轮会自动重试。")));
                     break;
             }
-        if (app.Settings.ShowInCapture)
-            Add(Ui.InfoBar(Ui.Severity.Warning, null, L("共享屏幕时，对方能看到这个窗口。"),
-                Ui.LinkText(L("改回只有我看得到"), () => app.SetShowInCapture(false))));
-        else if (!hiddenFromCapture)
+        // Shown to others on purpose: the footer's 对方可见 says so. Not hidden though asked: a warning.
+        if (!app.Settings.ShowInCapture && !hiddenFromCapture)
             Add(Ui.InfoBar(Ui.Severity.Warning, null, L("Windows 没能把这个窗口从屏幕共享里藏起来，对方可能看得到。")));
         return stack;
     }
@@ -293,7 +299,8 @@ sealed class NotesWindow : Window
         return Languages.Clock(lines is not null && covered > 0 && covered <= lines.Count ? lines[covered - 1].T : 0);
     }
 
-    /// The newest line: the original small, its translation large, then "在听下一句" while Ming works.
+    /// The newest line on the Mac's dark card: who in their colour and 正在说 while Ming works on the
+    /// next, the original small, its translation large and bold.
     FrameworkElement LiveCard()
     {
         var listen = app.Listen;
@@ -301,34 +308,30 @@ sealed class NotesWindow : Window
         var stack = new StackPanel();
         if (line is null)
         {
-            if (listen.Listening)
-                stack.Children.Add(Ui.Row(12, Ui.Icon(Icons.Wave, 22, Palette.Secondary, stroke: 1.6),
-                    Ui.Stack(2, Ui.Text(L("等有人说话"), 14, Palette.Ink, FontWeights.SemiBold), Ui.Helper(L("电脑里一有人声，字幕就出来")))));
-            else stack.Children.Add(Ui.Text(L("点“开始听”，电脑里播放的声音会变成双语字幕和纪要"), 13, Palette.Secondary));
+            stack.Children.Add(Ui.Text(listen.Listening ? L("等有人说话") : L("点“开始听”，电脑里播放的声音会变成双语字幕和纪要"), 14, Brushes.White, listen.Listening ? FontWeights.Bold : FontWeights.Normal));
+            if (listen.Listening) stack.Children.Add(Gap(Ui.Text(L("电脑里一有人声，字幕就出来"), 12, Palette.NightText), 4, top: true));
         }
         else
         {
             var lines = app.Store.Get(listen.SessionId!)?.Lines ?? [];
             var number = app.Settings.SpeakerVoices && line.Speaker == "them" && SpeakerLabels.Numbers(lines).TryGetValue(line.Id, out var n) ? n : (int?)null;
-            var who = line.Speaker == "me" ? L("你") : number is { } k ? $"{LF("说话人 %lld", k)} · {Ui.SpokenName(line.SrcLang)}" : Ui.SpokenName(line.SrcLang);
-            var whoInk = line.Speaker == "me" ? Palette.AccentText : number is { } k2 ? Palette.Speaker(k2) : Palette.Tertiary;
-            stack.Children.Add(Ui.Text($"{who} · {Languages.Clock(line.T)}", 12, whoInk, wrap: false));
-            if (line.Dst is not null && line.Dst != line.Src) stack.Children.Add(Gap(Ui.Text(line.Src, 13, Palette.Secondary), 4, top: true));
-            stack.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, 17, Palette.Ink, FontWeights.SemiBold), 2, top: true));
-            if (listen.Listening && listen.Pending > 0)
-                stack.Children.Add(Gap(Ui.Row(6, Ui.LiveDot(4), Ui.Text(L("在听下一句"), 12, Palette.Tertiary, wrap: false)), 6, top: true));
+            var who = line.Speaker == "me" ? L("你") : number is { } k ? LF("说话人 %lld", k) : Ui.SpokenName(line.SrcLang);
+            var whoRow = Ui.Row(8, Ui.Text(who, 12, NightAccent, wrap: false));
+            whoRow.Children.Add(Gap(Ui.Text(listen.Listening && listen.Pending > 0 ? L("正在说") : Languages.Clock(line.T), 12, Palette.NightText, wrap: false), 8));
+            stack.Children.Add(whoRow);
+            if (line.Dst is not null && line.Dst != line.Src) stack.Children.Add(Gap(Ui.Text(line.Src, 13, NightBody), 6, top: true));
+            stack.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, 16, Brushes.White, FontWeights.Bold), 6, top: true));
         }
-        // Room for a two-line translation, so the tabs below don't jump as lines come and go.
-        return new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(12, 0, 12, 0), Child = stack, MinHeight = 126 };
+        return new Border { Background = Palette.Night, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 14, 16, 14), Child = stack, MinHeight = 96 };
     }
+
+    /// Text on the dark card: the accent lifted for contrast, and the original a light grey.
+    static readonly SolidColorBrush NightAccent = new(Color.FromRgb(0xFF, 0x8A, 0x5C)), NightBody = new(Color.FromRgb(0xD9, 0xDC, 0xE1));
 
     FrameworkElement TabRow()
     {
         var count = app.Listen.SessionId is { } id ? app.Store.Get(id)?.Lines.Count ?? 0 : 0;
-        var tabsRow = Ui.Tabs([("notes", L("纪要")), ("transcript", count > 0 ? $"{L("文字记录")} {count}" : L("文字记录"))], tab, t => { tab = t; Render(); });
-        Detach(dueText);
-        dueText.VerticalAlignment = VerticalAlignment.Center;
-        return Ui.Spread(tabsRow, dueText);
+        return Ui.Segmented([("notes", L("纪要")), ("transcript", count > 0 ? $"{L("文字记录")} {count}" : L("文字记录"))], tab, t => { tab = t; Render(); }, fill: true, height: 30);
     }
 
     string? Due()
@@ -353,27 +356,35 @@ sealed class NotesWindow : Window
                 _ => app.Listen.Listening ? (L("纪要会在会议进行中自动生成"), "") : ("", ""),
             };
             var empty = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 48, 0, 0) };
-            if (title.Length > 0) { var t = Ui.Text(title, 14, Palette.Body, FontWeights.SemiBold); t.TextAlignment = TextAlignment.Center; empty.Children.Add(t); }
+            if (title.Length > 0) { var t = Ui.Text(title, 14, Palette.Body); t.TextAlignment = TextAlignment.Center; empty.Children.Add(t); }
             if (hint.Length > 0) { var h = Ui.Text(hint, 13, Palette.Secondary); h.TextAlignment = TextAlignment.Center; empty.Children.Add(Gap(h, 4, top: true)); }
             body.Children.Add(empty);
             return body;
         }
-        if (notes.Title is { Length: > 0 } title2) body.Children.Add(Ui.Text(title2, 18, Palette.Ink, FontWeights.SemiBold));
-        if (notes.Summary.Length > 0) body.Children.Add(Gap(Ui.Text(notes.Summary, 14, Palette.Body), 6, top: true));
-        foreach (var topic in notes.Topics)
+        if (notes.Title is { Length: > 0 } title2) body.Children.Add(Ui.Text(title2, 18, Palette.Ink, FontWeights.Bold));
+        if (notes.Summary.Length > 0) { var sum = Ui.Text(notes.Summary, 14, Palette.Body); sum.LineHeight = 24; body.Children.Add(Gap(sum, 8, top: true)); }
+        for (int i = 0; i < notes.Topics.Count; i++)
         {
-            body.Children.Add(Gap(Ui.Row(8, Ui.Text(Languages.Clock(topic.Start), 12, Palette.AccentText, FontWeights.SemiBold, wrap: false),
-                                          Ui.Text(topic.Title, 14, Palette.Ink, FontWeights.SemiBold)), 18, top: true));
-            foreach (var p in topic.Points) body.Children.Add(Gap(Bullet(p), 4, top: true));
+            var topic = notes.Topics[i];
+            var time = Ui.Text(Languages.Clock(topic.Start), 12, Palette.AccentText, wrap: false);
+            time.Width = 40; time.Margin = new Thickness(0, 2, 0, 0); time.VerticalAlignment = VerticalAlignment.Top;
+            var head = Ui.Row(8, Ui.Text(topic.Title, 15, Palette.Ink));
+            if (app.Listen.Listening && i == notes.Topics.Count - 1) head.Children.Add(Gap(Ui.Badge(L("正在讲")), 8));
+            var points = new StackPanel { Children = { head } };
+            foreach (var p in topic.Points) points.Children.Add(Gap(Ui.Text(p, 13, Palette.Secondary), 4, top: true));
+            var dock = new DockPanel();
+            DockPanel.SetDock(time, Dock.Left);
+            dock.Children.Add(time); dock.Children.Add(points);
+            body.Children.Add(Gap(dock, 18, top: true));
         }
         if (notes.Conclusions.Count > 0)
         {
-            body.Children.Add(Gap(Ui.Text(L("结论"), 13, Palette.Secondary, FontWeights.SemiBold), 18, top: true));
+            body.Children.Add(Gap(Ui.Text(L("结论"), 13, Palette.Secondary), 18, top: true));
             foreach (var c in notes.Conclusions) body.Children.Add(Gap(Bullet(c.Text), 4, top: true));
         }
         if (notes.Todos.Count > 0)
         {
-            body.Children.Add(Gap(Ui.Text(L("待办"), 13, Palette.Secondary, FontWeights.SemiBold), 18, top: true));
+            body.Children.Add(Gap(Ui.Text(L("待办"), 13, Palette.Secondary), 18, top: true));
             foreach (var todo in notes.Todos) body.Children.Add(Gap(Todo(todo), 6, top: true));
         }
         return body;
@@ -410,44 +421,34 @@ sealed class NotesWindow : Window
         }
     }
 
+    /// One line of the transcript as on the Mac: who (in their colour) and when, the original in
+    /// grey, the translation in ink.
     internal static FrameworkElement TranscriptRow(TranscriptLine l, string? who = null, Brush? ink = null)
     {
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-        var time = Ui.Text(Languages.Clock(l.T), 12, Palette.AccentText, FontWeights.SemiBold, wrap: false);
-        time.Width = 48; time.VerticalAlignment = VerticalAlignment.Top; time.Margin = new Thickness(0, 2, 0, 0);
-        DockPanel.SetDock(time, Dock.Left);
-        row.Children.Add(time);
-        var text = new StackPanel();
-        if (who is not null) text.Children.Add(Ui.Text(who, 12, ink ?? Palette.Secondary, FontWeights.SemiBold, wrap: false));
-        text.Children.Add(Ui.Text(l.Src, 14, Palette.Ink));
-        if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) text.Children.Add(Gap(Ui.Text(l.Dst, 13, Palette.Secondary), 2, top: true));
-        row.Children.Add(text);
-        return row;
+        var text = new StackPanel { Margin = new Thickness(0, who is null ? 0 : 6, 0, 12) };
+        var head = Ui.Row(8, Ui.Text(Languages.Clock(l.T), 12, Palette.Tertiary, wrap: false));
+        if (who is not null) head.Children.Insert(0, Ui.Text(who, 12, ink ?? Palette.Secondary, wrap: false));
+        if (head.Children.Count > 1) ((FrameworkElement)head.Children[1]).Margin = new Thickness(8, 0, 0, 0);
+        text.Children.Add(head);
+        var translated = !string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src;
+        text.Children.Add(Gap(Ui.Text(l.Src, translated ? 13 : 15, translated ? Palette.Secondary : Palette.Ink), 3, top: true));
+        if (translated) text.Children.Add(Gap(Ui.Text(l.Dst!, 15, Palette.Ink), 2, top: true));
+        return text;
     }
 
+    /// Who can see this window, and when the notes change next.
     FrameworkElement Footer()
     {
         var visible = app.Settings.ShowInCapture || !hiddenFromCapture;
-        var left = Ui.Row(6, Ui.Icon(visible ? Icons.Eye : Icons.EyeOff, 16, visible ? Palette.AccentText : Palette.Secondary),
-            Ui.Text(visible ? L("对方可见") : L("屏幕共享里看不到"), 12, visible ? Palette.AccentText : Palette.Secondary, wrap: false));
-        Button? targetButton = null;
-        targetButton = Ui.Button($"{L("翻译成")} {Ui.TargetName(app.Settings.TargetCode)}", () =>
-        {
-            var menu = new ContextMenu { PlacementTarget = targetButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
-            foreach (var (value, label) in Ui.TargetOptions())
-            {
-                var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = value == app.Settings.Target };
-                item.Click += (_, _) => app.SetTarget(value);
-                menu.Items.Add(item);
-            }
-            menu.IsOpen = true;
-        }, Ui.Kind.Subtle, Icons.Globe, height: 32);
-        targetButton.MinWidth = 0;
-        targetButton.Padding = new Thickness(10, 0, 10, 0);
-        var row = Ui.Spread(left, targetButton);
-        row.Height = 44;
-        row.Margin = new Thickness(14, 0, 8, 0);
-        return new Border { BorderBrush = Palette.StrokeSoft, BorderThickness = new Thickness(0, 1, 0, 0), Child = row };
+        FrameworkElement left = Ui.Row(6, Ui.Icon(visible ? Icons.Eye : Icons.EyeOff, 15, Palette.Secondary),
+            Ui.Text(visible ? L("共享屏幕时对方看得到") : L("屏幕共享里看不到"), 12, Palette.Secondary, wrap: false));
+        Detach(dueText);
+        dueText.FontSize = 12; dueText.Foreground = Palette.Secondary; dueText.VerticalAlignment = VerticalAlignment.Center;
+        FrameworkElement right = app.Settings.ShowInCapture ? Ui.Badge(L("对方可见")) : dueText;
+        var row = Ui.Spread(left, right);
+        row.Height = 40;
+        row.Margin = new Thickness(18, 0, 14, 2);
+        return row;
     }
 
     // MARK: The subtitle bar
@@ -461,27 +462,16 @@ sealed class NotesWindow : Window
         header.VerticalAlignment = VerticalAlignment.Center;
         grid.Children.Add(live);
         grid.Children.Add(header);
-        var handle = new Border { Width = 36, Height = 4, CornerRadius = new CornerRadius(2), Background = new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) };
-        return Ui.Floating(new Border { Padding = new Thickness(16, 6, 10, 14), Child = new StackPanel { Children = { handle, grid } } }, new SolidColorBrush(Color.FromArgb(0xF0, 0x15, 0x17, 0x1C)), 14, dark: true);
+        return Ui.Floating(new Border { Padding = new Thickness(22, 14, 14, 16), Child = grid }, new SolidColorBrush(Color.FromArgb(0xF2, 0x1B, 0x1D, 0x22)), 16, dark: true);
     }
 
+    /// The bar as on the Mac: who and the original on one small line, the translation big and bold.
     FrameworkElement SubtitleLine()
     {
         var listen = app.Listen;
         var session = listen.SessionId is { } id ? app.Store.Get(id) : null;
         var line = session?.Lines.LastOrDefault();
-        var left = new StackPanel { Width = 52, VerticalAlignment = VerticalAlignment.Center };
-        if (listen.Listening && session is not null)
-        {
-            var dot = Ui.LiveDot(10);
-            dot.HorizontalAlignment = HorizontalAlignment.Center;
-            left.Children.Add(dot);
-            Detach(clockText);
-            clockText.FontSize = 11; clockText.Foreground = Palette.NightText;
-            clockText.HorizontalAlignment = HorizontalAlignment.Center; clockText.Margin = new Thickness(0, 6, 0, 0);
-            left.Children.Add(clockText);
-        }
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 12, 0) };
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
         // Asked to end: the one time the bar carries buttons, as the panel's card does.
         if (listen.Listening && app.ConfirmingEnd)
         {
@@ -491,10 +481,7 @@ sealed class NotesWindow : Window
             var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.CancelStop, height: 32), Ui.Button(L("结束会议"), () => _ = app.StopListening(), Ui.Kind.Pale, Icons.Stop, 32, iconFill: true));
             buttons.Margin = new Thickness(0, 8, 0, 0);
             text.Children.Add(buttons);
-            var bar = new DockPanel();
-            DockPanel.SetDock(left, Dock.Left);
-            bar.Children.Add(left); bar.Children.Add(text);
-            return bar;
+            return text;
         }
         // The subtitle bar has no room for buttons: it says what will happen (the Mac's notice).
         if (listen.Listening && app.Ending is not null)
@@ -509,14 +496,15 @@ sealed class NotesWindow : Window
             text.Children.Add(Ui.Text(listen.Listening ? L("等有人说话") : L("点“开始听”，电脑里播放的声音会变成双语字幕和纪要"), 15, Palette.NightText));
         else
         {
-            if (line.Dst is not null && line.Dst != line.Src) text.Children.Add(Ui.Text(line.Src, 14, Palette.NightText));
-            text.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, app.Settings.SubtitleSize, Brushes.White, FontWeights.SemiBold), 4, top: true));
+            var number = app.Settings.SpeakerVoices && line.Speaker == "them" && SpeakerLabels.Numbers(session!.Lines).TryGetValue(line.Id, out var n) ? n : (int?)null;
+            var who = line.Speaker == "me" ? L("你") : number is { } k ? LF("说话人 %lld", k) : null;
+            var top = new TextBlock { FontFamily = Palette.Font, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Palette.NightText };
+            if (who is not null) top.Inlines.Add(new System.Windows.Documents.Run(who + "  ") { Foreground = NightAccent });
+            if (line.Dst is not null && line.Dst != line.Src) top.Inlines.Add(new System.Windows.Documents.Run(line.Src));
+            if (top.Inlines.Count > 0) text.Children.Add(top);
+            text.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, app.Settings.SubtitleSize, Brushes.White, FontWeights.Bold), 4, top: true));
         }
-        var row = new DockPanel();
-        DockPanel.SetDock(left, Dock.Left);
-        row.Children.Add(left);
-        row.Children.Add(text);
-        return row;
+        return text;
     }
 
     // MARK: Bits

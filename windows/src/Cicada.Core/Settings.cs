@@ -13,6 +13,8 @@ public sealed class AppSettings
     [JsonPropertyName("model")] public string Model { get; set; } = LingClient.DefaultModel;
     /// "notes" (the notes window, default) or "subtitles" (the subtitle bar).
     [JsonPropertyName("view")] public string View { get; set; } = "notes";
+    /// Whether 知了还在任务栏右下角 was shown, after the first × on a window.
+    [JsonPropertyName("trayHintShown")] public bool TrayHintShown { get; set; }
     /// 共享屏幕时让对方看到: let the notes window and subtitles show up in screen sharing.
     [JsonPropertyName("showInCapture")] public bool ShowInCapture { get; set; }
     [JsonPropertyName("onboarded")] public bool Onboarded { get; set; }

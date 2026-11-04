@@ -6,8 +6,9 @@ using static Cicada.Strings;
 
 namespace Cicada.App;
 
-/// Left-click on the tray icon: Cicada's home, the counterpart of the Mac's menu bar panel. It
-/// rises above the notification area like Windows' own flyouts and goes away when it loses focus.
+/// Left-click on the tray icon when not listening (while listening the click shows or hides the
+/// notes window instead, which sits in the same corner): Cicada's home, the counterpart of the
+/// Mac's menu bar panel. It rises above the notification area and goes away when it loses focus.
 sealed class TrayFlyout : Window
 {
     readonly Controller app;
@@ -21,8 +22,8 @@ sealed class TrayFlyout : Window
         // The Mac panel's 16-point corners and soft shadow (Ui.Floating), so a transparent window.
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         Topmost = true; ShowInTaskbar = false; ResizeMode = ResizeMode.NoResize;
-        Width = 380 + 2 * Ui.ShadowRoom; SizeToContent = SizeToContent.Height; FontFamily = Palette.Font; Title = L("知了");
-        Content = Ui.Floating(body, Palette.Page);
+        Width = 360 + 2 * Ui.ShadowRoom; SizeToContent = SizeToContent.Height; FontFamily = Palette.Font; Title = L("知了");
+        Content = Ui.Floating(body, Palette.Surface);
         Deactivated += (_, _) => { Hide(); hiddenAt = DateTime.UtcNow; };
         KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Hide(); };
         SizeChanged += (_, _) => Anchor();
@@ -42,35 +43,40 @@ sealed class TrayFlyout : Window
         Activate();
     }
 
+    /// Next to the notification area, on whichever edge the taskbar is.
     void Anchor()
     {
         var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - 12 + Ui.ShadowRoom;
-        Top = area.Bottom - ActualHeight - 12 + Ui.ShadowRoom;
+        Left = area.Left > 0 ? area.Left + 12 - Ui.ShadowRoom : area.Right - ActualWidth - 12 + Ui.ShadowRoom;
+        Top = area.Top > 0 ? area.Top + 12 - Ui.ShadowRoom : area.Bottom - ActualHeight - 12 + Ui.ShadowRoom;
     }
 
     public void Refresh() => body.Content = Build();
 
+    void Do(Action act) { Hide(); act(); }
+
+    // The Mac's menu bar panel (Views.swift › MenuPanel): who and how it is, the one big button,
+    // the choices made before a meeting on grey rows, 同声传译, what shows while listening, and two
+    // buttons at the bottom. Two weights only (Palette.Strong).
     FrameworkElement Build()
     {
         var listen = app.Listen;
-        var stack = new StackPanel();
+        var s = app.Settings;
+        var stack = new StackPanel { Margin = new Thickness(18, 18, 18, 18) };
 
-        // Who and how it is
         var status = listen.Listening && listen.SessionId is { } sid && app.Store.Get(sid) is { } live
-            ? Ui.Row(6, Ui.LiveDot(6), Ui.Text($"{L("正在听")} {Languages.Clock((DateTimeOffset.Now - live.StartedAt).TotalSeconds)}", 12, Palette.Secondary, wrap: false))
+            ? Ui.Row(6, Ui.LiveDot(6), Ui.Text($"{L("正在听")} {Languages.Clock((DateTimeOffset.Now - live.StartedAt).TotalSeconds)}", 13, Palette.Secondary, wrap: false))
             : app.AutoEnded
-                ? Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("会议已自动结束"), 12, Palette.Secondary, wrap: false))
+                ? Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("会议已自动结束"), 13, Palette.Secondary, wrap: false))
             : app.Ling.HasKey
-                ? Ui.Row(6, Ui.Dot(Palette.Success, 6), Ui.Text(L("就绪 · Ling 已连接"), 12, Palette.Secondary, wrap: false))
-                : Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("还没接上 Ling"), 12, Palette.Secondary, wrap: false));
-        var title = Ui.Row(12, AppIcon.Small(32), Ui.Stack(2, Ui.Text(L("知了"), 15, Palette.Ink, FontWeights.SemiBold, wrap: false), status));
-        var head = Ui.Spread(title, Ui.IconButton(Icons.Gear, L("打开设置"), () => { Hide(); app.ShowSettings(); }, Palette.Body, 40, 18));
-        head.Margin = new Thickness(16, 16, 12, 12);
+                ? Ui.Row(6, Ui.Dot(Palette.Toggle, 6), Ui.Text(L("没在听"), 13, Palette.Secondary, wrap: false))
+                : Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("还没接上 Ling"), 13, Palette.Secondary, wrap: false));
+        var title = Ui.Row(12, AppIcon.Small(40), Ui.Stack(1, Ui.Text(L("知了"), 17, Palette.Ink, Palette.Strong, wrap: false), status));
+        var head = Ui.Spread(title, Ui.IconButton(Icons.Gear, L("打开设置"), () => Do(app.ShowSettings), Palette.Body, 36, 18));
         stack.Children.Add(head);
 
         // The one thing to do
-        var main = new StackPanel { Margin = new Thickness(16, 4, 16, 16) };
+        var main = new StackPanel { Margin = new Thickness(0, 18, 0, 0) };
         if (listen.Listening && app.Ending is { } p)
         {
             // About to end by itself (MeetingEndingStrip, compact): the panel takes no focus either.
@@ -88,88 +94,149 @@ sealed class TrayFlyout : Window
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
             grid.ColumnDefinitions.Add(new ColumnDefinition());
-            var end = Ui.Button(L("结束"), () => { Hide(); app.RequestStop(); }, Ui.Kind.Pale, Icons.Stop, 44, iconFill: true);
-            var show = Ui.Button(L("显示纪要"), () => { Hide(); app.ShowNotes(); }, Ui.Kind.Standard, Icons.Notes, 44);
+            var end = Ui.Button(L("结束"), () => Do(app.RequestStop), Ui.Kind.Pale, Icons.Stop, 48, iconFill: true);
+            var showing = app.NotesVisible;
+            var show = Ui.Button(showing ? L("隐藏纪要窗") : L("显示纪要"), () => Do(app.ToggleNotes), Ui.Kind.Standard, Icons.Notes, 48);
             Grid.SetColumn(show, 2);
             grid.Children.Add(end); grid.Children.Add(show);
             main.Children.Add(grid);
         }
         else
         {
-            main.Children.Add(Ui.Button(L("开始听"), () => { Hide(); _ = app.ToggleListening(); }, Ui.Kind.Accent, Icons.Wave, 52));
-            var hint = Ui.Text(app.Settings.Speak ? $"{Hotkey.Label} · {LF("按住%@说话", PushToTalk.Label)}" : $"{L("听电脑播放的声音，不用麦克风")} · {Hotkey.Label}", 12, Palette.Secondary);
-            hint.TextAlignment = TextAlignment.Center; hint.Margin = new Thickness(0, 8, 0, 0);
-            main.Children.Add(hint);
+            var label = Ui.Row(10, Ui.Dot(Palette.Live, 8), Ui.Text(L("开始听"), 15, Brushes.White, Palette.Strong, wrap: false), DarkKey(Hotkey.Label.Replace('+', ' ')));
+            var start = new Button { Content = label, Height = 48, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Palette.Ink, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, HorizontalContentAlignment = HorizontalAlignment.Center };
+            start.Template = Surface(12, dim: true);
+            start.Click += (_, _) => Do(() => _ = app.ToggleListening());
+            System.Windows.Automation.AutomationProperties.SetName(start, L("开始听"));
+            main.Children.Add(start);
         }
         stack.Children.Add(main);
 
-        // Two choices people change before a meeting
-        var target = Ui.Choice(Ui.TargetOptions(), app.Settings.Target, app.SetTarget, 212);
-        var view = Ui.Segmented([("notes", L("纪要")), ("subtitles", L("字幕条"))], app.Settings.View, app.SetView);
-        var options = new StackPanel
-        {
-            Children =
-            {
-                OptionRow(Icons.Globe, L("翻译成"), target, divider: true),
-                OptionRow(Icons.Subtitles, L("听的时候显示"), view, divider: false),
-            },
-        };
-        stack.Children.Add(new Border { Margin = new Thickness(12, 0, 12, 0), Background = Palette.Surface, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = options });
+        // The choice people change before a meeting
+        var spoken = Languages.Targets.FirstOrDefault(t => t.Code == Languages.FromSystem(System.Globalization.CultureInfo.CurrentUICulture.Name))?.Code;
+        var target = s.Target == "system" ? spoken ?? "zh-Hans" : s.Target;
+        stack.Children.Add(Gap(ChoiceRow(L("翻译成"), Ui.TargetName(target), s.Target == "system" ? L("跟随系统") : null, Ui.TargetOptions(), s.Target, app.SetTarget), 12));
 
-        // Recent meetings
-        var recent = app.Store.All().Where(s => !(listen.Listening && s.Id == listen.SessionId)).Take(3).ToList();
-        if (recent.Count > 0)
-        {
-            var label = Ui.Spread(Ui.Text(L("最近的会议"), 13, Palette.Body, FontWeights.SemiBold, wrap: false), Ui.LinkText(L("查看全部"), () => { Hide(); app.ShowRecords(); }));
-            label.Margin = new Thickness(16, 18, 16, 6);
-            stack.Children.Add(label);
-            var list = new StackPanel { Margin = new Thickness(8, 0, 8, 8) };
-            foreach (var s in recent)
-            {
-                var item = new Button
-                {
-                    Content = Ui.Stack(2, Ui.Text(SessionStore.DisplayTitle(s), 14, Palette.Ink, FontWeights.SemiBold, wrap: false), Ui.Text(Records.Meta(s, app), 12, Palette.Secondary, wrap: false)),
-                    HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 8, 8, 8), Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand,
-                };
-                item.Template = RowTemplate();
-                var id = s.Id;
-                item.Click += (_, _) => { Hide(); app.ShowRecords(id); };
-                list.Children.Add(item);
-            }
-            stack.Children.Add(list);
-        }
+        // 同声传译
+        stack.Children.Add(Rule());
+        var cable = Endpoints.Cable() is not null;
+        var speakState = s.Speak && cable && app.Ling.HasKey
+            ? (UIElement)Ui.Text(L("对方听得到"), 12, Palette.Success, wrap: false)
+            : Ui.LinkText(s.Speak ? L("去设置") : L("打开"), () => Do(app.ShowSettings), 12);
+        stack.Children.Add(Ui.Spread(Ui.Text(L("同声传译"), 14, Palette.Ink, Palette.Strong, wrap: false), speakState));
+        var talk = Ui.Row(12, Ui.Keycap(PushToTalk.Label, big: false), Ui.Stack(1,
+            Ui.Text(s.Speak ? LF("按住%@说话", PushToTalk.Label) : L("同声传译没打开"), 14, Palette.Ink, wrap: false),
+            Ui.Text(LF("对方听到 %@", Ui.TargetName(app.Speak.Target)), 12, Palette.Secondary, wrap: false)));
+        stack.Children.Add(Gap(new Border { BorderBrush = Palette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 10, 12, 10), Child = talk, Opacity = s.Speak ? 1 : 0.7 }, 10));
 
-        // Footer
-        var records = Ui.Button(L("查看记录"), () => { Hide(); app.ShowRecords(); }, Ui.Kind.Subtle, Icons.List, 40);
-        var quit = Ui.Button(L("退出"), () => { Hide(); _ = app.Quit(); }, Ui.Kind.Subtle, Icons.Power, 40);
-        records.MinWidth = 0; quit.MinWidth = 0;
-        var foot = Ui.Spread(records, quit);
-        foot.Margin = new Thickness(8, 6, 8, 6);
-        stack.Children.Add(new Border { Background = Palette.Mica, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(0, 1, 0, 0), Child = foot, Margin = new Thickness(0, recent.Count > 0 ? 0 : 16, 0, 0) });
+        // What shows while listening
+        stack.Children.Add(Rule());
+        stack.Children.Add(Ui.Text(L("听的时候显示"), 14, Palette.Ink, Palette.Strong, wrap: false));
+        var tiles = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1, Margin = new Thickness(0, 10, 0, 0) };
+        tiles.Children.Add(Tile("notes", L("纪要"), NotesPicture()));
+        tiles.Children.Add(Tile("subtitles", L("字幕条"), BarPicture()));
+        stack.Children.Add(tiles);
+
+        // Two buttons along the bottom
+        stack.Children.Add(Rule());
+        var foot = new Grid();
+        foot.ColumnDefinitions.Add(new ColumnDefinition());
+        foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        foot.ColumnDefinitions.Add(new ColumnDefinition());
+        var records = Ui.Button(L("会议记录"), () => Do(app.ShowRecords), Ui.Kind.Standard, Icons.Notes, 42);
+        var quit = Ui.Button(L("退出"), () => Do(() => _ = app.Quit()), Ui.Kind.Standard, Icons.Power, 42);
+        Grid.SetColumn(quit, 2);
+        foot.Children.Add(records); foot.Children.Add(quit);
+        stack.Children.Add(foot);
         return stack;
     }
 
-    static FrameworkElement OptionRow(string icon, string label, FrameworkElement control, bool divider)
+    static FrameworkElement Gap(FrameworkElement e, double top) { e.Margin = new Thickness(e.Margin.Left, top, e.Margin.Right, e.Margin.Bottom); return e; }
+
+    static FrameworkElement Rule() => new Border { Height = 1, Background = Palette.Line, Margin = new Thickness(0, 16, 0, 16) };
+
+    /// The shortcut inside the ink button: a keycap drawn for a dark ground.
+    static FrameworkElement DarkKey(string keys) => new Border
     {
-        var left = Ui.Row(12, Ui.Icon(icon, 18, Palette.Body), Ui.Text(label, 14, Palette.Ink, wrap: false));
-        var row = Ui.Spread(left, control);
-        row.Margin = new Thickness(12, 8, 12, 8);
-        return new Border { BorderBrush = Palette.StrokeSoft, BorderThickness = new Thickness(0, 0, 0, divider ? 1 : 0), Child = row, MinHeight = 52 };
+        BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5),
+        Padding = new Thickness(6, 1, 6, 2), Child = Ui.Text(keys, 12, Palette.NightText, wrap: false),
+    };
+
+    /// A grey row: what it is on the left in grey, the choice in ink with maybe a pale tag, a chevron;
+    /// a click opens the choices.
+    FrameworkElement ChoiceRow(string label, string value, string? tag, IEnumerable<(string value, string label)> options, string selected, Action<string> changed)
+    {
+        var name = Ui.Text(label, 13, Palette.Secondary, wrap: false);
+        name.MinWidth = 76; name.Margin = new Thickness(0, 0, 12, 0);  // "Translate to" runs wider than 翻译成
+        var shown = Ui.Row(8, Ui.Text(value, 15, Palette.Ink, wrap: false));
+        if (tag is not null) ((StackPanel)shown).Children.Add(Gap2(Ui.Badge(tag)));
+        var chevron = Ui.Icon(Icons.Chevron, 14, Palette.Secondary, stroke: 1.6);
+        var dock = new DockPanel();
+        DockPanel.SetDock(name, Dock.Left); DockPanel.SetDock(chevron, Dock.Right);
+        dock.Children.Add(name); dock.Children.Add(chevron); dock.Children.Add(shown);
+        name.VerticalAlignment = VerticalAlignment.Center;
+        var b = new Button { Content = dock, Height = 52, HorizontalAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(14, 0, 14, 0), Background = Palette.Mica, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        b.Template = Surface(12, dim: false);
+        b.Click += (_, _) =>
+        {
+            var menu = new ContextMenu { PlacementTarget = b, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom, FontFamily = Palette.Font, MinWidth = b.ActualWidth };
+            foreach (var (v, text) in options)
+            {
+                var item = new MenuItem { Header = text, IsCheckable = true, IsChecked = v == selected };
+                item.Click += (_, _) => { changed(v); Refresh(); };
+                menu.Items.Add(item);
+            }
+            menu.IsOpen = true;
+        };
+        System.Windows.Automation.AutomationProperties.SetName(b, $"{label} {value}");
+        return b;
+        static FrameworkElement Gap2(FrameworkElement e) { e.Margin = new Thickness(8, 0, 0, 0); return e; }
     }
 
-    /// A list row: no fill until the mouse is on it.
-    static ControlTemplate RowTemplate()
+    /// One of 纪要 / 字幕条: a small picture of what shows on screen, the chosen one outlined in ink.
+    FrameworkElement Tile(string view, string label, FrameworkElement picture)
+    {
+        var on = app.Settings.View == view;
+        var content = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { picture, Gap(Ui.Text(label, 13, Palette.Ink, wrap: false), 8) } };
+        ((FrameworkElement)content.Children[1]).HorizontalAlignment = HorizontalAlignment.Center;
+        var b = new Button
+        {
+            Content = content, Height = 76, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(view == "notes" ? 0 : 4, 0, view == "notes" ? 4 : 0, 0),
+            Background = on ? Palette.Surface : Palette.Mica, BorderBrush = on ? Palette.Ink : Brushes.Transparent, BorderThickness = new Thickness(on ? 2 : 0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+        };
+        b.Template = Surface(12, dim: false);
+        b.Click += (_, _) => { app.SetView(view); Refresh(); };
+        System.Windows.Automation.AutomationProperties.SetName(b, label);
+        return b;
+    }
+
+    static FrameworkElement NotesPicture() => Frame(new StackPanel { Margin = new Thickness(5, 5, 5, 0), Children = { Bar(16), Bar(12), Bar(14) } });
+    static FrameworkElement BarPicture() => Frame(new Border { Height = 4, Width = 16, CornerRadius = new CornerRadius(1), Background = Palette.Body, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 4) });
+    static FrameworkElement Bar(double w) => new Border { Height = 1.5, Width = w, Background = Palette.Body, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 3) };
+    static FrameworkElement Frame(UIElement inside) => new Border
+    {
+        Width = 30, Height = 22, CornerRadius = new CornerRadius(3), BorderBrush = Palette.Secondary, BorderThickness = new Thickness(1.2), Background = Brushes.White,
+        HorizontalAlignment = HorizontalAlignment.Center, Child = inside,
+    };
+
+    /// A button surface with the bound background and border; hover darkens or dims it. The theme's
+    /// Button style aligns left, so every button built on it says Stretch itself.
+    static ControlTemplate Surface(double radius, bool dim)
     {
         var t = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border), "bg");
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
-        border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-        border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(radius));
+        foreach (var (dp, path) in new[] { (Border.BackgroundProperty, "Background"), (Border.BorderBrushProperty, "BorderBrush"), (Border.BorderThicknessProperty, "BorderThickness"), (Border.PaddingProperty, "Padding") })
+            border.SetBinding(dp, new System.Windows.Data.Binding(path) { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         var content = new FrameworkElementFactory(typeof(ContentPresenter));
+        content.SetBinding(ContentPresenter.HorizontalAlignmentProperty, new System.Windows.Data.Binding("HorizontalContentAlignment") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         border.AppendChild(content);
         t.VisualTree = border;
         var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Subtle, "bg"));
+        if (dim) hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.9));
+        else hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Selected, "bg"));
         t.Triggers.Add(hover);
         return t;
     }
