@@ -39,6 +39,10 @@ def LF(key: str, *args) -> str:
     i = 0
     while i < len(text):
         # %@, and the Mac's numbers (%lld, %d) the same way: the Mac keys 说话人 N as "说话人 %lld".
+        if text.startswith("%%", i):  # a literal %, as in the Mac's "%lld%%"
+            out.append("%")
+            i += 2
+            continue
         m = next((t for t in ("%@", "%lld", "%d") if text.startswith(t, i)), None)
         if m:
             out.append(str(args[nxt]) if nxt < len(args) else "")

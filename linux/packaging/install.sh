@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs Cicada for this user, no sudo: the app in ~/.local/lib/cicada, `cicada` in
-# ~/.local/bin, the menu entry and icon in ~/.local/share. Run it again to update; --remove undoes it
+# ~/.local/bin, the menu entry and icon in ~/.local/share. Run it again to update; --remove undoes it; --check only checks the libraries
 # (records and the Ling key stay in ~/.local/share/cicada and ~/.config/cicada).
 set -e
 src="$(cd "$(dirname "$0")" && pwd)"
@@ -24,6 +24,8 @@ missing=""
 python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' 2>/dev/null || missing="$missing python3-gi gir1.2-gtk-3.0"
 python3 -c 'import ctypes.util, sys; sys.exit(0 if ctypes.util.find_library("pulse-simple") else 1)' || missing="$missing libpulse0"
 if [ -n "$missing" ]; then echo "Cicada needs:$missing  (sudo apt install$missing)"; exit 1; fi
+# --check: only the checks above (an update runs the new version's before anything is replaced).
+[ "$1" = "--check" ] && exit 0
 rm -rf "$lib" && mkdir -p "$lib" "$bin" "$share/applications" "$share/icons/hicolor/scalable/apps"
 cp -R "$src/cicada" "$src/lproj" "$src/bin" "$lib/"
 [ -f "$src/sample.wav" ] && cp "$src/sample.wav" "$lib/"

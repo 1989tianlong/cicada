@@ -94,7 +94,6 @@
 "登录后在顶栏待命" = "Stand by in top bar after login";
 "翻译与纪要模型" = "Translation & notes model";
 "Ming（云端）" = "Ming (cloud)";
-"版本" = "Version";
 "打开记录文件夹" = "Open meetings folder";
 "打开会议记录" = "Open meetings";
 "没能开始听" = "Couldn't start listening";
@@ -142,3 +141,9 @@
 "活动" = "Activities";
 "让知了听到电脑里的声音" = "Let Cicada hear your computer";
 "听电脑里的声音" = "Hear the computer's audio";
+"请先用 install.sh 安装知了" = "Install Cicada with install.sh first";
+"已更新到 %@" = "Updated to %@";
+"安装没有完成" = "The install didn’t finish";
+"没能更新到 %@，还是原来的版本" = "Couldn’t update to %@; still on the previous version";
+"会后安装" = "Install after the meeting";
+"会议结束后安装" = "installs when the meeting ends";

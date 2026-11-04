@@ -68,6 +68,12 @@ class Tray:
             i.set_sensitive(sensitive)
             menu.append(i)
             return i
+        # A new version first, with the accent dot the Mac's panel gives it; greyed while it downloads.
+        upd = self.app.updates.menu_label()
+        if upd:
+            item("● " + upd, self.app.updates.install, sensitive=self.app.updates.progress is None
+                 and not self.app.updates.after_meeting)
+            menu.append(Gtk.SeparatorMenuItem())
         # A status header, as the design's tray menu: what's happening, then the actions.
         self.status_item = item(self._status(), None, False)
         if listening:
@@ -84,6 +90,7 @@ class Tray:
         menu.append(Gtk.SeparatorMenuItem())
         item(L("退出知了"), self.app.quit)
         menu.show_all()
+        menu.connect("show", lambda *_: self.app.updates.menu_opened())  # an hour-old check: check again
         self.lib.app_indicator_set_menu(self.ind, _gpointer(menu))
         self.menu = menu  # the indicator holds a ref too; keep ours so Python doesn't free it early
         self.lib.app_indicator_set_label(self.ind, (self._clock() if listening else "").encode(), b"")

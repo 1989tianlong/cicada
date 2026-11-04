@@ -233,7 +233,10 @@ class SettingsWindow(Gtk.Window):
             ui.prow(L("语音识别"), ui.text(L("Ming（云端）"), 12, "tertiary", wrap=False))])), False, False, 0)
 
         # About
-        rows = [ui.prow(L("版本"), ui.text(VERSION + " · Linux", 12, "tertiary", wrap=False))]
+        # 版本 with the update check under it and its button (UpdateViews' settings row).
+        self.version_slot = ui.hbox(0)
+        self.version_row = ui.prow(LF("版本 %@", VERSION + " · Linux"), self.version_slot, " ")
+        rows = [self.version_row]
         for label, action in ((L("打开记录文件夹"), lambda: self._open_folder(Paths.sessions())),
                               (L("打开日志"), lambda: open_uri("file://" + Paths.log())),
                               (L("重看新手引导"), app.show_onboarding)):
@@ -252,6 +255,34 @@ class SettingsWindow(Gtk.Window):
             ui.no_wheel(c, scroll)
         app.ling.on_change(lambda: GLib.idle_add(self.show_key_state))
         self.connect("show", lambda *_: self.show_key_state())
+        self.refresh_version()
+
+    def refresh_version(self) -> None:
+        """The update line and button: 检查更新, 安装并重新打开 / 重试, nothing while downloading."""
+        u = self.app.updates
+        detail = u.detail()
+        sub = next((w for w in _labels(self.version_row) if w.get_style_context().has_class("secondary")
+                    or w.get_style_context().has_class("tertiary")), None)
+        if sub is not None:
+            ui.retext(sub, detail or " ")
+            ui.classes(sub, "err") if u.failure and u.update else sub.get_style_context().remove_class("err")
+        key = (u.update is not None, u.progress is not None, bool(u.failure), u.check == "checking", u.after_meeting)
+        if key == getattr(self, "_version_key", None):
+            return
+        self._version_key = key
+        ui.clear(self.version_slot)
+        if u.update is not None and u.progress is None:
+            if u.after_meeting:
+                return
+            b = ui.button(L("重试") if u.failure else L("安装并重新打开"), u.install, "outline" if u.failure else "darkbtn")
+        elif u.update is None:
+            b = ui.button(L("检查更新"), u.check_now, "outline")
+            b.set_sensitive(u.check != "checking")
+        else:
+            return
+        b.set_valign(Gtk.Align.CENTER)
+        self.version_slot.pack_start(b, False, False, 0)
+        self.version_slot.show_all()
 
     def _end_group(self) -> Gtk.Widget:
         """结束会议: when a meeting ends by itself (meeting_end.py), as the Mac's settings say it."""
@@ -482,3 +513,11 @@ class SettingsWindow(Gtk.Window):
     def _open_folder(path) -> None:
         os.makedirs(path, exist_ok=True)
         open_uri("file://" + path)
+
+
+def _labels(w) -> list:
+    out = [w] if isinstance(w, Gtk.Label) else []
+    if hasattr(w, "get_children"):
+        for c in w.get_children():
+            out += _labels(c)
+    return out

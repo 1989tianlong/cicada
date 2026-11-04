@@ -111,6 +111,8 @@ class Controller:
         self.fake_calls = None   # debug: meeting apps pretending to be in a call
         self.end_times = None    # debug: (silence, countdown, grace) in seconds
         self._calls_busy = False
+        from .updater import Updates
+        self.updates = Updates(self)  # 新版本: GitHub Releases, the tray menu and 设置 › 关于
         GLib.timeout_add_seconds(1, self._tick)
         GLib.timeout_add_seconds(2, self._watch_end)
 
@@ -152,6 +154,11 @@ class Controller:
             # Without a tray (plain GNOME has none) the records window is how the app is reached.
             if self.tray is None:
                 self.show_records()
+        reopened = self.updates.reopened()
+        if reopened and self.settings.onboarded:
+            self.show_records()  # where 已更新到 … is said, once
+            self.records_window.toasts.show(reopened)
+        self.updates.start()
 
     def changed(self) -> None:
         """Engine threads call this: one coalesced refresh on the main loop."""
@@ -169,6 +176,8 @@ class Controller:
                 self.onboarding.refresh()
             if self.tray is not None:
                 self.tray.update()
+            if self.settings_window is not None:
+                self.settings_window.refresh_version()
             return False
         GLib.idle_add(run)
 
@@ -460,6 +469,7 @@ class Controller:
             if sid and self.settings.speakerVoices:
                 self.namer.guess(sid, force=True)  # the whole meeting read once more for names
             self.changed()
+            GLib.idle_add(lambda: self.updates.meeting_ended() and False)  # 会后安装
         threading.Thread(target=run, daemon=True).start()
 
     # 说话人识别

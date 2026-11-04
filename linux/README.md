@@ -44,6 +44,8 @@ tar xzf Cicada-<版本>-Linux.tar.gz && cicada-linux/install.sh
 
 装到 `~/.local`，不用 sudo，之后从应用列表打开“知了”。缺 `python3-gi`、`gir1.2-gtk-3.0`、`libpulse0` 时会提示用 apt 装（Ubuntu 桌面版默认都有）。
 
+有新版本时顶栏菜单第一项和设置 › 关于会提示，点一下就下载、核对 SHA-256、装好并重新打开；正在听时等会议结束再装。测试用 `CICADA_UPDATE_FEED=<releases.json 的地址>` 换一个更新源（开发版只在设了它时才检查）。
+
 ## 在虚拟机里验证
 
 ```bash
