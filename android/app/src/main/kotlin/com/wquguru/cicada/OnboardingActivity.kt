@@ -237,7 +237,7 @@ class OnboardingActivity : Activity() {
                 if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
             },
             perm(L("显示在其他应用上层"), L("在视频上直接看字幕（在列表里找“知了”开启）"), cicada.canOverlay, L("去设置")) {
-                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                OverlayGuideActivity.open(this, direct = true)
             }))
         val content = ui.stack(16, intro(L("知了能听什么"), L("两种来源，每次开始听时都能选")), sources, limit, ui.sectionLabel(L("需要的权限")), list)
         return frame(content, ui.button(L("继续"), "primary") { next() })

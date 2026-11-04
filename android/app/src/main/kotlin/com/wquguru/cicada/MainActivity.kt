@@ -134,7 +134,7 @@ class MainActivity : Activity() {
         addView(ui.tile(R.drawable.i_pip, 40, Palette.accentPale, Palette.link).apply { background = ui.rounded(Palette.accentPale, 20) })
         addView(ui.stack(2, ui.text(L("在视频上直接看字幕"), 15f, Palette.ink, medium = true), ui.helper(L("开启“显示在其他应用上层”"))),
                 ui.weight().apply { leftMargin = ui.dp(12) })
-        addView(ui.textButton(L("去开启")) { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) })
+        addView(ui.textButton(L("去开启")) { OverlayGuideActivity.open(this@MainActivity, direct = true) })
     }
 
     private fun renderRecent() {

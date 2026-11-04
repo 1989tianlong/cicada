@@ -31,6 +31,7 @@
         <activity android:name=".RecordActivity" android:exported="false" android:parentActivityName=".MainActivity" />
         <activity android:name=".SettingsActivity" android:exported="false" android:parentActivityName=".MainActivity" />
         <activity android:name=".OnboardingActivity" android:exported="false" />
+        <activity android:name=".OverlayGuideActivity" android:exported="false" />
         <activity android:name=".ProjectionActivity" android:exported="false"
             android:theme="@style/Cicada.Translucent" android:excludeFromRecents="true" />
         <service android:name=".ListenTile" android:exported="true" android:label="@string/app_name"

@@ -175,15 +175,10 @@ class ListeningActivity : Activity() {
     }
 
     /// Back to the app underneath (the video): the floating window shows there. Without the
-    /// permission for it, say where to turn it on first.
+    /// permission for it, the guide asks for it (and walks through Android's unlock when needed).
     private fun watchOver() {
         val app = cicada
-        if (!app.canOverlay) {
-            AlertDialog.Builder(this).setTitle(L("在视频上直接看字幕")).setMessage(L("开启“显示在其他应用上层”"))
-                .setPositiveButton(L("去开启")) { _, _ -> startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
-                .setNegativeButton(L("取消"), null).show()
-            return
-        }
+        if (!app.canOverlay) { OverlayGuideActivity.open(this, watch = true); return }
         // Asked for now: show it for this meeting even if 悬浮窗 is off in 设置, without changing that.
         app.overlayThisMeeting = true
         app.overlayClosed = false
