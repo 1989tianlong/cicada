@@ -112,6 +112,7 @@
 "要粘贴 sk- 开头的那串" = "Paste a key that starts with sk-";
 "设置知了" = "Set up Cicada";
 "识别、翻译和纪要都靠它。到 Ling 开放平台点“创建令牌”，复制 sk- 开头的那串，粘贴到下面。" = "Cicada uses Ling for transcription, translation, and notes. Go to the Ling platform, select \"Create token\", and paste the key starting with sk- below.";
+"识别、翻译和纪要都靠它，约 1 分钟。" = "Transcription, translation and notes all run on it. Takes about a minute.";
 "试一下" = "Try it out";
 "说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）" = "Speaker identification uses the WeSpeaker voiceprint model (CC BY 4.0)";
 "还没听到声音" = "No audio detected yet";
