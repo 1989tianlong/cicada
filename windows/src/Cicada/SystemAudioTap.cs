@@ -10,7 +10,7 @@ sealed class SystemAudioTap : IAudioSource
 {
     const string LoopbackDevice = "VAD\\Process_Loopback";
     const uint StreamLoopback = 0x00020000, StreamEventCallback = 0x00040000, AutoConvertPcm = 0x80000000, SrcDefaultQuality = 0x08000000;
-    const uint BufferSilent = 0x2;
+    const uint BufferDiscontinuity = 0x1, BufferSilent = 0x2;
 
     Thread? thread;
     volatile bool running;
@@ -52,7 +52,8 @@ sealed class SystemAudioTap : IAudioSource
             var fmt = WaveFormat.Pcm16(r, c);
             var p = Marshal.AllocHGlobal(Marshal.SizeOf<WaveFormat>());
             Marshal.StructureToPtr(fmt, p, false);
-            int hr = client.Initialize(0, StreamLoopback | StreamEventCallback | AutoConvertPcm | SrcDefaultQuality, 200_000, 0, p, IntPtr.Zero);
+            // A 1 s buffer (100 ns units): a capture thread held up for a moment must not lose audio.
+            int hr = client.Initialize(0, StreamLoopback | StreamEventCallback | AutoConvertPcm | SrcDefaultQuality, 10_000_000, 0, p, IntPtr.Zero);
             Marshal.FreeHGlobal(p);
             if (hr == 0) { rate = r; channels = c; break; }
             Log.Debug($"tap: {r} Hz x{c} refused 0x{hr:X8}");
@@ -70,27 +71,35 @@ sealed class SystemAudioTap : IAudioSource
         Marshal.ThrowExceptionForHR(client.Start());
         try
         {
-            var silence = DateTime.UtcNow;
+            // Loopback sends nothing while nothing plays, so we feed silence ourselves to end segments
+            // and keep the clock going. Only after 300 ms without a packet, though: a packet that is
+            // merely late (a busy PC, a VM) must not get silence put in front of it, or a sentence
+            // splits in two.
+            var lastPacket = DateTime.UtcNow; var fedUntil = lastPacket;
+            int gaps = 0;
             while (running)
             {
-                // Loopback sends nothing while nothing plays: feed silence ourselves so pauses end
-                // segments and the clock keeps going.
                 if (!ready.WaitOne(100))
                 {
-                    var gap = DateTime.UtcNow - silence;
-                    if (gap.TotalMilliseconds >= 100) { Samples?.Invoke(new short[(int)(gap.TotalSeconds * 16000)]); silence = DateTime.UtcNow; }
+                    var now = DateTime.UtcNow;
+                    if ((now - lastPacket).TotalMilliseconds >= 300)
+                    {
+                        Samples?.Invoke(new short[(int)((now - fedUntil).TotalSeconds * 16000)]);
+                        fedUntil = now;
+                    }
                     continue;
                 }
                 while (capture.GetNextPacketSize(out var packet) == 0 && packet > 0)
                 {
                     Marshal.ThrowExceptionForHR(capture.GetBuffer(out var data, out var frames, out var flags, out _, out _));
+                    if ((flags & BufferDiscontinuity) != 0 && ++gaps % 50 == 1) Log.Debug($"tap: audio glitch ({gaps} so far)");
                     int count = (int)frames * channels;
                     var buf = new short[count];
                     if ((flags & BufferSilent) == 0) Marshal.Copy(data, buf, 0, count);
                     capture.ReleaseBuffer(frames);
                     Samples?.Invoke(channels == 1 && rate == 16000 ? buf : ToMono16k(buf, rate, channels));
                 }
-                silence = DateTime.UtcNow;
+                lastPacket = fedUntil = DateTime.UtcNow;
             }
         }
         finally
