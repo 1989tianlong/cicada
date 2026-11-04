@@ -225,13 +225,27 @@ static class Ui
 
     public static FrameworkElement Dot(Brush color, double size = 8) => new Ellipse { Width = size, Height = size, Fill = color, VerticalAlignment = VerticalAlignment.Center };
 
-    /// The live dot, breathing while listening.
+    /// The live dot, dimming and brightening once a second while listening. Not a WPF animation:
+    /// the notes panel and subtitle bar are transparent, shadowed windows that WPF redraws in
+    /// software, and an animation redraws them every frame (3.5 cores in a VM, starving the very
+    /// audio being listened to). One step a second costs one redraw a second.
     public static FrameworkElement LiveDot(double size = 8)
     {
         var dot = new Ellipse { Width = size, Height = size, Fill = Palette.Live, VerticalAlignment = VerticalAlignment.Center };
-        var pulse = new System.Windows.Media.Animation.DoubleAnimation(1, 0.35, TimeSpan.FromSeconds(0.9)) { AutoReverse = true, RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever };
-        dot.Loaded += (_, _) => dot.BeginAnimation(UIElement.OpacityProperty, pulse);
+        dot.Loaded += (_, _) => { liveDots.Add(dot); blink.Start(); };
+        dot.Unloaded += (_, _) => { liveDots.Remove(dot); if (liveDots.Count == 0) blink.Stop(); };
         return dot;
+    }
+
+    static readonly HashSet<Ellipse> liveDots = [];
+    static bool dim;
+    static readonly System.Windows.Threading.DispatcherTimer blink = MakeBlink();
+
+    static System.Windows.Threading.DispatcherTimer MakeBlink()
+    {
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        t.Tick += (_, _) => { dim = !dim; foreach (var d in liveDots) d.Opacity = dim ? 0.4 : 1; };
+        return t;
     }
 
     /// A small pill: 对方可见 and the like.

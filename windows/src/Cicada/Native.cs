@@ -36,6 +36,25 @@ static class Native
         });
     }
 
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+    [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins margins);
+    [StructLayout(LayoutKind.Sequential)] struct Margins { public int Left, Right, Top, Bottom; }
+
+    /// A frameless window drawn by DWM: Windows 11's rounded corners and soft shadow, composited on
+    /// the GPU. (A transparent WPF window would have to draw its own shadow, in software, on every
+    /// change.) On Windows 10 the corners stay square.
+    public static void UseSystemFrame(Window window, bool dark = false)
+    {
+        var hwnd = new WindowInteropHelper(window).EnsureHandle();
+        int round = 2; // DWMWCP_ROUND
+        DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref round, sizeof(int));
+        int on = dark ? 1 : 0;
+        DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, ref on, sizeof(int));
+        // A one-pixel frame margin is what gives a frameless window DWM's shadow.
+        var m = new Margins { Left = 0, Right = 0, Top = 1, Bottom = 0 };
+        DwmExtendFrameIntoClientArea(hwnd, ref m);
+    }
+
     /// Out of screenshots and screen sharing (Windows 10 2004+), unless the user lets the other side see it.
     public static bool SetCaptureVisible(Window window, bool visible)
     {

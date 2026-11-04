@@ -169,12 +169,19 @@ sealed class Onboarding : Window
         if (!text.StartsWith("sk-")) { Status(false, L("要粘贴 sk- 开头的那串")); return; }
         checking = true; footer.Content = Footer();
         Status(null, L("正在检查…"));
+        var previous = app.Key.Read();
         app.Key.Save(text);
         app.Ling.KeyChanged();
         var (state, _) = await app.Ling.Check();
         checking = false; footer.Content = Footer();
-        if (state == KeyState.Ok) { Status(true, L("可以用")); await Task.Delay(400); Go(1); }
-        else Status(false, state == KeyState.Invalid ? L("这个 key 不能用，检查是否复制完整，或重新创建一个") : L("连不上 Ling，检查网络"));
+        if (state == KeyState.Ok) { Status(true, L("可以用")); await Task.Delay(400); Go(1); return; }
+        // A key Ling turned down isn't kept: the one that worked before, if any, comes back.
+        if (state == KeyState.Invalid)
+        {
+            if (previous is not null) app.Key.Save(previous); else app.Key.Remove();
+            app.Ling.KeyChanged();
+        }
+        Status(false, state == KeyState.Invalid ? L("这个 key 不能用，检查是否复制完整，或重新创建一个") : L("连不上 Ling，检查网络"));
     }
 
     // MARK: 2 · System audio
@@ -190,8 +197,10 @@ sealed class Onboarding : Window
             {
                 double sum = 0;
                 foreach (var s in buf) sum += (double)s * s;
-                level = buf.Length == 0 ? 0 : Math.Sqrt(sum / buf.Length) / 32768;
-                peak = Math.Max(peak, level);
+                var rms = buf.Length == 0 ? 0 : Math.Sqrt(sum / buf.Length) / 32768;
+                // The loudest buffer since the last bar, not the last one (often a silent fill).
+                level = Math.Max(level, rms);
+                peak = Math.Max(peak, rms);
             };
             tap.Start();
             meter.Start();
@@ -208,11 +217,13 @@ sealed class Onboarding : Window
     /// 32 bars of the last few seconds of loudness, newest on the right.
     void Meter()
     {
+        // A rolling history of the loudness, eased so a word reads as a rise and fall, not one spike.
         Array.Copy(levels, 1, levels, 0, levels.Length - 1);
-        levels[^1] = Loudness(level);
+        levels[^1] = Math.Max(Loudness(level), levels[^2] * 0.7);
+        level = 0;
         var bars = new StackPanel { Orientation = Orientation.Horizontal, Height = 40 };
         foreach (var v in levels)
-            bars.Children.Add(new Rectangle { Width = 12, Height = 6 + v * 34, RadiusX = 2, RadiusY = 2, Margin = new Thickness(0, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center, Fill = v > 0.08 ? Palette.Live : Palette.Stroke });
+            bars.Children.Add(new Rectangle { Width = 12, Height = 4 + v * 36, RadiusX = 2, RadiusY = 2, Margin = new Thickness(0, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center, Fill = v > 0.08 ? Palette.Live : Palette.Stroke });
         System.Windows.Automation.AutomationProperties.SetName(bars, L("系统声音"));
         meterHost.Content = bars;
         var heard = peak >= 0.01;
@@ -247,6 +258,10 @@ sealed class Onboarding : Window
 
     async Task PlaySample()
     {
+        // The notes panel opens along the right edge; keep the wizard's buttons clear of it.
+        var area = SystemParameters.WorkArea;
+        var room = area.Right - 440 - area.Left;
+        Left = Math.Max(area.Left + 8, Math.Min(Left, room - Width));
         playing = true; Render();
         try { await app.PlaySample(); }
         finally { playing = false; if (IsLoaded) Render(); }

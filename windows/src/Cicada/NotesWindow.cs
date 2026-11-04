@@ -30,18 +30,23 @@ sealed class NotesWindow : Window
     public NotesWindow(Controller app)
     {
         this.app = app;
+        // A plain frameless window, framed by DWM (UseSystemFrame), not a transparent one: those are
+        // redrawn in software, and with a shadow that cost most of a CPU core while listening.
         WindowStyle = WindowStyle.None;
-        AllowsTransparency = true;
-        Background = Brushes.Transparent;
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 0, ResizeBorderThickness = new Thickness(6), GlassFrameThickness = new Thickness(0, 1, 0, 0), UseAeroCaptionButtons = false,
+        });
         Topmost = true;
         ShowInTaskbar = false;
         ShowActivated = false;
-        ResizeMode = ResizeMode.CanResizeWithGrip;
+        ResizeMode = ResizeMode.CanResize;
         FontFamily = Palette.Font;
         Title = L("知了");
         SourceInitialized += (_, _) =>
         {
             Native.MakeNonActivating(this);
+            Native.UseSystemFrame(this, Subtitles);
             ApplyCaptureSetting();
         };
         // Drag from anywhere that isn't a control (buttons and links mark the press handled).
@@ -68,15 +73,15 @@ sealed class NotesWindow : Window
         if (Subtitles)
         {
             SizeToContent = SizeToContent.Height; MinHeight = 80; MinWidth = 480;
-            Width = Math.Min(920, area.Width - 40);
+            Width = Math.Min(900, area.Width - 48);
             Left = area.Left + (area.Width - Width) / 2; Top = area.Bottom - Math.Max(ActualHeight, MinHeight) - 16;
             placedSubtitles = ActualHeight > 0;
         }
         else
         {
             SizeToContent = SizeToContent.Manual; MinHeight = 360; MinWidth = 340;
-            Width = 416; Height = Math.Min(836, area.Height - 16);
-            Left = area.Right - Width - 8; Top = area.Top + 8;
+            Width = 400; Height = Math.Min(820, area.Height - 32);
+            Left = area.Right - Width - 16; Top = area.Top + 16;
         }
     }
 
@@ -119,6 +124,8 @@ sealed class NotesWindow : Window
             builtFor = mode; headerKey = tabsKey = barsKey = null;
             header = new ContentControl(); bars = new ContentControl(); live = new ContentControl(); tabs = new ContentControl(); footer = new ContentControl();
             scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 14, 12, 16) };
+            Background = Subtitles ? Palette.Night : Palette.Surface;
+            if (IsLoaded) Native.UseSystemFrame(this, Subtitles);
             Content = Subtitles ? SubtitleFrame() : PanelFrame();
         }
         var key = $"{app.Listen.Listening}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
@@ -153,12 +160,7 @@ sealed class NotesWindow : Window
         DockPanel.SetDock(footer, Dock.Bottom);
         dock.Children.Add(footer);
         dock.Children.Add(scroll);
-        return new Border
-        {
-            Background = Palette.Surface, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-            Child = dock, Margin = new Thickness(8),
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 24, ShadowDepth = 4, Opacity = 0.14 },
-        };
+        return dock;
     }
 
     FrameworkElement Header()
@@ -368,13 +370,7 @@ sealed class NotesWindow : Window
         grid.Children.Add(live);
         grid.Children.Add(header);
         var handle = new Border { Width = 36, Height = 4, CornerRadius = new CornerRadius(2), Background = new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) };
-        return new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(0xEB, 0x15, 0x17, 0x1C)), BorderBrush = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16, 6, 10, 14), Margin = new Thickness(8),
-            Child = new StackPanel { Children = { handle, grid } },
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.35 },
-        };
+        return new Border { Padding = new Thickness(16, 6, 10, 14), Child = new StackPanel { Children = { handle, grid } } };
     }
 
     FrameworkElement SubtitleLine()

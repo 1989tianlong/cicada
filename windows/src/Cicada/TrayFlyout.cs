@@ -18,15 +18,15 @@ sealed class TrayFlyout : Window
     public TrayFlyout(Controller app)
     {
         this.app = app;
-        WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
+        // Framed by DWM like the notes panel: rounded, shadowed, and cheap to redraw each second.
+        WindowStyle = WindowStyle.None; Background = Palette.SurfaceAlt;
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome { CaptionHeight = 0, ResizeBorderThickness = new Thickness(0), GlassFrameThickness = new Thickness(0, 1, 0, 0), UseAeroCaptionButtons = false });
+        SourceInitialized += (_, _) => Native.UseSystemFrame(this);
         Topmost = true; ShowInTaskbar = false; ResizeMode = ResizeMode.NoResize;
-        Width = 380 + 16; SizeToContent = SizeToContent.Height; FontFamily = Palette.Font; Title = L("知了");
-        Content = new Border
-        {
-            Margin = new Thickness(8), Background = Palette.SurfaceAlt, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.2 }, Child = body,
-        };
+        Width = 380; SizeToContent = SizeToContent.Height; FontFamily = Palette.Font; Title = L("知了");
+        Content = body;
         Deactivated += (_, _) => { Hide(); hiddenAt = DateTime.UtcNow; };
+        KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Hide(); };
         SizeChanged += (_, _) => Anchor();
         clock.Tick += (_, _) => { if (app.Listen.Listening) Refresh(); };
         IsVisibleChanged += (_, _) => { if (IsVisible) clock.Start(); else clock.Stop(); };
@@ -47,8 +47,8 @@ sealed class TrayFlyout : Window
     void Anchor()
     {
         var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - 4;
-        Top = area.Bottom - ActualHeight - 4;
+        Left = area.Right - ActualWidth - 12;
+        Top = area.Bottom - ActualHeight - 12;
     }
 
     public void Refresh() => body.Content = Build();
@@ -134,7 +134,7 @@ sealed class TrayFlyout : Window
         records.MinWidth = 0; quit.MinWidth = 0;
         var foot = Ui.Spread(records, quit);
         foot.Margin = new Thickness(8, 6, 8, 6);
-        stack.Children.Add(new Border { Background = Palette.Mica, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(0, 1, 0, 0), CornerRadius = new CornerRadius(0, 0, 8, 8), Child = foot, Margin = new Thickness(0, recent.Count > 0 ? 0 : 16, 0, 0) });
+        stack.Children.Add(new Border { Background = Palette.Mica, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(0, 1, 0, 0), Child = foot, Margin = new Thickness(0, recent.Count > 0 ? 0 : 16, 0, 0) });
         return stack;
     }
 

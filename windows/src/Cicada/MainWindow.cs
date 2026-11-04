@@ -114,14 +114,13 @@ sealed class MainWindow : Window
             }
             list.Children.Add(Item(s));
         }
-        if (all.Count == 0) { selected = null; detail.Content = Empty(L("还没有会议记录"), L("点任务栏里的知了图标，开始听第一场会。")); return; }
-        if (shown.Count == 0) { detail.Content = Empty(L("没有找到"), ""); return; }
+        // An empty page replaces the meeting, so the next real one must draw again.
+        if (all.Count == 0) { selected = null; shownKey = null; detail.Content = Empty(L("还没有会议记录"), L("点任务栏里的知了图标，开始听第一场会。")); return; }
+        if (shown.Count == 0) { shownKey = null; detail.Content = Empty(L("没有找到"), ""); return; }
         if (selected is null || shown.All(s => s.Id != selected)) selected = shown[0].Id;
         foreach (var child in list.Children.OfType<Button>()) Paint(child);
         // Store changes come in a burst while a meeting runs; redraw the open page only if it changed.
-        var key = app.Store.Get(selected!) is { } cur ? $"{selected}|{SessionStore.DisplayTitle(cur)}|{cur.Lines.Count}|{cur.Notes?.Covered}|{cur.Notes?.Final}|{app.Listen.Listening}" : null;
-        if (key == shownKey) return;
-        shownKey = key;
+        if (PageKey() == shownKey) return;
         ShowDetail();
     }
 
@@ -174,8 +173,14 @@ sealed class MainWindow : Window
         return s;
     }
 
+    /// What the open page shows; a store change that leaves it the same doesn't redraw it.
+    string? PageKey() => selected is not null && app.Store.Get(selected) is { } cur
+        ? $"{selected}|{tab}|{SessionStore.DisplayTitle(cur)}|{cur.Lines.Count}|{cur.Notes?.Covered}|{cur.Notes?.Final}|{app.Listen.Listening}"
+        : null;
+
     void ShowDetail()
     {
+        shownKey = PageKey();
         if (selected is null || app.Store.Get(selected) is not { } s) { detail.Content = Empty(L("还没有会议记录"), ""); return; }
         var live = app.Listen.Listening && app.Listen.SessionId == s.Id;
         var top = new StackPanel { Margin = new Thickness(32, 24, 32, 0) };
