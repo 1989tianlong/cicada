@@ -220,6 +220,74 @@ public sealed class LingClient
         }
     }
 
+    public const string VoiceModel = "Ming-3.0-tts-0.5B";
+
+    /// Ming's voice for `text`: raw 24 kHz mono 16-bit PCM, chunk by chunk as it streams (SSE).
+    /// `languageId` is Ming's `language_id`, needed for ja, ko, de, fr and es. Ling.swift › speech.
+    public async IAsyncEnumerable<byte[]> Speech(string text, string voice, string? languageId = null,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancel = default)
+    {
+        var k = key.Read() ?? throw new LingException(LingException.Kind.NoKey);
+        if (KeyState == KeyState.Invalid) throw new LingException(LingException.Kind.InvalidKey);
+        var body = new JsonObject
+        {
+            ["model"] = VoiceModel, ["input"] = text, ["voice"] = voice,
+            ["response_format"] = "pcm", ["sample_rate"] = 24000, ["stream"] = true, ["stream_format"] = "sse",
+        };
+        if (languageId is not null) body["language_id"] = languageId;
+        await Acquire(Priority.Speak, cancel);
+        var started = DateTime.UtcNow;
+        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(Base, "audio/speech"))
+        {
+            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", k);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        cts.CancelAfter(TimeSpan.FromSeconds(20));
+        HttpResponseMessage res;
+        try { res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token); }
+        catch (OperationCanceledException) when (!cancel.IsCancellationRequested) { throw new LingException(LingException.Kind.Timeout); }
+        catch (HttpRequestException e) { Log.Debug($"ling: voice network error {e.HttpRequestError}"); throw new LingException(LingException.Kind.Network); }
+        using (res)
+        {
+            switch (res.StatusCode)
+            {
+                case HttpStatusCode.OK: break;
+                case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden:
+                    if (KeyState != KeyState.Invalid) { KeyState = KeyState.Invalid; Changed?.Invoke(); }
+                    throw new LingException(LingException.Kind.InvalidKey);
+                case HttpStatusCode.TooManyRequests: throw new LingException(LingException.Kind.RateLimited);
+                default: Log.Debug($"ling: voice HTTP {(int)res.StatusCode}"); throw new LingException(LingException.Kind.Http, (int)res.StatusCode);
+            }
+            using var reader = new StreamReader(await res.Content.ReadAsStreamAsync(cts.Token));
+            int chunks = 0;
+            while (true)
+            {
+                string? line;
+                try { line = await reader.ReadLineAsync(cts.Token); }
+                catch (OperationCanceledException) when (!cancel.IsCancellationRequested) { throw new LingException(LingException.Kind.Timeout); }
+                if (line is null) break;
+                var pcm = SpeechChunk(line, out var done);
+                if (done) break;
+                if (pcm is null) continue;
+                if (chunks++ == 0) Log.Debug($"ling: Speak first audio {(int)(DateTime.UtcNow - started).TotalMilliseconds} ms");
+                yield return pcm;
+            }
+        }
+    }
+
+    /// One SSE line of Ming's voice stream: the PCM it carries, or `done` at the end.
+    public static byte[]? SpeechChunk(string line, out bool done)
+    {
+        done = false;
+        if (!line.StartsWith("data:")) return null;
+        JsonNode? obj;
+        try { obj = JsonNode.Parse(line[5..]); } catch (JsonException) { return null; }
+        if (obj?["type"]?.GetValue<string>() == "speech.audio.done") { done = true; return null; }
+        if (obj?["audio"]?.GetValue<string>() is not { Length: > 0 } b64) return null;
+        try { return Convert.FromBase64String(b64); } catch (FormatException) { return null; }
+    }
+
     async Task<JsonNode> Post(string path, string payload, string k, double timeout, CancellationToken cancel)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(Base, path))

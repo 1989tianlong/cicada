@@ -86,7 +86,7 @@ sealed class TrayFlyout : Window
         else
         {
             main.Children.Add(Ui.Button(L("开始听"), () => { Hide(); _ = app.ToggleListening(); }, Ui.Kind.Accent, Icons.Wave, 52));
-            var hint = Ui.Text($"{L("听电脑播放的声音，不用麦克风")} · {Hotkey.Label}", 12, Palette.Secondary);
+            var hint = Ui.Text(app.Settings.Speak ? $"{Hotkey.Label} · {LF("按住%@说话", PushToTalk.Label)}" : $"{L("听电脑播放的声音，不用麦克风")} · {Hotkey.Label}", 12, Palette.Secondary);
             hint.TextAlignment = TextAlignment.Center; hint.Margin = new Thickness(0, 8, 0, 0);
             main.Children.Add(hint);
         }

@@ -20,6 +20,14 @@ public sealed class AppSettings
     [JsonPropertyName("uiLanguage")] public string UiLanguage { get; set; } = "system";
     /// 字幕文字大小, in px.
     [JsonPropertyName("subtitleSize")] public int SubtitleSize { get; set; } = 24;
+    /// 同声传译: hold right Ctrl to speak into the meeting in its language.
+    [JsonPropertyName("speak")] public bool Speak { get; set; }
+    /// 我说的语言: "system" or a source code.
+    [JsonPropertyName("speakFrom")] public string SpeakFrom { get; set; } = "system";
+    /// 对方听到的语言: "room" (what the other side speaks) or a target code.
+    [JsonPropertyName("speakTo")] public string SpeakTo { get; set; } = "room";
+    /// The voice for each language the room hears ("en" → "ming:US_Emma", or "system").
+    [JsonPropertyName("speakVoices")] public Dictionary<string, string> SpeakVoices { get; set; } = [];
     /// The one-time "知了还在听" notice after the panel is first collapsed while listening.
     [JsonPropertyName("toldStillListening")] public bool ToldStillListening { get; set; }
 

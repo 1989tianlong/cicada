@@ -43,6 +43,13 @@ sealed class Controller
     public readonly NotesEngine Notes;
     public readonly Translator Translator;
     public readonly ListenEngine Listen;
+    public readonly SpeakEngine Speak;
+    public readonly WindowsVoice WindowsVoice = new();
+    PushToTalk? talk;
+    SpeakBar? speakBar;
+    DeviceRecorder? mic;
+    /// Dev builds: a WAV that stands in for the microphone (the VM has none).
+    string? fakeMic;
     readonly Forms.NotifyIcon tray = new();
     System.Drawing.Icon? idleIcon, liveIcon;
     Action? balloonClicked;
@@ -63,6 +70,9 @@ sealed class Controller
         Notes = new NotesEngine(Ling, Store);
         Translator = new Translator(Ling);
         Listen = new ListenEngine(Ling, Translator, Store, Notes, Settings);
+        Speak = new SpeakEngine(Ling, Translator, Store, Settings, () => Listen.Spoken,
+            () => Listen.Listening && Listen.SessionId is { } id && Store.Get(id) is { } s ? (id, s.StartedAt) : null, WindowsVoice);
+        Speak.Changed += () => Dispatch.BeginInvoke(() => { speakBar ??= new SpeakBar(this); speakBar.Refresh(); });
         Listen.Changed += Changed;
         Notes.Changed += Changed;
         Store.Changed += _ => Changed();
@@ -80,6 +90,10 @@ sealed class Controller
         Log.Debug($"app: launch {(Paths.Dev ? "dev" : "release")} {Environment.OSVersion.Version}");
         SetUpTray();
         hotkey = new Hotkey(() => Dispatch.BeginInvoke(() => _ = ToggleListening()));
+        talk = new PushToTalk();
+        talk.Pressed += () => Dispatch.BeginInvoke(PressBegan);
+        talk.Released += () => Dispatch.BeginInvoke(PressEnded);
+        Log.Debug($"audio: speakers {Endpoints.Default(Endpoints.Flow.Render)?.Name ?? "none"}, mic {Endpoints.Microphone()?.Name ?? "none"}, cable {(Endpoints.Cable() is null ? "absent" : "present")}");
         DebugServer.Start(this);
         if (!Settings.Onboarded) new Onboarding(this).Show();
         else if (Ling.HasKey) _ = Ling.Check();
@@ -260,6 +274,56 @@ sealed class Controller
         await StopListening();
     }
 
+    // MARK: Speaking (同声传译)
+
+    public bool NotesVisible => notesWindow?.IsVisible == true;
+
+    public void SetFakeMic(string? path) { fakeMic = path; Log.Debug($"speak: fake mic {(path is null ? "off" : "on")}"); }
+
+    /// Dev: what the meeting hears. Records "CABLE Output" for `seconds` into `path` ("8 C:\x.wav").
+    public async Task RecordCable(string arg)
+    {
+        var parts = arg.Split(' ', 2);
+        if (parts.Length < 2 || !double.TryParse(parts[0], out var seconds) || Endpoints.CableOutput() is not { } d) { Log.Debug("record: no cable output"); return; }
+        var r = new DeviceRecorder(d.Id);
+        r.Start();
+        await Task.Delay(TimeSpan.FromSeconds(seconds));
+        var pcm = r.Stop();
+        File.WriteAllBytes(parts[1], Wav.Bytes(pcm));
+        double sum = 0; foreach (var x in pcm) sum += (double)x * x;
+        Log.Debug($"record: {pcm.Length / 16000.0:F1} s from {d.Name}, rms {Math.Sqrt(sum / Math.Max(1, pcm.Length)) / 32768:F4}");
+    }
+
+    void PressBegan()
+    {
+        if (!Settings.Speak || Speak.State is SpeakEngine.Phase.Recording or SpeakEngine.Phase.Translating) return;
+        if (!Ling.HasKey) { Speak.Report(L("需要 Ling key 才能说")); return; }
+        if (Endpoints.Cable() is null) { Speak.Report(L("还没装虚拟麦克风，去设置里装一下")); return; }
+        if (fakeMic is null)
+        {
+            if (Endpoints.Microphone() is not { } m) { Speak.Report(L("没找到麦克风")); return; }
+            mic = new DeviceRecorder(m.Id);
+            mic.Start();
+            if (mic.Error is { } err) { mic = null; Speak.Report(err == "denied" ? L("Windows 不让知了用麦克风：设置 › 隐私和安全性 › 麦克风") : L("麦克风打不开")); return; }
+        }
+        Speak.BeginRecording();
+    }
+
+    void PressEnded()
+    {
+        if (Speak.State != SpeakEngine.Phase.Recording) return;
+        var pcm = fakeMic is { } f ? Wav.Read(f) : mic?.Stop() ?? [];
+        mic = null;
+        // A tap, not a sentence.
+        if (pcm.Length < Segmenter.Rate * 3 / 10) { Speak.Cancel(); return; }
+        // Held but nothing said (a muted mic): Ming would make something up from the hiss.
+        if (pcm.Max(x => Math.Abs((int)x)) < 300) { Speak.Report(L("没听到你说话，没有发出去")); return; }
+        _ = Speak.Speak(Wav.Bytes(pcm), new DeviceSpeaker(Endpoints.Cable));
+    }
+
+    /// 试听: a voice speaks its sample line on the speakers (not into the meeting).
+    public Task Preview(string language) => Speak.Voice(VoiceCatalog.Sample(language), language, new DeviceSpeaker(() => Endpoints.Default(Endpoints.Flow.Render)));
+
     // MARK: Windows
 
     public void ShowNotes()
@@ -321,6 +385,7 @@ sealed class Controller
         if (Listen.Listening) await StopListening();
         Store.Flush();
         hotkey?.Dispose();
+        talk?.Dispose();
         tray.Visible = false;
         tray.Dispose();
         application.Shutdown();
@@ -343,6 +408,14 @@ sealed class Controller
         ["showInCapture"] = Settings.ShowInCapture,
         ["sessions"] = Store.All().Count,
         ["hotkey"] = HotkeyRegistered,
+        ["speak"] = Settings.Speak,
+        ["speakState"] = Speak.State.ToString(),
+        ["speakTarget"] = Speak.Target,
+        ["said"] = Speak.Said,
+        ["heard"] = Speak.Heard,
+        ["speakProblem"] = Speak.Problem,
+        ["voice"] = Speak.LastVoice,
+        ["cable"] = Endpoints.Cable() is not null,
         ["autostart"] = AutoStart.Enabled,
     };
 }
@@ -403,6 +476,13 @@ static class DebugServer
                 break;
             case "toast": app.Toast(L("纪要整理好了"), LF("%@ · 点这里打开", "Test"), () => app.ShowRecords()); break;
             case "problem": app.Listen.SimulateProblem(arg); break;
+            case "speak":
+                if (arg == "on" || arg == "off") { app.Settings.Speak = arg == "on"; app.Settings.Save(); app.SettingsChanged(); }
+                else _ = app.Speak.Speak(Wav.Bytes(Wav.Read(arg)), new DeviceSpeaker(Endpoints.Cable));
+                break;
+            case "fakemic": app.SetFakeMic(arg == "off" ? null : arg); break;
+            case "record": _ = app.RecordCable(arg); break;
+            case "preview": _ = app.Preview(arg.Length > 0 ? arg : app.Speak.Target); break;
             case "quit": _ = app.Quit(); break;
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };

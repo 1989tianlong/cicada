@@ -140,7 +140,7 @@ static class Tests
 
     public static void DropsLoneFillers()
     {
-        Check(Translator.IsFiller("嗯。") && Translator.IsFiller("Mm.") && Translator.IsFiller("uh, um"), "fillers");
+        Check(Translator.IsFiller("嗯。") && Translator.IsFiller("Mm.") && Translator.IsFiller("uh, um") && Translator.IsFiller("呃呃呃呃呃"), "fillers");
         Check(!Translator.IsFiller("嗯，好的。") && !Translator.IsFiller("OK.") && !Translator.IsFiller("Oh no, it crashed."), "real lines stay");
     }
 
@@ -405,6 +405,90 @@ static class Tests
             Equal("first,translate,notes", string.Join(",", order), "priority order");
             for (int i = 1; i < fake.Calls.Count; i++)
                 Check((fake.Calls[i].at - fake.Calls[i - 1].at).TotalSeconds >= 0.18, "starts spaced");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    // MARK: Speaking
+
+    sealed class Sink : ISpeechSink
+    {
+        public int Rate; public readonly List<byte[]> Chunks = [];
+        public void Begin(int rate) => Rate = rate;
+        public void Write(byte[] pcm) => Chunks.Add(pcm);
+        public Task End() => Task.CompletedTask;
+    }
+
+    sealed class NoVoice : ISystemVoice
+    {
+        public int Calls;
+        public Task<(byte[] pcm, int rate)?> Speak(string text, string language) { Calls++; return Task.FromResult<(byte[], int)?>((new byte[480], 16000)); }
+        public bool Has(string language) => true;
+    }
+
+    public static void ParsesMingVoiceStream()
+    {
+        var pcm = LingClient.SpeechChunk("data:{\"type\":\"speech.audio.delta\",\"audio\":\"AQIDBA==\"}", out var done);
+        Check(!done && pcm is { Length: 4 } && pcm[3] == 4, "a delta carries its PCM");
+        LingClient.SpeechChunk("data:{\"type\":\"speech.audio.done\"}", out done);
+        Check(done, "done ends the stream");
+        Check(LingClient.SpeechChunk(": keep-alive", out _) is null && LingClient.SpeechChunk("data:{oops", out _) is null, "noise is skipped");
+    }
+
+    public static void PicksTheRoomsLanguage()
+    {
+        Equal("en", SpeakEngine.TargetFor("room", "en", "zh-CN"), "the language the other side speaks");
+        Equal("en", SpeakEngine.TargetFor("room", null, "zh-CN"), "English before anyone spoke");
+        Equal("en", SpeakEngine.TargetFor("room", "zh-CN", "zh-CN"), "never my own language");
+        Equal("zh-CN", SpeakEngine.TargetFor("room", "en", "en"), "an English speaker in an English room gets Chinese");
+        Equal("ja", SpeakEngine.TargetFor("ja", "en", "zh-CN"), "a chosen language wins");
+    }
+
+    public static void ChecksTheVirtualCablePackage()
+    {
+        Check(!VirtualCable.Verify("not the package"u8.ToArray()), "anything else is refused");
+        Equal(64, VirtualCable.PackageSha256.Length, "a full SHA-256 is pinned");
+    }
+
+    static SpeakEngine Speaker(LingClient ling, NoVoice voice, AppSettings? settings = null) =>
+        new(ling, new Translator(ling), new SessionStore(), settings ?? new AppSettings(), () => "en", () => null, voice);
+
+    public static async Task SpeaksTheTranslationNeverTheOriginal()
+    {
+        var old = LingClient.Spacing;
+        LingClient.Spacing = 0.01;
+        try
+        {
+            // Ming hears and translates; Ming's voice streams two chunks.
+            var spoken = new List<string>();
+            var fake = new Fake(body =>
+            {
+                if (body.Contains(LingClient.AudioModel)) return Reply("LANG: zh-CN\nORIGINAL: 我们周三能测完吗？\nTRANSLATION: Can we finish testing by Wednesday?");
+                if (body.Contains(LingClient.VoiceModel))
+                {
+                    lock (spoken) spoken.Add(JsonNode.Parse(body)!["input"]!.GetValue<string>());
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("data:{\"type\":\"speech.audio.delta\",\"audio\":\"AAABAA==\"}\n\ndata:{\"type\":\"speech.audio.delta\",\"audio\":\"AgADAA==\"}\n\ndata:{\"type\":\"speech.audio.done\"}\n\n") };
+                }
+                return Reply("x");
+            });
+            var voice = new NoVoice();
+            var sink = new Sink();
+            var engine = Speaker(Client(fake), voice, new AppSettings { SpeakFrom = "zh-CN" });
+            var heard = await engine.Speak(Wav.Bytes(Tone(1)), sink);
+            Equal("Can we finish testing by Wednesday?", heard, "the room hears the translation");
+            Equal("Can we finish testing by Wednesday?", spoken.Single(), "and only it is voiced");
+            Check(sink.Rate == 24000 && sink.Chunks.Count == 2, "Ming's 24 kHz stream reaches the virtual mic");
+            Equal("ming", engine.LastVoice, "voiced by Ming");
+
+            // No translation (Ming echoes the original, Ling and Google fail): nothing reaches the room.
+            var echo = new Fake(body => body.Contains(LingClient.AudioModel)
+                ? Reply("LANG: zh-CN\nORIGINAL: 我们周三能测完吗？\nTRANSLATION: 我们周三能测完吗？")
+                : new HttpResponseMessage(HttpStatusCode.InternalServerError));
+            var quiet = new Sink();
+            var voice2 = new NoVoice();
+            var e2 = Speaker(Client(echo), voice2, new AppSettings { SpeakFrom = "zh-CN" });
+            Check(await e2.Speak(Wav.Bytes(Tone(1)), quiet) is null, "no translation, nothing said");
+            Check(quiet.Chunks.Count == 0 && voice2.Calls == 0 && e2.State == SpeakEngine.Phase.Failed, "and no voice at all");
         }
         finally { LingClient.Spacing = old; }
     }

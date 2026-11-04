@@ -70,6 +70,7 @@ static class Icons
     public const string Chevron = "M6,8 L10,12 L14,8";
     public const string Check = "M4.5,10.5 L8,14 L15.5,6";
     public const string Info = "M17,10 A7,7 0 1 1 3,10 A7,7 0 1 1 17,10 Z M10,9 V14 M10,6.5 V7";
+    public const string Mic = "M10,2.5 A2.5,2.5 0 0 1 12.5,5 V10 A2.5,2.5 0 0 1 7.5,10 V5 A2.5,2.5 0 0 1 10,2.5 Z M5,9.5 A5,5 0 0 0 15,9.5 M10,14.5 V17.5";
     public const string OpenExternal = "M8,4 H4.5 V15.5 H16 V12 M11,3.5 H16.5 V9 M16.5,3.5 L9,11";
 }
 

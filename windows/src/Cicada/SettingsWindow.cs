@@ -60,6 +60,7 @@ sealed class SettingsWindow : Window
             Card(Icons.Subtitles, L("听的时候显示"), null, Ui.Segmented([("notes", L("纪要")), ("subtitles", L("字幕条"))], app.Settings.View, app.SetView)),
             Card(null, L("字幕文字大小"), null, size),
             Card(Icons.Keyboard, L("开始或结束"), app.HotkeyRegistered ? L("在任何程序里都能按") : L("这个快捷键被别的程序占用了"), Keys(Hotkey.Label))));
+        Section(page, "speak", L("同声传译"), SpeakCards());
         Section(page, "privacy", L("隐私与启动"), Group(
             Card(Icons.Eye, L("共享屏幕时让对方看到"), L("关着时，截图和屏幕共享里看不到纪要和字幕"), Ui.Switch(app.Settings.ShowInCapture, app.SetShowInCapture, L("共享屏幕时让对方看到"))),
             Card(Icons.Power, L("开机时启动知了"), null, Ui.Switch(AutoStart.Enabled, v => AutoStart.Enabled = v, L("开机时启动知了"))),
@@ -77,7 +78,7 @@ sealed class SettingsWindow : Window
         (string id, string icon, string label)[] items =
         [
             ("ling", Icons.Key, L("Ling")), ("lang", Icons.Globe, L("语言")), ("listen", Icons.Wave, L("听的时候")),
-            ("privacy", Icons.Shield, L("隐私与启动")), ("about", Icons.Info, L("关于")),
+            ("speak", Icons.Mic, L("同声传译")), ("privacy", Icons.Shield, L("隐私与启动")), ("about", Icons.Info, L("关于")),
         ];
         foreach (var (id, icon, label) in items)
         {
@@ -153,6 +154,49 @@ sealed class SettingsWindow : Window
         if (description is not null) { var d = Ui.Helper(description); d.Margin = new Thickness(0, 2, 0, 0); text.Children.Add(d); }
         dock.Children.Add(text);
         return dock;
+    }
+
+    string? cableProgress;
+
+    /// 同声传译: the switch, the virtual mic, the two languages and the room's voice.
+    FrameworkElement SpeakCards()
+    {
+        var s = app.Settings;
+        var cable = Endpoints.Cable() is not null;
+        FrameworkElement cableControl = cable
+            ? Ui.Row(6, new System.Windows.Controls.Grid { Width = 16, Height = 16, Children = { new System.Windows.Shapes.Ellipse { Fill = Palette.Success }, Ui.Icon(Icons.Check, 16, Brushes.White, stroke: 2) } }, Ui.Text(L("已装好"), 13, Palette.Success, wrap: false))
+            : cableProgress is { } busy ? Ui.Text(busy, 13, Palette.Secondary, wrap: false)
+            : Ui.Button(L("安装"), () => _ = InstallCable(), Ui.Kind.Primary, height: 32);
+        var target = app.Speak.Target;
+        var voices = VoiceCatalog.Options(target, app.WindowsVoice.Has(target)).Select(v => (v.Id, v.Id == VoiceCatalog.SystemId ? L("Windows 自带") : $"{v.Name} · {string.Join(" · ", v.Tags.Split(" · ").Select(L))}")).ToList();
+        var chosen = s.SpeakVoices.TryGetValue(VoiceCatalog.Key(target), out var c) ? c : VoiceCatalog.DefaultId(target, app.Ling.HasKey);
+        var voice = Ui.Row(8,
+            Ui.Choice(voices, chosen, v => { s.SpeakVoices[VoiceCatalog.Key(target)] = v; Save(); }, 280),
+            Ui.Button(L("试听"), () => _ = app.Preview(target), height: 32));
+        var mine = Languages.Sources.FirstOrDefault(x => x.Code == Languages.FromSystem(System.Globalization.CultureInfo.CurrentUICulture.Name))?.Name ?? "";
+        return Group(
+            Card(Icons.Mic, L("同声传译"), LF("按住%@说话，对方听到的是翻译后的声音", PushToTalk.Label), Ui.Switch(s.Speak, v => { s.Speak = v; Save(); }, L("同声传译"))),
+            Card(Icons.Speaker, L("虚拟麦克风"), cable ? L("在会议软件里把麦克风选成 CABLE Output") : L("需要装免费的 VB-Cable；装的时候 Windows 会请你确认"), cableControl),
+            Card(null, L("我说的语言"), null, Ui.Choice([("system", LF("跟随系统（%@）", mine)), .. Languages.Sources.Select(x => (x.Code, x.Name))], s.SpeakFrom, v => { s.SpeakFrom = v; Save(); Render(); })),
+            Card(null, L("对方听到的语言"), s.SpeakTo == "room" ? LF("现在是 %@", Ui.TargetName(target)) : null,
+                Ui.Choice([("room", L("对方说的语言")), .. Languages.Targets.Select(t => (t.Code, t.Name))], s.SpeakTo, v => { s.SpeakTo = v; Save(); Render(); })),
+            Card(null, LF("对方听到的声音（%@）", Ui.TargetName(target)), null, voice));
+    }
+
+    async Task InstallCable()
+    {
+        cableProgress = L("正在下载…"); Render();
+        var result = await CableInstaller.Install(p => Dispatcher.BeginInvoke(() => { cableProgress = p; Render(); }));
+        cableProgress = null;
+        Render();
+        if (result != CableInstaller.Result.Installed)
+            Dialogs.Tell(this, L("虚拟麦克风没装上"), result switch
+            {
+                CableInstaller.Result.DownloadFailed => L("下载失败，检查网络后再试。"),
+                CableInstaller.Result.BadPackage => L("下载到的安装包和预期的不一样，为了安全没有安装。"),
+                CableInstaller.Result.Declined => L("需要你在 Windows 的提示里点“是”才能安装。"),
+                _ => L("安装没有完成，可以重启电脑后再试。"),
+            });
     }
 
     FrameworkElement KeyCard()

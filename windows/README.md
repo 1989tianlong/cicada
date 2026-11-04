@@ -1,6 +1,6 @@
 # 知了 Windows 版
 
-Cicada 的 Windows 版，目前只做“听”：把电脑播放的声音变成双语字幕和实时纪要，存成和 Mac 版同一格式的会议记录。方案和取舍见 [docs/windows-plan.md](../docs/windows-plan.md)。
+Cicada 的 Windows 版：把电脑播放的声音变成双语字幕和实时纪要，存成和 Mac 版同一格式的会议记录；同声传译（按住右 Ctrl 说话，翻译后的声音经 VB-Cable 虚拟麦克风进会议）。方案和取舍见 [docs/windows-plan.md](../docs/windows-plan.md)。
 
 - 抓声音：WASAPI 进程回环，排除知了自己（Windows 10 2004 起）。
 - 识别：Ming（`Ming-3.0-audio-flash`）分段识别，一次请求同时返回语言、原文和译文；需要 Ling key。
@@ -68,3 +68,7 @@ vm/vmctl.sh g shot C:\x.png    # Windows 里截图（屏幕共享看到的，不
 ```
 
 `vmctl.sh g …` 调 `guest.ps1`：SSH 会话没有桌面，要桌面的事（启动、放声音、截图、点击、看前台窗口）都通过计划任务在登录的桌面里做。测不到的：真机 x64、蓝牙耳机切换、多显示器 DPI、会议软件的真实屏幕共享。
+
+## 同声传译怎么测
+
+VM 里没有麦克风：`cicadactl fakemic <wav>` 让按住右 Ctrl 时用这个文件代替麦克风，`speak <wav>` 直接说一句。`record <秒> <wav>` 录下 CABLE Output（会议软件会听到的声音），拷回 Mac 用 `cicada-cli hear` 核对语言和内容。`spike/clips/me-zh.wav`、`me-en.wav` 是“我说的话”，`silence.wav` 用来测什么都不发。

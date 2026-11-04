@@ -244,7 +244,8 @@ sealed class NotesWindow : Window
         }
         else
         {
-            stack.Children.Add(Ui.Text($"{Ui.SpokenName(line.SrcLang)} · {Languages.Clock(line.T)}", 12, Palette.Tertiary, wrap: false));
+            var who = line.Speaker == "me" ? L("你") : Ui.SpokenName(line.SrcLang);
+            stack.Children.Add(Ui.Text($"{who} · {Languages.Clock(line.T)}", 12, line.Speaker == "me" ? Palette.AccentText : Palette.Tertiary, wrap: false));
             if (line.Dst is not null && line.Dst != line.Src) stack.Children.Add(Gap(Ui.Text(line.Src, 13, Palette.Secondary), 4, top: true));
             stack.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, 17, Palette.Ink, FontWeights.SemiBold), 2, top: true));
             if (listen.Listening && listen.Pending > 0)
@@ -315,7 +316,9 @@ sealed class NotesWindow : Window
     {
         var lines = app.Listen.SessionId is { } id ? app.Store.Get(id)?.Lines ?? [] : [];
         var body = new StackPanel();
-        foreach (var l in lines) body.Children.Add(TranscriptRow(l));
+        // Stored as they arrive (the notes count them); shown in time order, so a sentence I said
+        // sits between the other side's, which come back from Ming a little later.
+        foreach (var l in lines.OrderBy(x => x.T)) body.Children.Add(TranscriptRow(l));
         return body;
     }
 
@@ -327,6 +330,8 @@ sealed class NotesWindow : Window
         DockPanel.SetDock(time, Dock.Left);
         row.Children.Add(time);
         var text = new StackPanel();
+        // What I said into the meeting (同声传译) is marked, as the Mac names it 你.
+        if (l.Speaker == "me") text.Children.Add(Ui.Text(L("你"), 12, Palette.AccentText, FontWeights.SemiBold, wrap: false));
         text.Children.Add(Ui.Text(l.Src, 14, Palette.Ink));
         if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) text.Children.Add(Gap(Ui.Text(l.Dst, 13, Palette.Secondary), 2, top: true));
         row.Children.Add(text);

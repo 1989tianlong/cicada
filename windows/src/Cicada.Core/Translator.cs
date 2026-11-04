@@ -42,7 +42,9 @@ public sealed class Translator(LingClient ling)
     public static bool IsFiller(string text)
     {
         var words = text.ToLowerInvariant().Split([' ', ',', '，', '、', '.', '。', '!', '！', '?', '？', '…', '~', '-'], StringSplitOptions.RemoveEmptyEntries);
-        return words.Length > 0 && words.Length <= 3 && words.All(Fillers.Contains);
+        // "呃呃呃呃": the same sound held, which is what Ming makes of near-silence.
+        static bool Held(string w) => w.Length > 1 && w.All(c => c == w[0]) && Fillers.Contains(w[..1]);
+        return words.Length > 0 && words.Length <= 3 && words.All(w => Fillers.Contains(w) || Held(w));
     }
 
     public static string HearPrompt(string target, string? hint, IReadOnlyList<string> names)

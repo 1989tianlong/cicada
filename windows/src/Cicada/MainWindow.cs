@@ -279,7 +279,7 @@ sealed class MainWindow : Window
         FrameworkElement? target = null;
         // The line nearest the topic's time (older notes may hold a time no line has).
         var nearest = jumpTo is { } t0 && s.Lines.Count > 0 ? s.Lines.MinBy(l => Math.Abs(l.T - t0)) : null;
-        foreach (var l in s.Lines)
+        foreach (var l in s.Lines.OrderBy(x => x.T))
         {
             var line = NotesWindow.TranscriptRow(l);
             if (ReferenceEquals(l, nearest)) target = line;

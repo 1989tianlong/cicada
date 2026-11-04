@@ -17,6 +17,9 @@ static class Dialogs
         return Show(owner, title, text, ok, danger, null) is not null;
     }
 
+    /// Something to know, with one button.
+    public static void Tell(Window owner, string title, string body) => Show(owner, title, Ui.Text(body, 14, Palette.Body), L("知道了"), danger: false, null, single: true);
+
     /// A one-line answer: the new text (maybe empty), or null when cancelled.
     public static string? Prompt(Window owner, string title, string value, string? hint, string ok)
     {
@@ -27,7 +30,7 @@ static class Dialogs
         return Show(owner, title, content, ok, danger: false, box);
     }
 
-    static string? Show(Window owner, string title, FrameworkElement content, string ok, bool danger, TextBox? field)
+    static string? Show(Window owner, string title, FrameworkElement content, string ok, bool danger, TextBox? field, bool single = false)
     {
         string? result = null;
         var dialog = new Window
@@ -45,7 +48,8 @@ static class Dialogs
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
         buttons.ColumnDefinitions.Add(new ColumnDefinition());
         Grid.SetColumn(cancel, 2);
-        buttons.Children.Add(primary); buttons.Children.Add(cancel);
+        buttons.Children.Add(primary);
+        if (single) { primary.IsCancel = true; Grid.SetColumnSpan(primary, 3); } else buttons.Children.Add(cancel);
         var heading = Ui.Text(title, 20, Palette.Ink, FontWeights.SemiBold);
         content.Margin = new Thickness(0, 12, 0, 0);
         dialog.Content = new Border
