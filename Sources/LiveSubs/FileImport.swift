@@ -209,7 +209,7 @@ final class FileImporter: ObservableObject {
     /// It is fed only a couple of lines ahead of what has come back, so a long file doesn't queue up in memory.
     private func transcribeLegacy(_ pcm: URL, locale: String, session id: String,
                                   line: @escaping (Recognition.Piece) -> Void) async throws {
-        let stream = try await Recognition.start(locale, drafts: false)
+        let stream = try await Recognition.start(locale, drafts: false, background: true)
         analyzer = stream
         let file = try AVAudioFile(forReading: pcm)
         let rate = file.processingFormat.sampleRate
@@ -226,6 +226,12 @@ final class FileImporter: ObservableObject {
         let conv = PCMConverter()
         let chunk = AVAudioFrameCount(rate / 10)
         while !Task.isCancelled, store.session(id) != nil {
+            // One recognizer at a time on macOS 14/15: a meeting being listened to goes first. The
+            // file's line in progress ends, and the file carries on in the meeting's pauses.
+            if LegacyStream.Gate.meetingBusy {
+                try? await stream.finalize(through: fedSeconds)
+                while LegacyStream.Gate.meetingBusy, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
+            }
             guard let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunk),
                   (try? file.read(into: buf, frameCount: chunk)) != nil, buf.frameLength > 0 else { break }
             if let c = conv.convert(buf, to: stream.format) { stream.append(c) }

@@ -152,13 +152,15 @@ enum Recognition {
     /// `stream.results`. `drafts` adds lines in progress; `confidence` asks for word confidences.
     /// `speaking`: what the user says while holding the talk key. On macOS 14/15 it has the
     /// recognizer to itself meanwhile (the meeting's lines wait); on 26 both run at once.
-    static func start(_ locale: String, drafts: Bool, confidence: Bool = false, speaking: Bool = false) async throws -> RecognitionStream {
+    /// `background`: a file being imported; on macOS 14/15 it gives way to a live meeting.
+    static func start(_ locale: String, drafts: Bool, confidence: Bool = false, speaking: Bool = false,
+                      background: Bool = false) async throws -> RecognitionStream {
         if !legacy, #available(macOS 26, *) {
             return try await Analyzer.start(locale, drafts: drafts, confidence: confidence)
         }
         guard await authorize() else { throw notAllowed }
         guard dictationEnabled else { throw dictationOff }
-        return try LegacyStream(locale: locale, drafts: drafts, role: speaking ? .speak : drafts ? .listen : .other)
+        return try LegacyStream(locale: locale, drafts: drafts, role: speaking ? .speak : background ? .background : drafts ? .listen : .other)
     }
 
     /// The audio format `start(locale, drafts:)` will want, known before starting one.
@@ -354,6 +356,15 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
         /// The talk key is held: the meeting's live stream holds its audio until it's let go.
         static var speaking: Bool { lock.withLock { speakers > 0 } }
         static func speaker(_ delta: Int) { lock.withLock { speakers += delta } }
+
+        // An import (`.background`) and the meeting take turns: the meeting first.
+        nonisolated(unsafe) private static var backgroundLines = 0
+        nonisolated(unsafe) private static var meetingWaiting = false
+        static func backgroundLine(_ delta: Int) { lock.withLock { backgroundLines += delta } }
+        static var backgroundBusy: Bool { lock.withLock { backgroundLines > 0 } }
+        static func meetingWaits(_ on: Bool) { lock.withLock { meetingWaiting = on } }
+        /// The meeting (or the talk key, or a language check) has the recognizer or wants it.
+        static var meetingBusy: Bool { lock.withLock { liveLines > 0 || speakers > 0 || clips > 0 || meetingWaiting } }
         static func liveLine(_ delta: Int) { lock.withLock { liveLines += delta } }
     }
 
@@ -381,7 +392,7 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
 
     /// What the stream hears: the meeting (gives way while the user speaks), the user holding the
     /// talk key, or anything else (a file, a clip).
-    enum Role { case listen, speak, other }
+    enum Role { case listen, speak, background, other }
     private let role: Role
     private var spoke = false
 
@@ -426,7 +437,10 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
         if current == nil {
             // The line before is still being finished, or a language check is running: starting a
             // task now would make the other come back empty. Keep the words until then (a few seconds).
-            if voiced || holding, (!lines.isEmpty || Gate.clipRunning), recentSeconds < Self.holdLimit {
+            let importing = role == .listen && Gate.backgroundBusy
+            if voiced || holding, (!lines.isEmpty || Gate.clipRunning || importing), recentSeconds < Self.holdLimit {
+                // An import's line is in the recognizer: it ends its line and waits for this one.
+                if importing { Gate.meetingWaits(true) }
                 recent.append(buffer)
                 recentSeconds += seconds
                 fed += seconds
@@ -476,6 +490,8 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
         nextID += 1
         lines[id] = Line(request: request, start: max(0, start))
         if drafts { Gate.liveLine(1) }
+        if role == .background { Gate.backgroundLine(1) }
+        if role == .listen { Gate.meetingWaits(false) }
         current = id
         silence = 0
         heardVoice = false
@@ -541,6 +557,7 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
     private func close(_ id: Int, text: String?, end: Double? = nil, confidence: Double?) {
         guard let line = lines.removeValue(forKey: id) else { return }
         if drafts { Gate.liveLine(-1) }
+        if role == .background { Gate.backgroundLine(-1) }
         if drafts {
             debugLog(String(format: "legacy line %d: %.1f–%.1f s, %@, %d chars", id, line.start, line.endAt ?? fed,
                             text == nil ? "draft" : "final", (text ?? line.draft).count))
@@ -615,6 +632,8 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
         releaseSpeaker()
         for line in lines.values { line.task?.cancel() }
         if drafts { Gate.liveLine(-lines.count) }
+        if role == .background { Gate.backgroundLine(-lines.count) }
+        if role == .listen { Gate.meetingWaits(false) }
         lines = [:]
         current = nil
         out.finish(throwing: error)
