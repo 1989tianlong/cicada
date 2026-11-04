@@ -37,6 +37,13 @@ struct Session: Codable, Identifiable, Equatable {
     var voiceNames: [String: String]? = nil
     /// Names Ling read from the conversation, keyed by voice id; shown until the user says otherwise.
     var voiceGuesses: [String: VoiceGuess]? = nil
+    /// An imported recording or video: its file name, where it was (played from there; never
+    /// copied or deleted), and true until transcribing it finished.
+    var sourceFile: String? = nil
+    var sourcePath: String? = nil
+    var importing: Bool? = nil
+    /// Heard through the microphone in the room (会议室) for some or all of it.
+    var room: Bool? = nil
 
     var duration: TimeInterval { (endedAt ?? Date()).timeIntervalSince(startedAt) }
 
@@ -45,7 +52,11 @@ struct Session: Codable, Identifiable, Equatable {
     var displayTitle: String {
         if renamed ?? !title.hasPrefix("会议 ") { return title }
         // The stored default title is Chinese ("会议 11月1日 14:30"); shown in the UI language.
-        guard let name = notes?.title, !name.isEmpty else { return L("会议 \(dateText(startedAt, "MMMdHHmm"))") }
+        guard let name = notes?.title, !name.isEmpty else {
+            // An imported file is known by its name until the notes give it one.
+            if let file = sourceFile { return (file as NSString).deletingPathExtension }
+            return L("会议 \(dateText(startedAt, "MMMdHHmm"))")
+        }
         let thisYear = Calendar.current.isDate(startedAt, equalTo: Date(), toGranularity: .year)
         return "\(dateText(startedAt, thisYear ? "MMMd" : "yMMMd")) \(name)"
     }
@@ -66,7 +77,8 @@ final class SessionStore: ObservableObject {
     @Published private(set) var liveID: String?
 
     let root: URL
-    private var saveWork: DispatchWorkItem?
+    /// Per meeting: a file being imported saves alongside the live meeting without delaying it.
+    private var saveWork: [String: DispatchWorkItem] = [:]
 
     /// `root`: tests keep their meetings in a folder of their own.
     init(root: URL? = nil) {
@@ -227,6 +239,52 @@ final class SessionStore: ObservableObject {
         id == liveID ? scheduleSave(id) : saveNow(id)
     }
 
+    // MARK: Imported files
+
+    /// A record for a recording or video, dated when it was recorded; filled by `FileImporter`.
+    func beginImport(file: URL, recordedAt: Date, duration: Double) -> Session {
+        let fid = DateFormatter()
+        fid.dateFormat = "yyyyMMdd-HHmmss"
+        let id = "import-\(fid.string(from: Date()))-\(UUID().uuidString.prefix(4).lowercased())"
+        var s = Session(id: id, title: Session.defaultTitle(recordedAt), startedAt: recordedAt,
+                        endedAt: recordedAt.addingTimeInterval(max(1, duration)), lines: [], hasAudio: false)
+        s.sourceFile = file.lastPathComponent
+        s.sourcePath = file.path
+        s.importing = true
+        sessions.append(s)
+        sessions.sort { $0.startedAt > $1.startedAt }
+        saveNow(id)
+        return s
+    }
+
+    /// Transcribing again from the start: the old lines and notes go.
+    func restartImport(_ id: String) {
+        guard let i = index(id) else { return }
+        sessions[i].lines = []
+        sessions[i].notes = nil
+        sessions[i].importing = true
+        saveNow(id)
+    }
+
+    func append(_ line: TranscriptLine, to id: String) {
+        guard let i = index(id) else { return }
+        sessions[i].lines.append(line)
+        scheduleSave(id)
+    }
+
+    func setTranslation(in id: String, lineID: String, _ text: String) {
+        guard let i = index(id), let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
+        sessions[i].lines[j].dst = text
+        scheduleSave(id)
+    }
+
+    func finishImport(_ id: String) {
+        guard let i = index(id) else { return }
+        sessions[i].importing = nil
+        saveWork.removeValue(forKey: id)?.cancel()
+        saveNow(id)
+    }
+
     // MARK: Editing
 
     /// An empty title, or the one shown already, goes back to the automatic one.
@@ -246,6 +304,7 @@ final class SessionStore: ObservableObject {
 
     func delete(_ id: String) {
         guard id != liveID, let i = index(id) else { return }
+        saveWork.removeValue(forKey: id)?.cancel()
         try? FileManager.default.removeItem(at: folder(id))
         sessions.remove(at: i)
     }
@@ -254,12 +313,15 @@ final class SessionStore: ObservableObject {
 
     private func index(_ id: String) -> Int? { sessions.firstIndex(where: { $0.id == id }) }
 
+    /// At most one save per meeting every 1.5 s. A save already waiting writes the latest state,
+    /// so it is never pushed back: an imported file adds lines and translations many times a
+    /// second and would otherwise not reach the disk until it went quiet.
     private func scheduleSave(_ id: String) {
-        saveWork?.cancel()
+        guard saveWork[id] == nil else { return }
         let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.saveNow(id) }
+            MainActor.assumeIsolated { self?.saveWork[id] = nil; self?.saveNow(id) }
         }
-        saveWork = work
+        saveWork[id] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
     }
 
@@ -329,7 +391,9 @@ enum TranscriptExport {
         if !notes.isEmpty { out += notes + "## \(L("文字记录"))\n\n" }
         let numbers = speakerNumbers(s), names = SpeakerLabels.names(s)
         for l in s.lines {
-            out += "**[\(clock(l.t))] \(speakerName(l, numbers, names))**  \n\(l.src)\n"
+            // An imported file has no "other side" to name.
+            let who = s.sourceFile == nil ? " \(speakerName(l, numbers, names))" : ""
+            out += "**[\(clock(l.t))]\(who)**  \n\(l.src)\n"
             if let d = l.dst, d != l.src { out += "> \(d)\n" }
             out += "\n"
         }
@@ -390,7 +454,7 @@ enum TranscriptExport {
         }
         let numbers = speakerNumbers(s), names = SpeakerLabels.names(s)
         for l in s.lines {
-            add("[\(clock(l.t))] \(speakerName(l, numbers, names))", size: 9, weight: .semibold, color: .darkGray, after: 2)
+            add("[\(clock(l.t))]" + (s.sourceFile == nil ? " \(speakerName(l, numbers, names))" : ""), size: 9, weight: .semibold, color: .darkGray, after: 2)
             add(l.src, size: 11, after: 2)
             if let d = l.dst, d != l.src { add(d, size: 11, color: NSColor(calibratedWhite: 0.3, alpha: 1), after: 10) }
         }

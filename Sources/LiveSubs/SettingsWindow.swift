@@ -725,6 +725,20 @@ struct SettingsView: View {
                     SoftButton(L("打开")) { NSWorkspace.shared.open(model.store.root) }
                 }
             }
+            Text("导入的文件").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
+            SettingsCard {
+                SettingsRow(title: L("文件里说的"), detail: L("译成“翻译成”里的语言")) {
+                    Picker("文件里说的", selection: $settings.importLanguage) {
+                        Text("自动识别").tag("auto")
+                        ForEach(sourceLanguages, id: \.locale) { Text($0.name).tag($0.locale) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+                SettingsRow(title: L("转完后生成纪要"), detail: L("需要 Ling key；没有也能转出文字记录"), divider: false) {
+                    Toggle("转完后生成纪要", isOn: $settings.importNotes)
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
+                }
+            }
             Text("结束会议").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
             SettingsCard {
                 SettingsRow(title: L("会议应用挂断后结束"), detail: L("Zoom、腾讯会议、飞书、Teams 等")) {

@@ -32,6 +32,13 @@ final class AppMenu: NSObject, NSMenuItemValidation {
         app.addItem(item(L("退出 \(name)"), #selector(NSApplication.terminate(_:)), "q", target: NSApp))
         add(app, to: main)
 
+        let file = NSMenu(title: L("文件"))
+        file.addItem(item(L("导入录音或视频…"), #selector(importFiles), "o"))
+        file.addItem(item(L("停止转写"), #selector(stopImport)))
+        file.addItem(.separator())
+        file.addItem(item(L("会议记录"), #selector(openRecords)))
+        add(file, to: main)
+
         let notes = NSMenu(title: L("纪要"))
         notes.addItem(item(L("停止记录"), #selector(toggleRecording), "r"))
         notes.addItem(item(L("立即更新纪要"), #selector(updateNotes), "u"))
@@ -118,6 +125,8 @@ final class AppMenu: NSObject, NSMenuItemValidation {
         let notesWindow = model.notesWindow
         let session = model.store.session(model.store.liveID ?? model.notes.shownID)
         switch item.action {
+        case #selector(stopImport):
+            return model.importer.busy
         case #selector(toggleRecording):
             item.title = model.running ? L("停止记录") : L("开始记录")
             return true
@@ -175,6 +184,8 @@ final class AppMenu: NSObject, NSMenuItemValidation {
     @objc private func openAI() { model?.openSettings(.ai) }
     @objc private func openRecords() { showMainWindow() }
     @objc private func onboarding() { showOnboarding() }
+    @objc private func importFiles() { model?.chooseImportFiles() }
+    @objc private func stopImport() { model?.importer.cancelAll() }
     @objc private func openNotes() { model?.openNotesWindow() }
 
     @objc private func toggleRecording() {

@@ -177,6 +177,7 @@ struct MenuPanelView: View {
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    PanelImportLine(importer: model.importer, store: model.store)
                 }
                 Spacer()
                 Toggle("字幕", isOn: Binding(get: { model.running }, set: { model.setRunning($0) }))
@@ -680,6 +681,9 @@ struct MainWindowView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var store: SessionStore
     @ObservedObject var settings: AppSettings
+    @ObservedObject var importer: FileImporter
+    @StateObject private var player = RecordingPlayer()
+    @State private var dropping = false
     @State private var selection: String?
     @State private var query = ""
     @State private var view = "both"
@@ -724,6 +728,15 @@ struct MainWindowView: View {
         }
         .background(Color.white.ignoresSafeArea())
         .background(Button("") { searchFocused = true }.keyboardShortcut("f").opacity(0))
+        // Recordings and videos dropped anywhere on the window become records.
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(FileImporter.importable)
+            guard !files.isEmpty else { return false }
+            model.importFiles(files)
+            return true
+        } isTargeted: { dropping = $0 }
+        .overlay { if dropping { ImportDropOverlay() } }
+        .onChange(of: current?.id, initial: true) { _, _ in player.load(current) }
         .onChange(of: model.mainShow) { _, show in
             guard let parts = show?.split(separator: ",").map(String.init), let id = parts.first else { return }
             selection = id
@@ -821,10 +834,17 @@ struct MainWindowView: View {
             // stay grey so the one being read stands out.
             HStack(spacing: 8) {
                 if live { BreathingDot(size: 6) }
+                if s.sourceFile != nil {
+                    Image(systemName: "doc").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                } else if s.room == true {
+                    Image(systemName: "mic").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                        .help(L("会议室"))
+                }
                 Text(Self.untitled(s) ? L("未命名会议") : Self.listTitle(s))
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected || live ? Palette.ink : Palette.secondary).lineLimit(1)
                 Spacer(minLength: 0)
+                if let status = importer.status(of: s) { Tag(rowTag(status), live: status == .running) }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.white : Color.clear)
@@ -834,11 +854,39 @@ struct MainWindowView: View {
         .help(live ? L("正在记录") : [when(s), Self.length(s)].joined(separator: " · "))
         .buttonStyle(.plain)
         .contextMenu {
+            if let path = s.sourcePath, FileManager.default.fileExists(atPath: path) {
+                Button("显示原文件") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+            }
             Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([store.folder(s.id)]) }
+            if s.sourcePath != nil, !working(s) {
+                Button("重新转写") { importer.retry(s.id) }
+            }
             if s.renamed ?? !s.title.hasPrefix("会议 "), s.notes?.title != nil {
                 Button("恢复自动标题") { store.rename(s.id, to: "") }
             }
-            Button("删除", role: .destructive) { store.delete(s.id) }.disabled(live)
+            Button("删除", role: .destructive) { model.deleteSession(s.id) }.disabled(live)
+        }
+    }
+
+    /// Being transcribed or waiting to be.
+    private func working(_ s: Session) -> Bool {
+        switch importer.status(of: s) {
+        case .running, .queued: return true
+        default: return false
+        }
+    }
+
+    /// The list row's word for an imported file still being worked on.
+    private func rowTag(_ status: FileImporter.Status) -> String {
+        switch status {
+        case .queued: return L("排队中")
+        case .unfinished: return L("没转完")
+        case .running:
+            switch importer.phase {
+            case .transcribing: return L("转写中 \(Int(importer.progress * 100))%")
+            case .translating: return L("翻译中")
+            default: return L("准备中")
+            }
         }
     }
 
@@ -861,7 +909,7 @@ struct MainWindowView: View {
 
     /// Still on the stored "会议 <date>" title: not renamed, and no notes title to show.
     static func untitled(_ s: Session) -> Bool {
-        !(s.renamed ?? !s.title.hasPrefix("会议 ")) && (s.notes?.title ?? "").isEmpty
+        !(s.renamed ?? !s.title.hasPrefix("会议 ")) && (s.notes?.title ?? "").isEmpty && s.sourceFile == nil
     }
 
     static func length(_ s: Session) -> String {
@@ -903,10 +951,11 @@ struct MainWindowView: View {
                             .frame(maxWidth: .infinity)
                     }
                         .overlay {
-                            Text(s.id == store.liveID ? L("正在听，说话的内容会出现在这里") : L("这场会议没有记录到内容"))
+                            Text(s.id == store.liveID ? L("正在听，说话的内容会出现在这里")
+                                 : working(s) ? L("转出的文字会陆续出现在这里") : L("这场会议没有记录到内容"))
                                 .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         }
-                } else if tab == "notes" {
+                } else if tab == "notes", importer.status(of: s) == nil {
                     HStack(spacing: 0) {
                         SessionNotesView(model: model, engine: model.notes, ling: model.ling, session: s,
                                          header: AnyView(header(s))) { t in
@@ -948,6 +997,8 @@ struct MainWindowView: View {
             .buttonStyle(.plain).padding(.top, 32)
             Button("先听一段示例") { model.ensureListening(); model.sample.play() }
                 .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Palette.secondary).padding(.top, 16)
+            Button("或导入录音、视频…") { model.chooseImportFiles() }
+                .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Palette.ink).padding(.top, 8)
         }
         .frame(maxWidth: 420)
         .padding(.bottom, 60)
@@ -986,10 +1037,13 @@ struct MainWindowView: View {
     /// Text tabs, the transcript's language choice and 导出…, under the title: no toolbar band.
     private func tabsRow(_ s: Session) -> some View {
         HStack(alignment: .center, spacing: 22) {
-            tabButton(L("纪要"), id: "notes")
-            tabButton(L("文字记录"), id: "transcript", count: s.lines.count)
+            // Notes wait until an imported file is transcribed to the end.
+            let importing = importer.status(of: s) != nil
+            let active = importing ? "transcript" : tab
+            tabButton(L("纪要"), id: "notes", active: active, badge: importing ? L("转完后生成") : nil).disabled(importing)
+            tabButton(L("文字记录"), id: "transcript", active: active, count: s.lines.count)
             Spacer()
-            if tab == "transcript" {
+            if active == "transcript" {
                 Segments(options: [("both", L("双语")), ("src", L("原文")), ("dst", L("译文"))], value: view) { view = $0 }
             } else if wideEnough, !s.lines.isEmpty {
                 Button { withAnimation(.easeOut(duration: 0.2)) { showQuotes.toggle() } } label: {
@@ -1019,13 +1073,14 @@ struct MainWindowView: View {
         }
     }
 
-    private func tabButton(_ title: String, id: String, count: Int? = nil) -> some View {
-        let on = tab == id
+    private func tabButton(_ title: String, id: String, active: String, count: Int? = nil, badge: String? = nil) -> some View {
+        let on = active == id
         return Button { tab = id } label: {
             HStack(spacing: 5) {
                 Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
                     .foregroundStyle(on ? Palette.ink : Palette.secondary)
                 if let count { Text("\(count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary) }
+                if let badge { Tag(badge) }
             }
             .padding(.bottom, 6)
             .overlay(alignment: .bottom) { Rectangle().fill(on ? Palette.ink : .clear).frame(height: 2) }
@@ -1044,7 +1099,8 @@ struct MainWindowView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 if live { Tag(L("正在记录"), live: true) }
-                Text([dateText(s.startedAt, "MMMdHHmm"), Self.length(s)].joined(separator: " · "))
+                Text(([dateText(s.startedAt, "MMMdHHmm"), Self.length(s)] + (s.sourceFile.map { [$0, L("导入")] } ?? [])
+                      + (s.room == true ? [L("会议室")] : [])).joined(separator: " · "))
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary).lineLimit(1)
                     .help(([dateLine(s, live: live)] + more.compactMap { $0 }).joined(separator: " · "))
             }
@@ -1059,6 +1115,13 @@ struct MainWindowView: View {
             .onSubmit {
                 if !titleDraft.isEmpty { store.rename(s.id, to: titleDraft) }
                 titleDraft = ""
+            }
+            if s.sourceFile != nil {
+                VStack(alignment: .leading, spacing: 12) {
+                    ImportStatusStrip(model: model, importer: importer, session: s)
+                    if player.sessionID == s.id { RecordingPlayerBar(player: player) }
+                }
+                .padding(.top, 16)
             }
             tabsRow(s).padding(.top, 24)
         }
@@ -1164,12 +1227,22 @@ struct MainWindowView: View {
         }
     }
 
-    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false) -> some View {
+    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false, in shownSession: Session? = nil) -> some View {
         let me = l.speaker == "me"
         return HStack(alignment: .top, spacing: 16) {
-            Text(TranscriptExport.clock(l.t))
-                .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
-                .frame(width: 52, alignment: .leading).padding(.top, 1)
+            if let shownSession, player.sessionID == shownSession.id, player.ready {
+                // An imported file plays from this line.
+                Button { player.play(from: l.t) } label: {
+                    Text(TranscriptExport.clock(l.t))
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.link)
+                        .frame(width: 52, alignment: .leading).padding(.top, 1).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).help(L("从这里播放"))
+            } else {
+                Text(TranscriptExport.clock(l.t))
+                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary)
+                    .frame(width: 52, alignment: .leading).padding(.top, 1)
+            }
             VStack(alignment: .leading, spacing: 5) {
                 if !label {
                 } else if let speaker { SpeakerTag(number: speaker) }

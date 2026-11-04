@@ -111,6 +111,7 @@ final class AppModel: ObservableObject {
     let loginItem = LoginItem()
     lazy var notes = NotesEngine(ling: ling, store: store)
     lazy var notesWindow = NotesWindowController(model: self)
+    lazy var importer = FileImporter(store: store, settings: settings, translator: translator)
     let sample = SamplePlayer()
     let speakers = SpeakerTagger()
     lazy var speakerNamer = SpeakerNamer(ling: ling, store: store)
@@ -184,6 +185,7 @@ final class AppModel: ObservableObject {
         ling.model = { [weak self] in self?.settings.aiModel ?? "Ling-3.1-flash" }
         listen.translator = translator
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
+        importer.onFinished = { [weak self] id in self?.importFinished(id) }
         notes.language = { [weak self] id in
             TranslationService.englishName(self?.notesLanguageCode(id) ?? "zh-CN")
         }
@@ -1071,6 +1073,52 @@ final class AppModel: ObservableObject {
         heardWords()
     }
 
+    // MARK: Imported files
+
+    /// 导入录音或视频…: the open panel, then the files go into the queue.
+    func chooseImportFiles() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audio, .movie, .audiovisualContent]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = L("导入")
+        NSApp.activate()
+        guard panel.runModal() == .OK else { return }
+        importFiles(panel.urls)
+    }
+
+    /// Dropped on the window or the Dock icon, opened with Cicada, or chosen: each file becomes a
+    /// record, shown in the main window.
+    func importFiles(_ urls: [URL]) {
+        let files = urls.filter(FileImporter.importable)
+        guard !files.isEmpty else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+        Task {
+            let ids = await importer.add(files)
+            openMainWindow?()
+            if let first = ids.first { mainShow = "\(first),transcript" }
+        }
+    }
+
+    /// Deleting a record also stops transcribing it; the original file stays where it was.
+    func deleteSession(_ id: String) {
+        importer.cancel(id)
+        store.delete(id)
+    }
+
+    private func importFinished(_ id: String) {
+        guard let s = store.session(id) else { return }
+        let notesToo = settings.importNotes && ling.hasKey && !s.lines.isEmpty
+        if notesToo { notes.generate(for: id) }
+        let content = UNMutableNotificationContent()
+        content.title = L("\(s.displayTitle) 转好了")
+        content.body = L("\(MainWindowView.length(s)) · \(s.lines.count) 句") + (notesToo ? L("，正在整理纪要") : "")
+        content.userInfo = ["session": id]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "import-\(id)", content: content, trigger: nil)) { error in
+            if let error { debugLog("import: notification not shown: \(error)") }
+        }
+    }
+
     // MARK: Export
 
     func export(_ session: Session, kind: String) {
@@ -1444,6 +1492,13 @@ final class AppModel: ObservableObject {
         case "hideAfter": settings.overlayHideAfter = Double(arg) ?? 4
         case "frame":
             debugLog("overlay frame=\(overlay.barFrame) font=\(overlay.currentFontSize)")
+        case "import": importFiles(arg.split(separator: ",").map { URL(fileURLWithPath: String($0)) })
+        case "importCancel": importer.cancelAll()
+        case "importRetry": importer.retry(arg)
+        case "importNotify":
+            UNUserNotificationCenter.current().getNotificationSettings { s in debugLog("import: notifications \(s.authorizationStatus.rawValue) alert=\(s.alertSetting.rawValue)") }
+        case "importState":
+            debugLog("import state: current=\(importer.current?.id ?? "-") phase=\(importer.phase) heard=\(Int(importer.heard))/\(Int(importer.duration)) untranslated=\(importer.untranslated) queue=\(importer.queue.map(\.id))")
         case "export":
             guard let s = store.sessions.first(where: { $0.id != store.liveID }) ?? store.sessions.first else { return }
             let dir = URL(fileURLWithPath: arg)
@@ -1459,7 +1514,7 @@ final class AppModel: ObservableObject {
 // MARK: - App delegate
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     let model = AppModel()
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
@@ -1503,9 +1558,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showMainWindow()
         }
         model.installDebugControl()
+        UNUserNotificationCenter.current().delegate = self
         installDeviceListener()
         Task { await model.launch() }
         model.updates.start()
+    }
+
+    /// Files dropped on the Dock icon or opened with Cicada: imported as records.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        model.importFiles(urls)
+    }
+
+    /// "转好了": shown even while Cicada is in front; a click opens that record.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner]
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let id = response.notification.request.content.userInfo["session"] as? String
+        await MainActor.run {
+            showMainWindow()
+            if let id { model.mainShow = id }
+        }
     }
 
     /// Started by the system at login: stay in the menu bar.
@@ -1603,7 +1677,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             w.isReleasedWhenClosed = false
             w.minSize = NSSize(width: 760, height: 480)
             w.delegate = self
-            w.contentView = NSHostingView(rootView: MainWindowView(model: model, store: model.store, settings: model.settings))
+            w.contentView = NSHostingView(rootView: MainWindowView(model: model, store: model.store, settings: model.settings,
+                                                                   importer: model.importer))
             w.toolbar = mainToolbar.make()
             w.toolbarStyle = .unified
             w.titlebarSeparatorStyle = .none

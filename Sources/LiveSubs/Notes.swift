@@ -105,8 +105,9 @@ final class NotesEngine: ObservableObject {
     private(set) var shownID: String?
     private var timer: Timer?
     private var inFlight = false
-    /// A final pass asked for while another call was running; it runs right after.
-    private var pendingFinal: String?
+    /// Final passes asked for while another call was running, in order; each runs after it.
+    /// Several can wait: an imported file can finish while the meeting's own pass is queued.
+    private var pendingFinals: [String] = []
     /// A language change that arrived while another update was running: rewrite after it.
     private var pendingRewrite: String?
     private var lastAttempt = Date.distantPast
@@ -203,7 +204,10 @@ final class NotesEngine: ObservableObject {
     private func update(_ id: String, final: Bool, upto: Int? = nil, fresh: Bool = false) async {
         if inFlight {
             // Never drop the end-of-meeting pass or a "生成纪要" request: queue it.
-            if final { pendingFinal = id; generatingID = id }
+            if final {
+                if !pendingFinals.contains(id) { pendingFinals.append(id) }
+                if generatingID == nil { generatingID = id }
+            }
             if fresh { pendingRewrite = id }
             return
         }
@@ -216,9 +220,9 @@ final class NotesEngine: ObservableObject {
         defer {
             inFlight = false
             if final, generatingID == id { generatingID = nil }
-            if let next = pendingFinal {
-                pendingFinal = nil
-                pendingRewrite = nil // the final pass starts from nothing anyway
+            if !pendingFinals.isEmpty {
+                let next = pendingFinals.removeFirst()
+                if pendingRewrite == next { pendingRewrite = nil } // the final pass starts from nothing anyway
                 Task { await update(next, final: true) }
             } else if let next = pendingRewrite {
                 pendingRewrite = nil

@@ -54,7 +54,8 @@ struct GoogleTranslator {
 /// does: it would use up the account's ~2 requests per second.
 @MainActor
 final class TranslationService {
-    enum Kind { case draft, sentence, speak }
+    /// `file`: a line of an imported recording, sent to Ling behind everything live.
+    enum Kind { case draft, sentence, speak, file }
 
     let ling: LingClient
     /// Names and terms the notes have settled on, e.g. "江充 (Jiang Chong)".
@@ -123,8 +124,9 @@ final class TranslationService {
         if !names.isEmpty { prompt += "\nKnown names and terms (use these spellings): " + names.joined(separator: "; ") }
         prompt += "\nSubtitle: " + text
         do {
-            let out = try await ling.chat(content: prompt, instruction: "Translate.", priority: kind == .speak ? .speak : .translate,
-                                          maxTokens: 400, timeout: kind == .speak ? 10 : 6,
+            let priority: LingClient.Priority = kind == .speak ? .speak : kind == .file ? .notes : .translate
+            let out = try await ling.chat(content: prompt, instruction: "Translate.", priority: priority,
+                                          maxTokens: 400, timeout: kind == .speak ? 10 : kind == .file ? 20 : 6,
                                           onQueued: { [weak trace] in trace?.lingQueue += $0 })
             if out.isEmpty { return (nil, "empty") }
             guard let clean = Self.cleanTranslation(out, target: target) else {

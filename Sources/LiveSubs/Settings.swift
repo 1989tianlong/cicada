@@ -62,6 +62,14 @@ final class AppSettings: ObservableObject {
     @Published var recordAudio: Bool {
         didSet { save() }
     }
+    /// Imported files: the language they are in ("auto" or a locale), and whether notes are written
+    /// once one is transcribed.
+    @Published var importLanguage: String {
+        didSet { save() }
+    }
+    @Published var importNotes: Bool {
+        didSet { save() }
+    }
     /// Subtitle bar: show only while someone talks ("auto") or always.
     @Published var overlayAuto: Bool {
         didSet { save() }
@@ -151,6 +159,8 @@ final class AppSettings: ObservableObject {
         speakMic = defaults.string(forKey: "speakMic") ?? ""
         savedSystemInput = defaults.string(forKey: "savedSystemInput") ?? ""
         recordAudio = defaults.object(forKey: "recordAudio") as? Bool ?? true
+        importLanguage = defaults.string(forKey: "importLanguage") ?? "auto"
+        importNotes = defaults.object(forKey: "importNotes") as? Bool ?? true
         overlayAuto = defaults.object(forKey: "overlayAuto") as? Bool ?? true
         overlayHideAfter = defaults.object(forKey: "overlayHideAfter") as? Double ?? 4
         talkKey = Shortcut(stored: defaults.string(forKey: "talkKey")) ?? .defaultTalk
@@ -184,6 +194,8 @@ final class AppSettings: ObservableObject {
         defaults.set(speakMic, forKey: "speakMic")
         defaults.set(savedSystemInput, forKey: "savedSystemInput")
         defaults.set(recordAudio, forKey: "recordAudio")
+        defaults.set(importLanguage, forKey: "importLanguage")
+        defaults.set(importNotes, forKey: "importNotes")
         defaults.set(overlayAuto, forKey: "overlayAuto")
         defaults.set(overlayHideAfter, forKey: "overlayHideAfter")
         defaults.set(talkKey.stored, forKey: "talkKey")
