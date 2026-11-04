@@ -279,8 +279,6 @@ struct HealthMark: View {
     }
 }
 
-let appDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? L("知了")
-
 // MARK: - Virtual microphone checklist
 
 /// The one place the virtual mic is set up: onboarding step 4 and the settings window.

@@ -27,7 +27,7 @@ import Testing
         var s = Session(id: "i", title: Session.defaultTitle(Date()), startedAt: Date(), endedAt: nil, lines: [], hasAudio: false)
         s.sourceFile = "客户访谈.m4a"
         #expect(s.displayTitle == "客户访谈")
-        #expect(!MainWindowView.untitled(s))
+        #expect(!RecordList.untitled(s))
         s.renamed = true
         s.title = "Renamed"
         #expect(s.displayTitle == "Renamed")

@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Foundation
 
 struct TranscriptLine: Codable, Identifiable, Equatable {
@@ -460,6 +462,8 @@ enum TranscriptExport {
         return out
     }
 
+    #if os(macOS)
+    // `.officeOpenXML` is macOS-only; iOS needs its own writer (docs/ios-plan.md).
     static func docx(_ s: Session) throws -> Data {
         let doc = NSMutableAttributedString()
         func add(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .black, after: CGFloat = 4) {
@@ -505,4 +509,5 @@ enum TranscriptExport {
         return try doc.data(from: NSRange(location: 0, length: doc.length),
                             documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML])
     }
+    #endif
 }

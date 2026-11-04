@@ -770,7 +770,7 @@ struct MainWindowView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     // The newest day shows; older ones fold under one row until asked for (or searched).
-                    let all = groups
+                    let all = RecordList.groups(filtered)
                     let folded = query.isEmpty && !showOlder && all.count > 1
                     ForEach(Array((folded ? Array(all.prefix(1)) : all).enumerated()), id: \.element.title) { i, g in
                         Text(g.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.secondary)
@@ -803,25 +803,8 @@ struct MainWindowView: View {
         .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 14)
         .onChange(of: selection) { _, id in
             // A meeting picked from elsewhere (search, the notes window) shouldn't hide in a fold.
-            if let id, let first = groups.first, !first.sessions.contains(where: { $0.id == id }) { showOlder = true }
+            if let id, let first = RecordList.groups(filtered).first, !first.sessions.contains(where: { $0.id == id }) { showOlder = true }
         }
-    }
-
-    /// 今天 / 昨天 / 本周 / then one group per month, newest first.
-    private var groups: [(title: String, sessions: [Session])] {
-        let cal = Calendar.current
-        var out: [(title: String, sessions: [Session])] = []
-        for s in filtered {
-            let d = s.startedAt
-            let title: String
-            if cal.isDateInToday(d) { title = L("今天") }
-            else if cal.isDateInYesterday(d) { title = L("昨天") }
-            else if cal.isDate(d, equalTo: Date(), toGranularity: .weekOfYear) { title = L("本周") }
-            else if cal.isDate(d, equalTo: Date(), toGranularity: .year) { title = dateText(d, "MMMM") }
-            else { title = dateText(d, "yMMMM") }
-            if out.last?.title == title { out[out.count - 1].sessions.append(s) } else { out.append((title, [s])) }
-        }
-        return out
     }
 
     private func sessionRow(_ s: Session) -> some View {
@@ -844,7 +827,7 @@ struct MainWindowView: View {
                     Image(systemName: "mic").font(.system(size: 11)).foregroundStyle(Palette.secondary)
                         .help(L("会议室"))
                 }
-                Text(Self.untitled(s) ? L("未命名会议") : Self.listTitle(s))
+                Text(RecordList.untitled(s) ? L("未命名会议") : RecordList.listTitle(s))
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected || live ? Palette.ink : Palette.secondary).lineLimit(1)
                 Spacer(minLength: 0)
@@ -855,7 +838,7 @@ struct MainWindowView: View {
                 .shadow(color: selected ? Palette.ink.opacity(0.06) : .clear, radius: 1.5, y: 1))
             .contentShape(Rectangle())
         }
-        .help(live ? L("正在记录") : [when(s), Self.length(s)].joined(separator: " · "))
+        .help(live ? L("正在记录") : [RecordList.when(s), RecordList.length(s)].joined(separator: " · "))
         .buttonStyle(.plain)
         .contextMenu {
             if let path = s.sourcePath, FileManager.default.fileExists(atPath: path) {
@@ -892,55 +875,6 @@ struct MainWindowView: View {
             default: return L("准备中")
             }
         }
-    }
-
-    private func when(_ s: Session) -> String {
-        let cal = Calendar.current
-        return dateText(s.startedAt, cal.isDateInToday(s.startedAt) || cal.isDateInYesterday(s.startedAt) ? "HHmm"
-            : cal.isDate(s.startedAt, equalTo: Date(), toGranularity: .weekOfYear) ? "EEE" : "MMMd")
-    }
-
-    /// Notes titles often start with the day ("11月2日 产品周会"); under a 今天 heading that only
-    /// pushes the real title out of the row.
-    static func listTitle(_ s: Session) -> String {
-        let title = s.displayTitle
-        for prefix in [dateText(s.startedAt, "MMMd"), dateText(s.startedAt, "MMMMd")] where title.hasPrefix(prefix) {
-            let rest = title.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
-            if !rest.isEmpty { return rest }
-        }
-        return title
-    }
-
-    /// Still on the stored "会议 <date>" title: not renamed, and no notes title to show.
-    static func untitled(_ s: Session) -> Bool {
-        !(s.renamed ?? !s.title.hasPrefix("会议 ")) && (s.notes?.title ?? "").isEmpty && s.sourceFile == nil
-    }
-
-    static func length(_ s: Session) -> String {
-        let mins = Int(s.duration / 60)
-        if mins < 1 { return L("不到 1 分钟") }
-        return mins < 60 ? L("\(mins) 分钟") : mins % 60 == 0 ? L("\(mins / 60) 小时") : L("\(mins / 60) 小时 \(mins % 60) 分")
-    }
-
-    /// "英 → 中" (short) or "英语 → 中文", from the most common pair among the lines.
-    static func pair(_ s: Session, short: Bool) -> String? {
-        let pairs = Dictionary(grouping: s.lines.filter { $0.speaker != "me" }, by: { "\(lang($0.srcLang))|\(lang($0.dstLang))" })
-        guard let top = pairs.max(by: { $0.value.count < $1.value.count })?.key else { return nil }
-        let p = top.split(separator: "|").map(String.init)
-        guard p.count == 2, p[0] != p[1] else { return nil }
-        func name(_ c: String) -> String {
-            let names = ["en": L("英语"), "ja": L("日语"), "zh-CN": L("中文"), "zh-TW": L("繁中"), "ko": L("韩语"),
-                         "es": L("西语"), "fr": L("法语"), "de": L("德语"), "pt": L("葡语")]
-            guard let n = names[c] else { return c.uppercased() }
-            guard short else { return n }
-            return uiIsChinese ? String(n.prefix(1)) : c == "zh-TW" ? "ZH-TW" : String(c.prefix(2)).uppercased()
-        }
-        return "\(name(p[0])) → \(name(p[1]))"
-    }
-
-    private static func lang(_ code: String) -> String {
-        let base = String(code.split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? "")
-        return base == "zh" ? (code.contains("Hant") || code.hasSuffix("TW") || code.hasSuffix("HK") ? "zh-TW" : "zh-CN") : base
     }
 
     // MARK: Detail
@@ -1099,19 +1033,19 @@ struct MainWindowView: View {
         let live = s.id == store.liveID
         let notes = live ? model.notes.notes : s.notes
         // When and how long up front; the languages and notes version wait in the tooltip.
-        let more = [Self.pair(s, short: false),
+        let more = [RecordList.pair(s, short: false),
                     notes.flatMap { $0.isEmpty ? nil : ($0.final ? L("完整版纪要") : L("速记版纪要")) }]
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 if live { Tag(L("正在记录"), live: true) }
-                Text(([dateText(s.startedAt, "MMMdHHmm"), Self.length(s)] + (s.sourceFile.map { [$0, L("导入")] } ?? [])
+                Text(([dateText(s.startedAt, "MMMdHHmm"), RecordList.length(s)] + (s.sourceFile.map { [$0, L("导入")] } ?? [])
                       + (s.room == true ? [L("会议室")] : [])).joined(separator: " · "))
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary).lineLimit(1)
                     .help(([dateLine(s, live: live)] + more.compactMap { $0 }).joined(separator: " · "))
             }
             TextField("标题", text: Binding(
                 // The date is on the line above; a notes title that starts with it shows without.
-                get: { titleDraft.isEmpty ? Self.listTitle(s) : titleDraft },
+                get: { titleDraft.isEmpty ? RecordList.listTitle(s) : titleDraft },
                 set: { titleDraft = $0 }
             ), axis: .vertical)
             .textFieldStyle(.plain)
@@ -1289,7 +1223,6 @@ struct MainWindowView: View {
         .padding(.vertical, 12)
     }
 }
-
 
 extension MainWindowView {
     /// "这句是谁说的": the people on show; the line takes that voice.

@@ -244,6 +244,9 @@ enum VoiceReference {
     }
 }
 
+#if !CICADA_IOS
+// Mac app only (the iOS build sets CICADA_IOS): pinned to a Mac input device and checked with the
+// Mac recognizer. iOS records its own (docs/ios-plan.md, M3).
 /// Records the microphone for the voice clone: 16 kHz mono into a temporary WAV, with a level for
 /// the meter. Stops by itself at 30 s.
 @MainActor
@@ -373,3 +376,4 @@ final class VoiceRecorder: ObservableObject {
         return await LoopbackTest.transcribe([buf], locale: locale)
     }
 }
+#endif

@@ -1,9 +1,5 @@
-import AppKit
-import AVFoundation
-import AudioToolbox
-import CoreAudio
-import CoreMedia
-import Speech
+// Pure Foundation: the iOS app shares this file (ios/shared-sources.txt).
+import Foundation
 
 // MARK: - Languages
 

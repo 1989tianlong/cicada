@@ -67,7 +67,13 @@ enum AIKey {
                 }
             }
             try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            #if os(iOS)
+            // Readable after the first unlock: listening goes on on the lock screen, and a meeting
+            // started from the Action Button while locked still needs the key for the notes.
+            try Data(key.utf8).write(to: file, options: .completeFileProtectionUntilFirstUserAuthentication)
+            #else
             try Data(key.utf8).write(to: file)
+            #endif
             var url = file
             var values = URLResourceValues()
             values.isExcludedFromBackup = true

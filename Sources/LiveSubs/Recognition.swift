@@ -11,12 +11,28 @@ enum Recognition {
     /// Not kept in settings: two dev copies share them.
     nonisolated(unsafe) static var forceLegacy = DevBuild.isDev && ProcessInfo.processInfo.environment["CICADA_RECOGNIZER"] == "legacy"
 
+    /// Set by the iOS simulator's dev build only: its speech models are empty placeholders, so it
+    /// hands the audio to the Mac it runs on (ios/tools/host-recognizer), which recognizes it on
+    /// device with this same file. Nil on a Mac and on an iPhone.
+    nonisolated(unsafe) static var host: ((_ locale: String, _ drafts: Bool) throws -> RecognitionStream)?
+
     static var legacy: Bool {
+        if host != nil { return false }
         if #available(macOS 26, *) { return forceLegacy }
         return true
     }
 
-    static var name: String { legacy ? "legacy" : "analyzer" }
+    static var name: String { host != nil ? "mac-host" : legacy ? "legacy" : dictationModel ? "dictation" : "analyzer" }
+
+    /// iOS only: a device without `SpeechTranscriber` (older iPhones, the simulator) still has the
+    /// on-device dictation model, `DictationTranscriber`, which runs in the same `SpeechAnalyzer`.
+    /// The Mac keeps `SpeechTranscriber` or the older recognizer, as before.
+    static var dictationModel: Bool {
+        #if CICADA_IOS
+        if #available(macOS 26, *) { return !SpeechTranscriber.isAvailable }
+        #endif
+        return false
+    }
 
     /// Apple's on-device translation can be made outside a SwiftUI view only on 26 (`Translator.viaApple`).
     static var hasOnDeviceTranslation: Bool {
@@ -38,7 +54,8 @@ enum Recognition {
     enum ModelStatus { case installed, downloadable, unsupported }
 
     static var isAvailable: Bool {
-        if !legacy, #available(macOS 26, *) { return SpeechTranscriber.isAvailable }
+        if host != nil { return true }
+        if !legacy, #available(macOS 26, *) { return SpeechTranscriber.isAvailable || dictationModel }
         return true
     }
 
@@ -90,14 +107,16 @@ enum Recognition {
     /// BCP-47 ids of the languages that can be recognized right now without a download.
     static func installedLocales() async -> Set<String> {
         if !legacy, #available(macOS 26, *) {
-            return Set(await SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) })
+            let installed = dictationModel ? await DictationTranscriber.installedLocales : await SpeechTranscriber.installedLocales
+            return Set(installed.map { $0.identifier(.bcp47) })
         }
         return Set(sourceLanguages.map(\.locale).filter { LegacyStream.onDevice($0) })
     }
 
     static func status(_ locale: String) async -> ModelStatus {
+        if host != nil { return .installed }
         if !legacy, #available(macOS 26, *) {
-            switch await AssetInventory.status(forModules: [Analyzer.transcriber(locale)]) {
+            switch await AssetInventory.status(forModules: [Analyzer.module(locale)]) {
             case .installed: return .installed
             case .unsupported: return .unsupported
             default: return .downloadable
@@ -111,8 +130,9 @@ enum Recognition {
     /// Fetches the model for `locale` when it isn't on the Mac; `progress` is called once a
     /// download starts. Throws when this Mac can't recognize the language.
     static func install(_ locale: String, progress: (Progress) -> Void = { _ in }) async throws {
+        if host != nil { return }
         if !legacy, #available(macOS 26, *) {
-            let t = Analyzer.transcriber(locale)
+            let t = Analyzer.module(locale)
             if await AssetInventory.status(forModules: [t]) == .unsupported { throw unsupported(locale) }
             if let request = try await AssetInventory.assetInstallationRequest(supporting: [t]) {
                 progress(request.progress)
@@ -155,6 +175,7 @@ enum Recognition {
     /// `background`: a file being imported; on macOS 14/15 it gives way to a live meeting.
     static func start(_ locale: String, drafts: Bool, confidence: Bool = false, speaking: Bool = false,
                       background: Bool = false) async throws -> RecognitionStream {
+        if let host { return try host(locale, drafts) }
         if !legacy, #available(macOS 26, *) {
             return try await Analyzer.start(locale, drafts: drafts, confidence: confidence)
         }
@@ -166,7 +187,7 @@ enum Recognition {
     /// The audio format `start(locale, drafts:)` will want, known before starting one.
     static func format(_ locale: String, drafts: Bool) async -> AVAudioFormat {
         if !legacy, #available(macOS 26, *) {
-            return await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [Analyzer.transcriber(locale, drafts: drafts)])
+            return await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [Analyzer.module(locale, drafts: drafts)])
                 ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
         }
         return LegacyStream.audioFormat
@@ -241,8 +262,18 @@ final class Analyzer: RecognitionStream, @unchecked Sendable {
                           attributeOptions: confidence ? [.transcriptionConfidence] : [])
     }
 
+    /// What recognizes `locale`: `SpeechTranscriber`, or the dictation model where that is missing (`Recognition.dictationModel`).
+    static func module(_ locale: String, drafts: Bool = false, confidence: Bool = false) -> any SpeechModule {
+        guard Recognition.dictationModel else { return transcriber(locale, drafts: drafts, confidence: confidence) }
+        // .farField: the room is heard from across the table. .frequentFinalization: sentences
+        // come back finished about as often as SpeechTranscriber's.
+        return DictationTranscriber(locale: Locale(identifier: locale), contentHints: [.farField], transcriptionOptions: [.punctuation],
+                                    reportingOptions: drafts ? [.volatileResults, .frequentFinalization] : [],
+                                    attributeOptions: confidence ? [.audioTimeRange, .transcriptionConfidence] : [.audioTimeRange])
+    }
+
     static func start(_ locale: String, drafts: Bool, confidence: Bool) async throws -> Analyzer {
-        let t = transcriber(locale, drafts: drafts, confidence: confidence)
+        let t = module(locale, drafts: drafts, confidence: confidence)
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t])
             ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
         let analyzer = SpeechAnalyzer(modules: [t])
@@ -253,26 +284,31 @@ final class Analyzer: RecognitionStream, @unchecked Sendable {
         return me
     }
 
-    private init(_ t: SpeechTranscriber, analyzer: SpeechAnalyzer, format: AVAudioFormat,
+    private init(_ t: any SpeechModule, analyzer: SpeechAnalyzer, format: AVAudioFormat,
                  input: AsyncStream<AnalyzerInput>.Continuation) {
         self.analyzer = analyzer
         self.format = format
         self.input = input
         let (results, out) = AsyncThrowingStream.makeStream(of: Recognition.Piece.self)
         self.results = results
+        func piece(_ text: AttributedString, _ isFinal: Bool, _ range: CMTimeRange) -> Recognition.Piece {
+            var weighted = 0.0, chars = 0
+            for run in text.runs {
+                guard let c = run.transcriptionConfidence else { continue }
+                let len = text[run.range].characters.count
+                weighted += c * Double(len)
+                chars += len
+            }
+            return .init(text: String(text.characters), isFinal: isFinal,
+                         start: CMTimeGetSeconds(range.start), end: CMTimeGetSeconds(range.end),
+                         confidence: chars > 0 ? weighted / Double(chars) : nil)
+        }
         reader = Task {
             do {
-                for try await r in t.results {
-                    var weighted = 0.0, chars = 0
-                    for run in r.text.runs {
-                        guard let c = run.transcriptionConfidence else { continue }
-                        let len = r.text[run.range].characters.count
-                        weighted += c * Double(len)
-                        chars += len
-                    }
-                    out.yield(.init(text: String(r.text.characters), isFinal: r.isFinal,
-                                    start: CMTimeGetSeconds(r.range.start), end: CMTimeGetSeconds(r.range.end),
-                                    confidence: chars > 0 ? weighted / Double(chars) : nil))
+                if let t = t as? SpeechTranscriber {
+                    for try await r in t.results { out.yield(piece(r.text, r.isFinal, r.range)) }
+                } else if let d = t as? DictationTranscriber {
+                    for try await r in d.results { out.yield(piece(r.text, r.isFinal, r.range)) }
                 }
                 out.finish()
             } catch {

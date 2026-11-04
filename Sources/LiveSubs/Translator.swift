@@ -1,7 +1,5 @@
-import AppKit
 import AVFoundation
 import AudioToolbox
-import CoreAudio
 import CoreMedia
 import Speech
 import Translation

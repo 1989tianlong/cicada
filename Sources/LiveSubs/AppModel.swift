@@ -1192,7 +1192,7 @@ final class AppModel: ObservableObject {
         if notesToo { notes.generate(for: id) }
         let content = UNMutableNotificationContent()
         content.title = L("\(s.displayTitle) 转好了")
-        content.body = L("\(MainWindowView.length(s)) · \(s.lines.count) 句") + (notesToo ? L("，正在整理纪要") : "")
+        content.body = L("\(RecordList.length(s)) · \(s.lines.count) 句") + (notesToo ? L("，正在整理纪要") : "")
         content.userInfo = ["session": id]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "import-\(id)", content: content, trigger: nil)) { error in
             if let error { debugLog("import: notification not shown: \(error)") }
