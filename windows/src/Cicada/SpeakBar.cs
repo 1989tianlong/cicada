@@ -18,16 +18,14 @@ sealed class SpeakBar : Window
     public SpeakBar(Controller app)
     {
         this.app = app;
-        WindowStyle = WindowStyle.None; Background = Palette.Night; Topmost = true; ShowInTaskbar = false; ShowActivated = false;
-        ResizeMode = ResizeMode.NoResize; SizeToContent = SizeToContent.Height; Width = 560; FontFamily = Palette.Font; Title = L("知了");
-        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome { CaptionHeight = 0, ResizeBorderThickness = new Thickness(0), GlassFrameThickness = new Thickness(0, 1, 0, 0), UseAeroCaptionButtons = false });
+        WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent; Topmost = true; ShowInTaskbar = false; ShowActivated = false;
+        ResizeMode = ResizeMode.NoResize; SizeToContent = SizeToContent.Height; Width = 560 + 2 * Ui.ShadowRoom; FontFamily = Palette.Font; Title = L("知了");
         SourceInitialized += (_, _) =>
         {
             Native.MakeNonActivating(this);
-            Native.UseSystemFrame(this, dark: true);
             Native.SetCaptureVisible(this, app.Settings.ShowInCapture);
         };
-        Content = new Border { Padding = new Thickness(18, 12, 18, 14), Child = body };
+        Content = Ui.Floating(new Border { Padding = new Thickness(18, 12, 18, 14), Child = body }, new SolidColorBrush(Color.FromArgb(0xF0, 0x15, 0x17, 0x1C)), 14, dark: true);
         SizeChanged += (_, _) => Place();
         hide.Tick += (_, _) => { hide.Stop(); Hide(); };
     }
@@ -37,7 +35,7 @@ sealed class SpeakBar : Window
         var area = SystemParameters.WorkArea;
         Left = area.Left + (area.Width - ActualWidth) / 2;
         var above = app.Settings.View == "subtitles" && app.NotesVisible ? 150 : 16;
-        Top = area.Bottom - ActualHeight - above;
+        Top = area.Bottom - ActualHeight - above + Ui.ShadowRoom;
     }
 
     public void Refresh()

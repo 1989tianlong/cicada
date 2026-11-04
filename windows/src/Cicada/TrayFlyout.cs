@@ -18,13 +18,11 @@ sealed class TrayFlyout : Window
     public TrayFlyout(Controller app)
     {
         this.app = app;
-        // Framed by DWM like the notes panel: rounded, shadowed, and cheap to redraw each second.
-        WindowStyle = WindowStyle.None; Background = Palette.SurfaceAlt;
-        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome { CaptionHeight = 0, ResizeBorderThickness = new Thickness(0), GlassFrameThickness = new Thickness(0, 1, 0, 0), UseAeroCaptionButtons = false });
-        SourceInitialized += (_, _) => Native.UseSystemFrame(this);
+        // The Mac panel's 16-point corners and soft shadow (Ui.Floating), so a transparent window.
+        WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         Topmost = true; ShowInTaskbar = false; ResizeMode = ResizeMode.NoResize;
-        Width = 380; SizeToContent = SizeToContent.Height; FontFamily = Palette.Font; Title = L("知了");
-        Content = body;
+        Width = 380 + 2 * Ui.ShadowRoom; SizeToContent = SizeToContent.Height; FontFamily = Palette.Font; Title = L("知了");
+        Content = Ui.Floating(body, Palette.Page);
         Deactivated += (_, _) => { Hide(); hiddenAt = DateTime.UtcNow; };
         KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Hide(); };
         SizeChanged += (_, _) => Anchor();
@@ -47,8 +45,8 @@ sealed class TrayFlyout : Window
     void Anchor()
     {
         var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - 12;
-        Top = area.Bottom - ActualHeight - 12;
+        Left = area.Right - ActualWidth - 12 + Ui.ShadowRoom;
+        Top = area.Bottom - ActualHeight - 12 + Ui.ShadowRoom;
     }
 
     public void Refresh() => body.Content = Build();

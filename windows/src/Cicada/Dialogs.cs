@@ -23,9 +23,9 @@ static class Dialogs
     /// A one-line answer: the new text (maybe empty), or null when cancelled.
     public static string? Prompt(Window owner, string title, string value, string? hint, string ok)
     {
-        var box = new TextBox { Text = value, FontSize = 14, MinHeight = 32, VerticalContentAlignment = VerticalAlignment.Center };
+        var box = new TextBox { Text = value };
         System.Windows.Automation.AutomationProperties.SetName(box, title);
-        var content = new StackPanel { Children = { box } };
+        var content = new StackPanel { Children = { Ui.Field(box) } };
         if (hint is not null) { var h = Ui.Helper(hint); h.Margin = new Thickness(0, 8, 0, 0); content.Children.Add(h); }
         return Show(owner, title, content, ok, danger: false, box);
     }
@@ -47,21 +47,21 @@ static class Dialogs
         buttons.ColumnDefinitions.Add(new ColumnDefinition());
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
         buttons.ColumnDefinitions.Add(new ColumnDefinition());
-        Grid.SetColumn(cancel, 2);
+        Grid.SetColumn(primary, 2);
         buttons.Children.Add(primary);
-        if (single) { primary.IsCancel = true; Grid.SetColumnSpan(primary, 3); } else buttons.Children.Add(cancel);
-        var heading = Ui.Text(title, 20, Palette.Ink, FontWeights.SemiBold);
+        if (single) { primary.IsCancel = true; Grid.SetColumn(primary, 0); Grid.SetColumnSpan(primary, 3); } else buttons.Children.Add(cancel);
+        var heading = Ui.Text(title, 20, Palette.Ink, FontWeights.Bold);
         content.Margin = new Thickness(0, 12, 0, 0);
         dialog.Content = new Border
         {
-            Margin = new Thickness(16), Background = Palette.Surface, BorderBrush = Palette.ControlStroke, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(16), Background = Palette.Surface, BorderBrush = Palette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16),
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 32, ShadowDepth = 8, Opacity = 0.25 },
             Child = new StackPanel
             {
                 Children =
                 {
                     new Border { Padding = new Thickness(24, 24, 24, 24), Child = new StackPanel { Children = { heading, content } } },
-                    new Border { Background = Palette.Mica, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(0, 1, 0, 0), CornerRadius = new CornerRadius(0, 0, 8, 8), Padding = new Thickness(24, 20, 24, 20), Child = buttons },
+                    new Border { Padding = new Thickness(24, 0, 24, 24), Child = buttons },
                 },
             },
         };

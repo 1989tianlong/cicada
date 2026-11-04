@@ -20,6 +20,7 @@ static class Palette
     public static readonly SolidColorBrush Subtle = B(0xF0F1F3);
     public static readonly SolidColorBrush Selected = B(0xE6E8EB);
     public static readonly SolidColorBrush Stroke = B(0xE3E5E8);
+    public static readonly SolidColorBrush Line = B(0xE4E6EA);
     public static readonly SolidColorBrush StrokeSoft = B(0xEEF0F2);
     public static readonly SolidColorBrush ControlStroke = B(0xD5D8DD);
     public static readonly SolidColorBrush Ink = B(0x15171C);
@@ -32,12 +33,17 @@ static class Palette
     public static readonly SolidColorBrush AccentText = B(0xA8370F);
     public static readonly SolidColorBrush Success = B(0x0F7B3F);
     public static readonly SolidColorBrush Danger = B(0xC42B1C);
-    public static readonly SolidColorBrush ErrorBg = B(0xFDF0EE);
+    public static readonly SolidColorBrush ErrorBg = B(0xFDECEA);
     public static readonly SolidColorBrush ErrorStroke = B(0xF3CBC4);
     public static readonly SolidColorBrush WarnBg = B(0xFFF6E5);
     public static readonly SolidColorBrush WarnStroke = B(0xF1DDB0);
     public static readonly SolidColorBrush WarnIcon = B(0x9D5D00);
     public static readonly SolidColorBrush Night = B(0x15171C);
+    public static readonly SolidColorBrush Toggle = B(0xD9DBE0);
+    public static readonly SolidColorBrush FieldLine = B(0xD1D4D9);
+    /// The Mac's ground for windows (onboarding, settings), a shade lighter than the panels' fill.
+    public static readonly SolidColorBrush Page = B(0xF7F8FA);
+    /// The Mac's pale error and warning washes.
     public static readonly SolidColorBrush NightText = B(0xB4B9C2);
     /// 说话人 1, 2, 3… cycling after four (the Mac's SpeakerColor): not the accent (live, and 你),
     /// distinct in lightness, all ≥ 4.5:1 on white.
@@ -87,7 +93,8 @@ static class Ui
         FontFamily = Palette.Font,
     };
 
-    public static TextBlock Heading(string text, double size = 15) => Text(text, size, Palette.Ink, FontWeights.SemiBold);
+    // The Mac's headings are bold, not semibold: they carry the page.
+    public static TextBlock Heading(string text, double size = 15) => Text(text, size, Palette.Ink, FontWeights.Bold);
     public static TextBlock Helper(string text) => Text(text, 12, Palette.Secondary);
 
     /// A 20×20 stroke icon, or a filled one, scaled to `size`.
@@ -135,32 +142,32 @@ static class Ui
 
     public enum Kind { Standard, Primary, Accent, Subtle, Danger, Pale }
 
-    /// Windows 11 buttons: Standard (white, hairline), Primary (ink), Accent (live orange, for
-    /// 开始听 only), Subtle (no fill until hover), Danger (red, for delete), Pale (the 结束 pill).
+    /// The Mac's buttons (Views.swift › SoftButton and friends): Standard is a soft grey fill with no
+    /// border, Primary ink, Accent live orange (开始听 only), Subtle no fill until hover, Danger red,
+    /// Pale the 结束 pill. Corners 10, or 12 on the big ones; labels semibold.
     public static Button Button(string label, Action onClick, Kind kind = Kind.Standard, string? icon = null, double height = 36, bool iconFill = false)
     {
-        var (bg, fg, border) = kind switch
+        var (bg, fg) = kind switch
         {
-            Kind.Primary => (Palette.Ink, Brushes.White, Brushes.Transparent),
-            Kind.Accent => (Palette.AccentFill, Brushes.White, Brushes.Transparent),
-            Kind.Danger => (Palette.Danger, Brushes.White, Brushes.Transparent),
-            Kind.Pale => (Palette.AccentPale, Palette.AccentText, Brushes.Transparent),
-            Kind.Subtle => ((Brush)Brushes.Transparent, (Brush)Palette.Ink, (Brush)Brushes.Transparent),
-            _ => (Palette.Surface, Palette.Ink, Palette.ControlStroke),
+            Kind.Primary => (Palette.Ink, Brushes.White),
+            Kind.Accent => (Palette.AccentFill, Brushes.White),
+            Kind.Danger => (Palette.Danger, Brushes.White),
+            Kind.Pale => (Palette.AccentPale, Palette.AccentText),
+            Kind.Subtle => ((Brush)Brushes.Transparent, (Brush)Palette.Ink),
+            _ => (Palette.Mica, Palette.Ink),
         };
         var content = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        if (icon is not null) content.Children.Add(Icon(icon, kind == Kind.Accent && height >= 48 ? 20 : 16, fg, iconFill));
-        var text = new TextBlock { Text = label, FontSize = height >= 48 ? 16 : 14, FontWeight = kind is Kind.Standard or Kind.Subtle ? FontWeights.Normal : FontWeights.SemiBold, FontFamily = Palette.Font, VerticalAlignment = VerticalAlignment.Center, Foreground = fg };
+        if (icon is not null) content.Children.Add(Icon(icon, height >= 48 ? 20 : 16, fg, iconFill));
+        var text = new TextBlock { Text = label, FontSize = height >= 48 ? 16 : 14, FontWeight = kind == Kind.Subtle ? FontWeights.Normal : FontWeights.SemiBold, FontFamily = Palette.Font, VerticalAlignment = VerticalAlignment.Center, Foreground = fg };
         if (icon is not null) text.Margin = new Thickness(8, 0, 0, 0);
         content.Children.Add(text);
         var b = new Button
         {
-            Content = content, Foreground = fg, Background = bg, BorderBrush = border, BorderThickness = new Thickness(kind == Kind.Standard ? 1 : 0),
-            Height = height, Padding = new Thickness(14, 0, 14, 0), Cursor = Cursors.Hand, MinWidth = height >= 36 ? 80 : 0,
-            // The Fluent theme left-aligns buttons; ours fill their slot unless a caller says otherwise.
+            Content = content, Foreground = fg, Background = bg, BorderThickness = new Thickness(0),
+            Height = height, Padding = new Thickness(16, 0, 16, 0), Cursor = Cursors.Hand, MinWidth = height >= 36 ? 72 : 0,
             HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center,
         };
-        b.Template = Template(kind is Kind.Standard or Kind.Subtle);
+        b.Template = Template(kind is Kind.Standard or Kind.Subtle, radius: height >= 44 ? 12 : 10, soft: kind == Kind.Standard);
         b.Click += (_, _) => onClick();
         AutomationName(b, label);
         return b;
@@ -174,7 +181,7 @@ static class Ui
             Content = Icon(icon, iconSize, color ?? Palette.Body, fill), Width = size, Height = size, Background = Brushes.Transparent,
             BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = name,
         };
-        b.Template = Template(plain: true, onDark: onDark);
+        b.Template = Template(plain: true, onDark: onDark, radius: 10);
         b.Click += (_, _) => onClick();
         AutomationName(b, name);
         return b;
@@ -183,11 +190,11 @@ static class Ui
     static void AutomationName(UIElement e, string name) => System.Windows.Automation.AutomationProperties.SetName(e, name);
 
     /// Rounded, no Windows 7 chrome. Plain buttons get a grey wash on hover; filled ones dim a little.
-    static ControlTemplate Template(bool plain, bool onDark = false, Type? target = null)
+    static ControlTemplate Template(bool plain, bool onDark = false, Type? target = null, double radius = 10, bool soft = false)
     {
         var t = new ControlTemplate(target ?? typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border), "bg");
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(radius));
         border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
@@ -201,9 +208,10 @@ static class Ui
         var pressed = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
         if (plain)
         {
-            var wash = onDark ? new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)) : (Brush)Palette.Subtle;
+            // A soft button darkens to the line grey; a subtle one gets the ground's fill.
+            var wash = onDark ? new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)) : soft ? Palette.Line : (Brush)Palette.Mica;
             hover.Setters.Add(new Setter(Border.BackgroundProperty, wash, "bg"));
-            pressed.Setters.Add(new Setter(Border.BackgroundProperty, onDark ? new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)) : Palette.Selected, "bg"));
+            pressed.Setters.Add(new Setter(Border.BackgroundProperty, onDark ? new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)) : Palette.Line, "bg"));
         }
         else
         {
@@ -256,14 +264,41 @@ static class Ui
     /// A small pill: 对方可见 and the like.
     public static Border Badge(string text, Brush? bg = null, Brush? fg = null) => new()
     {
-        Background = bg ?? Palette.AccentPale, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 2, 8, 3), VerticalAlignment = VerticalAlignment.Center,
+        Background = bg ?? Palette.AccentPale, CornerRadius = new CornerRadius(9), Padding = new Thickness(9, 3, 9, 4), VerticalAlignment = VerticalAlignment.Center,
         Child = Text(text, 12, fg ?? Palette.AccentText, FontWeights.SemiBold, wrap: false),
     };
 
+    /// Room around a floating window's card for its shadow.
+    public const double ShadowRoom = 14;
+
+    /// A floating window's surface as on the Mac: 16-point corners and a soft shadow. The shadow is
+    /// a few translucent rings, not a blur effect: a blur is redrawn in software on every change.
+    public static FrameworkElement Floating(UIElement content, Brush background, double radius = 16, bool dark = false)
+    {
+        var grid = new Grid { Margin = new Thickness(ShadowRoom - 6, ShadowRoom - 4, ShadowRoom - 6, ShadowRoom - 8) };
+        double[] alphas = dark ? [0.05, 0.07, 0.10, 0.14] : [0.015, 0.025, 0.04, 0.06];
+        for (int i = 0; i < alphas.Length; i++)
+        {
+            var spread = alphas.Length - i;
+            grid.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(radius + spread), Margin = new Thickness(-spread + 6, -spread + 4 + 1, -spread + 6, -spread + 8 - 3),
+                Background = new SolidColorBrush(Color.FromArgb((byte)(alphas[i] * 255), 0, 0, 0)),
+            });
+        }
+        grid.Children.Add(new Border
+        {
+            Background = background, CornerRadius = new CornerRadius(radius), Margin = new Thickness(6, 4, 6, 8),
+            BorderBrush = dark ? new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)) : Palette.Line, BorderThickness = new Thickness(1),
+            Child = content,
+        });
+        return grid;
+    }
+
     public static Border Card(UIElement child, Thickness? padding = null, Brush? bg = null) => new()
     {
-        Background = bg ?? Palette.Surface, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-        Padding = padding ?? new Thickness(16), Child = child,
+        Background = bg ?? Palette.Surface, BorderBrush = Palette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16),
+        Padding = padding ?? new Thickness(20), Child = child,
     };
 
     public enum Severity { Error, Warning }
@@ -288,37 +323,33 @@ static class Ui
         dock.Children.Add(text);
         return new Border
         {
-            Background = error ? Palette.ErrorBg : Palette.WarnBg, BorderBrush = error ? Palette.ErrorStroke : Palette.WarnStroke,
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 12, 12, 12), Child = dock,
+            Background = error ? Palette.ErrorBg : Palette.WarnBg, BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 12, 12, 12), Child = dock,
         };
     }
 
-    /// The Windows 11 toggle switch (role switch), with 开/关 beside it as Settings does.
+    /// The Mac's switch: an ink track when on, a grey one when off, a white knob; no 开/关 beside it.
     public static FrameworkElement Switch(bool on, Action<bool> changed, string name)
     {
-        var state = Text(on ? L("开") : L("关"), 13, Palette.Body, wrap: false);
-        var knob = new Ellipse { Width = 12, Height = 12 };
-        var track = new Border { Width = 40, Height = 20, CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1), Child = knob, Padding = new Thickness(3, 0, 3, 0) };
+        var knob = new Ellipse { Width = 18, Height = 18, Fill = Brushes.White, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 3, ShadowDepth = 1, Opacity = 0.25 } };
+        var track = new Border { Width = 38, Height = 22, CornerRadius = new CornerRadius(11), Child = knob, Padding = new Thickness(2) };
         void Paint(bool v)
         {
-            track.Background = v ? Palette.Ink : Palette.Surface;
-            track.BorderBrush = v ? Palette.Ink : Palette.Secondary;
-            knob.Fill = v ? Brushes.White : Palette.Secondary;
+            track.Background = v ? Palette.Ink : Palette.Toggle;
             knob.HorizontalAlignment = v ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            state.Text = v ? L("开") : L("关");
         }
         Paint(on);
-        var toggle = new ToggleButton { IsChecked = on, Content = track, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, Padding = new Thickness(0) };
-        toggle.Template = Template(plain: false, target: typeof(ToggleButton));
+        var toggle = new ToggleButton { IsChecked = on, Content = track, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center };
+        toggle.Template = Template(plain: false, target: typeof(ToggleButton), radius: 11);
         toggle.Click += (_, _) => { var v = toggle.IsChecked == true; Paint(v); changed(v); };
         AutomationName(toggle, name);
-        return Row(12, state, toggle);
+        return toggle;
     }
 
     /// A segmented control: one choice of a few, the chosen one raised on a grey track.
     public static FrameworkElement Segmented(IEnumerable<(string value, string label)> options, string selected, Action<string> changed)
     {
-        var track = new Border { Background = Palette.Subtle, CornerRadius = new CornerRadius(6), Padding = new Thickness(2) };
+        var track = new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(10), Padding = new Thickness(3) };
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         track.Child = row;
         var buttons = new List<(Button b, string v)>();
@@ -328,15 +359,15 @@ static class Ui
             {
                 var on = value == v;
                 b.Background = on ? Palette.Surface : Brushes.Transparent;
-                b.Effect = on ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 3, ShadowDepth = 1, Opacity = 0.15 } : null;
+                b.Effect = on ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 4, ShadowDepth = 1, Opacity = 0.10 } : null;
                 ((TextBlock)b.Content).FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
                 ((TextBlock)b.Content).Foreground = on ? Palette.Ink : Palette.Body;
             }
         }
         foreach (var (value, label) in options)
         {
-            var b = new Button { Content = Text(label, 13, Palette.Body, wrap: false), Height = 30, Padding = new Thickness(12, 0, 12, 0), BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
-            b.Template = Template(plain: false);
+            var b = new Button { Content = Text(label, 13, Palette.Body, wrap: false), Height = 30, Padding = new Thickness(14, 0, 14, 0), BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
+            b.Template = Template(plain: false, radius: 8);
             b.Click += (_, _) => { Paint(value); changed(value); };
             buttons.Add((b, value));
             row.Children.Add(b);
@@ -363,16 +394,68 @@ static class Ui
         return row;
     }
 
-    public static ComboBox Choice(IEnumerable<(string value, string label)> options, string selected, Action<string> changed, double width = 200)
+    /// A pop-up button, as the Mac's pickers: the chosen value on a soft fill with a chevron, and a
+    /// menu of the choices, the chosen one checked. (Windows' own combo box looks out of place here.)
+    public static Button Choice(IEnumerable<(string value, string label)> options, string selected, Action<string> changed, double width = 200)
     {
-        var box = new ComboBox { Width = width, FontFamily = Palette.Font, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
-        foreach (var (value, label) in options)
+        var list = options.ToList();
+        var label = Text(list.FirstOrDefault(o => o.value == selected).label ?? "", 14, Palette.Ink, FontWeights.SemiBold, wrap: false);
+        var chevron = Icon(Icons.Chevron, 14, Palette.Secondary, stroke: 1.8);
+        var dock = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(chevron, Dock.Right);
+        chevron.Margin = new Thickness(8, 0, 0, 0);
+        label.HorizontalAlignment = HorizontalAlignment.Left;
+        dock.Children.Add(chevron); dock.Children.Add(label);
+        var b = new Button
         {
-            var item = new ComboBoxItem { Content = label, Tag = value };
-            box.Items.Add(item);
-            if (value == selected) box.SelectedItem = item;
+            Content = dock, Width = width, Height = 34, Padding = new Thickness(12, 0, 10, 0), Background = Palette.Mica, BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Center,
+        };
+        b.Template = Template(plain: true, radius: 10, soft: true);
+        var current = selected;
+        b.Click += (_, _) =>
+        {
+            var menu = new ContextMenu { PlacementTarget = b, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom, FontFamily = Palette.Font, MinWidth = width };
+            foreach (var (value, text) in list)
+            {
+                var item = new MenuItem { Header = text, IsCheckable = true, IsChecked = value == current };
+                item.Click += (_, _) => { current = value; label.Text = text; changed(value); };
+                menu.Items.Add(item);
+            }
+            menu.IsOpen = true;
+        };
+        AutomationName(b, label.Text);
+        return b;
+    }
+
+    /// A text field as on the Mac: white, 10-point corners, a light line, generous padding.
+    public static Border Field(Control box) => FieldFrame(StyleField(box), box);
+
+    /// The frame alone, around anything (a field with a button inside it); `focus` lights it.
+    public static Border FieldFrame(UIElement child, Control? focus = null)
+    {
+        var border = new Border { Background = Brushes.White, BorderBrush = Palette.FieldLine, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Height = 40, Padding = new Thickness(12, 0, 12, 0), Child = child };
+        if (focus is not null)
+        {
+            focus.GotKeyboardFocus += (_, _) => border.BorderBrush = Palette.Ink;
+            focus.LostKeyboardFocus += (_, _) => border.BorderBrush = Palette.FieldLine;
         }
-        box.SelectionChanged += (_, _) => { if (box.SelectedItem is ComboBoxItem { Tag: string v }) changed(v); };
+        return border;
+    }
+
+    /// The text control itself, without Windows' frame.
+    public static Control StyleField(Control box)
+    {
+        box.BorderThickness = new Thickness(0);
+        box.Background = Brushes.Transparent;
+        box.FontSize = 14;
+        box.FontFamily = Palette.Font;
+        box.Padding = new Thickness(0);
+        box.VerticalContentAlignment = VerticalAlignment.Center;
+        box.FocusVisualStyle = null;
+        var host = new FrameworkElementFactory(typeof(ScrollViewer), "PART_ContentHost");
+        host.SetValue(ScrollViewer.VerticalAlignmentProperty, VerticalAlignment.Center);
+        box.Template = new ControlTemplate(box.GetType()) { VisualTree = host };
         return box;
     }
 
@@ -401,5 +484,18 @@ static class AppIcon
         catch { return null; }
     }
 
-    public static Image Small(double size = 16) => new() { Source = Image, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
+    /// The icon at `size`, from the .ico's largest frame (its first is 16 px and blurs when scaled up).
+    public static Image Small(double size = 16) { var i = new Image { Source = size > 20 ? Large ?? Image : Image, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }; RenderOptions.SetBitmapScalingMode(i, BitmapScalingMode.HighQuality); return i; }
+
+    static readonly System.Windows.Media.Imaging.BitmapSource? Large = LoadLarge();
+
+    static System.Windows.Media.Imaging.BitmapSource? LoadLarge()
+    {
+        try
+        {
+            var d = System.Windows.Media.Imaging.BitmapDecoder.Create(new Uri("pack://application:,,,/cicada.ico"), System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+            return d.Frames.OrderByDescending(f => f.PixelWidth).First();
+        }
+        catch { return null; }
+    }
 }

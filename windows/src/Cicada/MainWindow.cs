@@ -33,7 +33,7 @@ static class Records
 sealed class MainWindow : Window
 {
     readonly Controller app;
-    readonly TextBox search = new() { FontSize = 14, MinHeight = 34, VerticalContentAlignment = VerticalAlignment.Center, Padding = new Thickness(30, 0, 8, 0) };
+    readonly TextBox search = new();
     readonly StackPanel list = new();
     readonly ContentControl detail = new();
     string? selected;
@@ -48,7 +48,8 @@ sealed class MainWindow : Window
         selected = select;
         Title = L("会议记录") + " · " + L("知了");
         Width = 1200; Height = Math.Min(780, SystemParameters.WorkArea.Height - 24); MinWidth = 960; MinHeight = 520;
-        Background = Palette.Mica; FontFamily = Palette.Font; Icon = AppIcon.Image;
+        // One white sheet, as the Mac's main window: no cards, no second layer.
+        Background = Palette.Surface; FontFamily = Palette.Font; Icon = AppIcon.Image;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var grid = new Grid();
@@ -62,7 +63,14 @@ sealed class MainWindow : Window
         glass.HorizontalAlignment = HorizontalAlignment.Left; glass.Margin = new Thickness(10, 0, 0, 0); glass.IsHitTestVisible = false;
         System.Windows.Automation.AutomationProperties.SetName(search, L("搜索标题、纪要和原话"));
         search.TextChanged += (_, _) => { placeholder.Visibility = search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; Fill(); };
-        var searchBox = new Grid { Margin = new Thickness(12, 8, 12, 8), Children = { search, glass, placeholder } };
+        Ui.StyleField(search);
+        search.Margin = new Thickness(22, 0, 0, 0);
+        placeholder.Margin = new Thickness(22, 0, 0, 0);
+        glass.Margin = new Thickness(0);
+        var inside = new Grid { Children = { glass, search, placeholder } };
+        var searchBox = Ui.FieldFrame(inside, search);
+        searchBox.Background = Palette.Mica; searchBox.BorderThickness = new Thickness(0); searchBox.Height = 36;
+        searchBox.Margin = new Thickness(16, 16, 16, 10);
 
         var left = new DockPanel();
         DockPanel.SetDock(searchBox, Dock.Top);
@@ -71,8 +79,7 @@ sealed class MainWindow : Window
 
         var right = new Border
         {
-            Background = Palette.Surface, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(1, 1, 0, 0),
-            CornerRadius = new CornerRadius(8, 0, 0, 0), Child = detail,
+            Background = Palette.Surface, BorderBrush = Palette.Line, BorderThickness = new Thickness(1, 0, 0, 0), Child = detail,
         };
         Grid.SetColumn(right, 1);
         grid.Children.Add(left); grid.Children.Add(right);
@@ -143,8 +150,8 @@ sealed class MainWindow : Window
     void Paint(Button b)
     {
         var on = (string)b.Tag == selected;
-        b.Background = on ? Palette.Surface : Brushes.Transparent;
-        b.Effect = on ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 3, ShadowDepth = 1, Opacity = 0.08 } : null;
+        // The Mac's list: the chosen meeting on the ground's grey, no shadow.
+        b.Background = on ? Palette.Mica : Brushes.Transparent;
     }
 
     /// A list row: white and raised when chosen, a grey wash under the mouse otherwise.
@@ -152,7 +159,7 @@ sealed class MainWindow : Window
     {
         var t = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border), "bg");
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
         border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
@@ -160,7 +167,7 @@ sealed class MainWindow : Window
         var hover = new MultiTrigger();
         hover.Conditions.Add(new Condition(UIElement.IsMouseOverProperty, true));
         hover.Conditions.Add(new Condition(Control.BackgroundProperty, Brushes.Transparent));
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Selected, "bg"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Page, "bg"));
         t.Triggers.Add(hover);
         return t;
     }
@@ -185,7 +192,7 @@ sealed class MainWindow : Window
         var live = app.Listen.Listening && app.Listen.SessionId == s.Id;
         var top = new StackPanel { Margin = new Thickness(32, 24, 32, 0) };
 
-        var title = Ui.Text(SessionStore.DisplayTitle(s), 26, Palette.Ink, FontWeights.SemiBold);
+        var title = Ui.Text(SessionStore.DisplayTitle(s), 26, Palette.Ink, FontWeights.Bold);
         top.Children.Add(Ui.Row(6, title, Ui.IconButton(Icons.Pencil, L("重命名"), () => Rename(s), Palette.Secondary, 32, 16)));
         var spoken = s.Lines.Select(l => l.SrcLang).FirstOrDefault(x => x is not null);
         var into = s.Lines.Select(l => l.DstLang).FirstOrDefault(x => x is not null);
@@ -270,7 +277,7 @@ sealed class MainWindow : Window
         var s = new StackPanel();
         s.Children.Add(Ui.Text(title, 13, Palette.Body, FontWeights.SemiBold));
         foreach (var i in items) s.Children.Add(Gap(i, 10));
-        return new Border { Background = Palette.SurfaceAlt, BorderBrush = Palette.StrokeSoft, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(16, 14, 16, 14), Margin = new Thickness(0, 0, 0, 16), Child = s };
+        return new Border { Background = Palette.Page, BorderBrush = Palette.Line, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 14, 16, 14), Margin = new Thickness(0, 0, 0, 16), Child = s };
     }
 
     FrameworkElement Transcript(Session s, ScrollViewer scroll)

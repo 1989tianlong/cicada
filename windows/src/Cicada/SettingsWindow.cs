@@ -14,7 +14,7 @@ sealed class SettingsWindow : Window
     readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 0, 32, 32) };
     readonly StackPanel nav = new() { Margin = new Thickness(12, 8, 12, 12) };
     readonly Dictionary<string, FrameworkElement> sections = [];
-    readonly PasswordBox keyBox = new() { FontSize = 14, MinHeight = 32, Width = 300, VerticalContentAlignment = VerticalAlignment.Center };
+    readonly PasswordBox keyBox = new();
     bool editingKey;
     string current = "ling";
 
@@ -23,7 +23,7 @@ sealed class SettingsWindow : Window
         this.app = app;
         Title = L("设置") + " · " + L("知了");
         Width = 1000; Height = Math.Min(760, SystemParameters.WorkArea.Height - 24); MinWidth = 760; MinHeight = 480;
-        Background = Palette.Mica; FontFamily = Palette.Font; Icon = AppIcon.Image;
+        Background = Palette.Page; FontFamily = Palette.Font; Icon = AppIcon.Image;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         System.Windows.Automation.AutomationProperties.SetName(keyBox, L("Ling key"));
         var grid = new Grid();
@@ -44,7 +44,7 @@ sealed class SettingsWindow : Window
         var offset = scroll.VerticalOffset;
         sections.Clear();
         var page = new StackPanel { MaxWidth = 860, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var title = Ui.Text(L("设置"), 28, Palette.Ink, FontWeights.SemiBold);
+        var title = Ui.Text(L("设置"), 28, Palette.Ink, FontWeights.Bold);
         title.Margin = new Thickness(0, 4, 0, 8);
         page.Children.Add(title);
         Section(page, "ling", L("Ling"), KeyCard(), Group(Card(Icons.Notes, L("纪要和翻译用的模型"), L("3.1 更准；3.0 更快、更省。语音识别固定用 Ming。"),
@@ -85,10 +85,9 @@ sealed class SettingsWindow : Window
         {
             var on = id == current;
             var content = new Grid();
-            var mark = new Border { Width = 3, Height = 16, CornerRadius = new CornerRadius(2), Background = on ? Palette.Ink : Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(-12, 0, 0, 0) };
-            content.Children.Add(mark);
+
             content.Children.Add(Ui.Row(12, Ui.Icon(icon, 18, Palette.Ink), Ui.Text(label, 14, Palette.Ink, on ? FontWeights.SemiBold : FontWeights.Normal, wrap: false)));
-            var b = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, Content = content, Height = 40, Padding = new Thickness(12, 0, 12, 0), HorizontalContentAlignment = HorizontalAlignment.Left, Background = on ? Palette.Selected : Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Margin = new Thickness(0, 0, 0, 2) };
+            var b = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, Content = content, Height = 40, Padding = new Thickness(12, 0, 12, 0), HorizontalContentAlignment = HorizontalAlignment.Left, Background = on ? Palette.Line : Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Margin = new Thickness(0, 0, 0, 2) };
             b.Template = NavTemplate();
             b.Click += (_, _) =>
             {
@@ -105,7 +104,7 @@ sealed class SettingsWindow : Window
     {
         var t = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border), "bg");
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
         border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         var content = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -115,14 +114,14 @@ sealed class SettingsWindow : Window
         var hover = new MultiTrigger();
         hover.Conditions.Add(new Condition(UIElement.IsMouseOverProperty, true));
         hover.Conditions.Add(new Condition(Control.BackgroundProperty, Brushes.Transparent));
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Subtle, "bg"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Mica, "bg"));
         t.Triggers.Add(hover);
         return t;
     }
 
     void Section(StackPanel page, string id, string title, params FrameworkElement[] groups)
     {
-        var h = Ui.Text(title, 14, Palette.Ink, FontWeights.SemiBold);
+        var h = Ui.Text(title, 13, Palette.Secondary, FontWeights.Bold);
         h.Margin = new Thickness(0, 20, 0, 8);
         sections[id] = h;
         page.Children.Add(h);
@@ -135,7 +134,7 @@ sealed class SettingsWindow : Window
         var s = new StackPanel();
         for (int i = 0; i < cards.Length; i++)
             s.Children.Add(new Border { BorderBrush = Palette.StrokeSoft, BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0), Child = cards[i] });
-        return new Border { Background = Palette.Surface, BorderBrush = Palette.Stroke, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = s };
+        return new Border { Background = Palette.Surface, BorderBrush = Palette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), Child = s, Padding = new Thickness(4, 2, 4, 2) };
     }
 
     /// One setting: icon, name, one grey line, and its control on the right.
@@ -216,7 +215,9 @@ sealed class SettingsWindow : Window
         if (editingKey)
         {
             if (keyBox.Parent is Panel p) p.Children.Remove(keyBox);
-            control = Ui.Row(8, keyBox, Ui.Button(L("保存"), () => _ = SaveKey(), Ui.Kind.Primary, height: 32), Ui.Button(L("取消"), () => { editingKey = false; Render(); }, height: 32));
+            if (keyBox.Parent is Border old) old.Child = null;
+            var field = Ui.Field(keyBox); field.Width = 300; field.Height = 34;
+            control = Ui.Row(8, field, Ui.Button(L("保存"), () => _ = SaveKey(), Ui.Kind.Primary, height: 34), Ui.Button(L("取消"), () => { editingKey = false; Render(); }, height: 34));
         }
         else
         {

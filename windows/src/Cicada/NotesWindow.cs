@@ -30,23 +30,21 @@ sealed class NotesWindow : Window
     public NotesWindow(Controller app)
     {
         this.app = app;
-        // A plain frameless window, framed by DWM (UseSystemFrame), not a transparent one: those are
-        // redrawn in software, and with a shadow that cost most of a CPU core while listening.
+        // Transparent, so it can have the Mac's 16-point corners (Windows' own frame stops at 8). WPF
+        // redraws such a window in software, so nothing here animates: the clock is the one redraw a
+        // second, and the shadow is plain rings (Ui.Floating), not a blur.
         WindowStyle = WindowStyle.None;
-        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
-        {
-            CaptionHeight = 0, ResizeBorderThickness = new Thickness(6), GlassFrameThickness = new Thickness(0, 1, 0, 0), UseAeroCaptionButtons = false,
-        });
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
         Topmost = true;
         ShowInTaskbar = false;
         ShowActivated = false;
-        ResizeMode = ResizeMode.CanResize;
+        ResizeMode = ResizeMode.CanResizeWithGrip;
         FontFamily = Palette.Font;
         Title = L("知了");
         SourceInitialized += (_, _) =>
         {
             Native.MakeNonActivating(this);
-            Native.UseSystemFrame(this, Subtitles);
             ApplyCaptureSetting();
         };
         // Drag from anywhere that isn't a control (buttons and links mark the press handled).
@@ -57,7 +55,7 @@ sealed class NotesWindow : Window
         SizeChanged += (_, e) =>
         {
             if (!Subtitles || !e.HeightChanged) return;
-            if (e.PreviousSize.Height <= 0 || !placedSubtitles) { Top = SystemParameters.WorkArea.Bottom - e.NewSize.Height - 16; placedSubtitles = true; }
+            if (e.PreviousSize.Height <= 0 || !placedSubtitles) { Top = SystemParameters.WorkArea.Bottom - e.NewSize.Height - 16 + Ui.ShadowRoom; placedSubtitles = true; }
             else Top -= e.NewSize.Height - e.PreviousSize.Height;
         };
         Place();
@@ -73,15 +71,15 @@ sealed class NotesWindow : Window
         if (Subtitles)
         {
             SizeToContent = SizeToContent.Height; MinHeight = 80; MinWidth = 480;
-            Width = Math.Min(900, area.Width - 48);
-            Left = area.Left + (area.Width - Width) / 2; Top = area.Bottom - Math.Max(ActualHeight, MinHeight) - 16;
+            Width = Math.Min(900, area.Width - 48) + 2 * Ui.ShadowRoom;
+            Left = area.Left + (area.Width - Width) / 2; Top = area.Bottom - Math.Max(ActualHeight, MinHeight) - 16 + Ui.ShadowRoom;
             placedSubtitles = ActualHeight > 0;
         }
         else
         {
             SizeToContent = SizeToContent.Manual; MinHeight = 360; MinWidth = 340;
-            Width = 400; Height = Math.Min(820, area.Height - 32);
-            Left = area.Right - Width - 16; Top = area.Top + 16;
+            Width = 400 + 2 * Ui.ShadowRoom; Height = Math.Min(820, area.Height - 32) + 2 * Ui.ShadowRoom;
+            Left = area.Right - Width - 16 + Ui.ShadowRoom; Top = area.Top + 16 - Ui.ShadowRoom;
         }
     }
 
@@ -124,8 +122,6 @@ sealed class NotesWindow : Window
             builtFor = mode; headerKey = tabsKey = barsKey = null;
             header = new ContentControl(); bars = new ContentControl(); live = new ContentControl(); tabs = new ContentControl(); footer = new ContentControl();
             scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(16, 14, 12, 16) };
-            Background = Subtitles ? Palette.Night : Palette.Surface;
-            if (IsLoaded) Native.UseSystemFrame(this, Subtitles);
             Content = Subtitles ? SubtitleFrame() : PanelFrame();
         }
         var key = $"{app.Listen.Listening}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
@@ -160,7 +156,7 @@ sealed class NotesWindow : Window
         DockPanel.SetDock(footer, Dock.Bottom);
         dock.Children.Add(footer);
         dock.Children.Add(scroll);
-        return dock;
+        return Ui.Floating(dock, Palette.Surface);
     }
 
     FrameworkElement Header()
@@ -255,7 +251,7 @@ sealed class NotesWindow : Window
                 stack.Children.Add(Gap(Ui.Row(6, Ui.LiveDot(4), Ui.Text(L("在听下一句"), 12, Palette.Tertiary, wrap: false)), 6, top: true));
         }
         // Room for a two-line translation, so the tabs below don't jump as lines come and go.
-        return new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(8), Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(12, 0, 12, 0), Child = stack, MinHeight = 126 };
+        return new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(12, 0, 12, 0), Child = stack, MinHeight = 126 };
     }
 
     FrameworkElement TabRow()
@@ -398,7 +394,7 @@ sealed class NotesWindow : Window
         grid.Children.Add(live);
         grid.Children.Add(header);
         var handle = new Border { Width = 36, Height = 4, CornerRadius = new CornerRadius(2), Background = new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) };
-        return new Border { Padding = new Thickness(16, 6, 10, 14), Child = new StackPanel { Children = { handle, grid } } };
+        return Ui.Floating(new Border { Padding = new Thickness(16, 6, 10, 14), Child = new StackPanel { Children = { handle, grid } } }, new SolidColorBrush(Color.FromArgb(0xF0, 0x15, 0x17, 0x1C)), 14, dark: true);
     }
 
     FrameworkElement SubtitleLine()
