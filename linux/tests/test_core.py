@@ -31,7 +31,7 @@ from cicada.core import session_store  # noqa: E402
 from cicada.core.session_store import SessionStore  # noqa: E402
 from cicada.core.settings import AppSettings  # noqa: E402
 from cicada.core.support import Paths  # noqa: E402
-from cicada.core.translator import Heard, Translator, clean_translation, parse_heard, parse_interpretation  # noqa: E402
+from cicada.core.translator import Heard, Translator, clean_translation, hear_tokens, is_noise, parse_heard, parse_interpretation  # noqa: E402
 from cicada.core.ling import StreamResponse  # noqa: E402
 from cicada.core.speak import SpeakEngine  # noqa: E402
 from cicada.core import speakers  # noqa: E402
@@ -288,6 +288,21 @@ class Hearing(Base):
         self.assertEqual(("zh-CN", "好的"), (same.lang, same.translation))
         self.assertIsNone(parse_heard("LANG: en\nORIGINAL: Hi\nTRANSLATION: Hi again", "zh-CN", None).translation)
         self.assertEqual("ja", parse_heard("lang: ja-JP\noriginal: はい\ntranslation: 是", "zh-CN", None).lang)
+
+    def test_drops_noise(self):
+        # Same cases as the Android and Windows ports' noise tests.
+        for o in ("嗯。", "Mm.", "uh, um", "呃呃呃呃呃", "嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯。", "滴答" * 50,
+                  "hmmmm", "うーん", "음…", "喂？", "No no no no no no",
+                         "（无语音内容）", "[Music]", "♪♪", "这段音频是一段旋律，没有说话声。", "There is no speech in this audio."):
+            self.assertTrue(is_noise(o), o)
+        for o in ("嗯，好的。", "OK.", "Oh no, it crashed.", "对", "对对对", "谢谢谢谢", "喂喂，能听到吗？", "No, no, no.",
+                  "えーと、来週の件ですが", "あの人です", "Okay, let's move on to the quarterly numbers.", "（笑）好的"):
+            self.assertFalse(is_noise(o), o)
+        spoken = "我们今天讨论一下这个季度的数字和下个季度的计划安排"
+        self.assertTrue(is_noise(spoken, 1.0))
+        self.assertFalse(is_noise(spoken, 4.0))
+        self.assertIsNone(parse_heard("LANG: zh-CN\nORIGINAL: 嗯，嗯，嗯，嗯，嗯，嗯。\nTRANSLATION: 嗯，嗯，嗯，嗯，嗯，嗯。", "zh-CN", None))
+        self.assertEqual((800, 380, 800), (hear_tokens(0), hear_tokens(8.0), hear_tokens(30.0)))
 
     def test_follow_system_as_on_the_mac(self):
         # FollowSystemTests, with Linux locale names.
