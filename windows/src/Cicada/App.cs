@@ -45,6 +45,13 @@ sealed class Controller
     public readonly ListenEngine Listen;
     public readonly SpeakEngine Speak;
     public readonly WindowsVoice WindowsVoice = new();
+    public readonly UpdateChecker Updates;
+    /// 检查更新 in settings: null, or the result of the last manual check for a few seconds.
+    public string? UpdateCheck { get; private set; }
+    bool checksUpdates;
+    /// The tray panel opened: check in the background once the last answer is an hour old.
+    public void PanelOpened() { if (checksUpdates) _ = Updates.CheckIfDue(UpdateChecker.Stale); }
+    public static string Version => typeof(Controller).Assembly.GetName().Version?.ToString(3) ?? "0";
     PushToTalk? talk;
     SpeakBar? speakBar;
     DeviceRecorder? mic;
@@ -90,6 +97,8 @@ sealed class Controller
         Notes.Changed += Changed;
         Store.Changed += _ => Changed();
         Store.Words += id => Dispatch.BeginInvoke(() => HeardWords(id));
+        Updates = new UpdateChecker(Settings.UpdateLastChecked, at => Dispatch.BeginInvoke(() => { Settings.UpdateLastChecked = at; Settings.Save(); })) { Current = Version };
+        Updates.Changed += UpdatesChanged;
     }
 
     public void Launch()
@@ -109,6 +118,8 @@ sealed class Controller
         talk.Released += () => Dispatch.BeginInvoke(PressEnded);
         Log.Debug($"audio: speakers {Endpoints.Default(Endpoints.Flow.Render)?.Name ?? "none"}, mic {Endpoints.Microphone()?.Name ?? "none"}, cable {(Endpoints.Cable() is null ? "absent" : "present")}");
         DebugServer.Start(this);
+        // A dev build isn't what a release replaces: it checks only when pointed at a test feed.
+        if (!Paths.Dev || Environment.GetEnvironmentVariable("CICADA_UPDATE_FEED") is { Length: > 0 }) { checksUpdates = true; Updates.Start(); }
         var watch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         watch.Tick += (_, _) => _ = WatchEnd();
         watch.Start();
@@ -123,6 +134,9 @@ sealed class Controller
         if (flyout?.IsVisible == true) flyout.Refresh();
         UpdateTray();
     });
+
+    /// Only update news re-renders settings: Changed fires on every line heard.
+    void UpdatesChanged() => Dispatch.BeginInvoke(() => { Changed(); settingsWindow?.UpdatesChanged(); });
 
     // MARK: Tray (the Mac's menu bar panel)
 
@@ -207,6 +221,7 @@ sealed class Controller
         else menu.Items.Add(Item(L("开始听"), () => _ = ToggleListening(), Hotkey.Label.Replace('+', ' ')));
         menu.Items.Add(Settings.View == "subtitles" ? Item(L("换成纪要"), () => SetView("notes")) : Item(L("换成字幕条"), () => SetView("subtitles")));
         menu.Items.Add(new Separator());
+        if (Updates.Available is { } update) menu.Items.Add(Item(LF("有新版本 %@", update.Version), DownloadUpdate, ink: Palette.AccentText));
         menu.Items.Add(Item(L("会议记录"), () => ShowRecords()));
         menu.Items.Add(Item(L("设置"), ShowSettings));
         menu.Items.Add(new Separator());
@@ -494,6 +509,8 @@ sealed class Controller
         settingsWindow.Activate();
     }
 
+    public void SettingsPage(string id) => settingsWindow?.Show(id);
+
     public void SetView(string view)
     {
         Settings.View = view;
@@ -518,6 +535,38 @@ sealed class Controller
         Settings.Target = target;
         Settings.Save();
         Changed();
+    }
+
+    // MARK: Updates
+
+    /// 下载: the browser fetches this PC's zip (or opens the release page when there is none).
+    /// Replacing the app in place comes later.
+    public void DownloadUpdate()
+    {
+        if (Updates.Available is not { } u) return;
+        Open(u.Zip ?? u.Page);
+        Log.Debug($"update: download {u.Version}");
+    }
+
+    public void OpenReleaseNotes() { if (Updates.Available is { } u) Open(u.Page); }
+
+    static void Open(string url)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception e) { Log.Debug($"update: open failed {e.GetType().Name}"); }
+    }
+
+    /// 检查更新: says 正在检查… / 已是最新版本 / 连不上 GitHub for a few seconds.
+    public async Task CheckForUpdates()
+    {
+        if (UpdateCheck == L("正在检查…")) return;
+        UpdateCheck = L("正在检查…");
+        UpdatesChanged();
+        var reached = await Updates.Check();
+        UpdateCheck = Updates.Available is not null ? null : reached ? L("已是最新版本") : L("连不上 GitHub，请稍后再试");
+        UpdatesChanged();
+        await Task.Delay(4000);
+        if (UpdateCheck != L("正在检查…")) { UpdateCheck = null; UpdatesChanged(); }
     }
 
     public bool HotkeyRegistered => hotkey?.Registered ?? false;
@@ -569,6 +618,8 @@ sealed class Controller
         ["autostart"] = AutoStart.Enabled,
         ["ending"] = Ending is { } p ? $"{EndingTitle(p)} · {EndingLeft(p)}" : null,
         ["autoEnded"] = AutoEnded,
+        ["update"] = Updates.Available?.Version,
+        ["updateChecked"] = Updates.LastChecked?.ToString("o"),
         ["inCall"] = endWatch is { } w ? string.Join(",", w.InCall.Values) : null,
     };
 }
@@ -576,7 +627,8 @@ sealed class Controller
 /// Debug commands over a named pipe (\\.\pipe\cicada-dev), dev builds only: the Windows
 /// counterpart of the Mac's `tools/lsctl`. One command per connection, one JSON line back.
 ///   state | start | stop | feed <wav> | sample | view notes|subtitles | capture on|off
-///   show notes|records|settings | quit
+///   show notes|records|settings [page]|flyout|menu | quit
+///   updatefeed <url or file> | checkupdate
 ///   calls <program=name,…>|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
 static class DebugServer
 {
@@ -624,7 +676,7 @@ static class DebugServer
             case "capture": app.Settings.ShowInCapture = arg == "on"; app.Settings.Save(); app.CaptureSettingChanged(); break;
             case "show":
                 if (arg == "records") app.ShowRecords();
-                else if (arg == "settings") app.ShowSettings();
+                else if (arg.StartsWith("settings")) { app.ShowSettings(); if (arg.Length > 9) app.SettingsPage(arg[9..]); }
                 else if (arg == "flyout") app.ShowFlyout();
                 else if (arg == "menu") app.ShowMenu();
                 else if (arg.StartsWith("onboarding")) { var o = new Onboarding(app); if (int.TryParse(arg[10..].Trim(), out var n)) o.At(n); o.Show(); }
@@ -649,6 +701,8 @@ static class DebugServer
                 break;
             case "endkeep": app.KeepRecording(); break;
             case "quit": _ = app.Quit(); break;
+            case "updatefeed": app.Updates.Feed = arg; _ = app.CheckForUpdates(); break;
+            case "checkupdate": _ = app.CheckForUpdates(); break;
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };
         }

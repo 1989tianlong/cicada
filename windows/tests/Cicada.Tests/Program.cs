@@ -835,4 +835,68 @@ static class Tests
         }
         finally { LingClient.Spacing = old; }
     }
+
+    // MARK: Updates (the Mac's UpdateCheckerTests)
+
+    static string Rel(string tag, params string[] assets) =>
+        $$"""{"tag_name":"{{tag}}","html_url":"https://example.com/{{tag}}","assets":[{{string.Join(",", assets.Select(a => $$"""{"name":"{{a}}","browser_download_url":"https://example.com/{{a}}","size":1048576}"""))}}]}""";
+
+    public static void UpdateVersionsCompareByNumber()
+    {
+        Check(UpdateChecker.IsNewer("2.10.0", "2.9.1"), "2.10 > 2.9");
+        Check(UpdateChecker.IsNewer("1.4.1", "1.4"), "1.4.1 > 1.4");
+        Check(!UpdateChecker.IsNewer("1.4.0", "1.4"), "1.4.0 = 1.4");
+        Check(!UpdateChecker.IsNewer("1.3.9", "1.4.0"), "older");
+    }
+
+    public static void UpdateSkipsReleasesWithoutAWindowsZip()
+    {
+        var list = UpdateChecker.Decode($"[{Rel("v1.6.0", "Cicada-1.6.0-macOS-AppleSilicon.zip")},{Rel("v1.5.0", "Cicada-1.5.0-Windows-x64.zip", "Cicada-1.5.0-Windows-ARM64.zip")}]")!;
+        var u = UpdateChecker.NewestWindows(list, "x64")!;
+        Equal("1.5.0", u.Version, "newest with a Windows zip");
+        Equal("https://example.com/Cicada-1.5.0-Windows-x64.zip", u.Zip, "this PC's zip");
+        Equal(1048576L, u.Size, "size");
+        Equal("https://example.com/Cicada-1.5.0-Windows-ARM64.zip", UpdateChecker.NewestWindows(list, "ARM64")!.Zip, "ARM zip");
+    }
+
+    public static void UpdateOnArmFallsBackToX64AndSkipsDrafts()
+    {
+        var draft = Rel("v2.0.0", "Cicada-2.0.0-Windows-x64.zip").Replace("\"tag_name\"", "\"draft\":true,\"tag_name\"");
+        var list = UpdateChecker.Decode($"[{draft},{Rel("v1.5.0", "Cicada-1.5.0-Windows-x64.zip")}]")!;
+        var u = UpdateChecker.NewestWindows(list, "ARM64")!;
+        Equal("1.5.0", u.Version, "draft skipped");
+        Equal("https://example.com/Cicada-1.5.0-Windows-x64.zip", u.Zip, "x64 on ARM");
+        Equal(1, UpdateChecker.Decode(Rel("v1.5.0"))!.Count, "a single release");
+        Equal(null, UpdateChecker.Decode("{\"message\":\"Not Found\"}"), "GitHub's 404");
+        Equal(null, UpdateChecker.Decode("<html>"), "not JSON");
+    }
+
+    public static void UpdateDueAfterTheAge()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_000_000);
+        Check(UpdateChecker.Due(null, now, UpdateChecker.Every), "never checked");
+        Check(!UpdateChecker.Due(now.AddHours(-1), now, UpdateChecker.Every), "an hour ago");
+        Check(UpdateChecker.Due(now.AddHours(-4), now, UpdateChecker.Every), "4 hours ago");
+        Check(UpdateChecker.Due(now.AddHours(2), now, UpdateChecker.Every), "clock set back");
+    }
+
+    public static async Task UpdateCheckReadsAFeedFile()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"cicada-feed-{Environment.ProcessId}.json");
+        File.WriteAllText(file, $"[{Rel("v9.0.0", "Cicada-9.0.0-Windows-x64.zip", "Cicada-9.0.0-Windows-ARM64.zip")}]");
+        DateTimeOffset? saved = null;
+        var c = new UpdateChecker(null, at => saved = at) { Feed = file, Current = "1.0.0" };
+        try
+        {
+            Check(await c.Check(), "reached");
+            Equal("9.0.0", c.Available?.Version, "found");
+            Check(saved is not null && c.LastChecked == saved, "remembered");
+            c.Current = "9.0.0";
+            await c.Check();
+            Equal(null, c.Available, "up to date");
+            c.Feed = file + ".missing";
+            Check(!await c.Check(), "unreachable");
+        }
+        finally { File.Delete(file); }
+    }
 }

@@ -65,8 +65,10 @@ sealed class SettingsWindow : Window
             Card(Icons.List, L("说话人识别"), L("按声音标出说话人 1、2…，只在这台电脑上处理"), Ui.Switch(app.Settings.SpeakerVoices, v => { app.Settings.SpeakerVoices = v; Save(); }, L("说话人识别"))),
             Card(Icons.Power, L("开机时启动知了"), null, Ui.Switch(AutoStart.Enabled, v => AutoStart.Enabled = v, L("开机时启动知了"))),
             Card(Icons.Folder, L("会议记录存放位置"), $"{Paths.Sessions} · {L("和 Mac 版格式相同")}", Ui.Button(L("打开文件夹"), () => OpenFolder(Paths.Sessions), height: 32))));
-        var version = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3) ?? "";
-        Section(page, "about", L("关于"), Group(Card(null, LF("知了 %@", version), L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）"), Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!)), AppIcon.Small(24))));
+        Section(page, "about", L("关于"), Group(
+            Card(null, LF("知了 %@", Controller.Version), UpdateDetail(), UpdateControl(), AppIcon.Small(24)),
+            Card(null, L("日志"), null, Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!)))),
+            Credit());
         scroll.Content = page;
         scroll.ScrollToVerticalOffset(shownPage == current ? offset : 0);
         shownPage = current;
@@ -74,6 +76,33 @@ sealed class SettingsWindow : Window
     }
 
     string? shownPage;
+
+    static FrameworkElement Credit() { var t = Ui.Helper(L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）")); t.Margin = new Thickness(6, 0, 0, 0); return t; }
+
+    /// Opens one category's page (the debug pipe's `show settings about`).
+    public void Show(string id) { current = id; Render(); }
+
+    /// An update was found or a check finished: only 关于 shows it.
+    public void UpdatesChanged() { if (current == "about") Render(); }
+
+    // The Mac's AppRows version row: what the last check found, and 检查更新 or 下载.
+    string? UpdateDetail()
+    {
+        if (app.Updates.Available is { } u) return LF("有新版本 %@", u.Version) + " · " + L("下载后解压，替换旧的知了");
+        if (app.UpdateCheck is { } c) return c;
+        if (app.Updates.LastChecked is not { } d) return null;
+        var local = d.ToLocalTime();
+        return LF("上次检查 %@", local.ToString(local.Date == DateTime.Today ? "HH:mm" : L("M月d日 HH:mm"), Strings.Culture));
+    }
+
+    FrameworkElement UpdateControl()
+    {
+        if (app.Updates.Available is not null)
+            return Ui.Row(12, Ui.LinkText(L("更新说明"), app.OpenReleaseNotes), Ui.Button(L("下载"), app.DownloadUpdate, Ui.Kind.Primary, height: 32));
+        var check = Ui.Button(L("检查更新"), () => _ = app.CheckForUpdates(), height: 32);
+        check.IsEnabled = app.UpdateCheck != L("正在检查…");
+        return check;
+    }
 
     void Nav()
     {

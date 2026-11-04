@@ -5,6 +5,7 @@ Cicada 的 Windows 版：把电脑播放的声音变成双语字幕和实时纪�
 - 抓声音：WASAPI 进程回环，排除知了自己（Windows 10 2004 起）。
 - 识别：Ming（`Ming-3.0-audio-flash`）分段识别，一次请求同时返回语言、原文和译文；需要 Ling key。
 - 纪要、记录格式、提示词、多语言文案都和 Mac 版一致；文案的英日韩翻译直接用 `Resources/*.lproj/Localizable.strings`，Windows 独有的在 `src/Cicada/Strings/`。
+- 新版本：启动时和每 4 小时查一次 GitHub Releases（`UpdateChecker`），只认带 Windows zip 的发布；有新版本时托盘面板和设置 › 关于提示，浏览器下载这台电脑对应架构的 zip，还不能自动替换。开发版只在设了 `CICADA_UPDATE_FEED` 或用 `updatefeed` 调试命令时才查。
 
 ## 目录
 

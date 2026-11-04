@@ -37,6 +37,7 @@ sealed class TrayFlyout : Window
     {
         if (IsVisible) { Hide(); return; }
         if ((DateTime.UtcNow - hiddenAt).TotalMilliseconds < 300) return;
+        app.PanelOpened();
         Refresh();
         Show();
         Anchor();
@@ -74,6 +75,25 @@ sealed class TrayFlyout : Window
         var title = Ui.Row(12, AppIcon.Small(40), Ui.Stack(1, Ui.Text(L("知了"), 17, Palette.Ink, Palette.Strong, wrap: false), status));
         var head = Ui.Spread(title, Ui.IconButton(Icons.Gear, L("打开设置"), () => Do(app.ShowSettings), Palette.Body, 36, 18));
         stack.Children.Add(head);
+
+        // A newer release (the Mac's UpdateBanner): the browser downloads this PC's zip.
+        if (app.Updates.Available is { } update)
+        {
+            var size = update.Size > 0 ? $"{update.Size / 1_048_576.0:0} MB · " : "";
+            var text = Ui.Stack(2, Ui.Text(LF("新版本 %@", update.Version), 13, Palette.Ink, Palette.Strong, wrap: false),
+                                Ui.Text(size + L("下载后解压，替换旧的知了"), 11, Palette.Secondary),
+                                Ui.LinkText(L("更新说明"), () => Do(app.OpenReleaseNotes), 11));
+            var download = Ui.Button(L("下载"), () => Do(app.DownloadUpdate), Ui.Kind.Standard, height: 30);
+            var dock = new DockPanel();
+            DockPanel.SetDock(download, Dock.Right);
+            download.VerticalAlignment = VerticalAlignment.Center; download.Margin = new Thickness(10, 0, 0, 0);
+            var dot = Ui.Dot(Palette.Live, 7);
+            dot.Margin = new Thickness(0, 5, 8, 0); dot.VerticalAlignment = VerticalAlignment.Top;
+            DockPanel.SetDock(dot, Dock.Left);
+            dock.Children.Add(download); dock.Children.Add(dot); dock.Children.Add(text);
+            var strip = new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 14, 0, 0), Child = dock };
+            stack.Children.Add(strip);
+        }
 
         // The one thing to do
         var main = new StackPanel { Margin = new Thickness(0, 18, 0, 0) };
