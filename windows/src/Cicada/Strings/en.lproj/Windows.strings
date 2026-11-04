@@ -15,6 +15,7 @@
 "Windows 自带" = "Built into Windows";
 "yyyy年M月d日" = "MMM d, yyyy";
 "“%@”的纪要和文字记录都会删掉，没法恢复。" = "The notes and transcript for \"%@\" will be permanently deleted.";
+"一段 9 秒的英文会议" = "A 9-second meeting in English";
 "下载到的安装包和预期的不一样，为了安全没有安装。" = "The downloaded installer didn't match what we expected, so it wasn't installed for your safety.";
 "下载失败，检查网络后再试。" = "Download failed. Check your connection and try again.";
 "之后每 45 秒更新一次" = "Updated every 45 seconds after that";
@@ -94,6 +95,7 @@
 "现在是 %@" = "Currently %@";
 "电脑里一有人声，字幕就出来" = "Subtitles will appear as soon as someone speaks";
 "界面语言" = "App language";
+"看字幕和纪要怎么出现。纪要窗口不会抢走焦点，也不会出现在屏幕共享里。" = "See how subtitles and notes appear. The notes window never takes focus and stays out of screen sharing.";
 "知了 %@" = "Cicada %@";
 "知了听的是电脑播放出来的声音，不用麦克风，也不用授权。放一段视频或音乐试试。" = "Cicada listens to what your PC plays—no mic or permissions needed. Play a video or song to test it.";
 "知了还在听" = "Cicada is still listening";
