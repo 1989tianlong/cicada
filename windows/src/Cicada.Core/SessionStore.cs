@@ -65,7 +65,7 @@ public sealed class SessionStore
     {
         if (s.Renamed ?? !s.Title.StartsWith("会议 ")) return s.Title;
         var local = s.StartedAt.ToLocalTime();
-        var ui = CultureInfo.CurrentUICulture;
+        var ui = Strings.Culture;
         if (string.IsNullOrEmpty(s.Notes?.Title))
             return Strings.L("会议") + " " + local.ToString(Strings.L("M月d日 HH:mm"), ui);
         var date = local.Year == DateTimeOffset.Now.Year ? local.ToString(Strings.L("M月d日"), ui) : local.ToString(Strings.L("yyyy年M月d日"), ui);
@@ -154,7 +154,7 @@ public sealed class SessionStore
     public static string Markdown(Session s)
     {
         var b = new StringBuilder();
-        b.AppendLine($"# {s.Notes?.Title ?? s.Title}").AppendLine();
+        b.AppendLine($"# {DisplayTitle(s)}").AppendLine();
         b.AppendLine(s.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).AppendLine();
         if (s.Notes is { IsEmpty: false } n)
         {

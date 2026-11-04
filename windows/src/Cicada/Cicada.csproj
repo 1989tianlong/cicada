@@ -26,7 +26,8 @@
     <Using Remove="System.Drawing" />
     <Using Include="System.IO" />
     <None Include="../../../Resources/**/Localizable.strings" LinkBase="Resources" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="Strings/**/Windows.strings" LinkBase="Resources" CopyToOutputDirectory="PreserveNewest" />
+    <!-- LinkBase only moves files from outside the project, so these name their place explicitly. -->
+    <None Include="Strings/**/Windows.strings" Link="Resources/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Both made by scripts/build.sh from docs/icon.png and Resources/sample/sample.m4a; committed so CI on Windows needs no Mac tools. -->
     <Resource Include="Assets/cicada.ico" Link="cicada.ico" />
     <None Include="Assets/sample.wav" Link="Resources/sample.wav" CopyToOutputDirectory="PreserveNewest" />

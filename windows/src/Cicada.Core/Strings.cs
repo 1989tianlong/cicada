@@ -11,6 +11,8 @@ public static class Strings
 {
     static Dictionary<string, string> table = [];
     public static string Language { get; private set; } = "zh-Hans";
+    /// Dates in the app's language, not Windows': English Cicada on Chinese Windows writes "Nov 4".
+    public static CultureInfo Culture { get; private set; } = CultureInfo.GetCultureInfo("zh-CN");
 
     /// Loads the table for `language` ("en", "ja", "ko"; anything else is Chinese) from
     /// `folder`/<lang>.lproj/Localizable.strings.
@@ -19,6 +21,7 @@ public static class Strings
         var ui = language ?? CultureInfo.CurrentUICulture.Name;
         var head = ui.Split('-')[0];
         Language = head is "en" or "ja" or "ko" ? head : "zh-Hans";
+        Culture = CultureInfo.GetCultureInfo(Language switch { "en" => "en-US", "ja" => "ja-JP", "ko" => "ko-KR", _ => "zh-CN" });
         // The Mac's table, then the Windows-only strings over it (Windows.strings, same format).
         table = [];
         foreach (var name in new[] { "Localizable.strings", "Windows.strings" })

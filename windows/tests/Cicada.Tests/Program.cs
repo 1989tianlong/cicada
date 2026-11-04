@@ -119,6 +119,7 @@ static class Tests
         Check(SessionStore.DisplayTitle(s).EndsWith(" 路线评审"), "notes' name after the date");
         s.Renamed = true; s.Title = "我的会";
         Equal("我的会", SessionStore.DisplayTitle(s), "the user's title wins");
+        Check(SessionStore.Markdown(s).Split('\n')[0].TrimEnd() == "# 我的会", "the export is headed by the shown title");
     }
 
     // MARK: Hearing
@@ -284,6 +285,10 @@ static class Tests
         Equal("没有这条", Strings.L("没有这条"), "missing keys show the Chinese");
         Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), "zh-Hans");
         Equal("实时纪要", Strings.L("实时纪要"), "Chinese is the key");
+        Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), "en");
+        var s = new Session { Title = "会议 11月4日 10:27", StartedAt = new DateTimeOffset(2026, 11, 4, 10, 27, 0, TimeSpan.Zero) };
+        Check(!SessionStore.DisplayTitle(s).Contains('月'), "English dates whatever Windows' language: " + SessionStore.DisplayTitle(s));
+        Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), "zh-Hans");
         var t = Strings.Parse("/* c */\n\"a \\\"b\\\"\" = \"x\\ny\";\n// line\n\"%@ 分钟\" = \"%@ min\";");
         Equal("x\ny", t["a \"b\""], "escapes");
         Equal("%@ min", t["%@ 分钟"], "placeholders kept");
