@@ -82,7 +82,9 @@ struct AppRows: View {
         case .checking: return L("正在检查…")
         case .upToDate: return L("已是最新版本")
         case .failed: return L("连不上 GitHub，请稍后再试")
-        case .idle: return nil
+        case .idle:
+            guard let d = updates.lastChecked else { return nil }
+            return L("上次检查 \(dateText(d, Calendar.current.isDateInToday(d) ? "HHmm" : "MMMdHHmm"))")
         }
     }
 }

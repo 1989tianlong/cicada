@@ -163,32 +163,9 @@ final class AppMenu: NSObject, NSMenuItemValidation {
     @objc private func checkUpdates() {
         guard let model else { return }
         if model.updates.update != nil { model.updates.install(model: model); return }
-        Task {
-            model.updates.checkNow()
-            // A manual check from the menu answers in an alert: the panel isn't open to show it.
-            while model.updates.check == .checking { try? await Task.sleep(for: .milliseconds(100)) }
-            let alert = NSAlert()
-            if let u = model.updates.update {
-                alert.messageText = L("有新版本 \(u.version)")
-                alert.informativeText = L("当前版本 \(Updates.current)。安装后会自动重新打开。")
-                alert.addButton(withTitle: L("安装并重新打开"))
-                alert.addButton(withTitle: L("更新说明"))
-                alert.addButton(withTitle: L("稍后"))
-                switch alert.runModal() {
-                case .alertFirstButtonReturn: model.updates.install(model: model)
-                case .alertSecondButtonReturn: NSWorkspace.shared.open(u.url)
-                default: break
-                }
-            } else if model.updates.check == .upToDate {
-                alert.messageText = L("已是最新版本")
-                alert.informativeText = L("当前版本 \(Updates.current)。")
-                alert.runModal()
-            } else {
-                alert.messageText = L("暂时无法检查更新")
-                alert.informativeText = L("连不上 GitHub，请稍后再试。")
-                alert.runModal()
-            }
-        }
+        // The answer shows on the panel's version line, as for a check made there (no alert).
+        model.updates.checkNow()
+        model.openPanel?()
     }
 
     @objc private func openWebsite() { NSWorkspace.shared.open(AboutPanel.website) }

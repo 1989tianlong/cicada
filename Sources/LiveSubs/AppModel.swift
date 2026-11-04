@@ -1111,7 +1111,7 @@ final class AppModel: ObservableObject {
             updates.checkNow()
         case "updateCheck": updates.checkNow()
         case "updateInstall": updates.install(model: self)
-        case "updateState": debugLog("update current=\(Updates.current) found=\(updates.update?.version ?? "-") check=\(updates.check) progress=\(updates.progress.map { String($0) } ?? "-") failure=\(updates.failure ?? "-")")
+        case "updateState": debugLog("update current=\(Updates.current) found=\(updates.update?.version ?? "-") check=\(updates.check) last=\(updates.lastChecked.map { "\($0)" } ?? "-") progress=\(updates.progress.map { String($0) } ?? "-") failure=\(updates.failure ?? "-")")
         case "loginItem":
             if !arg.isEmpty { loginItem.set(arg == "on") }
             loginItem.refresh()
@@ -1411,6 +1411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             model.refreshOutputs()
             model.refresh()
+            model.updates.panelOpened()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
