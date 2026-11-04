@@ -1,8 +1,9 @@
 # Changelog
 
-One section per release, newest first. `scripts/release.sh` writes it from the `feat:` and `fix:`
-commits since the last tag, and the release workflow publishes it as the release notes. Lines under
-`## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
+One section per release, newest first; one version covers every platform. `scripts/release.sh`
+writes it from the `feat:` and `fix:` commits since the last tag, grouped by platform (the commit's
+scope), and the release workflow publishes it as the release notes and ships only the platforms in
+it. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
 ## 1.0.0 — 2026-11-03
 

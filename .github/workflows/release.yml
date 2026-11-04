@@ -1,5 +1,8 @@
 name: release
 
+# One tag, one version for every platform (VERSION). The CHANGELOG.md section says which platforms
+# changed (scripts/release_platforms.sh); only those are built and attached, so an app with no
+# change finds no new release for itself. Android waits for release signing (M3).
 on:
   push:
     tags: ["v*.*.*"]
@@ -17,31 +20,122 @@ env:
   TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  release:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      mac: ${{ steps.platforms.outputs.mac }}
+      windows: ${{ steps.platforms.outputs.windows }}
+      linux: ${{ steps.platforms.outputs.linux }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Check the tag matches VERSION
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          [[ "v$VERSION" == "$TAG" ]] || { echo "tag $TAG != VERSION $VERSION"; exit 1; }
+      - id: platforms
+        name: Platforms in this release
+        run: |
+          shipped=$(scripts/release_platforms.sh "${TAG#v}")
+          echo "$shipped"
+          grep -qxE "mac|windows|linux" <<< "$shipped" || { echo "nothing to build: Android has no release build yet"; exit 1; }
+          for p in mac windows linux; do
+            grep -qx "$p" <<< "$shipped" && echo "$p=true" >> "$GITHUB_OUTPUT" || echo "$p=false" >> "$GITHUB_OUTPUT"
+          done
+
+  mac:
+    needs: plan
+    if: needs.plan.outputs.mac == 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
-      - name: Check the tag matches Info.plist
-        run: |
-          PLIST=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
-          [[ "v$PLIST" == "$TAG" ]] || { echo "tag $TAG != Info.plist $PLIST"; exit 1; }
       - name: Build and package
         run: scripts/package.sh
         env:
           BUILD_NUMBER: ${{ github.run_number }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            build/Cicada-*.dmg
+            build/Cicada-*.zip
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build and zip
+        shell: pwsh
+        run: |
+          $v = "$env:TAG".TrimStart("v")
+          New-Item -ItemType Directory -Force dist | Out-Null
+          foreach ($pair in @(@("win-x64", "x64"), @("win-arm64", "ARM64"))) {
+            $out = "windows/build/Cicada-$($pair[0])"
+            dotnet publish windows/src/Cicada -c Release -r $pair[0] -o $out -p:DebugType=embedded
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Compress-Archive -Path "$out/*" -DestinationPath "dist/Cicada-$v-Windows-$($pair[1]).zip"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+
+  linux:
+    needs: plan
+    if: needs.plan.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build
+        # ffmpeg turns the sample meeting into WAV (no afconvert on Linux).
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          linux/scripts/build.sh
+          mkdir -p dist && cp linux/build/cicada-linux-*.tar.gz "dist/Cicada-${TAG#v}-Linux.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.tar.gz
+
+  publish:
+    needs: [plan, mac, windows, linux]
+    # Skipped platforms are fine; a failed or cancelled one stops the release.
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publish the release
         # A tag pushed again (history rewritten, tag moved) must not fail on the existing release:
-        # replace its files and notes instead.
+        # replace its files and notes instead. Without the Mac app the release is not marked
+        # latest: Macs on 1.0.0 read releases/latest and would offer a release with nothing for them.
         run: |
-          scripts/release_notes.sh "${TAG#v}" > build/notes.md
+          (cd dist && sha256sum -- * > checksums.txt)
+          cat dist/checksums.txt
+          scripts/release_notes.sh "${TAG#v}" > notes.md
+          latest=true; [[ "${{ needs.plan.outputs.mac }}" == true ]] || latest=false
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" build/Cicada-*.dmg build/Cicada-*.zip build/checksums.txt --clobber
-            gh release edit "$TAG" --notes-file build/notes.md
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes-file notes.md --latest=$latest
           else
-            gh release create "$TAG" build/Cicada-*.dmg build/Cicada-*.zip build/checksums.txt \
-              --title "知了 Cicada ${TAG#v}" --notes-file build/notes.md
+            gh release create "$TAG" dist/* --title "知了 Cicada ${TAG#v}" --notes-file notes.md --latest=$latest
           fi
         env:
           GH_TOKEN: ${{ github.token }}
