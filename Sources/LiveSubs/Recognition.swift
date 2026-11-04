@@ -320,7 +320,9 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
     private static let pause = 0.7
     private static let longest = 45.0
     private static let preroll = 0.3
-    private static let holdLimit = 6.0
+    /// How long the meeting's audio can wait for the line before it, a language check or the
+    /// talk key (a slow Mac takes several seconds to check two languages).
+    private static let holdLimit = 12.0
 
     private struct Line {
         let request: SFSpeechAudioBufferRecognitionRequest
@@ -336,11 +338,12 @@ final class LegacyStream: RecognitionStream, @unchecked Sendable {
         nonisolated(unsafe) private static var liveLines = 0
         nonisolated(unsafe) private static var clips = 0
 
-        /// Waits (up to 4 s) for no live line to be open, then holds new ones back. False: gave up.
+        /// Waits (up to 15 s) for no live line and no other clip, then holds new lines back. One clip
+        /// at a time: a language check of two candidates runs them one after the other. False: gave up.
         static func enterClip() async -> Bool {
-            for _ in 0..<40 {
+            for _ in 0..<150 {
                 let ok = lock.withLock { () -> Bool in
-                    guard liveLines == 0 else { return false }
+                    guard liveLines == 0, clips == 0 else { return false }
                     clips += 1
                     return true
                 }

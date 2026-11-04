@@ -84,7 +84,11 @@ final class ListenEngine {
     private var unconfirmed: [(seg: Segment, at: Date, duration: Double)] = []
     private var recordable: Bool {
         settings.sourceMode != .auto || languageConfirmed || (ambiguousDetections >= 2 && !mismatch)
+            || legacySingleLanguage
     }
+    /// macOS 14/15 with one Dictation language: nothing to compare it with and none Cicada could
+    /// fetch, and every check takes the recognizer from the meeting. It is taken as heard.
+    private var legacySingleLanguage: Bool { Recognition.legacy && candidates.count < 2 }
     /// The only model there is checked the audio and it isn't its language: what it writes is
     /// noise, neither shown nor kept, until another model or a pick settles it.
     private(set) var mismatch = false
@@ -683,7 +687,7 @@ final class ListenEngine {
 
     private func maybeDetectLanguage() {
         // One model can still tell whether the audio is its language, until the language is known.
-        guard isRunning, settings.sourceMode == .auto, !detecting,
+        guard isRunning, settings.sourceMode == .auto, !detecting, !legacySingleLanguage,
               candidates.count >= 2 || (!languageConfirmed && candidates.first == activeLang && activeLang != nil) else { return }
         var stats = router.stats(window: 6)
         if stats.silenceRun >= AudioRouter.gapSeconds { needsDetection = true }
@@ -867,7 +871,7 @@ final class ListenEngine {
     /// keep disagreeing, a model that couldn't be fetched: one click ends each.
     var asksLanguage: Bool {
         guard isRunning, settings.sourceMode == .auto, !languageConfirmed, fetchingModel == nil,
-              let firstHeardAt else { return false }
+              !legacySingleLanguage, let firstHeardAt else { return false }
         // Once offered it stays until answered: a check running meanwhile doesn't make it blink.
         if askShown { return true }
         // The one model said no and no other is coming: nothing is shown or kept, so ask now.
