@@ -161,9 +161,11 @@ public sealed class SessionStore
         b.AppendLine(s.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).AppendLine();
         if (s.Notes is { IsEmpty: false } n) b.AppendLine($"## {Strings.L("纪要")}").AppendLine().Append(NotesBody(n));
         b.AppendLine($"## {Strings.L("文字记录")}").AppendLine();
+        var numbers = SpeakerLabels.Numbers(s.Lines);
         foreach (var l in s.Lines.OrderBy(x => x.T))
         {
-            b.AppendLine($"**{Languages.Clock(l.T)}**{(l.Speaker == "me" ? $" {Strings.L("你")}：" : "")} {l.Src}  ");
+            var who = l.Speaker == "me" ? Strings.L("你") : numbers.TryGetValue(l.Id, out var num) ? Strings.LF("说话人 %lld", num) : null;
+            b.AppendLine($"**{Languages.Clock(l.T)}**{(who is null ? "" : $" {who}：")} {l.Src}  ");
             if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) b.AppendLine($"{l.Dst}");
             b.AppendLine();
         }

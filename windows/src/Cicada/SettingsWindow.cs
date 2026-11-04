@@ -63,10 +63,11 @@ sealed class SettingsWindow : Window
         Section(page, "speak", L("同声传译"), SpeakCards());
         Section(page, "privacy", L("隐私与启动"), Group(
             Card(Icons.Eye, L("共享屏幕时让对方看到"), L("关着时，截图和屏幕共享里看不到纪要和字幕"), Ui.Switch(app.Settings.ShowInCapture, app.SetShowInCapture, L("共享屏幕时让对方看到"))),
+            Card(Icons.List, L("说话人识别"), L("按声音标出说话人 1、2…，只在这台电脑上处理"), Ui.Switch(app.Settings.SpeakerVoices, v => { app.Settings.SpeakerVoices = v; Save(); }, L("说话人识别"))),
             Card(Icons.Power, L("开机时启动知了"), null, Ui.Switch(AutoStart.Enabled, v => AutoStart.Enabled = v, L("开机时启动知了"))),
             Card(Icons.Folder, L("会议记录存放位置"), $"{Paths.Sessions} · {L("和 Mac 版格式相同")}", Ui.Button(L("打开文件夹"), () => OpenFolder(Paths.Sessions), height: 32))));
         var version = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3) ?? "";
-        Section(page, "about", L("关于"), Group(Card(null, LF("知了 %@", version), null, Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!)), AppIcon.Small(24))));
+        Section(page, "about", L("关于"), Group(Card(null, LF("知了 %@", version), L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）"), Ui.LinkText(L("打开日志"), () => OpenFolder(Path.GetDirectoryName(Paths.Log)!)), AppIcon.Small(24))));
         scroll.Content = page;
         scroll.ScrollToVerticalOffset(offset);
         Nav();

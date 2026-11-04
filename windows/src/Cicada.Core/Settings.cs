@@ -20,6 +20,8 @@ public sealed class AppSettings
     [JsonPropertyName("uiLanguage")] public string UiLanguage { get; set; } = "system";
     /// 字幕文字大小, in px.
     [JsonPropertyName("subtitleSize")] public int SubtitleSize { get; set; } = 24;
+    /// 说话人识别: tell the other side's voices apart (on by default, as on the Mac).
+    [JsonPropertyName("speakerVoices")] public bool SpeakerVoices { get; set; } = true;
     /// 同声传译: hold right Ctrl to speak into the meeting in its language.
     [JsonPropertyName("speak")] public bool Speak { get; set; }
     /// 我说的语言: "system" or a source code.

@@ -47,6 +47,12 @@ public static class Strings
                 b.Append(next < args.Length ? args[next++] : "");
                 i++;
             }
+            // The Mac's integer placeholders (Swift interpolation of an Int becomes %lld).
+            else if (text[i] == '%' && i + 3 < text.Length && text.AsSpan(i + 1, 3) is "lld")
+            {
+                b.Append(next < args.Length ? args[next++] : "");
+                i += 3;
+            }
             else if (text[i] == '%' && i + 2 < text.Length && char.IsDigit(text[i + 1]) && text[i + 2] == '$' && i + 3 < text.Length && text[i + 3] == '@')
             {
                 int n = text[i + 1] - '1';

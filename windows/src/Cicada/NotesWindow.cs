@@ -244,8 +244,11 @@ sealed class NotesWindow : Window
         }
         else
         {
-            var who = line.Speaker == "me" ? L("你") : Ui.SpokenName(line.SrcLang);
-            stack.Children.Add(Ui.Text($"{who} · {Languages.Clock(line.T)}", 12, line.Speaker == "me" ? Palette.AccentText : Palette.Tertiary, wrap: false));
+            var lines = app.Store.Get(listen.SessionId!)?.Lines ?? [];
+            var number = app.Settings.SpeakerVoices && line.Speaker == "them" && SpeakerLabels.Numbers(lines).TryGetValue(line.Id, out var n) ? n : (int?)null;
+            var who = line.Speaker == "me" ? L("你") : number is { } k ? $"{LF("说话人 %lld", k)} · {Ui.SpokenName(line.SrcLang)}" : Ui.SpokenName(line.SrcLang);
+            var whoInk = line.Speaker == "me" ? Palette.AccentText : number is { } k2 ? Palette.Speaker(k2) : Palette.Tertiary;
+            stack.Children.Add(Ui.Text($"{who} · {Languages.Clock(line.T)}", 12, whoInk, wrap: false));
             if (line.Dst is not null && line.Dst != line.Src) stack.Children.Add(Gap(Ui.Text(line.Src, 13, Palette.Secondary), 4, top: true));
             stack.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, 17, Palette.Ink, FontWeights.SemiBold), 2, top: true));
             if (listen.Listening && listen.Pending > 0)
@@ -318,11 +321,32 @@ sealed class NotesWindow : Window
         var body = new StackPanel();
         // Stored as they arrive (the notes count them); shown in time order, so a sentence I said
         // sits between the other side's, which come back from Ming a little later.
-        foreach (var l in lines.OrderBy(x => x.T)) body.Children.Add(TranscriptRow(l));
+        foreach (var (l, who, ink) in Speakers(lines, app.Settings.SpeakerVoices)) body.Children.Add(TranscriptRow(l, who, ink));
         return body;
     }
 
-    internal static FrameworkElement TranscriptRow(TranscriptLine l)
+    /// Lines in time order with who said them, named only where the speaker changes (as chat apps
+    /// do): 你 for what I said into the meeting, 说话人 N once voices are told apart.
+    internal static IEnumerable<(TranscriptLine line, string? who, Brush? ink)> Speakers(IReadOnlyList<TranscriptLine> lines, bool voices)
+    {
+        var numbers = voices ? SpeakerLabels.Numbers(lines) : [];
+        string? last = null;
+        foreach (var l in lines.OrderBy(x => x.T))
+        {
+            var key = l.Speaker == "me" ? "me" : numbers.TryGetValue(l.Id, out var n) ? $"n{n}" : "them";
+            string? who = null; Brush? ink = null;
+            if (key != last)
+            {
+                if (key == "me") { who = L("你"); ink = Palette.AccentText; }
+                else if (numbers.TryGetValue(l.Id, out var m)) { who = LF("说话人 %lld", m); ink = Palette.Speaker(m); }
+                else if (numbers.Count > 0) { who = L("未识别"); ink = Palette.Tertiary; }
+            }
+            last = key;
+            yield return (l, who, ink);
+        }
+    }
+
+    internal static FrameworkElement TranscriptRow(TranscriptLine l, string? who = null, Brush? ink = null)
     {
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
         var time = Ui.Text(Languages.Clock(l.T), 12, Palette.AccentText, FontWeights.SemiBold, wrap: false);
@@ -330,8 +354,7 @@ sealed class NotesWindow : Window
         DockPanel.SetDock(time, Dock.Left);
         row.Children.Add(time);
         var text = new StackPanel();
-        // What I said into the meeting (同声传译) is marked, as the Mac names it 你.
-        if (l.Speaker == "me") text.Children.Add(Ui.Text(L("你"), 12, Palette.AccentText, FontWeights.SemiBold, wrap: false));
+        if (who is not null) text.Children.Add(Ui.Text(who, 12, ink ?? Palette.Secondary, FontWeights.SemiBold, wrap: false));
         text.Children.Add(Ui.Text(l.Src, 14, Palette.Ink));
         if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) text.Children.Add(Gap(Ui.Text(l.Dst, 13, Palette.Secondary), 2, top: true));
         row.Children.Add(text);

@@ -23,6 +23,12 @@ public sealed class ListenEngine
     Segmenter? segmenter;
     readonly Dictionary<int, Heard?> done = [];
     readonly Dictionary<int, Segment> segments = [];
+    // 说话人识别: voiceprints are made alongside Ming's reply (order doesn't matter there), and
+    // grouped in line order when the line is recorded (it does there).
+    readonly Dictionary<int, Task<float[]?>> prints = [];
+    VoiceClusterer clusterer = new();
+    /// Set by the app: the voiceprint model, or null where there is none (the Mac CLI, tests).
+    public IVoiceprint? Voiceprint { get; set; }
     readonly List<Task> inFlight = [];
     int nextToDeliver = 1, lineCount;
     TranscriptLine? last;
@@ -63,7 +69,7 @@ public sealed class ListenEngine
         SessionId = session.Id;
         lock (gate)
         {
-            done.Clear(); segments.Clear(); inFlight.Clear();
+            done.Clear(); segments.Clear(); inFlight.Clear(); prints.Clear(); clusterer = new();
             nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0;
             hint = null; candidate = null; candidateVotes = 0; Problem = null;
         }
@@ -124,7 +130,11 @@ public sealed class ListenEngine
     {
         var wav = Wav.Bytes(seg.Samples);
         string? lang;
-        lock (gate) { segments[seg.Index] = seg; lang = hint; }
+        lock (gate)
+        {
+            segments[seg.Index] = seg; lang = hint;
+            if (settings.SpeakerVoices && Voiceprint is { } vp) prints[seg.Index] = Task.Run(() => vp.Embed(seg.Samples));
+        }
         Changed?.Invoke();
         var task = Task.Run(async () =>
         {
@@ -181,11 +191,22 @@ public sealed class ListenEngine
             else { candidate = null; candidateVotes = 0; }
         }
 
+        // Whose voice: a line with hardly a letter ("." from a breath) gets none.
+        int? voice = null;
+        Task<float[]?>? print;
+        lock (gate) { prints.Remove(seg.Index, out print); }
+        if (print is not null && heard.Original.Count(char.IsLetter) >= 2)
+        {
+            var v = print.Wait(3000) ? print.Result : null;
+            if (v is not null) lock (gate) voice = clusterer.Label(v, seg.Seconds);
+        }
+
         TranscriptLine line;
         bool joined = false;
         lock (gate)
         {
-            if (last is not null && Continues(last, seg.Start - lastEnd, heard))
+            // Two voices never share a line, however the sentence was cut.
+            if (last is not null && Continues(last, seg.Start - lastEnd, heard) && (voice is null || last.Voice is null || voice == last.Voice))
             {
                 last.Src = Join(last.Src, heard.Original, heard.Lang);
                 last.Dst = last.Dst is null || heard.Translation is null ? null : Join(last.Dst, heard.Translation, target);
@@ -197,7 +218,7 @@ public sealed class ListenEngine
                 line = new TranscriptLine
                 {
                     Id = $"h{++lineCount}-{seg.Index}", T = seg.Start, Speaker = "them",
-                    Src = heard.Original, Dst = heard.Translation, SrcLang = heard.Lang, DstLang = target,
+                    Src = heard.Original, Dst = heard.Translation, SrcLang = heard.Lang, DstLang = target, Voice = voice,
                 };
                 last = line;
             }

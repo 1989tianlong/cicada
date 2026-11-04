@@ -186,10 +186,12 @@ public sealed class NotesEngine
 
     public static string Prompt(MeetingNotes notes, IReadOnlyList<TranscriptLine> lines, int from, string language, bool final)
     {
+        var numbers = SpeakerLabels.Numbers(lines);
         string Line(int i)
         {
             var l = lines[i];
-            var who = l.Speaker == "me" ? "你" : "对方";
+            // As Notes.swift: 说话人N once voices are told apart, 未识别 for a voice not on show.
+            var who = l.Speaker == "me" ? "你" : numbers.TryGetValue(l.Id, out var n) ? $"说话人{n}" : numbers.Count == 0 ? "对方" : "未识别";
             return $"[L{i + 1} {Languages.Clock(l.T)} {who}] {l.Src}";
         }
         var current = notes.IsEmpty ? "{}" : CompactJson(notes);

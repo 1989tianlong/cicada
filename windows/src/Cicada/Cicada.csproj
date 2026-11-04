@@ -30,6 +30,9 @@
     <None Include="Strings/**/Windows.strings" Link="Resources/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Both made by scripts/build.sh from docs/icon.png and Resources/sample/sample.m4a; committed so CI on Windows needs no Mac tools. -->
     <Resource Include="Assets/cicada.ico" Link="cicada.ico" />
+    <!-- The voiceprint model (scripts/compress-voiceprint.py; WeSpeaker, CC BY 4.0), inside the exe so
+         single-file compression shrinks it too. -->
+    <EmbeddedResource Include="Assets/voiceprint.onnx" LogicalName="voiceprint.onnx" />
     <None Include="Assets/sample.wav" Link="Resources/sample.wav" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../Cicada.Core/Cicada.Core.csproj" />
   </ItemGroup>

@@ -39,6 +39,10 @@ static class Palette
     public static readonly SolidColorBrush WarnIcon = B(0x9D5D00);
     public static readonly SolidColorBrush Night = B(0x15171C);
     public static readonly SolidColorBrush NightText = B(0xB4B9C2);
+    /// 说话人 1, 2, 3… cycling after four (the Mac's SpeakerColor): not the accent (live, and 你),
+    /// distinct in lightness, all ≥ 4.5:1 on white.
+    static readonly SolidColorBrush[] inks = [B(0x0F7B6C), B(0x7A4CC2), B(0xB03A7A), B(0x8A5A00)];
+    public static SolidColorBrush Speaker(int n) => inks[(Math.Max(1, n) - 1) % inks.Length];
     public static readonly FontFamily Font = new("Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Yu Gothic UI, Malgun Gothic");
 }
 

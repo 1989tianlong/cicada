@@ -73,6 +73,7 @@ sealed class Controller
         Speak = new SpeakEngine(Ling, Translator, Store, Settings, () => Listen.Spoken,
             () => Listen.Listening && Listen.SessionId is { } id && Store.Get(id) is { } s ? (id, s.StartedAt) : null, WindowsVoice);
         Speak.Changed += () => Dispatch.BeginInvoke(() => { speakBar ??= new SpeakBar(this); speakBar.Refresh(); });
+        Listen.Voiceprint = new WinVoiceprint();
         Listen.Changed += Changed;
         Notes.Changed += Changed;
         Store.Changed += _ => Changed();
@@ -408,6 +409,8 @@ sealed class Controller
         ["showInCapture"] = Settings.ShowInCapture,
         ["sessions"] = Store.All().Count,
         ["hotkey"] = HotkeyRegistered,
+        ["speakerVoices"] = Settings.SpeakerVoices,
+        ["voices"] = Listen.SessionId is { } vid && Store.Get(vid) is { } vs ? string.Join(",", vs.Lines.Where(l => l.Speaker == "them").Select(l => SpeakerLabels.Numbers(vs.Lines).TryGetValue(l.Id, out var n) ? n.ToString() : l.Voice is { } v ? $"v{v}" : "-")) : "",
         ["speak"] = Settings.Speak,
         ["speakState"] = Speak.State.ToString(),
         ["speakTarget"] = Speak.Target,
@@ -480,6 +483,7 @@ static class DebugServer
                 if (arg == "on" || arg == "off") { app.Settings.Speak = arg == "on"; app.Settings.Save(); app.SettingsChanged(); }
                 else _ = app.Speak.Speak(Wav.Bytes(Wav.Read(arg)), new DeviceSpeaker(Endpoints.Cable));
                 break;
+            case "speakers": app.Settings.SpeakerVoices = arg == "on"; app.Settings.Save(); app.SettingsChanged(); break;
             case "fakemic": app.SetFakeMic(arg == "off" ? null : arg); break;
             case "record": _ = app.RecordCable(arg); break;
             case "preview": _ = app.Preview(arg.Length > 0 ? arg : app.Speak.Target); break;

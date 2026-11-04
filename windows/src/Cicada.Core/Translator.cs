@@ -9,17 +9,20 @@ public sealed record Heard(string Lang, string Original, string? Translation);
 /// Apple translation. Listening sends each stretch of audio to Ming's audio model, which returns
 /// the language, the original and the translation in one call (as the Mac's speak-back does).
 /// Text translation is Ling first, then Google; Google is also the only one that sees drafts.
-public sealed class Translator(LingClient ling)
+public sealed class Translator(LingClient ling, HttpMessageHandler? google = null)
 {
-    static readonly HttpClient Http = MakeHttp();
+    static readonly HttpClient Shared = MakeHttp(null);
+    // Tests hand in their own handler, so they never reach the real Google.
+    readonly HttpClient Http = google is null ? Shared : MakeHttp(google);
     DateTime googleBackoffUntil = DateTime.MinValue;
 
     /// Names and terms the notes have settled on, e.g. "江充 (…; misheard as 江松)".
     public Func<IReadOnlyList<string>> Glossary { get; set; } = () => [];
 
-    static HttpClient MakeHttp()
+    static HttpClient MakeHttp(HttpMessageHandler? handler)
     {
-        var h = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        var h = handler is null ? new HttpClient() : new HttpClient(handler);
+        h.Timeout = TimeSpan.FromSeconds(8);
         h.DefaultRequestHeaders.UserAgent.ParseAdd("Cicada/1.1");
         return h;
     }
@@ -130,7 +133,7 @@ public sealed class Translator(LingClient ling)
 
     sealed class GoogleException(int status) : Exception($"http{status}") { public int Status { get; } = status; }
 
-    static async Task<string?> Google(string text, string source, string target)
+    async Task<string?> Google(string text, string source, string target)
     {
         var url = "https://translate.googleapis.com/translate_a/single?client=gtx"
                 + $"&sl={Uri.EscapeDataString(source)}&tl={Uri.EscapeDataString(target)}&dt=t&q={Uri.EscapeDataString(text)}";

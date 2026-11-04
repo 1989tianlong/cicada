@@ -60,6 +60,7 @@
 "打开设置" = "Settings";
 "按住%@说话" = "Hold %@ to speak";
 "按住%@说话，对方听到的是翻译后的声音" = "Hold %@ to speak. Others hear the translated voice.";
+"按声音标出说话人 1、2…，只在这台电脑上处理" = "Labels lines Speaker 1, 2… by voice, on this PC only";
 "换成字幕条" = "Switch to subtitle bar";
 "换成纪要" = "Switch to notes";
 "换成耳机或蓝牙音箱也能接着听。" = "Keeps working when you switch to headphones or Bluetooth speakers.";
@@ -110,6 +111,7 @@
 "设置知了" = "Set up Cicada";
 "识别、翻译和纪要都靠它。到 Ling 开放平台点“创建令牌”，复制 sk- 开头的那串，粘贴到下面。" = "Cicada uses Ling for transcription, translation, and notes. Go to the Ling platform, select \"Create token\", and paste the key starting with sk- below.";
 "试一下" = "Try it out";
+"说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）" = "Speaker identification uses the WeSpeaker voiceprint model (CC BY 4.0)";
 "还没听到声音" = "No audio detected yet";
 "还没填 key" = "No key added";
 "还没接上 Ling" = "Not connected to Ling";

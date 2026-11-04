@@ -409,6 +409,89 @@ static class Tests
         finally { LingClient.Spacing = old; }
     }
 
+    // MARK: Voices
+
+    public static void FbankMatchesKaldi()
+    {
+        var x = new short[19200];
+        for (int t = 0; t < x.Length; t++)
+            x[t] = (short)Math.Round(8000 * Math.Sin(2 * Math.PI * 220 * t / 16000) + 3000 * Math.Sin(2 * Math.PI * 1375 * t / 16000) + 1500 * Math.Sin(2 * Math.PI * 3100 * t / 16000 * (1 + t / 19200.0)));
+        var f = Fbank.Features(x)!;
+        var fx = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "fbank.json")))!;
+        Equal(fx["frames"]!.GetValue<int>() * Fbank.Bins, f.Length, "frame count");
+        foreach (var (row, values) in fx["rows"]!.AsObject())
+        {
+            int r = int.Parse(row);
+            var want = values!.AsArray().Select(v => v!.GetValue<double>()).ToArray();
+            var worst = Enumerable.Range(0, Fbank.Bins).Max(b => Math.Abs(f[r * Fbank.Bins + b] - want[b]));
+            Check(worst < 2e-3, $"row {r} off by {worst:F5} from numpy/Kaldi");
+        }
+        Check(Fbank.Features(new short[4000]) is null, "under 0.5 s gives no voiceprint");
+    }
+
+    static float[] Unit(params float[] v) { var n = MathF.Sqrt(v.Sum(x => x * x)); return v.Select(x => x / n).ToArray(); }
+
+    public static void ClustersVoicesAsTheMacDoes()
+    {
+        var c = new VoiceClusterer();
+        Check(c.Label(Unit(1, 0, 0), 1.0) is null, "a short first line starts no voice");
+        Equal(0, c.Label(Unit(1, 0, 0), 3.0), "a long one does");
+        Equal(0, c.Label(Unit(0.9f, 0.3f, 0), 1.0), "a similar line joins it, even short");
+        Equal(1, c.Label(Unit(0, 1, 0), 2.5), "a long unlike line is a new voice");
+        Check(c.Label(Unit(0, 0, 1), 1.0) is null, "a short unlike line stays 对方");
+    }
+
+    public static void NumbersVoicesOnceTwoHaveSaidEnough()
+    {
+        TranscriptLine L(int i, int? v, string text = "we should ship it") => new() { Id = $"h{i}", Speaker = "them", Src = text, Voice = v };
+        var lines = new List<TranscriptLine>();
+        for (int i = 0; i < 5; i++) lines.Add(L(i, 7));
+        Equal(0, SpeakerLabels.Numbers(lines).Count, "one voice alone: still 对方");
+        for (int i = 5; i < 9; i++) lines.Add(L(i, 3));
+        lines.Add(L(9, 3, "yeah"));
+        Equal(0, SpeakerLabels.Numbers(lines).Count, "\"yeah\" doesn't count towards a name");
+        lines.Add(L(10, 3, "我们下周一定上线"));
+        var n = SpeakerLabels.Numbers(lines);
+        Check(n["h0"] == 1 && n["h10"] == 2 && !n.ContainsKey("h20"), "numbers in the order voices got there");
+    }
+
+    sealed class FakePrint(Func<short[], float[]?> f) : IVoiceprint { public float[]? Embed(short[] s) => f(s); }
+
+    public static async Task NeverJoinsTwoVoices()
+    {
+        // Two halves of one "sentence" (no full stop, 0.4 s apart) in two different voices.
+        var fake = new Fake(body =>
+        {
+            if (!body.Contains("Ming-3.0-audio-flash")) return Reply("{}");
+            var url = JsonNode.Parse(body)!["messages"]![1]!["content"]![0]!["audio_url"]!["url"]!.GetValue<string>();
+            return Reply(url.Length < 110_000 ? "LANG: en\nORIGINAL: so what we need\nTRANSLATION: 所以我们需要" : "LANG: en\nORIGINAL: is a plan for Monday\nTRANSLATION: 周一的计划");
+        });
+        var old = LingClient.Spacing; LingClient.Spacing = 0.05;
+        try
+        {
+            var ling = Client(fake);
+            var store = new SessionStore();
+            var engine = new ListenEngine(ling, new Translator(ling), store, new NotesEngine(ling, store), new AppSettings { Target = "zh-CN" })
+            {
+                // Told apart by length: the first stretch is 2.5 s, the second 3 s.
+                Voiceprint = new FakePrint(s => s.Length < 50_000 ? Unit(1, 0, 0) : Unit(0, 1, 0)),
+            };
+            var path = Path.Combine(Path.GetTempPath(), $"cicada-voices-{Environment.ProcessId}.wav");
+            File.WriteAllBytes(path, Wav.Bytes([.. Tone(2.5), .. Silence(0.7), .. Tone(3), .. Silence(1)]));
+            var src = new FileAudioSource(path, speed: 0);
+            var ended = new TaskCompletionSource();
+            src.Ended += _ => ended.TrySetResult();
+            engine.Start(src);
+            await ended.Task;
+            await Task.Delay(100);
+            await engine.Stop();
+            var lines = store.All().First().Lines;
+            Equal(2, lines.Count, "two voices, two lines (not joined)");
+            Check(lines[0].Voice == 0 && lines[1].Voice == 1, "each with its voice");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
     // MARK: Speaking
 
     sealed class Sink : ISpeechSink
@@ -451,7 +534,7 @@ static class Tests
     }
 
     static SpeakEngine Speaker(LingClient ling, NoVoice voice, AppSettings? settings = null) =>
-        new(ling, new Translator(ling), new SessionStore(), settings ?? new AppSettings(), () => "en", () => null, voice);
+        new(ling, new Translator(ling, new Fake(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))), new SessionStore(), settings ?? new AppSettings(), () => "en", () => null, voice);
 
     public static async Task SpeaksTheTranslationNeverTheOriginal()
     {
