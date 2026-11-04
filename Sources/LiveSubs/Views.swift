@@ -117,7 +117,8 @@ struct MenuPanelView: View {
         return [
             (nil, [("auto", auto.isEmpty ? L("自动识别") : L("自动识别（\(auto)）"))]),
             (nil, ready.map { ($0.locale, $0.name) }),
-            (L("选中后自动下载语音模型"), missing.map { ($0.locale, $0.name) }),
+            // macOS 14/15 can't download one: the language is added to Dictation in System Settings.
+            (Recognition.legacy ? L("要先加进系统的听写语言") : L("选中后自动下载语音模型"), missing.map { ($0.locale, $0.name) }),
         ]
     }
 

@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-26%2B-black" alt="macOS 26+">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
   <img src="https://img.shields.io/badge/Apple%20silicon-only-black" alt="Apple 芯片">
   <img src="https://img.shields.io/badge/Swift-5-orange" alt="Swift 5">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
@@ -58,7 +58,7 @@
 
 ## 隐私与权限
 
-声音采集、语言识别、语音识别（Apple SpeechAnalyzer）和会议录音全部在本机完成。会离开电脑的只有识别出来的文字（发去做翻译和生成纪要），以及填了 Ling API key 并按住说话键用同声传译时你说的那几句语音。不填 API key 时，实时字幕、翻译（走 Google 或退回 Apple 本机翻译）、会议记录和同声传译都能正常用。实时纪要、一步语音翻译和声音克隆需要你自己的 Ling（蚂蚁集团的大模型服务）API key（配置方法见[下文](#配置-ling-api-key)），开一小时会大约花 0.15 到 1 元人民币，Ling 每月赠送 10 元额度，约够 10 到 50 小时会议。
+声音采集、语言识别、语音识别（Apple SpeechAnalyzer，macOS 14.4–15 上是 SFSpeechRecognizer 的本机模式）和会议录音全部在本机完成。会离开电脑的只有识别出来的文字（发去做翻译和生成纪要），以及填了 Ling API key 并按住说话键用同声传译时你说的那几句语音。不填 API key 时，实时字幕、翻译（走 Google 或退回 Apple 本机翻译，本机翻译只在 macOS 26 上有）、会议记录和同声传译都能正常用。实时纪要、一步语音翻译和声音克隆需要你自己的 Ling（蚂蚁集团的大模型服务）API key（配置方法见[下文](#配置-ling-api-key)），开一小时会大约花 0.15 到 1 元人民币，Ling 每月赠送 10 元额度，约够 10 到 50 小时会议。
 
 知了只在用到某项功能时才请求对应的权限，拒绝后其他功能照常可用。
 
@@ -80,9 +80,9 @@
 
 | 功能 | 填了 Ling key | 不填 key / 退回 |
 |---|---|---|
-| 语音识别、语言识别 | Apple `SpeechAnalyzer` / `SpeechTranscriber`（本机） | 同左 |
-| 整句翻译 | Ling `Ling-3.1-flash`（可在“设置 › AI 服务”改为 `Ling-3.0-flash`） | Google 翻译 → Apple `Translation`（本机） |
-| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度） | Apple `Translation`（本机） |
+| 语音识别、语言识别 | Apple `SpeechAnalyzer` / `SpeechTranscriber`（本机）；macOS 14.4–15 是 `SFSpeechRecognizer`（本机，要打开听写） | 同左 |
+| 整句翻译 | Ling `Ling-3.1-flash`（可在“设置 › AI 服务”改为 `Ling-3.0-flash`） | Google 翻译 → Apple `Translation`（本机，仅 macOS 26） |
+| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度） | Apple `Translation`（本机，仅 macOS 26） |
 | 实时纪要、会后完整版 | Ling `Ling-3.1-flash`（同上设置） | 不可用 |
 | 检查 key 是否有效 | Ling `Ling-3.0-tiny`（只用一个 token） | — |
 | 同声传译：听懂并翻译你说的话 | Ming `Ming-3.0-audio-flash`，一步完成 | Apple 本机识别，再走上面的翻译链 |
@@ -98,7 +98,7 @@
 
 ## 系统要求与安装
 
-需要 macOS 26 或更新版本、Apple 芯片的 Mac。界面有中文、英文、日文和韩文，默认跟随系统语言，也可以在系统设置的语言与地区里单独给知了指定。
+需要 macOS 14.4 或更新版本、Apple 芯片的 Mac。macOS 26 上用新的本机语音识别，更准；14.4–15 上用系统较早的识别，要在系统设置 › 键盘里打开“听写”，并把要听的语言加进听写语言。界面有中文、英文、日文和韩文，默认跟随系统语言，也可以在系统设置的语言与地区里单独给知了指定。
 
 从 [Releases 页面](https://github.com/wquguru/cicada/releases/latest) 或 [官网](https://cicada.indaloop.app) 下载 `Cicada-<版本>-macOS-AppleSilicon.dmg`，打开后把知了拖进应用程序文件夹。应用目前是本地签名，还没有苹果公证（见[路线图](#路线图)），第一次打开被拦下时，去系统设置的隐私与安全性里点仍要打开。下载页同时提供 `checksums.txt`，可以用 `shasum -a 256 Cicada-*.dmg` 核对。有疑问可以去 X 找作者 [@wquguru](https://x.com/wquguru)。
 
@@ -113,7 +113,6 @@
 按先后排，想要哪一项欢迎在 Issues 里说。
 
 - **记录我的发言**，开会时持续听麦克风并做回声消除，把你直接开口说的话也记进文字记录和纪要。
-- **支持更早的 macOS（14.4 起）**，在旧系统上改用较早的系统语音识别与翻译接口。
 - **正式签名与公证**，首次打开不再需要点仍要打开，AI key 也能放回系统钥匙串。
 - **声纹识别**，在现有的说话人识别基础上，在本机记住常一起开会的人的声音，下次开会也能自动认出。
 - **不用 key 也有纪要**，在支持的 Mac 上用 Apple 本机模型整理纪要，以及**自选 AI 服务**接入其他兼容 OpenAI 接口的服务。

@@ -378,7 +378,7 @@ struct OnboardingView: View {
         .onChange(of: step) { _, _ in sample.reset() }
         // Only the moment it turns on moves on by itself: when it was already on (the guide
         // reopened from Settings), step 1 stays put with a plain 继续.
-        .onChange(of: model.systemAudioOK) { was, now in
+        .onChange(of: model.listenReady) { was, now in
             guard !was, now, step == 1 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { if step == 1 { step = 2 } }
@@ -426,7 +426,7 @@ struct OnboardingView: View {
             }
             Spacer()
             switch step {
-            case 1 where !model.systemAudioOK:
+            case 1 where !model.listenReady:
                 Text("打开后自动继续")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.secondary)
                     .padding(.horizontal, 24).frame(height: 44)
@@ -528,11 +528,28 @@ struct OnboardingView: View {
     private var permissions: some View {
         VStack(alignment: .leading, spacing: 24) {
             title(L("让知了听到电脑里的声音"), L("字幕和纪要都从这里来。去系统设置打开，回来会自动识别。"))
-            whiteCard {
-                row(icon: "speaker.wave.2", title: L("听电脑里的声音"), detail: L("只听声音，不录屏幕画面")) {
-                    if model.systemAudioOK { done(L("已打开")) } else { primary(L("去开启")) { model.requestSystemAudio() } }
+            whiteCard { VStack(spacing: 0) {
+                row(icon: "speaker.wave.2", title: L("听电脑里的声音"),
+                    detail: model.systemAudioRefused ? L("在系统设置里打开后，要重新打开知了") : L("只听声音，不录屏幕画面")) {
+                    if model.systemAudioOK {
+                        done(L("已打开"))
+                    } else if model.systemAudioRefused {
+                        HStack(spacing: 8) {
+                            secondary(L("重新打开")) { model.relaunch() }
+                            primary(L("去开启")) { model.requestSystemAudio() }
+                        }
+                    } else {
+                        primary(L("去开启")) { model.requestSystemAudio() }
+                    }
                 }
-            }
+                // macOS 14/15: the older recognizer needs Dictation on and its own permission.
+                if Recognition.legacy {
+                    Divider().padding(.horizontal, 22)
+                    row(icon: "waveform", title: L("识别语音"), detail: L("打开“听写”，允许“语音识别”")) {
+                        if model.speechOK { done(L("已打开")) } else { primary(L("去开启")) { model.requestSpeech() } }
+                    }
+                }
+            } }
             Label("声音只在本机识别", systemImage: "lock")
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }

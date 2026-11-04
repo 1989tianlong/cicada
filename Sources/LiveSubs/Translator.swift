@@ -239,7 +239,9 @@ final class TranslationService {
         return out
     }
 
+    /// Apple's on-device translation, made outside a SwiftUI view: only on macOS 26.
     private func viaApple(_ text: String, source: String, target: String) async -> String? {
+        guard #available(macOS 26, *) else { return nil }
         guard source != "auto" else { return nil }
         let from = Locale.Language(identifier: Self.appleCode(source))
         let to = Locale.Language(identifier: Self.appleCode(target))

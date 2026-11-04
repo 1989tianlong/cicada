@@ -158,16 +158,9 @@ final class SpeakEngine {
     func prepare() async {
         let lang = settings.speakFromLang
         guard analyzerLocale != lang.locale || analyzerFormat == nil else { return }
-        let t = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
-                                  reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
         do {
-            if await AssetInventory.status(forModules: [t]) != .installed,
-               let req = try await AssetInventory.assetInstallationRequest(supporting: [t]) {
-                onStatus?(L("正在下载 \(lang.name) 语音模型…"))
-                try await req.downloadAndInstall()
-            }
-            analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t])
-                ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
+            try await Recognition.install(lang.locale) { _ in self.onStatus?(L("正在下载 \(lang.name) 语音模型…")) }
+            analyzerFormat = await Recognition.format(lang.locale, drafts: true)
             analyzerLocale = lang.locale
             debugLog("speak transcriber ready locale=\(lang.locale)")
         } catch {
@@ -177,7 +170,7 @@ final class SpeakEngine {
     }
 
     func teardownAnalyzer() async {
-        utterance?.input.finish()
+        if let input = utterance?.input { Task { await input.cancel() } }
         utterance = nil
         analyzerFormat = nil
         analyzerLocale = ""
@@ -186,42 +179,29 @@ final class SpeakEngine {
     /// One press = one analyzer over a finite stream. Finishing the stream and
     /// awaiting `finalizeAndFinishThroughEndOfInput` guarantees every word
     /// spoken during the press is in the result before we translate it.
-    private var utterance: (input: AsyncStream<AnalyzerInput>.Continuation, text: Task<String, Never>)?
+    private var utterance: (input: RecognitionStream, text: Task<String, Never>)?
 
-    private func beginUtterance() -> AsyncStream<AnalyzerInput>.Continuation? {
-        guard analyzerFormat != nil else { return nil }
+    private func beginUtterance() -> RecognitionStream? {
+        guard let format = analyzerFormat else { return nil }
         let lang = settings.speakFromLang
-        // Without `.fastResults` Chinese only reports every ~11 s of audio, so the bar stays
-        // empty for a whole sentence or two; with it, text trails speech by about a second.
-        let t = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
-                                  reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
-        let (stream, cont) = AsyncStream.makeStream(of: AnalyzerInput.self)
+        let stream = Recognition.startNow(lang.locale, drafts: true, format: format)
         finals = []
         volatile = ""
         micQueue.sync { pressSamples = []; pressConverter = PCMConverter() }
         let task = Task { [weak self] () -> String in
-            let collector = Task { [weak self] in
-                do {
-                    for try await r in t.results { self?.handle(r) }
-                } catch {
-                    debugLog("speak recognition error: \(error)")
-                }
-            }
-            let analyzer = SpeechAnalyzer(inputSequence: stream, modules: [t])
             do {
-                try await analyzer.finalizeAndFinishThroughEndOfInput()
+                for try await r in stream.results { self?.handle(r) }
             } catch {
-                debugLog("speak analyzer error: \(error)")
+                debugLog("speak recognition error: \(error)")
             }
-            await collector.value
             return self?.currentText ?? ""
         }
-        utterance = (cont, task)
-        return cont
+        utterance = (stream, task)
+        return stream
     }
 
-    private func handle(_ r: SpeechTranscriber.Result) {
-        let text = String(r.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+    private func handle(_ r: Recognition.Piece) {
+        let text = r.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if r.isFinal {
             if !text.isEmpty { finals.append(text) }
             volatile = ""
@@ -256,7 +236,7 @@ final class SpeakEngine {
     func pressCancelled() {
         guard phase == .listening else { return }
         stopMic()
-        utterance?.input.finish()
+        if let input = utterance?.input { Task { await input.cancel() } }
         utterance = nil
         micQueue.sync { pressSamples = [] }
         finals = []
@@ -306,7 +286,7 @@ final class SpeakEngine {
         let conv = PCMConverter()
         for buf in buffers {
             if let c = conv.convert(buf, to: format) {
-                input.yield(AnalyzerInput(buffer: c))
+                input.append(c)
                 micQueue.sync { keepForMing(c) }
             }
             let seconds = Double(buf.frameLength) / buf.format.sampleRate
@@ -317,7 +297,7 @@ final class SpeakEngine {
         return true
     }
 
-    private func startMic(format: AVAudioFormat, input cont: AsyncStream<AnalyzerInput>.Continuation) {
+    private func startMic(format: AVAudioFormat, input cont: RecognitionStream) {
         let inputNode = mic.inputNode
         AudioDevices.pinInput(mic, to: inputDevice?())
         let inFormat = inputNode.outputFormat(forBus: 0)
@@ -334,7 +314,7 @@ final class SpeakEngine {
             queue.async {
                 guard let self, self.feeding else { return }
                 if let c = conv.convert(buf, to: format) {
-                    cont.yield(AnalyzerInput(buffer: c))
+                    cont.append(c)
                     self.recordMic(c)
                     self.keepForMing(c)
                 }
@@ -396,7 +376,7 @@ final class SpeakEngine {
         self.probe = nil
         guard let u = utterance else { phase = .idle; probe?.finish(); return }
         utterance = nil
-        u.input.finish()
+        Task { await u.input.finish() }
         let released = releasedAt ?? Date()
         releasedAt = nil
         let wav = takePressWAV()
@@ -493,19 +473,7 @@ final class SpeakEngine {
     private func synthesize(_ text: String, language: String, voiceID: String?) async -> [AVAudioPCMBuffer] {
         let u = AVSpeechUtterance(string: text)
         u.voice = voice(for: language, identifier: voiceID)
-        return await withCheckedContinuation { cont in
-            var buffers: [AVAudioPCMBuffer] = []
-            var done = false
-            synth.write(u) { buf in
-                guard !done else { return }
-                guard let pcm = buf as? AVAudioPCMBuffer, pcm.frameLength > 0 else {
-                    done = true
-                    cont.resume(returning: buffers)
-                    return
-                }
-                buffers.append(pcm)
-            }
-        }
+        return await SpeechWriter.write(u, with: synth)
     }
 
     /// `device` overrides the chosen output (the virtual mic sound test).
@@ -639,4 +607,39 @@ final class SpeakEngine {
     func preview() {
         Task { await speak(targetCode.hasPrefix("zh") ? "这是对方会听到的声音。" : "This is the voice the room will hear.", language: targetCode) }
     }
+}
+
+/// The Mac's voice rendered to buffers. `AVSpeechSynthesizer.write` ends with an empty buffer, but
+/// on macOS 14 that last buffer never comes (all the audio does): the delegate's didFinish, which
+/// does come, ends it too, whichever is first.
+final class SpeechWriter: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffers: [AVAudioPCMBuffer] = []
+    private var cont: CheckedContinuation<[AVAudioPCMBuffer], Never>?
+
+    static func write(_ u: AVSpeechUtterance, with synth: AVSpeechSynthesizer) async -> [AVAudioPCMBuffer] {
+        let writer = SpeechWriter()
+        let previous = synth.delegate
+        synth.delegate = writer
+        defer { synth.delegate = previous }
+        return await withCheckedContinuation { cont in
+            writer.cont = cont
+            synth.write(u) { buf in
+                guard let pcm = buf as? AVAudioPCMBuffer, pcm.frameLength > 0 else { writer.end(); return }
+                writer.lock.withLock { writer.buffers.append(pcm) }
+            }
+        }
+    }
+
+    private func end() {
+        let done = lock.withLock { () -> (CheckedContinuation<[AVAudioPCMBuffer], Never>, [AVAudioPCMBuffer])? in
+            guard let c = cont else { return nil }
+            cont = nil
+            return (c, buffers)
+        }
+        done?.0.resume(returning: done!.1)
+    }
+
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) { end() }
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel u: AVSpeechUtterance) { end() }
 }

@@ -3,7 +3,6 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import CoreMedia
-import Speech
 
 // MARK: - Audio routing
 
@@ -52,7 +51,7 @@ final class AudioRouter: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.wquguru.cicada.audio", qos: .userInitiated)
     private let converter = PCMConverter()
     private var format: AVAudioFormat?
-    private var continuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var sink: RecognitionStream?
     private var ring: [(buffer: AVAudioPCMBuffer, seconds: Double, voiced: Bool)] = []
     private var ringSeconds = 0.0
     private let ringLimit = 10.0
@@ -89,7 +88,7 @@ final class AudioRouter: @unchecked Sendable {
     }
 
     private func keepVoice(_ mono: AVAudioPCMBuffer) {
-        guard voiceCapture, continuation != nil,
+        guard voiceCapture, sink != nil,
               let b = voiceConverter.convert(mono, to: voiceFormat), let d = b.floatChannelData else { return }
         if voice.isEmpty { voiceStart = fed }
         voice.append(contentsOf: UnsafeBufferPointer(start: d[0], count: Int(b.frameLength)))
@@ -129,7 +128,7 @@ final class AudioRouter: @unchecked Sendable {
         let seconds = Double(n) / mono.format.sampleRate
         let voiced = rms >= voiceThreshold
         if voiced {
-            if silenceRun >= 0.12, continuation != nil { pause = (fed, silenceRun) }
+            if silenceRun >= 0.12, sink != nil { pause = (fed, silenceRun) }
             if silenceRun >= Self.gapSeconds { sinceGap = 0 }
             voicedTotal += seconds
             silenceRun = 0
@@ -139,9 +138,9 @@ final class AudioRouter: @unchecked Sendable {
         sinceGap += seconds
 
         guard let format, let converted = converter.convert(mono, to: format) else { return }
-        continuation?.yield(AnalyzerInput(buffer: converted))
+        sink?.append(converted)
         keepVoice(mono)
-        if continuation != nil { fed += seconds }
+        if sink != nil { fed += seconds }
         record(converted)
         ring.append((converted, seconds, voiced))
         ringSeconds += seconds
@@ -178,7 +177,8 @@ final class AudioRouter: @unchecked Sendable {
         queue.sync { (fed, silenceRun, pause) }
     }
 
-    func attach(format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation, replaySeconds: Double = 0) {
+    func attach(_ stream: RecognitionStream, replaySeconds: Double = 0) {
+        let format = stream.format
         queue.sync {
             fed = 0
             pause = (0, 0)
@@ -197,27 +197,24 @@ final class AudioRouter: @unchecked Sendable {
                     acc += item.seconds
                     replay.append(item.buffer)
                 }
-                for buffer in replay.reversed() { continuation.yield(AnalyzerInput(buffer: buffer)) }
+                for buffer in replay.reversed() { stream.append(buffer) }
                 fed = acc
                 voice = Array(keptVoice.suffix(Int(acc * 16000)))
             }
             self.format = format
-            self.continuation?.finish()
-            self.continuation = continuation
+            self.sink = stream
         }
     }
 
     func detach() {
         queue.sync {
-            continuation?.finish()
-            continuation = nil
+            sink = nil
         }
     }
 
     func reset() {
         queue.sync {
-            continuation?.finish()
-            continuation = nil
+            sink = nil
             ring.removeAll()
             ringSeconds = 0
             voice = []

@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-26%2B-black" alt="macOS 26+">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
   <img src="https://img.shields.io/badge/Apple%20silicon-only-black" alt="Apple silicon">
   <img src="https://img.shields.io/badge/Swift-5-orange" alt="Swift 5">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
@@ -58,7 +58,7 @@ Every session saves its bilingual transcript, notes, and audio recording on your
 
 ## Privacy & Permissions
 
-Audio capture, language detection, speech recognition (Apple SpeechAnalyzer), and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google with Apple on-device fallback), meeting records, and push-to-talk interpreting all work. Live meeting notes, one-step voice translation, and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing. Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
+Audio capture, language detection, speech recognition (Apple SpeechAnalyzer; on macOS 14.4–15, SFSpeechRecognizer in on-device mode), and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google, with Apple on-device fallback on macOS 26), meeting records, and push-to-talk interpreting all work. Live meeting notes, one-step voice translation, and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing. Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
 
 Cicada asks for a permission only when you use the feature that needs it, and everything else keeps working if you decline.
 
@@ -80,9 +80,9 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 
 | Feature | With a Ling key | Without a key / fallback |
 |---|---|---|
-| Speech recognition and language detection | Apple `SpeechAnalyzer` / `SpeechTranscriber` (on device) | same |
-| Translating finished sentences | Ling `Ling-3.1-flash` (or `Ling-3.0-flash`, set in Settings › AI Service) | Google Translate → Apple `Translation` (on device) |
-| Translating the sentence still being spoken | Google Translate (saves Ling's rate limit) | Apple `Translation` (on device) |
+| Speech recognition and language detection | Apple `SpeechAnalyzer` / `SpeechTranscriber` (on device); macOS 14.4–15: `SFSpeechRecognizer` (on device, needs Dictation) | same |
+| Translating finished sentences | Ling `Ling-3.1-flash` (or `Ling-3.0-flash`, set in Settings › AI Service) | Google Translate → Apple `Translation` (on device, macOS 26 only) |
+| Translating the sentence still being spoken | Google Translate (saves Ling's rate limit) | Apple `Translation` (on device, macOS 26 only) |
 | Live notes and the final version | Ling `Ling-3.1-flash` (same setting) | not available |
 | Checking the key | Ling `Ling-3.0-tiny` (one token) | — |
 | Interpreting: hearing and translating what you say | Ming `Ming-3.0-audio-flash`, one step | Apple on-device transcript, then the translation chain above |
@@ -99,7 +99,7 @@ Without a Ling key, everything runs on Apple's on-device models plus Google Tran
 
 ## Requirements & Installation
 
-Requires **macOS 26 or later** on **Apple silicon**. The UI is available in English, Chinese, Japanese, and Korean, following your macOS language or set per app in **System Settings › General › Language & Region**.
+Requires **macOS 14.4 or later** on **Apple silicon**. macOS 26 uses the newer on-device speech recognizer, which is more accurate; on 14.4–15 Cicada uses the system's earlier recognizer, which needs **Dictation** turned on in **System Settings › Keyboard**, with each language you want heard added to its languages. The UI is available in English, Chinese, Japanese, and Korean, following your macOS language or set per app in **System Settings › General › Language & Region**.
 
 Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it, and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`, which you can verify with `shasum -a 256 Cicada-*.dmg`. For questions, reach out to the author [@wquguru](https://x.com/wquguru) on X.
 
@@ -114,7 +114,6 @@ The first-launch guide asks for one permission, plays a short two-person sample 
 In rough order; tell us what you need in Issues.
 
 - **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
-- **Older macOS support (targeting macOS 14.4+)**, falling back to earlier system speech recognition and translation APIs on older versions.
 - **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
 - **Speaker recognition**, building on today's experimental speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
 - **Local notes without an API key** using Apple's on-device model on supported Macs, plus **custom AI providers** for any OpenAI-compatible endpoint.

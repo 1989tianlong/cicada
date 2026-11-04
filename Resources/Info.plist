@@ -35,7 +35,7 @@
 	<key>LSHasLocalizedDisplayName</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
-	<string>26.0</string>
+	<string>14.4</string>
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSAudioCaptureUsageDescription</key>

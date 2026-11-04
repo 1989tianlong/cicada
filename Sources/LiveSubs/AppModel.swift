@@ -3,6 +3,8 @@ import AVFoundation
 import Carbon.HIToolbox
 import Combine
 import SwiftUI
+import Speech
+import UserNotifications
 
 /// Wires the engines, the meeting store, the subtitle bar and the UI together.
 @MainActor
@@ -61,6 +63,15 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var systemAudioOK = false
+    /// 系统音频录制 was refused. Turned on later in System Settings, it only takes once Cicada is
+    /// reopened (macOS says so too), so the guide offers that.
+    @Published var systemAudioRefused = false
+    /// Quitting to reopen (`relaunch`): closing the guide now isn't finishing it.
+    var relaunching = false
+    /// Speech recognition can run: always on macOS 26; below it, Dictation on and 语音识别 allowed.
+    @Published var speechOK = Recognition.ready
+    /// Step 1 of the guide is done.
+    var listenReady: Bool { systemAudioOK && speechOK }
     @Published var micStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published var liveSource = ""
     @Published var liveTranslation = ""
@@ -345,6 +356,32 @@ final class AppModel: ObservableObject {
     }
 
     func openMicrophoneSettings() { openSettingsPane("Privacy_Microphone") }
+
+    /// Quits and opens Cicada again: a permission turned on after it was refused takes only then.
+    func relaunch() {
+        // Quitting closes the guide, which would count as finishing it: it carries on after the reopen.
+        relaunching = true
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done; open \"$0\"", Bundle.main.bundlePath]
+        try? p.run()
+        NSApp.terminate(nil)
+    }
+
+    /// macOS 14/15: asks for 语音识别, then opens Keyboard settings if Dictation is still off.
+    func requestSpeech() {
+        Task {
+            if await Recognition.authorize() {
+                if !Recognition.dictationEnabled,
+                   let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
+                    NSWorkspace.shared.open(url)
+                }
+            } else {
+                openSettingsPane("Privacy_SpeechRecognition")
+            }
+            refreshPermissions()
+        }
+    }
 
     private func openSettingsPane(_ anchor: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
@@ -1494,7 +1531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         let w = notification.object as? NSWindow
         updateActivationPolicy(closing: w)
-        if w == onboardingWindow {
+        if w == onboardingWindow, !model.relaunching {
             model.sample.stop()
             UserDefaults.standard.set(true, forKey: "onboarded")
             // Done (or 稍后): land on the records window rather than nothing but the menu bar icon.

@@ -107,8 +107,8 @@ final class ListenEngine {
     // MARK: Models
 
     func refreshInstalledLocales() async {
-        let installed = await SpeechTranscriber.installedLocales
-        installedLocales = Set(installed.map { $0.identifier(.bcp47) })
+        installedLocales = await Recognition.installedLocales()
+        if let simulatedModels { installedLocales.formIntersection(simulatedModels) }
         candidates = sourceLanguages.filter { installedLocales.contains($0.locale) }
         debugLog("installed speech models: \(installedLocales.sorted()) candidates=\(candidates.map(\.locale))")
         onStateChange?()
@@ -118,8 +118,12 @@ final class ListenEngine {
 
     func start() {
         guard !isRunning else { return }
-        guard SpeechTranscriber.isAvailable else {
+        guard Recognition.isAvailable else {
             setStatus(L("此 Mac 不支持本机语音识别"))
+            return
+        }
+        guard !Recognition.authorizationDenied else {
+            setStatus(Recognition.notAllowed.localizedDescription)
             return
         }
         languageConfirmed = false
@@ -158,10 +162,10 @@ final class ListenEngine {
         router.reset()
         resultsTask?.cancel()
         resultsTask = nil
-        if let analyzer {
-            Task { await analyzer.cancelAndFinishNow() }
+        if let recognizer {
+            Task { await recognizer.cancel() }
         }
-        analyzer = nil
+        recognizer = nil
         segments.removeAll()
         volatileText = ""
         volatileTranslation = ""
@@ -253,9 +257,9 @@ final class ListenEngine {
         router.detach()
         resultsTask?.cancel()
         resultsTask = nil
-        if let old = analyzer {
-            analyzer = nil
-            await old.cancelAndFinishNow()
+        if let old = recognizer {
+            recognizer = nil
+            await old.cancel()
         }
         guard isRunning, gen == generation else { return }
 
@@ -273,35 +277,27 @@ final class ListenEngine {
         lastCutThrough = 0
         onStateChange?()
 
-        let transcriber = SpeechTranscriber(locale: Locale(identifier: lang.locale),
-                                            transcriptionOptions: [],
-                                            reportingOptions: [.volatileResults, .fastResults],
-                                            attributeOptions: [.transcriptionConfidence])
         do {
             try await ensureModel(for: transcriber, lang: lang)
             guard isRunning, gen == generation else { return }
-            let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
-                ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
-            let analyzer = SpeechAnalyzer(modules: [transcriber])
-            try await analyzer.prepareToAnalyze(in: format)
+            let stream = try await Recognition.start(lang.locale, drafts: true, confidence: true)
             guard isRunning, gen == generation else {
-                await analyzer.cancelAndFinishNow()
+                await stream.cancel()
                 return
             }
-            let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self, bufferingPolicy: .unbounded)
-            router.attach(format: format, continuation: continuation, replaySeconds: replaySeconds)
-            self.analyzer = analyzer
+            router.attach(stream, replaySeconds: replaySeconds)
+            updateHold()
+            self.recognizer = stream
             resultsTask = Task { [weak self] in
                 do {
-                    for try await result in transcriber.results {
-                        self?.handle(result, generation: gen)
+                    for try await piece in stream.results {
+                        self?.handle(piece, generation: gen)
                     }
                 } catch {
                     self?.recognitionFailed(error, generation: gen)
                 }
             }
-            try await analyzer.start(inputSequence: stream)
-            debugLog("transcriber started locale=\(lang.locale) format=\(format)")
+            debugLog("transcriber started recognizer=\(Recognition.name) locale=\(lang.locale) format=\(stream.format)")
             setStatus(L("正在听"))
         } catch {
             debugLog("transcriber start failed locale=\(lang.locale): \(error)")
@@ -324,10 +320,10 @@ final class ListenEngine {
         }
     }
 
-    private func handle(_ result: SpeechTranscriber.Result, generation gen: Int) {
+    private func handle(_ result: Recognition.Piece, generation gen: Int) {
         guard gen == generation, isRunning else { return }
         failureStreak = 0
-        var text = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if result.isFinal {
             text = HeardText.clean(text)
             let fuller = HeardText.fuller(final: text, draft: volatileText)
@@ -341,27 +337,20 @@ final class ListenEngine {
             // A "." or "…" from a breath or a click is no sentence: Ling would answer it with a note that
             // there was nothing to translate, and it would sit in the record as a line.
             guard text.contains(where: \.isLetter) else { renderSubtitles(); return }
-            var weighted = 0.0, chars = 0
-            for run in result.text.runs {
-                guard let c = run.transcriptionConfidence else { continue }
-                let len = result.text[run.range].characters.count
-                weighted += c * Double(len)
-                chars += len
-            }
-            let conf = chars > 0 ? weighted / Double(chars) : 1
+            let conf = result.confidence ?? 1
             let provisional = volatileTranslation.isEmpty ? nil : volatileTranslation
             var seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
-            seg.start = CMTimeGetSeconds(result.range.start)
-            seg.end = CMTimeGetSeconds(result.range.end)
+            seg.start = result.start
+            seg.end = result.end
             seg.clock = gen
             seg.cut = cutAsked
             cutAsked = false
             if settings.speakerVoices {
-                seg.voiceSamples = router.voiceSamples(from: CMTimeGetSeconds(result.range.start), to: CMTimeGetSeconds(result.range.end))
+                seg.voiceSamples = router.voiceSamples(from: result.start, to: result.end)
             }
             nextSegmentID += 1
             // How long ago, in real time, the sentence's last word was spoken.
-            let ago = router.fedSeconds() - CMTimeGetSeconds(result.range.end)
+            let ago = router.fedSeconds() - result.end
             finalTiming[seg.id] = (Date(), ago.isFinite && ago >= 0 && ago < 30 ? ago : nil)
             if finalTiming.count > 40, let oldest = finalTiming.keys.min() { finalTiming[oldest] = nil }
             var shown = seg
@@ -373,7 +362,7 @@ final class ListenEngine {
             volatileTranslation = ""
             lastVolatileSent = ""
             contentLog(String(format: "FINAL conf=%.2f [%@] %@", conf, activeLang?.locale ?? "?", text))
-            let duration = max(0, CMTimeGetSeconds(result.range.duration))
+            let duration = max(0, result.end - result.start)
             // Only confirmed-language sentences go into the meeting record; earlier ones wait.
             let spoken = duration.isFinite ? duration : 0
             if recordable {
@@ -607,7 +596,7 @@ final class ListenEngine {
     /// line in progress is ended at the next small pause: a dip in the sound, or no new words for
     /// a moment.
     private func maybeCutSentence() {
-        guard isRunning, !cutting, let analyzer, !volatileText.isEmpty, volatileText != lastCut else { return }
+        guard isRunning, !cutting, let recognizer, !volatileText.isEmpty, volatileText != lastCut else { return }
         let cjk = joiner(for: activeLang?.code ?? "") == ""
         let long = cjk ? volatileText.count >= 24 : volatileText.split(separator: " ").count >= 10
         guard long else { return }
@@ -633,7 +622,7 @@ final class ListenEngine {
         let chars = volatileText.count
         Task { [weak self] in
             do {
-                try await analyzer.finalize(through: CMTime(seconds: through, preferredTimescale: 1000))
+                try await recognizer.finalize(through: through)
                 debugLog(String(format: "cut: line of %d chars ended after %.1f s (%@) at %.1f s of %.1f s",
                                 chars, held, why, through, c.fed))
             } catch {

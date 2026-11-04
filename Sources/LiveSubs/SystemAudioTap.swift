@@ -10,6 +10,24 @@ import Speech
 /// Captures the audio that is currently going to the default output device.
 /// This uses Core Audio process taps, so it only needs the "System Audio
 /// Recording" privacy grant and never asks for Screen Recording.
+/// Whether 系统音频录制 was allowed. Refused, the tap still starts and hears only silence, so
+/// starting proves nothing; TCC's own preflight is the one way to tell (loaded at run time; nil
+/// when it isn't there, and then starting is taken as allowed, as before).
+enum SystemAudioPermission {
+    enum Status { case granted, denied, unknown }
+
+    static func status() -> Status? {
+        typealias Preflight = @convention(c) (CFString, CFDictionary?) -> Int32
+        guard let tcc = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_LAZY),
+              let sym = dlsym(tcc, "TCCAccessPreflight") else { return nil }
+        switch unsafeBitCast(sym, to: Preflight.self)("kTCCServiceAudioCapture" as CFString, nil) {
+        case 0: return .granted
+        case 1: return .denied
+        default: return .unknown
+        }
+    }
+}
+
 final class SystemAudioTap {
     /// Called on the real-time audio thread. Must not block.
     var onAudio: ((AVAudioPCMBuffer) -> Void)?

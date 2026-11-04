@@ -20,6 +20,7 @@ test-shots/
 tools/*
 !tools/*.swift
 !tools/README.md
+!tools/macos-vm/
 
 # Windows: build output, spike results and clips (windows/spike/make-clips.sh, ming_asr.py)
 windows/**/bin/

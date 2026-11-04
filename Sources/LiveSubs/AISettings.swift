@@ -18,7 +18,8 @@ struct AISettingsView: View {
                 usageRow(L("实时纪要"), tag: ling.usable ? L("用 Ling") : L("需要 key"), on: ling.usable,
                          note: ling.usable ? L("会中每 45 秒更新") : L("填好 key 后可用"))
                 usageRow(L("翻译"), tag: ling.usable ? L("用 Ling") : "Google", on: ling.usable,
-                         note: ling.usable ? L("整句用 Ling；不行时换 Google、本机") : L("没有 key 时照常可用"))
+                         note: ling.usable ? (Recognition.hasOnDeviceTranslation ? L("整句用 Ling；不行时换 Google、本机") : L("整句用 Ling；不行时换 Google"))
+                                         : L("没有 key 时照常可用"))
                 usageRow(L("语音识别"), tag: L("本机"), on: false, note: L("更快，不花钱"))
                 SettingsRow(title: L("同声传译的声音"), detail: ling.usable ? L("Ming 的声音或你自己的声音") : L("没有 key 时用本机声音"),
                             divider: false) {

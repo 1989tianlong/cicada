@@ -208,26 +208,7 @@ enum LoopbackTest {
     }
 
     static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> String {
-        let t = SpeechTranscriber(locale: Locale(identifier: locale), transcriptionOptions: [],
-                                  reportingOptions: [], attributeOptions: [])
-        guard await AssetInventory.status(forModules: [t]) == .installed,
-              let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t]) else { return "" }
-        let (stream, cont) = AsyncStream.makeStream(of: AnalyzerInput.self)
-        let conv = PCMConverter()
-        for b in buffers { if let c = conv.convert(b, to: format) { cont.yield(AnalyzerInput(buffer: c)) } }
-        cont.finish()
-        let collector = Task { () -> String in
-            var parts: [String] = []
-            do {
-                for try await r in t.results where r.isFinal {
-                    parts.append(String(r.text.characters).trimmingCharacters(in: .whitespaces))
-                }
-            } catch {}
-            return parts.joined(separator: " ")
-        }
-        let analyzer = SpeechAnalyzer(inputSequence: stream, modules: [t])
-        try? await analyzer.finalizeAndFinishThroughEndOfInput()
-        return await collector.value
+        await Recognition.transcribe(buffers, locale: locale)?.text ?? ""
     }
 }
 
