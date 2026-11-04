@@ -19,6 +19,8 @@ public sealed class NotesEngine
     bool inFlight;
     string? pendingFinal;
     DateTime lastAttempt = DateTime.MinValue;
+    /// The language the shown notes were last written in.
+    string? writtenIn;
     Timer? timer;
 
     public MeetingNotes Notes { get; private set; } = new();
@@ -41,7 +43,7 @@ public sealed class NotesEngine
     {
         lock (gate)
         {
-            sessionId = id; ShownId = id;
+            sessionId = id; ShownId = id; writtenIn = null;
             Notes = store.Get(id)?.Notes ?? new MeetingNotes();
             Status = ling.HasKey ? State.Idle : State.NoKey;
             lastAttempt = DateTime.UtcNow;
@@ -106,8 +108,11 @@ public sealed class NotesEngine
         try
         {
             var lines = session.Lines.ToList();
-            int from = final ? 0 : Math.Min(baseNotes.Covered, lines.Count);
             var lang = Language();
+            // The language changed mid-meeting: write the notes again from the start in the new one.
+            // (The script check can't tell Chinese from Japanese, so extending them would keep the old.)
+            if (!final && writtenIn is not null && writtenIn != lang) { baseNotes = new MeetingNotes(); Log.Debug($"notes: language now {lang}, rewriting"); }
+            int from = final ? 0 : Math.Min(baseNotes.Covered, lines.Count);
             var prompt = Prompt(baseNotes, lines, from, lang, final);
             MeetingNotes? next = null;
             for (int attempt = 1; attempt <= (final ? 2 : 1); attempt++)
@@ -129,7 +134,7 @@ public sealed class NotesEngine
             next.Covered = lines.Count;
             next.UpdatedAt = DateTimeOffset.Now;
             next.Final = final;
-            lock (gate) { if (id == ShownId) Notes = next; }
+            lock (gate) { if (id == ShownId) Notes = next; writtenIn = lang; }
             store.SetNotes(id, next);
             Status = State.Idle;
             Log.Debug($"notes: {(final ? "final" : "live")} update {lines.Count - from} new lines -> {next.Topics.Count} topics, {next.Terms.Count} terms");
@@ -310,10 +315,12 @@ public sealed class NotesEngine
                     pointTimes.Add(p is JsonObject po2 ? Time(po2["evidence"]) : null);
                 }
             }
-            // The model's "start" is sometimes misread (04:49 for 00:49); the lines it cites are not.
-            // So the earliest cited line wins, and a time past the last line is pulled back to it.
+            // The model's "start" is sometimes misread (04:49 for 00:49), and the lines it cites can
+            // all be late ones (a rewrite cites what's fresh): a topic starts at the earlier of the two,
+            // and never after the last line.
             var cited = new[] { Time(t["evidence"]) }.Concat(pointTimes).Where(x => x is not null).Select(x => x!.Value).ToList();
-            var start = cited.Count > 0 ? cited.Min() : Num(t["start"]) ?? startedAt;
+            var said = Num(t["start"]);
+            var start = cited.Count == 0 ? said ?? startedAt : said is { } x0 ? Math.Min(x0, cited.Min()) : cited.Min();
             if (times.Count > 0 && start > times[^1]) start = times[^1];
             n.Topics.Add(new NoteTopic
             {

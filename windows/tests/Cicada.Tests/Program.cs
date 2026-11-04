@@ -138,6 +138,12 @@ static class Tests
         Equal("ja", Translator.ParseHeard("lang: ja-JP\noriginal: はい\ntranslation: 是", "zh-CN", null)!.Lang, "labels in any case");
     }
 
+    public static void DropsLoneFillers()
+    {
+        Check(Translator.IsFiller("嗯。") && Translator.IsFiller("Mm.") && Translator.IsFiller("uh, um"), "fillers");
+        Check(!Translator.IsFiller("嗯，好的。") && !Translator.IsFiller("OK.") && !Translator.IsFiller("Oh no, it crashed."), "real lines stay");
+    }
+
     public static void NormalizesLanguages()
     {
         Equal("zh-CN", Languages.Normalize("zh-Hans", "en"), "zh-Hans");
@@ -260,6 +266,8 @@ static class Tests
         var n = NotesEngine.Parse(raw, times, 0)!;
         Equal(49.0, n.Topics[0].Start, "the cited line's time, not the model's 289");
         Equal(180.0, n.Topics[1].Start, "never after the last line");
+        var late = NotesEngine.Parse("{\"summary\":\"s\",\"topics\":[{\"start\":5,\"title\":\"整场\",\"points\":[{\"text\":\"p\",\"evidence\":[\"L4\"]}]}]}", times, 0)!;
+        Equal(5.0, late.Topics[0].Start, "a rewrite citing only late lines keeps the model's earlier start");
     }
 
     public static void KeepsEarliestTimes()

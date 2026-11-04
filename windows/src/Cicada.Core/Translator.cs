@@ -37,6 +37,14 @@ public sealed class Translator(LingClient ling)
         return ParseHeard(reply, target, hint);
     }
 
+    static readonly HashSet<string> Fillers = ["嗯", "啊", "呃", "哦", "噢", "唔", "额", "哈", "uh", "um", "umm", "hmm", "mm", "mhm", "ah", "oh", "eh", "えー", "あー", "うん", "ええと", "음", "어"];
+
+    public static bool IsFiller(string text)
+    {
+        var words = text.ToLowerInvariant().Split([' ', ',', '，', '、', '.', '。', '!', '！', '?', '？', '…', '~', '-'], StringSplitOptions.RemoveEmptyEntries);
+        return words.Length > 0 && words.Length <= 3 && words.All(Fillers.Contains);
+    }
+
     public static string HearPrompt(string target, string? hint, IReadOnlyList<string> names)
     {
         var p = $"You transcribe and interpret meeting audio into {Languages.EnglishName(target)}. "
@@ -69,6 +77,8 @@ public sealed class Translator(LingClient ling)
         }
         if (string.IsNullOrWhiteSpace(original) || original.Trim('.', '。', ' ').Equals("NONE", StringComparison.OrdinalIgnoreCase)) return null;
         if (!original.Any(char.IsLetterOrDigit)) return null;
+        // A system sound or a cough comes back as a lone filler ("嗯。", "Mm."): not a line anyone said.
+        if (IsFiller(original)) return null;
         var code = Languages.Normalize(lang, hint ?? "en");
         if (code == target) translation = original;
         else if (translation is not null)
