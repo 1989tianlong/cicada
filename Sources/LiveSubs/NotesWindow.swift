@@ -137,6 +137,8 @@ struct NotesWindowView: View {
     @State private var catchUp = false
     @State private var matchIndex = 0
     @State private var now = Date()
+    @State private var badgeHover = false
+    @State private var badgeHint = false
     @State private var width: CGFloat = 460
     /// "结束" was clicked during a meeting with lines: the confirmation strip is showing.
     @State private var confirmEnd = false
@@ -265,7 +267,9 @@ struct NotesWindowView: View {
                     if live { LiveDot() }
                     Text(statusLine).font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if settings.notesCapturable { capturableBadge }
+                    // Apart on the right, so turning it on or off doesn't move the text.
+                    Spacer(minLength: 0)
+                    capturableBadge
                 }
                 .frame(minHeight: 22)
             }
@@ -284,25 +288,39 @@ struct NotesWindowView: View {
         .padding(.horizontal, 24).padding(.top, 34).padding(.bottom, 12)
     }
 
-    /// Shown while 录屏时可见 is on, so it isn't left on into a shared screen: a record mark (ring
-    /// around a dot, like the menu bar's while recording) whose ring breathes. No words, since
-    /// recordings and screen sharing both see the window. A click turns it off.
+    /// 共享屏幕时让对方看到, always here so it can be turned back on: an orange lamp while shared
+    /// screens and recordings see the window, a hollow grey one while only you do (the window
+    /// isn't captured then, so nobody else sees it). No words beside it except a hint while the
+    /// pointer rests on it: once on, words would show in the shared screen; the lamp's first wide
+    /// breath confirms the click instead.
     private var capturableBadge: some View {
-        Button { model.setNotesCapturable(false) } label: {
-            TimelineView(.animation(minimumInterval: 1 / 15)) { ctx in
-                let t = 0.5 + 0.5 * cos(phase(ctx.date, period: 2.4) * 2 * .pi)
-                ZStack {
-                    Circle().stroke(Palette.accent, lineWidth: 1.5).frame(width: 13, height: 13)
-                        .opacity(0.35 + 0.65 * t)
-                    Circle().fill(Palette.accent).frame(width: 6, height: 6)
-                }
+        let on = settings.notesCapturable
+        return Button { model.setNotesCapturable(!on) } label: {
+            CapturableMark(on: on)
                 .frame(width: 22, height: 22)
-            }
-            .contentShape(Circle())
+                .background(Circle().fill(badgeHover ? Palette.fill : .clear))
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help("录屏和共享屏幕都看得到纪要窗口，点一下关闭")
-        .accessibilityLabel(Text("录屏可见"))
+        // Drawn here rather than .help: the window never activates the app, and macOS doesn't
+        // show tooltips for an app in the background.
+        .onHover { inside in
+            badgeHover = inside
+            if !inside { badgeHint = false; return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if badgeHover { badgeHint = true } }
+        }
+        .overlay(alignment: .trailing) {
+            if badgeHint {
+                Text(on ? L("对方可见 · 点击关闭") : L("仅自己可见 · 点击共享"))
+                    .font(.system(size: 11)).foregroundStyle(.white).lineLimit(1).fixedSize()
+                    .padding(.horizontal, 8).frame(height: 20)
+                    .background(Capsule().fill(Palette.ink.opacity(0.88)))
+                    .offset(x: -28).allowsHitTesting(false).transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: badgeHint)
+        .accessibilityLabel(Text("共享屏幕时让对方看到"))
+        .accessibilityValue(on ? Text("对方可见") : Text("仅自己可见"))
     }
 
     private var searchField: some View {
@@ -717,7 +735,7 @@ struct NotesWindowView: View {
                         .font(.system(size: 12)).foregroundStyle(Palette.tertiary)
                 }
                 Spacer()
-                if settings.notesCapturable { capturableBadge }
+                capturableBadge
                 iconButton("arrow.up.left.and.arrow.down.right", help: L("展开纪要")) { setWidth(460, 760) }
             }
             if live, let p = model.ending {

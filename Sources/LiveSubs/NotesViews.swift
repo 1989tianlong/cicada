@@ -1002,6 +1002,45 @@ struct AnimatedDots: View {
 }
 
 /// The live dot beside "正在记录", breathing slowly.
+/// 共享屏幕时让对方看到 as a lamp. On: an orange dot whose halo breathes outward, the first
+/// breath a wider ring so turning it on is seen without any words (words would show in the
+/// shared screen). Off: a small hollow grey ring, quiet. Reduce Motion holds the halo still.
+struct CapturableMark: View {
+    let on: Bool
+    /// The dot's diameter; the halo spills past it, so leave room around the mark.
+    var size: CGFloat = 8
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var since = Date()
+
+    private static let off = Color(red: 0.663, green: 0.682, blue: 0.722) // #A9AEB8
+
+    var body: some View {
+        Group {
+            if !on {
+                Circle().strokeBorder(Self.off, lineWidth: 1.5)
+            } else if reduceMotion {
+                Circle().fill(Palette.accent).background(Circle().fill(Palette.accent).opacity(0.25).scaleEffect(1.6))
+            } else {
+                TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+                    let age = ctx.date.timeIntervalSince(since)
+                    // Starts expanding the moment it turns on: 0 → 1 → 0 over 2.4 s.
+                    let t = 0.5 - 0.5 * cos(phase(ctx.date, period: 2.4, delay: since.timeIntervalSinceReferenceDate) * 2 * .pi)
+                    let first = min(1, age / 0.7)
+                    ZStack {
+                        Circle().fill(Palette.accent).scaleEffect(1 + 0.9 * t).opacity(0.5 * (1 - t))
+                        if first < 1 {
+                            Circle().stroke(Palette.accent, lineWidth: 1.5).scaleEffect(1 + 1.6 * first).opacity(0.7 * (1 - first))
+                        }
+                        Circle().fill(Palette.accent)
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .onChange(of: on) { _, now in if now { since = Date() } }
+    }
+}
+
 struct LiveDot: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 15)) { ctx in

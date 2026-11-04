@@ -305,8 +305,10 @@
 "刚刚更新" = "Updated just now";
 "%lld 秒前更新" = "Updated %lld s ago";
 "%lld 分钟前更新" = "Updated %lld min ago";
-"录屏可见" = "Visible in recordings";
-"录屏和共享屏幕都看得到纪要窗口，点一下关闭" = "Recordings and screen sharing can see the notes window. Click to turn off";
+"对方可见" = "Visible to others";
+"仅自己可见" = "Only you";
+"对方可见 · 点击关闭" = "Visible to others · Click to hide";
+"仅自己可见 · 点击共享" = "Only you · Click to share";
 "文字记录 · %lld" = "Transcript · %lld";
 "文字记录" = "Transcript";
 "在文字记录中搜索  ⌘F" = "Search transcript  ⌘F";

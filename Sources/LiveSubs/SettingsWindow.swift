@@ -43,10 +43,13 @@ struct SettingsRow<Trailing: View>: View {
     let title: String
     var detail: String? = nil
     var divider = true
+    /// A small state mark before the title, e.g. 共享屏幕时让对方看到's.
+    var mark: AnyView? = nil
     @ViewBuilder var trailing: Trailing
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
+                if let mark { mark }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 13)).foregroundStyle(Palette.ink)
                     if let detail {
@@ -688,7 +691,8 @@ struct SettingsView: View {
             }
             Text("实时纪要").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary).padding(.top, 4)
             SettingsCard {
-                SettingsRow(title: L("共享屏幕时让对方看到"), detail: L("录屏也一样；关着时只有你看得到纪要窗口"), divider: false) {
+                SettingsRow(title: L("共享屏幕时让对方看到"), detail: L("录屏也一样；关着时只有你看得到纪要窗口"), divider: false,
+                            mark: AnyView(CapturableMark(on: settings.notesCapturable, size: 8).frame(width: 16, height: 16))) {
                     Toggle("共享屏幕时让对方看到", isOn: Binding(get: { settings.notesCapturable }, set: { model.setNotesCapturable($0) }))
                         .toggleStyle(.switch).labelsHidden().tint(Palette.accent)
                 }

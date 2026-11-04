@@ -1126,6 +1126,7 @@ final class AppModel: ObservableObject {
         case "notesReplay": Task { await notes.replay(arg) }
         case "notesShow": notes.show(arg)
         case "notesCapturable": notesWindow.setCapturable(arg != "off")
+        case "notesShare": setNotesCapturable(arg != "off")  // the setting itself, as its badge or switch does
         case "notesClose": notesWindow.performClose()
         case "closeWindow":
             // closeWindow:<main|settings|onboarding>: what the window's close button does.
