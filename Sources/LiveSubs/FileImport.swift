@@ -13,6 +13,8 @@ final class FileImporter: ObservableObject {
     struct Job: Equatable {
         let id: String
         let url: URL
+        /// The language the user said it is in; nil detects it.
+        var lang: Lang? = nil
     }
 
     enum Phase: Equatable {
@@ -76,11 +78,12 @@ final class FileImporter: ObservableObject {
         return ids
     }
 
-    /// Transcribe a record again from the start (one that stopped halfway, or by request).
-    func retry(_ id: String) {
+    /// Transcribe a record again from the start (one that stopped halfway, or by request), in
+    /// `lang` when the user picked it.
+    func retry(_ id: String, lang: Lang? = nil) {
         guard let path = store.session(id)?.sourcePath, current?.id != id, !queue.contains(where: { $0.id == id }) else { return }
         store.restartImport(id)
-        queue.append(Job(id: id, url: URL(fileURLWithPath: path)))
+        queue.append(Job(id: id, url: URL(fileURLWithPath: path), lang: lang))
         next()
     }
 
@@ -149,7 +152,8 @@ final class FileImporter: ObservableObject {
         }
         guard !Task.isCancelled, store.session(job.id) != nil else { return }
 
-        let lang = await language(of: pcm)
+        var lang = job.lang ?? sourceLanguages[0]
+        if job.lang == nil { lang = await language(of: pcm) }
         guard !Task.isCancelled else { return }
         let target = settings.resolvedTarget(source: lang.code)
         debugLog("import: \(job.id) \(lang.locale) → \(target)")

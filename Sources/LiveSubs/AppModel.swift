@@ -1597,7 +1597,10 @@ final class AppModel: ObservableObject {
             debugLog("overlay frame=\(overlay.barFrame) font=\(overlay.currentFontSize)")
         case "import": importFiles(arg.split(separator: ",").map { URL(fileURLWithPath: String($0)) })
         case "importCancel": importer.cancelAll()
-        case "importRetry": importer.retry(arg)
+        case "importRetry":
+            // `<id>=<locale>`: as if that language was picked in 这场会议只留下了录音.
+            let parts = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            importer.retry(parts[0], lang: parts.count > 1 ? sourceLanguages.first { $0.locale == parts[1] } : nil)
         case "importNotify":
             UNUserNotificationCenter.current().getNotificationSettings { s in debugLog("import: notifications \(s.authorizationStatus.rawValue) alert=\(s.alertSetting.rawValue)") }
         case "importState":

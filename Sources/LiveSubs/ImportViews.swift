@@ -138,6 +138,73 @@ struct ImportStatusStrip: View {
     }
 }
 
+/// A meeting kept for its recording alone (the language was never settled while it ran): the
+/// user says which language was spoken, and it is transcribed like an imported file.
+struct RecordingLanguageStrip: View {
+    @ObservedObject var importer: FileImporter
+    let session: Session
+    @State private var picked: Lang?
+
+    /// The Mac's languages first, as chips; the rest under 其他语言.
+    private var likely: [Lang] {
+        var out = likelySourceLanguages(last: nil, systemLanguages: Locale.preferredLanguages)
+        for l in sourceLanguages where !out.contains(l) { out.append(l) }
+        return out
+    }
+
+    var body: some View {
+        let langs = likely
+        let chips = Array(langs.prefix(4))
+        let rest = Array(langs.dropFirst(4))
+        let lang = picked ?? langs[0]
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("这场会议只留下了录音").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Text("当时没听出是哪种语言。选一下，就按它转成文字")
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                }
+                Spacer(minLength: 8)
+                SoftButton(L("重新转写"), dark: true) { importer.retry(session.id, lang: lang) }
+            }
+            HStack(spacing: 6) {
+                ForEach(chips, id: \.locale) { l in chip(l.name, on: l == lang) { picked = l } }
+                if !rest.isEmpty {
+                    let other = rest.contains(lang)
+                    Menu {
+                        ForEach(rest, id: \.locale) { l in Button(l.name) { picked = l } }
+                    } label: {
+                        Text(other ? lang.name : L("其他语言…"))
+                            .font(.system(size: 12, weight: other ? .semibold : .regular))
+                            .foregroundStyle(other ? Palette.ink : Palette.secondary)
+                            .padding(.horizontal, 12).frame(height: 26)
+                            .background(Capsule().fill(Color.white))
+                            .overlay(Capsule().strokeBorder(other ? Palette.ink : Palette.line, lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                }
+            }
+        }
+        .padding(.leading, 16).padding(.trailing, 14).padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.fill))
+    }
+
+    private func chip(_ name: String, on: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(name).font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundStyle(on ? Palette.ink : Palette.secondary)
+                .padding(.horizontal, 12).frame(height: 26)
+                .background(Capsule().fill(Color.white))
+                .overlay(Capsule().strokeBorder(on ? Palette.ink : Palette.line, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
 /// Play / pause, where in the file, and the speed, for an imported record.
 struct RecordingPlayerBar: View {
     @ObservedObject var player: RecordingPlayer

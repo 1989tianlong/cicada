@@ -42,6 +42,9 @@ struct Session: Codable, Identifiable, Equatable {
     var sourceFile: String? = nil
     var sourcePath: String? = nil
     var importing: Bool? = nil
+    /// A meeting kept for its recording alone: transcribed like an imported file (its
+    /// `sourcePath` is its own recording), in a language the user picks.
+    var fromRecording: Bool { sourceFile == nil && sourcePath != nil }
     /// Heard through the microphone in the room (会议室) for some or all of it.
     var room: Bool? = nil
 
@@ -139,11 +142,17 @@ final class SessionStore: ObservableObject {
         sessions[i].hasAudio = [systemAudioURL(id), micAudioURL(id)].contains {
             FileManager.default.fileExists(atPath: $0.path) || FileManager.default.fileExists(atPath: AudioFileWriter.partial($0).path)
         }
-        if sessions[i].lines.isEmpty, !(heardSpeech && sessions[i].hasAudio) {
-            // Nothing was said: don't keep an empty meeting around.
-            try? FileManager.default.removeItem(at: folder(id))
-            sessions.remove(at: i)
-            return
+        if sessions[i].lines.isEmpty {
+            guard heardSpeech, sessions[i].hasAudio else {
+                // Nothing was said: don't keep an empty meeting around.
+                try? FileManager.default.removeItem(at: folder(id))
+                sessions.remove(at: i)
+                return
+            }
+            // Only the recording: it plays, and is transcribed again, like an imported file.
+            let system = systemAudioURL(id)
+            let heard = [system, AudioFileWriter.partial(system)].contains { FileManager.default.fileExists(atPath: $0.path) }
+            sessions[i].sourcePath = (heard ? system : micAudioURL(id)).path
         }
         saveNow(id)
         finishAudio(id, until: at == nil ? nil : sessions[i].duration)

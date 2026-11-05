@@ -837,6 +837,9 @@ struct MainWindowView: View {
                 if live { BreathingDot(size: 6) }
                 if s.sourceFile != nil {
                     Image(systemName: "doc").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                } else if s.fromRecording, s.lines.isEmpty {
+                    Image(systemName: "waveform").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                        .help(L("只有录音"))
                 } else if s.room == true {
                     Image(systemName: "mic").font(.system(size: 11)).foregroundStyle(Palette.secondary)
                         .help(L("会议室"))
@@ -953,7 +956,8 @@ struct MainWindowView: View {
                     }
                         .overlay {
                             Text(s.id == store.liveID ? L("正在听，说话的内容会出现在这里")
-                                 : working(s) ? L("转出的文字会陆续出现在这里") : L("这场会议没有记录到内容"))
+                                 : working(s) ? L("转出的文字会陆续出现在这里")
+                                 : s.fromRecording ? L("还没有文字记录") : L("这场会议没有记录到内容"))
                                 .font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         }
                 } else if tab == "notes", importer.status(of: s) == nil {
@@ -1117,9 +1121,13 @@ struct MainWindowView: View {
                 if !titleDraft.isEmpty { store.rename(s.id, to: titleDraft) }
                 titleDraft = ""
             }
-            if s.sourceFile != nil {
+            if s.sourcePath != nil {
                 VStack(alignment: .leading, spacing: 12) {
-                    ImportStatusStrip(model: model, importer: importer, session: s)
+                    if s.fromRecording, s.lines.isEmpty || s.importing == true, !working(s) {
+                        RecordingLanguageStrip(importer: importer, session: s)
+                    } else {
+                        ImportStatusStrip(model: model, importer: importer, session: s)
+                    }
                     if player.sessionID == s.id { RecordingPlayerBar(player: player) }
                 }
                 .padding(.top, 16)
