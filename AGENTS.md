@@ -13,7 +13,7 @@ Cicada (知了, formerly Live Subs) turns what a computer plays into live transl
 - AI keys live only in 0600 files (`AIKey`): never UserDefaults, logs or exports.
 - Every AI call goes through `LingClient` (rate gate, priorities, `thinking: disabled`, content in the system message). Partial text is translated by Google, never Ling.
 - Never speak untranslated text into the room. Never bundle the GPL BlackHole driver; download it and check its pinned SHA-256.
-- Only the Mac app recognizes on the device: don't claim 声音不出本机 for the ports (Ming, Ling key required).
+- Only the Mac app recognizes on the device: don't claim 声音不出本机 for the ports (a cloud AI service hears the audio).
 - The notes window is a non-activating panel with `sharingType = .none`: it must never take focus, and stays out of screen captures unless the user turns on 共享屏幕时让对方看到 (then it shows a badge).
 - Mac: UI and engine state are `@MainActor`; audio callbacks hand buffers to `AudioRouter`'s queue.
 - Don't change the release bundle id `com.wquguru.cicada` or the ad-hoc designated requirement: permissions are tied to them.

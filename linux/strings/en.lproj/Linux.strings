@@ -141,3 +141,31 @@
 "可选" = "Optional";
 "以后再说" = "Not now";
 "关掉窗口后，知了在顶栏右上角" = "After you close this, Cicada stays in the top bar";
+
+/* AI 服务: other services than Ling */
+"连不上 %@" = "Can't connect to %@";
+"在 设置 › AI 服务 里换一个" = "Change it in Settings › AI Service";
+"接 AI 服务" = "AI service";
+"注册或登录后点“创建令牌”" = "Sign up or log in, then click “Create token”";
+"听、纪要和翻译都能用，模型已经选好。" = "Listening, notes and translation all work, with the models already chosen.";
+"仅保存在本机当前账户下，仅发送至 %@" = "Stored only for this account on this computer, sent only to %@";
+"接上 %@" = "Connect %@";
+"同声传译的声音" = "Interpreter voice";
+"例如 qwen3-omni" = "e.g. qwen3-omni";
+"听的模型" = "Listening model";
+"要能输入音频：听对方和“我说”都用它" = "Must take audio in: used for Listen and for Speak";
+"还不能用" = "Not yet";
+"这个模型听不了声音，换一个支持音频输入的" = "This model can't take audio. Choose one that accepts audio input";
+"Ming 一次识别并翻译" = "Ming recognizes and translates in one step";
+"比 Ling 晚 1–2 秒出字" = "Text appears 1–2 s later than with Ling";
+"用不了" = "Unavailable";
+"这个服务不能出声音" = "This service can't speak";
+"需支持 /audio/speech；不填则同声传译用不了" = "Must support /audio/speech; without one, interpreting won't work";
+"听对方和“我说”都用它" = "Used for Listen and for Speak";
+"本机服务，不用 key" = "Local service, no key needed";
+"听的时候，电脑里的声音会发给 %@。" = "While listening, your computer's audio is sent to %@.";
+"按所选模型计费。" = "Billed by the models you choose. ";
+"需要 %@ 的 key 才能听" = "Needs a %@ key to listen";
+"%@ 的 key 无效" = "%@ key is invalid";
+"%@ 太忙，稍后再试" = "%@ is busy. Try again shortly";
+"仅保存在本机当前账户下，仅发送至 %@（%@）" = "Stored only for this account on this computer, sent only to %1$@ (%2$@)";

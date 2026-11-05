@@ -1,6 +1,7 @@
-"""Ming's voices for what the room hears (Voices.swift › VoiceCatalog.ming): hand-picked natural
-ones per language; for languages Ming has no native voice for, Emma and George speak them with
-`language_id`. Linux has no system voice worth sending into a meeting, so only these."""
+"""The voices for what the room hears (Voices.swift › VoiceCatalog). On Ling, Ming's: hand-picked
+natural ones per language; for languages Ming has no native voice for, Emma and George speak them
+with `language_id`. On another service, its speech model's voices, the same in every language.
+Linux has no system voice worth sending into a meeting, so only these."""
 from __future__ import annotations
 
 
@@ -9,7 +10,9 @@ def key(code: str) -> str:
     return (code or "en").split("-")[0].lower() or "en"
 
 
-def ming_language(code: str) -> str | None:
+def ming_language(code: str, config=None) -> str | None:
+    if config is not None and not config.is_ling:
+        return None
     k = key(code)
     return k if k in ("ja", "ko", "de", "fr", "es") else None
 
@@ -27,13 +30,16 @@ _OTHER = [("US_Emma", "Emma", ["女"]), ("UK_George", "George", ["男"])]
 ROOM_LANGUAGES = ["en", "zh-CN", "zh-TW", "ja", "ko", "es", "fr", "de"]
 
 
-def voices(code: str) -> list:
+def voices(code: str, config=None) -> list:
+    """(voice, name, tags) for a language. `config` is the AI service in use (None: Ling)."""
+    if config is not None and not config.is_ling:
+        return [(v.id, v.id, [v.gender] if v.gender else []) for v in config.voices]
     k = key(code)
     if k in _CATALOG:
         return _CATALOG[k]
     return _OTHER if k in ("ja", "ko", "de", "fr", "es") else []
 
 
-def default_voice(code: str) -> str | None:
-    v = voices(code)
+def default_voice(code: str, config=None) -> str | None:
+    v = voices(code, config)
     return v[0][0] if v else None

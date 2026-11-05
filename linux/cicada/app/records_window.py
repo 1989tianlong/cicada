@@ -438,7 +438,8 @@ class RecordsWindow(Gtk.Window):
         from .settings_window import SHORTCUTS, gnome_shortcut
         speak = (LF("按 %@ 说话，对方听到翻译后的声音", SHORTCUTS["speak"][2].replace(" + Shift + ", " ⇧ "))
                  if gnome_shortcut("speak") else L("点纪要窗的麦克风说话，对方听到翻译后的声音"))
-        steps = ((L("接上 Ling"), L("只存在这台电脑上（只有你的账户能读）") if key else L("识别、翻译和纪要都靠它，约 1 分钟"), key),
+        service = L("接上 Ling") if app.settings.aiProvider == "ling" else LF("接上 %@", app.ling.provider.name)
+        steps = ((service, L("只存在这台电脑上（只有你的账户能读）") if key else L("识别、翻译和纪要都靠它，约 1 分钟"), key),
                  (L("听一下电脑里的声音"), L("放一段测试声音，看音量条动起来"), audio),
                  (L("看看效果"), L("一段 9 秒的英文会议，字幕和纪要一句句出来"), sample),
                  (L("同声传译"), L("以后在设置 › 同声传译里打开") if app.settings.speakLater and not app.settings.speakEnabled

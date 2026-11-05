@@ -693,10 +693,13 @@ class NotesWindow(Gtk.Window):
             body = L("音频服务已断开，本次会议记录已保存") if session is not None and session.lines else L("没能开始听")
             self._state_card(box, "audio-volume-muted-symbolic", "warn", L("系统声音中断"), body, L("开始听"), self.app.toggle_listening)
         elif kind == "network" and (line is None or listen.listening):
-            self._state_card(box, "network-offline-symbolic", "warn", L("连不上 Ling"), L("请检查网络。恢复后会自动继续，断开期间的声音无法识别"))
+            service = self.app.ling.provider.name
+            self._state_card(box, "network-offline-symbolic", "warn", L("连不上 Ling") if service == "Ling" else LF("连不上 %@", service),
+                             L("请检查网络。恢复后会自动继续，断开期间的声音无法识别"))
         elif kind == "key":
+            ling = self.app.ling.provider.id == "ling"
             self._state_card(box, "dialog-password-symbolic", "warn", listen.problem or L("Ling key 无效"),
-                             L("在设置里更换 Ling key"), L("设置"), self.app.show_settings)
+                             L("在设置里更换 Ling key") if ling else L("在 设置 › AI 服务 里换一个"), L("设置"), self.app.show_settings)
         elif line is None:
             if listen.listening:
                 hearing = listen.pending > 0 or listen.level >= 0.01

@@ -1,6 +1,6 @@
 """Translation and recognition through the cloud (the Windows design): listening sends each stretch
-of audio to Ming's audio model, which returns the language, the original and the translation in one
-call. Text translation is Ling first, then Google. Calls block."""
+of audio to the AI service's hear model (Ming on Ling), which returns the language, the original and
+the translation in one call. Text translation is the AI service first, then Google. Calls block."""
 from __future__ import annotations
 
 import re
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from . import jsonfmt
 from .jsonfmt import arr
-from .ling import AUDIO_MODEL, SPEAK, TRANSLATE, LingError, UrlTransport
+from .ling import SPEAK, TRANSLATE, LingError, UrlTransport
 from .support import Log, english_name, in_script, normalize
 
 
@@ -37,7 +37,7 @@ class Translator:
         # 16 kHz mono 16-bit after the 44-byte header: the length caps the reply and catches a runaway one.
         seconds = max(0, len(wav) - 44) / 32000.0
         reply = self.ling.chat(hear_prompt(target, hint, self.glossary()), hear_instruction(target), TRANSLATE,
-                               max_tokens=hear_tokens(seconds), timeout=12.0, model=AUDIO_MODEL, audio=wav)
+                               max_tokens=hear_tokens(seconds), timeout=hear_timeout(self.ling), model=self.ling.config().hear_model, audio=wav)
         return parse_heard(reply, target, hint, seconds)
 
     def interpret(self, wav: bytes, source: str, target: str):
@@ -46,7 +46,7 @@ class Translator:
         if source == target or not self.ling.usable:
             return None
         reply = self.ling.chat(interpret_prompt(source, target, self.glossary()), interpret_instruction(source, target), SPEAK,
-                               max_tokens=800, timeout=12.0, model=AUDIO_MODEL, audio=wav)
+                               max_tokens=800, timeout=hear_timeout(self.ling), model=self.ling.config().hear_model, audio=wav)
         return parse_interpretation(reply, target)
 
     DRAFT, SENTENCE = "draft", "sentence"
@@ -87,6 +87,12 @@ class Translator:
         except Exception as e:  # noqa: BLE001
             Log.d("translate google failed: %s" % type(e).__name__)
         return None
+
+
+def hear_timeout(ling) -> float:
+    """Ming answers in ~2 s; the other services' hear models in 3–4 s, but now and then over 12 s
+    (Qwen on ZenMux, 2026-11), and a stretch given up on is words lost."""
+    return 12.0 if ling.config().is_ling else 20.0
 
 
 def interpret_prompt(source: str, target: str, names: list) -> str:
@@ -217,6 +223,9 @@ def is_noise(original: str, seconds: float = 0.0) -> bool:
     text = _ANNOTATION.sub(" ", original.lower())
     if any(r in text for r in _NO_SPEECH):
         return True
+    # A clock instead of words ("00:00"): what some of the other services' models write for a beep.
+    if _CLOCK.match(text.strip()):
+        return True
     words, word = [], ""
     for c in text:
         if c.isalnum():
@@ -235,6 +244,9 @@ def is_noise(original: str, seconds: float = 0.0) -> bool:
         if n >= 6 * p and all(units[i] == units[i - p] for i in range(p, n)):
             return True
     return seconds > 0 and n > max(12.0, 12 * seconds)
+
+
+_CLOCK = re.compile(r"^\d{1,2}(:\d{2}){1,2}[.。]?$")
 
 
 def _filler_word(raw: str) -> bool:

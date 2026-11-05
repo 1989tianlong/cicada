@@ -68,15 +68,15 @@ class Controller:
         self.application = application
         self.settings = AppSettings.load()
         strings.load(self.settings.ui_code, resource_dirs())
-        self.key = AIKey()
-        self.ling = LingClient(self.key)
-        self.ling.model = self.settings.model
+        # The AI service in use (设置 › AI 服务): its key file, address and models, read on every call.
+        self.key = AIKey(service=lambda: self.settings.aiProvider)
+        self.ling = LingClient(self.key, config=self.settings.ai_config)
         self.store = SessionStore()
         self.notes = NotesEngine(self.ling, self.store)
         # 纪要语言 for notes written outside a meeting too (生成纪要 in the records window).
         self.translator = Translator(self.ling)
         self.listen = ListenEngine(self.ling, self.translator, self.store, self.notes, self.settings)
-        # 同声传译: my microphone → Ming → 知了 麦克风. The listen side's loudness feeds its echo check.
+        # 同声传译: my microphone → the AI service → 知了 麦克风. The listen side's loudness feeds its echo check.
         from ..core.speak import SpeakEngine
         from .room import Player, VirtualMic
         self.room = VirtualMic()
@@ -270,6 +270,38 @@ class Controller:
         n = Gio.Notification.new(L("知了还在顶栏"))
         n.set_body(L("从右上角的知了图标打开会议记录，或开始听。"))
         self.application.send_notification("still-here", n)
+
+    def set_ai_provider(self, provider: str) -> None:
+        """设置 › AI 服务: another service, with its own key file and models; checked again."""
+        from ..core.providers import named
+        if named(provider).id != provider or provider == self.settings.aiProvider:
+            return
+        self.settings.aiProvider = provider
+        self.settings.save()
+        self.ai_changed()
+
+    def set_ai_model(self, kind: str, model: str) -> None:
+        """A model chosen over the recommended one ("text", "hear" or "voice"; "" goes back to it)."""
+        s = self.settings
+        p = s.aiProvider
+        if kind == "text" and p == "ling":
+            s.model = model or s.FIELDS["model"]
+        else:
+            table = {"text": s.aiModels, "hear": s.aiHearModels, "voice": s.aiVoiceModels}.get(kind)
+            if table is None:
+                return
+            if model:
+                table[p] = model
+            else:
+                table.pop(p, None)
+        s.save()
+        self.ai_changed()
+
+    def ai_changed(self) -> None:
+        """The service, its address, models or key changed: forget the old check and check again."""
+        self.ling.key_changed()
+        if self.ling.has_key:
+            threading.Thread(target=self.ling.check, daemon=True).start()
 
     def set_view(self, view: str) -> None:
         if view not in ("notes", "subtitles") or view == self.settings.view:
@@ -485,6 +517,11 @@ class Controller:
             return
         if not self.ling.has_key:
             self.show_onboarding()
+            return
+        if self.ling.usable and not self.ling.speaks:
+            # A service without a speech model: say why now, not "没听清" for every sentence.
+            self.speak.problem = L("这个服务不能出声音")
+            self.changed()
             return
         if not self.settings.speakEnabled or not self.room.on:
             if not self.set_speak_enabled(True):

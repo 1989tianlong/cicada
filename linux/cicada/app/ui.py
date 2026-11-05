@@ -116,6 +116,13 @@ button.iconbtn.on { background-color: #F3F4F6; color: #15171C; }
 .warnrow label { color: #5A2A16; }
 .group-title { font-weight: 700; color: #6B7080; }
 
+.aitag { border-radius: 6px; }
+.aitag.ok { background-color: #E3F3EA; }
+.aitag.ok label { color: #1F6B3A; }
+.aitag.off { background-color: #F2F3F5; }
+.aitag.off label { color: #5A5F6B; }
+.aitag.ling { background-color: #FDEEE8; }
+.aitag.ling label { color: #B23A12; }
 .chip { background-color: #F2F3F5; border-radius: 5px; padding: 1px 6px; color: #15171C; }
 .chip.now { background-color: #E8552B; color: #FFFFFF; }
 .chip.time { background-color: transparent; padding: 0; color: #B33A14; }
@@ -252,6 +259,7 @@ entry.keyentry { border-radius: 10px; min-height: 34px; }
 .stepbar { background-color: #DDDEE2; border-radius: 2px; min-height: 4px; }
 .stepbar.on { background-color: #15171C; }
 .bigcard { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 18px; }
+.raised { background-color: #F6F7F9; border-radius: 8px; }
 .midcard { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 12px; }
 .tipcard { background-color: #FFFFFF; border-radius: 14px; }
 .hair { background-color: #E4E6EA; min-height: 1px; }

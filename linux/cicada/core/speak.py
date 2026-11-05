@@ -1,7 +1,8 @@
 """同声传译 (the Mac's 说): what I say into my microphone, interpreted and spoken into the meeting.
 
-Each sentence (cut by the same Segmenter as listening) goes to Ming's audio model, which returns
-what was said and its translation in one call; the translation is voiced by Ming's TTS and played
+Each sentence (cut by the same Segmenter as listening) goes to the AI service's hear model (Ming on
+Ling), which returns what was said and its translation in one call; the translation is voiced by the
+service's speech model (Ming's TTS on Ling) and played
 into 知了 麦克风, the virtual microphone the meeting app uses. Sentences play one after another, in
 order. A sentence that couldn't be interpreted is never spoken (AGENTS.md: never speak untranslated
 text into the room).
@@ -100,8 +101,9 @@ class SpeakEngine:
 
     def voice(self, code: str) -> str | None:
         chosen = (self.settings.speakVoices or {}).get(voicemod.key(code))
-        names = [v for v, _n, _t in voicemod.voices(code)]
-        return chosen if chosen in names else voicemod.default_voice(code)
+        config = self.ling.config()
+        names = [v for v, _n, _t in voicemod.voices(code, config)]
+        return chosen if chosen in names else voicemod.default_voice(code, config)
 
     # Running
 
@@ -209,7 +211,7 @@ class SpeakEngine:
 
         def run():
             try:
-                for pcm in self.ling.speech(text, voice=self.voice(target), language=voicemod.ming_language(target)):
+                for pcm in self.ling.speech(text, voice=self.voice(target), language=voicemod.ming_language(target, self.ling.config())):
                     chunks.put(pcm)
                 chunks.put(_END)
             except LingError as e:

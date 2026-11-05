@@ -1,6 +1,6 @@
 """设置, GNOME preferences style: groups of boxed-list rows, the title and a grey line on the left and
-the control on the right. Ling key, languages, what shows while listening (and 登录时启动), the
-model, about."""
+the control on the right. AI 服务 (the service, its key, what works with it, its models), languages,
+what shows while listening (and 登录时启动), 同声传译, 结束会议, about."""
 from __future__ import annotations
 
 import os
@@ -153,45 +153,14 @@ class SettingsWindow(Gtk.Window):
         ui.pad(page, 8, 32, 28, 32)
         scroll.add(page)
         self.add(scroll)
+        self.scroll = scroll
 
         def save():
             s.save()
             app.settings_changed()
 
-        # Ling key
-        self.key_line = ui.text("", 13, "ink mono", wrap=False)
-        self.key_status = ui.hbox(6)
-        key_left = ui.vbox(4, self.key_line, self.key_status)
-        self.change_button = ui.button(L("更换…"), self._toggle_entry, "outline")
-        self.remove_button = ui.button(L("删除"), self.remove_key, "dangertext")
-        key_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        key_row.pack_start(key_left, True, True, 0)
-        for b in (self.change_button, self.remove_button):
-            b.set_valign(Gtk.Align.CENTER)
-            key_row.pack_start(b, False, False, 0)
-        key_row = ui.panel(ui.pad(key_row, 10, 14), "prow")
-        self.key_entry = Gtk.Entry()
-        self.key_entry.set_visibility(False)
-        self.key_entry.set_placeholder_text("sk-…")
-        self.key_entry.connect("activate", lambda *_: self.save_key())
-        self.key_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.SECONDARY, "view-reveal-symbolic")
-        self.key_entry.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, L("显示 key"))
-        self.key_entry.connect("icon-press", lambda e, *_: e.set_visibility(not e.get_visibility()))
-        entry_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        entry_row.pack_start(self.key_entry, True, True, 0)
-        entry_row.pack_start(ui.button(L("保存"), self.save_key, "darkbtn"), False, False, 0)
-        self.entry_row = ui.panel(ui.pad(entry_row, 12, 16), "prow")
-        get_key = Gtk.Button()
-        get_key.add(ui.pad(ui.hbox(8, ui.text(L("获取 Ling key"), 13, "ink", wrap=False)), 10, 14))
-        get_key.get_child().pack_end(ui.icon("external-link-symbolic", 14), False, False, 0)
-        ui.classes(get_key, "linkrow")
-        get_key.connect("clicked", lambda *_: open_uri(LING_PLATFORM))
-        # Shown and hidden by show_key_state; show_all() must leave them alone.
-        self.entry_row.set_no_show_all(True)
-        entry_row.show_all()
-        self.key_group = ui.boxed([key_row, self.entry_row, get_key])
-        page.pack_start(self._group(L("Ling key"), self.key_group,
-                                    L("只存在这台电脑上（只有你的账户能读），只发给 Ling（ant-ling.com）")), False, False, 0)
+        # AI 服务: the service and its key, what works with it, and its models (AISettings.swift).
+        self._ai_section(page)
 
         # Languages
         def set_target(v):
@@ -237,17 +206,6 @@ class SettingsWindow(Gtk.Window):
         page.pack_start(self._speak_group(combos), False, False, 0)
         page.pack_start(self._end_group(), False, False, 0)
 
-        # Model
-        def set_model(v):
-            s.model = v
-            app.ling.model = v
-            save()
-        model = choice([("Ling-3.1-flash", "Ling-3.1-flash"), ("Ling-3.0-flash", "Ling-3.0-flash")], s.model, set_model)
-        combos.append(model)
-        page.pack_start(self._group(L("模型"), ui.boxed([
-            ui.prow(L("翻译与纪要模型"), model, L("3.1 更准；3.0 更快、更省")),
-            ui.prow(L("语音识别"), ui.text(L("Ming（云端）"), 12, "tertiary", wrap=False))])), False, False, 0)
-
         # About
         # 版本 with the update check under it and its button (UpdateViews' settings row).
         self.version_slot = ui.hbox(0)
@@ -270,6 +228,7 @@ class SettingsWindow(Gtk.Window):
         for c in combos:
             ui.no_wheel(c, scroll)
         app.ling.on_change(lambda: GLib.idle_add(self.show_key_state))
+        self.ai_shown = None
         self.connect("show", lambda *_: self.show_key_state())
         self.refresh_version()
 
@@ -399,7 +358,7 @@ class SettingsWindow(Gtk.Window):
             code = app.speak.target
             voice.handler_block_by_func(set_voice) if getattr(voice, "_wired", False) else None
             voice.remove_all()
-            for v, n, tags in voicemod.voices(code):
+            for v, n, tags in voicemod.voices(code, app.ling.config()):
                 voice.append(v, "%s · %s" % (n, "、".join(L(t) for t in tags)))
             voice.set_active_id(app.speak.voice(code) or "")
             if getattr(voice, "_wired", False):
@@ -413,6 +372,7 @@ class SettingsWindow(Gtk.Window):
         fill_voices()
         voice.connect("changed", set_voice)
         voice._wired = True
+        self._fill_voices = fill_voices  # again when the AI service (and so its voices) changes
 
         def preview():
             code = app.speak.target
@@ -425,7 +385,8 @@ class SettingsWindow(Gtk.Window):
                 p = Player(None)  # the speakers, not the room
                 start, n = time.monotonic(), 0
                 try:
-                    for pcm in app.ling.speech(text, voice=app.speak.voice(code) or "US_Emma", language=voicemod.ming_language(code)):
+                    for pcm in app.ling.speech(text, voice=app.speak.voice(code) or "US_Emma",
+                                               language=voicemod.ming_language(code, app.ling.config())):
                         n += len(pcm)
                         p.write(pcm)
                     p.drain()
@@ -436,6 +397,7 @@ class SettingsWindow(Gtk.Window):
                     p.close()
             threading.Thread(target=run, daemon=True).start()
         voice_box = ui.hbox(8, voice, ui.button(L("试听"), preview, "outline"))
+        self.voice_box = voice_box
         combos.extend([mine, theirs, voice])
         for title, control, sub in ((L("我说"), mine, None),
                                     (L("对方听到"), theirs, L("跟随对方时，对方说什么语言就翻成什么")),
@@ -484,46 +446,260 @@ class SettingsWindow(Gtk.Window):
         if self.entry_row.get_visible():
             self.key_entry.grab_focus()
 
+    # AI 服务
+
+    def _ai_section(self, page) -> None:
+        """The service menu, its key (and a custom service's address), what works with it, and the
+        models chosen for it. Rebuilt in parts by show_key_state as the service and its check change."""
+        from ..core import providers
+        app, s = self.app, self.app.settings
+        self.provider_menu = choice([(p.id, "Ling" + L("（推荐）") if p.id == "ling" else L(p.name)) for p in providers.ALL],
+                                    s.aiProvider, app.set_ai_provider)
+        self.key_line = ui.text("", 13, "ink mono", wrap=False)
+        self.key_status = ui.hbox(6)
+        key_left = ui.vbox(4, self.key_line, self.key_status)
+        self.change_button = ui.button(L("更换…"), self._toggle_entry, "outline")
+        self.remove_button = ui.button(L("删除"), self.remove_key, "dangertext")
+        key_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        key_row.pack_start(key_left, True, True, 0)
+        for b in (self.change_button, self.remove_button):
+            b.set_valign(Gtk.Align.CENTER)
+            key_row.pack_start(b, False, False, 0)
+        key_row = ui.panel(ui.pad(key_row, 10, 14), "prow")
+        self.key_entry = Gtk.Entry()
+        self.key_entry.set_visibility(False)
+        self.key_entry.set_placeholder_text("sk-…")
+        self.key_entry.connect("activate", lambda *_: self.save_key())
+        self.key_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.SECONDARY, "view-reveal-symbolic")
+        self.key_entry.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, L("显示 key"))
+        self.key_entry.connect("icon-press", lambda e, *_: e.set_visibility(not e.get_visibility()))
+        entry_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        entry_row.pack_start(self.key_entry, True, True, 0)
+        entry_row.pack_start(ui.button(L("保存并检查"), self.save_key, "darkbtn"), False, False, 0)
+        self.entry_row = ui.panel(ui.pad(entry_row, 12, 16), "prow")
+        # A custom service: its address and models come before a key can be checked.
+        self.custom_base = self._field("https://api.example.com/v1", s.aiCustomBase)
+        self.custom_text = self._field(L("例如 qwen3:14b"), s.aiModels.get("custom", ""))
+        self.custom_hear = self._field(L("例如 qwen3-omni"), s.aiHearModels.get("custom", ""))
+        self.custom_rows = ui.boxed([ui.prow(L("地址"), self.custom_base), ui.prow(L("文字模型"), self.custom_text, L("纪要和整句翻译")),
+                                     ui.prow(L("听的模型"), self.custom_hear, L("要能输入音频：听对方和“我说”都用它"))])
+        self.custom_rows.set_no_show_all(True)
+        self.custom_rows.get_child().show_all()
+        self.get_key = Gtk.Button()
+        self.get_key_label = ui.text("", 13, "ink", wrap=False)
+        self.get_key.add(ui.pad(ui.hbox(8, self.get_key_label), 10, 14))
+        self.get_key.get_child().pack_end(ui.icon("external-link-symbolic", 14), False, False, 0)
+        ui.classes(self.get_key, "linkrow")
+        self.get_key.connect("clicked", lambda *_: open_uri(app.ling.provider.site or ""))
+        self.get_key.set_no_show_all(True)
+        self.get_key.get_child().show_all()
+        # Shown and hidden by show_key_state; show_all() must leave them alone.
+        self.entry_row.set_no_show_all(True)
+        entry_row.show_all()
+        self.key_group = ui.boxed([key_row, self.entry_row, self.get_key])
+        title = ui.hbox(8, ui.pad(ui.text(L("AI 服务"), 12, "group-title", bold=True, wrap=False), 0, 0, 0, 2))
+        title.pack_end(self.provider_menu, False, False, 0)
+        self.lock_line = ui.text("", 11, "tertiary", width_chars=60)
+        page.pack_start(ui.vbox(6, title, self.custom_rows, self.key_group, ui.pad(self.lock_line, 0, 2, 0, 2)), False, False, 0)
+        # What works with it.
+        self.uses = ui.vbox(0)
+        page.pack_start(self._group(L("现在能用的"), self.uses), False, False, 0)
+        # Its models, folded away: the recommended ones are already chosen.
+        self.models = ui.vbox(0)
+        self.models.set_no_show_all(True)
+        fold = Gtk.Button()
+        self.fold_label = ui.text(L("自己选模型") + " ›", 12, "secondary", wrap=False)
+        fold.add(self.fold_label)
+        ui.classes(fold, "linkrow")
+        fold.set_halign(Gtk.Align.START)
+        fold.connect("clicked", lambda *_: self._toggle_models())
+        self.footnote = ui.text("", 11, "tertiary", width_chars=60)
+        page.pack_start(ui.vbox(6, fold, self.models, ui.pad(self.footnote, 0, 2, 0, 2)), False, False, 0)
+
+    def _field(self, placeholder: str, value: str) -> Gtk.Entry:
+        e = Gtk.Entry()
+        e.set_placeholder_text(placeholder)
+        e.set_text(value)
+        e.set_width_chars(26)
+        e.connect("activate", lambda *_: self.save_key())
+        return e
+
+    def _toggle_models(self, on: bool | None = None) -> None:
+        on = not self.models.get_visible() if on is None else on
+        self.models.set_visible(on)
+        if on:
+            self.models.foreach(lambda w: w.show_all())
+        ui.retext(self.fold_label, L("自己选模型") + (" ⌄" if on else " ›"))
+
+    def _model_menu(self, kind: str, current: str, recommended, listed: list) -> Gtk.Widget:
+        """Recommended models first, with why, then everything the service lists; a name can be typed."""
+        c = Gtk.ComboBoxText.new_with_entry()
+        seen = set()
+        for m in recommended:
+            c.append(m.id, m.id + ("  · " + L(m.note) if m.note else ""))
+            seen.add(m.id)
+        for mid in listed:
+            if mid not in seen:
+                c.append(mid, mid)
+                seen.add(mid)
+        if current not in seen:
+            c.append(current, current)
+        c.set_active_id(current)
+        c.get_child().set_text(current)
+        c.get_child().set_width_chars(26)
+
+        def chosen(w):
+            mid = w.get_active_id()
+            if mid is not None:
+                w.get_child().set_text(mid)  # the id, not the label with its note
+                if mid != getattr(self.app.ling.config(), kind + "_model"):
+                    self.app.set_ai_model(kind, mid)
+        c.connect("changed", chosen)
+        c.get_child().connect("activate", lambda e: self.app.set_ai_model(kind, e.get_text().strip()))
+        if getattr(self, "scroll", None) is not None:
+            ui.no_wheel(c, self.scroll)
+        return c
+
+    def _uses_rows(self) -> list:
+        """现在能用的 (AISettings.swift › usage), with 听对方 first: on the ports the service hears."""
+        ling = self.app.ling
+        c = ling.config()
+        name = L(c.provider.name) if c.provider.id == "custom" else c.provider.name
+        on = ling.usable
+        uses = LF("用 %@", name)
+        rows = []
+        if not on:
+            hear = (L("需要 key"), "off", L("填好 key 后可用"))
+        elif ling.hears is False:
+            hear = (L("还不能用"), "off", L("这个模型听不了声音，换一个支持音频输入的"))
+        elif c.is_ling:
+            hear = (uses, "ok", L("Ming 一次识别并翻译"))
+        else:
+            hear = (uses, "ok", c.hear_model + " · " + L("比 Ling 晚 1–2 秒出字"))
+        rows.append((L("听对方"),) + hear)
+        rows.append((L("实时纪要"),) + ((uses, "ok", L("会中每 45 秒更新")) if on else (L("需要 key"), "off", L("填好 key 后可用"))))
+        rows.append((L("翻译"),) + ((uses, "ok", L("整句用它；不行时换 Google")) if on else ("Google", "off", L("没有 key 时照常可用"))))
+        if ling.speaks:
+            rows.append((L("同传声音"), uses, "ok", L("Ming 的声音") if c.is_ling else c.voice_model))
+        else:
+            rows.append((L("同传声音"), L("用不了"), "off", L("这个服务不能出声音") if on else L("填好 key 后可用")))
+        if not c.is_ling:
+            rows.append((L("你自己的声音"), L("只有 Ling"), "ling", L("换用 Ling 才有")))
+        out = []
+        for title, tag, style, note in rows:
+            label = ui.text(tag, 11, "", bold=True, wrap=False, ellipsize=False)
+            chip = ui.panel(ui.pad(label, 2, 8), "aitag", style)
+            out.append(ui.prow(title, chip, note))
+        return out
+
+    def _model_rows(self) -> list:
+        app = self.app
+        c = app.ling.config()
+        p = c.provider
+        if p.id == "ling":
+            menu = choice([(m.id, m.id) for m in p.text_models], c.text_model, lambda v: app.set_ai_model("text", v))
+            if getattr(self, "scroll", None) is not None:
+                ui.no_wheel(menu, self.scroll)
+            return [ui.prow(L("文字模型"), menu, L("3.1 更准；3.0 更快、更省")),
+                    ui.prow(L("听的模型"), ui.text(c.hear_model, 12, "tertiary", wrap=False), L("Ming 一次识别并翻译"))]
+        if p.id == "custom":
+            self.custom_voice_model = self._field(L("例如 kokoro"), app.settings.aiVoiceModels.get("custom", ""))
+            self.custom_voice = self._field(L("例如 af_heart"), app.settings.aiCustomVoice)
+            self.custom_voice_base = self._field(L("跟上面一样"), app.settings.aiCustomVoiceBase)
+            return [ui.prow(L("声音模型"), self.custom_voice_model, L("需支持 /audio/speech；不填则同声传译用不了")),
+                    ui.prow(L("声音"), self.custom_voice), ui.prow(L("地址"), self.custom_voice_base)]
+        rows = [ui.prow(L("听的模型"), self._model_menu("hear", c.hear_model, p.hear_models, app.ling.hear_catalog),
+                        L("听对方和“我说”都用它")),
+                ui.prow(L("文字模型"), self._model_menu("text", c.text_model, p.text_models, app.ling.text_catalog), L("纪要和整句翻译"))]
+        if p.has_voices:
+            rows.append(ui.prow(L("声音模型"), self._model_menu("voice", c.voice_model, p.voice_models, []), L("同传念给对方")))
+        return rows
+
     def show_key_state(self) -> bool:
-        k = self.app.key.read() or ""
-        state = self.app.ling.key_state
+        app = self.app
+        c = app.ling.config()
+        p = c.provider
+        k = app.ling.current_key()
+        state = app.ling.key_state
+        name = L(p.name) if p.id == "custom" else p.name
         ui.clear(self.key_status)
-        have = bool(k)
-        ui.retext(self.key_line, AIKey.masked(k) if have else L("还没填 API key"))
+        have = k is not None
+        ui.retext(self.key_line, AIKey.masked(k) if k else (L("本机服务，不用 key") if have else
+                                                           (L("还没填好") if p.id == "custom" else L("还没填 API key"))))
+        problem = None
+        if app.ling.problem:
+            problem = LF(app.ling.problem[0], *[L(a) if isinstance(a, str) else a for a in app.ling.problem[1:]])
         icon_name, cls, label = {
-            lingmod.OK: ("object-select-symbolic", "ok", L("可以用")),
+            lingmod.OK: ("object-select-symbolic", "ok", L("已连接") +
+                         " · " + LF("%@ · 响应约 %@ 秒", c.text_model, "%.1f" % (app.ling.seconds or 0))),
             lingmod.CHECKING: ("content-loading-symbolic", "secondary", L("正在检查…")),
-            lingmod.INVALID: ("dialog-error-symbolic", "warn", L("这个 key 无效，请检查是否复制完整，或重新创建一个")),
-            lingmod.UNREACHABLE: ("network-offline-symbolic", "warn", L("连不上 Ling，检查网络或代理")),
+            lingmod.INVALID: ("dialog-error-symbolic", "warn", LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", name)),
+            lingmod.UNREACHABLE: ("network-offline-symbolic", "warn", problem or LF("连不上 %@，请检查网络或代理", name)),
         }.get(state, (None, "secondary", ""))
+        if state == lingmod.OK and problem:
+            icon_name, cls, label = "dialog-warning-symbolic", "warn", problem
         if have and label:
             if icon_name:
                 img = ui.icon(icon_name, 14)
                 ui.classes(img, cls)
                 self.key_status.pack_start(img, False, False, 0)
-            self.key_status.pack_start(ui.text(label, 12, cls, width_chars=36), False, False, 0)
+            self.key_status.pack_start(ui.text(label, 12, cls, width_chars=48), False, False, 0)
         self.key_status.show_all()
         self.key_status.set_visible(have and bool(label))
-        self.change_button.set_visible(have)
-        self.remove_button.set_visible(have)
-        self.entry_row.set_visible(not have or state == lingmod.INVALID)
+        self.change_button.set_visible(bool(k))
+        self.remove_button.set_visible(bool(k))
+        self.entry_row.set_visible(not k or state == lingmod.INVALID)
+        self.custom_rows.set_visible(p.id == "custom")
+        self.get_key.set_visible(p.site is not None and not k)
+        ui.retext(self.get_key_label, L("获取 Ling key") if p.id == "ling" else LF("打开 %@", name))
+        host = (c.base or "").split("//")[-1].split("/")[0] or L("你填的地址")
+        ui.retext(self.lock_line, L("仅保存在本机当前账户下，仅发送至 Ling（ant-ling.com）") if p.id == "ling"
+                  else LF("仅保存在本机当前账户下，仅发送至 %@", host) if p.id == "custom" else LF("仅保存在本机当前账户下，仅发送至 %@（%@）", name, host))
+        sent = host if p.id == "custom" else name
+        ui.retext(self.footnote, LF("听的时候，电脑里的声音会发给 %@。", sent) if p.id == "ling"
+                  else L("按所选模型计费。") + LF("听的时候，电脑里的声音会发给 %@。", sent))
+        # The rows that depend on the service and what its check found.
+        shown = (p.id, state, app.ling.hears, bool(k), c.text_model, c.hear_model, c.voice_model,
+                 len(app.ling.text_catalog), len(app.ling.hear_catalog))
+        if shown != getattr(self, "ai_shown", None):
+            self.ai_shown = shown
+            ui.clear(self.uses)
+            self.uses.pack_start(ui.boxed(self._uses_rows()), False, False, 0)
+            self.uses.show_all()
+            ui.clear(self.models)
+            self.models.pack_start(ui.boxed(self._model_rows()), False, False, 0)
+            if self.models.get_visible():
+                self.models.foreach(lambda w: w.show_all())
+            if self.provider_menu.get_active_id() != p.id:
+                self.provider_menu.set_active_id(p.id)
+            if hasattr(self, "_fill_voices"):
+                self._fill_voices()
+            if hasattr(self, "voice_box"):
+                self.voice_box.set_sensitive(app.ling.speaks or not app.ling.usable)
         return False
 
     def save_key(self) -> None:
+        app, s = self.app, self.app.settings
+        if s.aiProvider == "custom":
+            # The address and models typed so far, kept even before a key.
+            s.aiCustomBase = self.custom_base.get_text().strip()
+            s.aiModels["custom"] = self.custom_text.get_text().strip()
+            s.aiHearModels["custom"] = self.custom_hear.get_text().strip()
+            if hasattr(self, "custom_voice_model"):
+                s.aiVoiceModels["custom"] = self.custom_voice_model.get_text().strip()
+                s.aiCustomVoice = self.custom_voice.get_text().strip()
+                s.aiCustomVoiceBase = self.custom_voice_base.get_text().strip()
+            s.save()
         text = self.key_entry.get_text().strip()
-        if not text.startswith("sk-"):
-            self.key_entry.set_placeholder_text(L("复制 sk- 开头的 key，回来粘贴"))
+        if text:
+            if not app.key.save(text):
+                return
             self.key_entry.set_text("")
-            return
-        if not self.app.key.save(text):
-            return
-        self.key_entry.set_text("")
-        self.app.ling.key_changed()
-        threading.Thread(target=self.app.ling.check, daemon=True).start()
+        app.ai_changed()
 
     def remove_key(self) -> None:
         self.app.key.remove()
-        self.app.ling.key_changed()
+        self.app.ai_changed()
 
     @staticmethod
     def _open_folder(path) -> None:

@@ -103,7 +103,7 @@ class Onboarding(Gtk.Window):
         self.head.pack_start(self.app_logo(34), False, False, 0)
         if self.step == DONE:
             return
-        names = [L("接 Ling"), L("听声音"), L("看效果"), L("同声传译")]
+        names = [L("接 Ling") if self.app.settings.aiProvider == "ling" else L("接 AI 服务"), L("听声音"), L("看效果"), L("同声传译")]
         bars = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, homogeneous=True)
         for i, name in enumerate(names):
             cap = ui.panel(Gtk.Box(), "stepbar", "on" if i <= self.step else "")
@@ -182,6 +182,9 @@ class Onboarding(Gtk.Window):
     # 1. Ling key
 
     def _key_step(self) -> None:
+        if self.app.settings.aiProvider != "ling":
+            self._other_step()
+            return
         self._title(L("接上 Ling"), L("识别、翻译和纪要都靠它，约 1 分钟。"))
         entry = Gtk.Entry()
         entry.set_visibility(False)
@@ -233,6 +236,52 @@ class Onboarding(Gtk.Window):
         hint = ui.text(L("只存在这台电脑上（只有你的账户能读），只发给 Ling（ant-ling.com）"), 13, "secondary", wrap=False)
         self.footer.pack_start(hint, True, True, 0)
         self.footer.pack_end(self._primary(L("继续"), self._key_next), False, False, 0)
+        # A way out for people who can't use Ling: another service, saying what it lacks.
+        self.footer.pack_end(ui.link(L("用不了 Ling？"), lambda: self._switch("openrouter")), False, False, 0)
+        GLib.idle_add(lambda: entry.grab_focus() and False)
+
+    OTHERS = ("openrouter", "zenmux")
+
+    def _switch(self, provider: str) -> None:
+        self.app.set_ai_provider(provider)
+        self.render()
+
+    def _other_step(self) -> None:
+        """用其他服务 (OnboardingKey.swift › otherEntry): OpenRouter or ZenMux, their key, and what
+        they lack. A custom address is set up in 设置 › AI 服务."""
+        from ..core import providers
+        p = providers.named(self.app.settings.aiProvider)
+        self._title(L("用其他服务"), L("听、纪要和翻译都能用，模型已经选好。"))
+        entry = Gtk.Entry()
+        entry.set_visibility(False)
+        entry.set_placeholder_text(LF("粘贴 %@ 的 key", p.name))
+        ui.classes(entry, "keyentry")
+        entry.set_icon_from_icon_name(Gtk.EntryIconPosition.SECONDARY, "view-reveal-symbolic")
+        entry.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, L("显示 key"))
+        entry.connect("icon-press", lambda e, *_: e.set_visibility(not e.get_visibility()))
+        entry.connect("activate", lambda *_: self._save_key(entry.get_text()))
+        self.key_entry = entry
+        self.key_status = ui.text("", 13, "secondary", width_chars=40)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        choices = ui.segmented([(i, providers.named(i).name) for i in self.OTHERS], p.id if p.id in self.OTHERS else self.OTHERS[0],
+                               lambda v: v != self.app.settings.aiProvider and self._switch(v))
+        top.pack_start(choices, False, False, 0)
+        if p.site:
+            top.pack_end(ui.button(LF("打开 %@", p.name) + " ↗", lambda: open_uri(p.site), "outline midbtn"), False, False, 0)
+        field = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        field.pack_start(entry, True, True, 0)
+        field.pack_start(ui.button(L("粘贴并检查"), self._paste, "darkbtn midbtn"), False, False, 0)
+        lacks = ui.hbox(4, ui.text(L("少了："), 12, "secondary", wrap=False),
+                        ui.text(L("用你自己的声音"), 12, "ink", bold=True, wrap=False),
+                        ui.text(L("（只有 Ling 支持）"), 12, "secondary", wrap=False))
+        lacks = ui.panel(ui.pad(lacks, 8, 10), "raised")
+        card = ui.panel(ui.pad(ui.vbox(14, top, field, self.key_status, lacks), 22), "bigcard")
+        self.page.pack_start(ui.gap(card, 24), False, False, 0)
+        if self.app.ling.has_key and self.app.ling.key_state == lingmod.OK:
+            self._key_ok()
+        self.footer.pack_start(ui.link(L("‹ 还是用 Ling"), lambda: self._switch("ling")), False, False, 0)
+        self.footer.pack_start(ui.text(LF("仅保存在本机当前账户下，仅发送至 %@", p.name), 13, "secondary", wrap=False), True, True, 0)
+        self.footer.pack_end(self._primary(L("继续"), self._key_next), False, False, 0)
         GLib.idle_add(lambda: entry.grab_focus() and False)
 
     def _key_next(self) -> None:
@@ -247,7 +296,9 @@ class Onboarding(Gtk.Window):
     def _paste(self) -> None:
         text = (Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).wait_for_text() or "").strip()
         if not text.startswith("sk-"):
-            self._key_problem(L("剪贴板里没有 sk- 开头的 key，先在 Ling 开放平台复制。"))
+            name = self.app.ling.provider.name
+            self._key_problem(L("剪贴板里没有 sk- 开头的 key，先在 Ling 开放平台复制。") if name == "Ling"
+                              else LF("剪贴板里没有 sk- 开头的 key，请先去 %@ 复制。", name))
             return
         self.key_entry.set_text(text)
         self._save_key(text)
@@ -285,8 +336,9 @@ class Onboarding(Gtk.Window):
                     self._key_ok()
                     GLib.timeout_add(700, lambda: (self.step == KEY and self.go(AUDIO)) and False)
                 else:
+                    name = self.app.ling.provider.name
                     self._key_problem(L("这个 key 无效，请检查是否复制完整，或重新创建一个") if state == lingmod.INVALID
-                                      else L("连不上 Ling，检查网络或代理"))
+                                      else L("连不上 Ling，检查网络或代理") if name == "Ling" else LF("连不上 %@，请检查网络或代理", name))
                 return False
             GLib.idle_add(done)
         threading.Thread(target=check, daemon=True).start()

@@ -4,9 +4,11 @@ per connection, one JSON line back. Never in release builds.
 
   state | start | stop | feed <wav> | sample | view notes|subtitles | show records|notes|settings|onboarding
   target <code> | key-reload | windows | select <record id> | append <record id> <n> (a growing meeting)
+  provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; "" back to the recommended)
   speak-enable on|off | speak on|off (同声传译) | quit
   calls <program=name,…>|none|real (meeting apps in a call) | endtimes <silence> <countdown> <grace>|off | endkeep
   notes-tab notes|transcript | notes-search <text> | notes-wide on|off | onboarding-step <n> | settings-scroll <0-1>
+  settings-models on|off (unfold 自己选模型)
   pill (the records window capsule's widget sizes)"""
 from __future__ import annotations
 
@@ -115,7 +117,7 @@ def command(app, line: str) -> dict:
                 "lines": len(s.lines) if s else 0, "last": {"src": last.src, "dst": last.dst, "lang": last.srcLang} if last else None,
                 "pending": listen.pending, "problem": listen.problem, "problemKind": listen.problem_kind, "heardSeconds": round(listen.heard_seconds, 1),
                 "peak": round(listen.peak, 4), "notes": {"title": n.title, "topics": len(n.topics), "status": app.notes.status, "final": n.final},
-                "key": app.ling.key_state, "view": app.settings.view, "target": app.settings.target_code,
+                "key": app.ling.key_state, "ai": _ai(app), "view": app.settings.view, "target": app.settings.target_code,
                 "ui": __import__("cicada.core.strings", fromlist=["language"]).language, "records": len(app.store.all()),
                 "tray": app.tray is not None, "home": Paths.data(),
                 "speak": {"enabled": app.settings.speakEnabled, "room": app.room.on, "active": app.speak.active, "stage": app.speak.stage,
@@ -164,6 +166,13 @@ def command(app, line: str) -> dict:
         app.ling.key_changed()
         threading.Thread(target=app.ling.check, daemon=True).start()
         return {"ok": True}
+    if cmd == "provider":
+        app.set_ai_provider(arg)
+        return {"ok": True, "ai": _ai(app)}
+    if cmd == "ai-model":
+        kind, _, model = arg.partition(" ")
+        app.set_ai_model(kind, model.strip())
+        return {"ok": True, "ai": _ai(app)}
     if cmd == "windows":
         return {"ok": True, "notes": _window(app.notes_window), "records": _window(app.records_window),
                 "settings": _window(app.settings_window), "onboarding": _window(app.onboarding)}
@@ -268,6 +277,10 @@ def command(app, line: str) -> dict:
         adj = app.settings_window.get_child().get_vadjustment()
         adj.set_value(float(arg) * (adj.get_upper() - adj.get_page_size()))
         return {"ok": True}
+    if cmd == "settings-models":
+        app.show_settings()
+        app.settings_window._toggle_models(arg != "off")
+        return {"ok": True}
     if cmd == "onboarding-step":
         app.show_onboarding()
         app.onboarding.go(int(arg))
@@ -276,3 +289,11 @@ def command(app, line: str) -> dict:
         app.quit()
         return {"ok": True}
     return {"ok": False, "error": "unknown command " + cmd}
+
+
+def _ai(app) -> dict:
+    """The AI service in use and what its last check found (never the key itself)."""
+    c, ling = app.ling.config(), app.ling
+    return {"provider": c.provider.id, "base": c.base, "text": c.text_model, "hear": c.hear_model, "voice": c.voice_model,
+            "state": ling.key_state, "hears": ling.hears, "problem": list(ling.problem) if ling.problem else None,
+            "catalog": [len(ling.text_catalog), len(ling.hear_catalog)], "keyFile": os.path.basename(app.key.path)}

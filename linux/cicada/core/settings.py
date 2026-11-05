@@ -13,7 +13,16 @@ class AppSettings:
     FIELDS = {
         "target": "system",          # what subtitles translate into; "system" follows the desktop language
         "notesLanguage": "mine",     # 纪要语言, the Mac's: "mine" (my language) or "source" (the meeting's own)
-        "model": DEFAULT_MODEL,
+        "model": DEFAULT_MODEL,       # Ling's text model (the others' are in aiModels)
+        # AI 服务 (Settings.swift's keys): the service, and per service the models chosen over its
+        # recommended ones. aiHearModels is the port's own: what hears the audio (Ming on Ling).
+        "aiProvider": "ling",
+        "aiModels": {},
+        "aiHearModels": {},
+        "aiVoiceModels": {},
+        "aiCustomBase": "",
+        "aiCustomVoiceBase": "",
+        "aiCustomVoice": "",
         "view": "notes",             # "notes" (the notes window, default) or "subtitles" (the subtitle bar)
         "showInCapture": False,      # 共享屏幕时让对方看到 (Linux can't hide it; see NotesWindow)
         "onboarded": False,
@@ -51,6 +60,11 @@ class AppSettings:
         """What lines in `source` translate into: under "follow system", the next system language when
         they speak mine (the Mac's resolvedTarget)."""
         return follow_system_target(source, system_languages()) if self.target == "system" else self.target
+
+    def ai_config(self):
+        """The AI service in use, its address and models (what LingClient calls with)."""
+        from .providers import config_from
+        return config_from(self)
 
     def notes_code(self, choice: str | None = None, meeting: str | None = None) -> str:
         """The notes' language for a 纪要语言 choice (this one's when None): the meeting's own language

@@ -3,7 +3,7 @@
 Cicada 的 Linux 版：把电脑播放的声音变成双语字幕和实时纪要，存成和 Mac 版同一格式的会议记录；打开同声传译后，把你说的话翻成对方的语言，用“知了 麦克风”传进会议。方案和取舍见 [docs/linux-plan.md](../docs/linux-plan.md)。
 
 - 原生：Python 3 + PyGObject + GTK 3，声音走 PulseAudio / PipeWire（`libpulse-simple`，读默认输出的 monitor，不用授权）。只用 Ubuntu 桌面自带的库，不用 pip 包。
-- 识别：Ming（`Ming-3.0-audio-flash`）分段识别，一次请求返回语言、原文和译文；需要 Ling key。和 Windows、Android 同一套做法。
+- 识别：分段发给 AI 服务的“听的模型”，一次请求返回语言、原文和译文。默认 Ling 的 Ming（`Ming-3.0-audio-flash`）；用不了 Ling 时可在 设置 › AI 服务 换成 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务（`cicada/core/providers.py`，推荐的听写模型是 Qwen 3.8 Omni Flash，比 Ming 慢 1–2 秒，测试见 `tools/audio-probe`），纪要、翻译和同传声音跟着换，只有“用你自己的声音”只能用 Ling。都需要一个 key，声音都会发到所选服务。和 Windows、Android 同一套做法。
 - 纪要窗：浮在最上面、点它也不抢焦点（app 走 XWayland，窗口类型是 notification；GNOME 的 Wayland 不给普通窗口这两个能力）。**Linux 没法让窗口避开屏幕共享**，所以纪要窗一直带“可能被共享”。
 - 纪要、记录格式（逐字节和 Mac 一致）、提示词、文案都和 Mac 版一致；英日韩翻译直接用 `Resources/*.lproj/Localizable.strings`，Linux 独有的在 `strings/`。
 - 同声传译：声音服务器里建一个虚拟麦克风“知了 麦克风”（`module-null-sink` + `module-remap-source`，PipeWire 和 PulseAudio 都行，不用装驱动），打开时设成默认输入，关掉或退出时把原来的麦克风还回去（被 `kill -9` 后下次启动也会还）。点纪要窗的麦克风、托盘的“开始说”或快捷键（Super + Shift + S，`cicada --speak`）开始 / 停止；Ming 一次请求识别并翻译，Ming 的声音流式播进知了 麦克风，下一句的声音在上一句播完前就已经在取。对方的声音从扬声器漏进麦克风的那句会丢掉，不说出去。
@@ -34,7 +34,7 @@ python3 cli.py speak ../windows/spike/clips/zh.wav --from zh-CN --to en --out /t
 python3 cli.py roundtrip ~/Library/Application\ Support/LiveSubs/Sessions/*/session.json
 ```
 
-`cli.py` 读 Mac 版的 key 文件，不打印 key；环境里的代理会传给 urllib。
+`cli.py` 读 Mac 版的 key 文件，不打印 key；环境里的代理会传给 urllib。`--provider zenmux|openrouter`（可加 `--hear-model <id>`）换 AI 服务，读对应的 `ai-key-<服务>`。
 
 ## 安装（用户）
 
