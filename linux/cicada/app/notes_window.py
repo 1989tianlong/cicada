@@ -80,6 +80,8 @@ class NotesWindow(Gtk.Window):
 
     def _drag(self, _w, event):
         Log.d("notes window: click at %d,%d, active=%s" % (event.x, event.y, self.is_active()))
+        if self.source_open:  # a click anywhere else in the window puts 听哪里's choices away
+            self._toggle_sources(False)
         if event.button == 1:
             x, y = self.get_position()
             self._grab = (event.x_root - x, event.y_root - y)
@@ -314,15 +316,18 @@ class NotesWindow(Gtk.Window):
         ui.clear(row)
         listen = self.app.listen
         if not listen.listening or listen.source_kind == "file" or self.subtitles:
+            self.source_open = False
             row.hide()
             return
         from .tray import sources
         names = dict(sources())
         line = ui.hbox(6, ui.text(names.get(self.app.settings.listenSource, ""), 12, "secondary", wrap=False))
-        change = ui.link(L("换") + " ⌄", lambda: self._source_menu(change))
+        change = ui.link(L("换") + (" ⌃" if self.source_open else " ⌄"), self._toggle_sources)
         change.set_can_focus(False)
         line.pack_start(change, False, False, 0)
         row.pack_start(line, False, False, 0)
+        if self.source_open:
+            row.pack_start(self._source_choices(), False, False, 0)
         # How the room is heard when it isn't the plain way (one grey line, the Mac's HybridNote).
         note = self.app.hybrid_note()
         if note:
@@ -342,18 +347,36 @@ class NotesWindow(Gtk.Window):
             c.show_all()
         row.show()  # show_all() skips a no_show_all widget itself
 
-    def _source_menu(self, widget) -> None:
+    source_open = False
+
+    def _toggle_sources(self, on: bool | None = None) -> None:
+        self.source_open = (not self.source_open) if on is None else on
+        self._fill_source()
+
+    def _source_choices(self) -> Gtk.Widget:
+        """听哪里's choices in place, under 换 (as the meeting's language card): a Gtk.Menu popped from
+        this window, which never takes the focus, came up blank and stopped the app taking input."""
         from .tray import sources
-        menu = Gtk.Menu()
+        box = ui.vbox(0)
         for value, label in sources():
-            mark = "✓ " if value == self.app.settings.listenSource else "    "
-            i = Gtk.MenuItem(label=mark + label)
-            i.connect("activate", lambda *_, v=value: self.app.set_listen_source(v))
-            menu.append(i)
-        menu.show_all()
-        menu.attach_to_widget(widget, None)
-        menu.popup_at_widget(widget, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
-        self._menu = menu  # kept while open
+            def pick(v=value):
+                self.source_open = False
+                if v == self.app.settings.listenSource:
+                    self._fill_source()
+                else:
+                    self.app.set_listen_source(v)
+            b = Gtk.Button()
+            current = value == self.app.settings.listenSource
+            inner = ui.hbox(8, ui.text(label, 13, "ink", bold=current, wrap=False))
+            if current:
+                tick = ui.icon("object-select-symbolic", 12)
+                inner.pack_end(tick, False, False, 0)
+            b.add(ui.pad(inner, 7, 12))
+            ui.classes(b, "linkrow")
+            b.set_can_focus(False)
+            b.connect("clicked", lambda *_, f=pick: f())
+            box.pack_start(b, False, False, 0)
+        return ui.panel(ui.pad(box, 4, 0), "notice")
 
     # 纪要 / 文字记录, side by side
 
