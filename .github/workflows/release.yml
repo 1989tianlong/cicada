@@ -239,7 +239,6 @@ jobs:
           (cd dist && sha256sum -- * > checksums.txt)
           cat dist/checksums.txt
           scripts/release_notes.sh "${TAG#v}" > notes.md
-          [[ "${{ needs.plan.outputs.android }}" == true ]] && sed "s/<version>/${TAG#v}/" .github/release-notes-android.md >> notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
             gh release edit "$TAG" --notes-file notes.md
@@ -249,3 +248,9 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
+          # The install notes for what this release carries (Android can be left out by plan).
+          PLATFORMS: >-
+            ${{ needs.plan.outputs.mac == 'true' && 'mac' || '' }}
+            ${{ needs.plan.outputs.windows == 'true' && 'windows' || '' }}
+            ${{ needs.plan.outputs.linux == 'true' && 'linux' || '' }}
+            ${{ needs.plan.outputs.android == 'true' && 'android' || '' }}
