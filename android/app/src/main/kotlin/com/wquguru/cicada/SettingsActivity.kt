@@ -12,7 +12,6 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.Switch
 import cicada.AIKey
-import cicada.KeyState
 import cicada.Languages
 import cicada.Log
 import cicada.Strings
@@ -46,7 +45,7 @@ class SettingsActivity : Activity() {
     private fun build() {
         val app = cicada
         val s = app.settings
-        val key = listOf(app.ling.keyState, app.ling.currentKey()?.takeLast(4), app.ling.hears, s.toJson(), app.canOverlay, Strings.language, app.updates.available?.version, app.updates.manual).joinToString("|")
+        val key = listOf(app.ling.keyState, app.ling.currentKey()?.takeLast(4), app.ling.aiCheck.summary, s.toJson(), app.canOverlay, Strings.language, app.updates.available?.version, app.updates.manual).joinToString("|")
         if (key == shown) return
         shown = key
         page.removeAllViews()

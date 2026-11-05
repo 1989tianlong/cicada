@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit
 ///   import <session.json in files/> | importfile <audio or video in files/> | face | onboarded on|off | target <code> | ui <lang> | clip <text>
 ///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> ("" back to the recommended) | show ai
 ///   key import <file in files/> (sealed as the current service's key, the plain file deleted) | voice-try (设置's 试一句)
+///   ai-check (重新检查) | ai-check-sim <reason|lowBalance|off> (every check ends that way; the state's ai.check has the steps)
 class DebugReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!BuildConfig.DEBUG) return
@@ -91,6 +92,14 @@ class DebugReceiver : BroadcastReceiver() {
                 return mapOf("ok" to true, "ai" to ai(app))
             } else { app.key.reload(); app.ling.keyChanged(); app.background.execute { app.ling.check() } }
             "provider" -> { app.setAiProvider(arg); return mapOf("ok" to true, "ai" to ai(app)) }
+            // ai-check-sim <reason|lowBalance|off>: every check ends this way (screenshots of each state).
+            "ai-check-sim" -> {
+                app.ling.simulateCheck = cicada.AICheck.reasonNamed(arg)
+                app.ling.simulateBalance = if (arg == "lowBalance") 0.4 else null
+                app.background.execute { app.ling.check() }
+            }
+            // 重新检查.
+            "ai-check" -> app.background.execute { app.ling.check() }
             "ai-model" -> {
                 val kind = arg.substringBefore(' ')
                 val model = arg.substringAfter(' ', "").trim().removeSurrounding("\"")
@@ -133,7 +142,8 @@ class DebugReceiver : BroadcastReceiver() {
             val l = app.ling
             val c = l.config()
             return mapOf("provider" to c.provider.id, "base" to c.base, "text" to c.textModel, "hear" to c.hearModel, "voice" to c.voiceModel,
-                         "state" to l.keyState.name, "hears" to l.hears, "speaks" to l.speaks, "problem" to l.problem,
+                         "state" to l.keyState.name, "hears" to l.hears, "speaks" to l.speaks, "check" to l.aiCheck.summary,
+                         "voice" to l.lastVoice?.first, "sim" to l.simulateCheck?.name,
                          "catalog" to listOf(l.textCatalog.size, l.hearCatalog.size), "keyFile" to app.key.path.name)
         }
 

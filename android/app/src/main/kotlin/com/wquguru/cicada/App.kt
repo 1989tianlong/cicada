@@ -83,6 +83,8 @@ class CicadaApp : Application() {
         // The AI service in use (设置 › AI 服务): its key file, address and models, read on every call.
         key = AIKey(KeystoreProtector, service = { settings.aiProvider })
         ling = LingClient(key, config = { settings.aiConfig() })
+        ling.proxyHint = { AiCheckViews.proxyHint(this) }
+        watchNetwork()
         store = SessionStore(loadNow = false)
         background.execute { val t = System.currentTimeMillis(); store.load(); Log.d("store: loaded ${store.all().size} in ${System.currentTimeMillis() - t} ms") }
         notes = NotesEngine(ling, store)
@@ -157,17 +159,22 @@ class CicadaApp : Application() {
     /// Between 开始听 and the service starting (permissions, the consent dialog): further taps wait.
     @Volatile var starting = 0L
 
-    fun startListening(context: Context, kind: String) {
-        startIntent(context, kind)?.let { context.startActivity(it) }
+    /// From a screen, a known AI service failure first gets its sheet (AiCheckViews.start).
+    fun startListening(context: Context, kind: String, gate: Boolean = true) {
+        if (gate && context is android.app.Activity && !listen.listening && ling.hasKey) { AiCheckViews.start(context, kind); return }
+        startIntent(context, kind, gate = false)?.let { context.startActivity(it) }
     }
 
     /// What starting takes: the permissions and consent screen, or onboarding without a key. Null
-    /// while already listening or starting (a second tap). The Quick Settings tile opens it itself.
-    fun startIntent(context: Context, kind: String): Intent? {
+    /// while already listening or starting (a second tap). The Quick Settings tile opens it itself;
+    /// a known failure sends it to the home screen, which says why (`gate`).
+    fun startIntent(context: Context, kind: String, gate: Boolean = true): Intent? {
         if (listen.listening) return null
         if (System.currentTimeMillis() - starting < 60_000) return null
         startProblem = null
         if (!ling.hasKey) return Intent(context, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (gate && AiCheckViews.blocks(this))
+            return Intent(context, MainActivity::class.java).putExtra("start", kind).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         starting = System.currentTimeMillis()
         return Intent(context, ProjectionActivity::class.java).putExtra("kind", kind).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
@@ -419,6 +426,43 @@ class CicadaApp : Application() {
         ling.keyChanged()
         if (check && ling.hasKey) background.execute { ling.check() }
         changed()
+    }
+
+    /// 重新检查.
+    fun recheck() { if (ling.hasKey && !ling.aiCheck.running) background.execute { ling.check() } }
+
+    /// One tap on 换成推荐的 ("text" or "hear"): the service's first recommended model, then a
+    /// fresh check. Never done without that tap.
+    fun useRecommended(kind: String) {
+        val p = ling.provider
+        val first = (if (kind == "hear") p.hearModels else p.textModels).firstOrNull()?.id ?: return
+        Log.d("ai: recommended $kind model chosen")
+        setAiModel(kind, if (p.id == "ling") first else "")
+    }
+
+    /// A key pasted for one service that belongs to another (改用 OpenRouter): switch, save it
+    /// there (the key file follows the service), check.
+    fun switchService(id: String, key: String) {
+        settings.aiProvider = id
+        settings.save()
+        Log.d("ai: provider $id (the key's own)")
+        if (!this.key.save(key)) return
+        aiChanged()
+    }
+
+    /// Any change of route (Wi-Fi back, a VPN or proxy turned on) waits 3 s for the network to
+    /// settle, then the client looks again if the service was unreachable. No timer: nothing is
+    /// checked while the network stays the same.
+    private fun watchNetwork() {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        val recheck = Runnable { background.execute { ling.networkChanged() } }
+        fun later() { main.removeCallbacks(recheck); main.postDelayed(recheck, 3000) }
+        try {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = later()
+                override fun onLinkPropertiesChanged(network: android.net.Network, lp: android.net.LinkProperties) = later()
+            })
+        } catch (e: Exception) { Log.d("ai: no network callback ${e.javaClass.simpleName}") }
     }
 
     /// 保存会议录音: what is heard goes to system.m4a as it comes (the Mac keeps it the same way).

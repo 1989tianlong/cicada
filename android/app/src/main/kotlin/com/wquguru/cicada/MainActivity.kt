@@ -41,6 +41,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         ui = Ui(this)
         if (!cicada.settings.onboarded) startActivity(Intent(this, OnboardingActivity::class.java))
+        startFromTile = intent?.getStringExtra("start")
         top = FrameLayout(this); recent = FrameLayout(this)
         val body = ui.stack(8, top, recent).apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(24)) }
         builtTitle = L("会议记录")
@@ -49,6 +50,13 @@ class MainActivity : Activity() {
     }
 
     private var builtTitle = ""
+    /// The Quick Settings tile's 开始听, held back by a known AI service failure: say why here.
+    private var startFromTile: String? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        startFromTile = intent.getStringExtra("start")
+    }
 
     override fun onResume() {
         super.onResume()
@@ -60,6 +68,7 @@ class MainActivity : Activity() {
         render()
         cicada.updates.checkIfDue(UpdateChecker.STALE)
         cicada.main.postDelayed(tick, 1000)
+        startFromTile?.let { kind -> startFromTile = null; AiCheckViews.start(this, kind) }
     }
 
     override fun onPause() {
@@ -76,7 +85,7 @@ class MainActivity : Activity() {
         val app = cicada
         val file = app.importing
         val key = listOf(NotesViews.liveKey(app), app.autoEnded, app.settings.source, app.settings.target, app.canOverlay, app.settings.overlay, micDenied, app.listen.spoken,
-                         app.startProblem, file?.done?.toInt(), app.updates.available?.version).joinToString("|")
+                         app.startProblem, file?.done?.toInt(), app.updates.available?.version, AiCheckViews.cardWords(app)).joinToString("|")
         if (key == shownTop) return
         shownTop = key
         top.removeAllViews()
@@ -87,6 +96,8 @@ class MainActivity : Activity() {
             else -> startCard()
         })
         if (app.settings.overlay && !app.canOverlay && file == null) column.addView(tipCard())
+        // The AI service needs the user (a phone has no tray): where the update card goes.
+        if (file == null && !app.listen.listening) AiCheckViews.card(this, ui)?.let { column.addView(it) }
         // A new version, under the start card; never while a meeting or a file is going on.
         app.updates.available?.takeIf { file == null && !app.listen.listening }?.let { column.addView(updateCard(it)) }
         top.addView(column)

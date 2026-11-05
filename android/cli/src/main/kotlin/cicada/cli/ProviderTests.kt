@@ -201,19 +201,23 @@ object ProviderTests {
         }), s)
         equal(KeyState.Ok, ling.check(), "the key works")
         equal(false, ling.hears, "the hear model refuses audio")
+        equal(AICheck.State.Fail(AICheck.Reason.Deaf, 400), ling.aiCheck[AICheck.StepID.Hear], "deaf at the hear step")
+        check(AICheck.isOk(ling.aiCheck[AICheck.StepID.Text]), "the text model still answers")
         check(!ling.canHear, "can't hear")
         check(ling.usable, "notes and translation still work")
-        check("a/b" in ling.textCatalog, "catalog fetched")
         s.aiHearModels.clear()
         ling.keyChanged()
         equal(null, ling.hears, "forgotten")
     }
 
     fun checkSaysWhy() {
-        equal(KeyState.Invalid, client(Fake({ _, _ -> Transport.Response(401, "") }), AppSettings(aiProvider = "zenmux")).check(), "401")
+        val bad = client(Fake({ _, _ -> Transport.Response(401, "") }), AppSettings(aiProvider = "zenmux"))
+        equal(KeyState.Invalid, bad.check(), "401")
+        equal("reach=ok key=fail(invalidKey) text=skipped hear=skipped", bad.aiCheck.summary, "stops at the key")
         val ling = client(Fake({ _, _ -> Transport.Response(404, "") }), AppSettings(aiProvider = "zenmux"))
         ling.check()
-        equal(listOf<Any>("%@ 拒绝了请求（HTTP %lld），请检查模型名", "ZenMux", 404), ling.problem, "404 names the service")
+        equal(AICheck.Failure(AICheck.StepID.Text, AICheck.Reason.NoModel, 404), ling.aiCheck.failure, "404 is the text model")
+        check(ling.checkMessage()!!.contains("inclusionai/ling-3.0-flash"), "names the model")
         equal(KeyState.None, client(Fake({ _, _ -> reply("ok") }), AppSettings(aiProvider = "openrouter"), key = null).keyState, "no key")
     }
 

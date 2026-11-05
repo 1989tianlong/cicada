@@ -96,9 +96,11 @@ object NotesViews {
 
     fun banner(ui: Ui, app: CicadaApp, onMic: (() -> Unit)?): View? {
         val problem = app.listen.problem
+        val network = app.listen.problemKind == "network"
         val (iconRes, text) = when {
-            app.listen.problemKind == "network" -> R.drawable.i_wifi_off to
-                (if (app.ling.provider.id == "ling") L("连不上 Ling，联网后继续出字幕") else problem ?: "")
+            network -> R.drawable.i_wifi_off to
+                (if (app.ling.provider.id == "ling") L("连不上 Ling，联网后继续出字幕")
+                 else LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", app.ling.serviceName, notesClock(app)))
             app.micSilenced && app.listen.listening -> R.drawable.i_mic to L("麦克风正被通话或其他 app 占用，用完后接着听")
             problem != null -> R.drawable.i_info to problem
             silent(app) -> R.drawable.i_speaker_off to L("20 秒没听到声音。通话和会议 app 的声音系统不让录")
@@ -113,8 +115,18 @@ object NotesViews {
             addView(ui.icon(R.drawable.i_info, 22, Palette.link).apply { setImageDrawable(ui.drawable(iconRes, Palette.link)) })
             addView(ui.text(text, 14f, Palette.ink), ui.weight().apply { leftMargin = ui.dp(12) })
             if (silent(app) && onMic != null) addView(ui.textButton(L("换成面对面"), onClick = onMic))
+            // The network or the proxy, not the notes: 设置 says which (only on Cicada's own screens).
+            if (network && onMic != null && app.ling.provider.id != "ling")
+                addView(ui.textButton(L("设置")) { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) })
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
+    }
+
+    /// Where this meeting's notes stop: the time of the last line they cover.
+    private fun notesClock(app: CicadaApp): String {
+        val lines = app.listen.sessionId?.let { app.store.lines(it) }.orEmpty()
+        val covered = app.notes.notes.covered
+        return Languages.clock(if (covered in 1..lines.size) lines[covered - 1].t else 0.0)
     }
 
     /// An import's progress: the bar and "26:40 / 42:15".
@@ -242,15 +254,21 @@ object NotesViews {
                 NotesEngine.State.NoKey -> CicadaApp.shared.noKeyText()
                 NotesEngine.State.InvalidKey -> CicadaApp.shared.ling.provider.let { p ->
                     if (p.id == "ling") L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
-                    else cicada.Strings.LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", L(p.name))
+                    else cicada.Strings.LF("%@ 说这个 key 无效，可能没复制全，或已删除。", L(p.name))
                 }
-                NotesEngine.State.RateLimited -> L("请求过于频繁，稍后会自动重试。")
+                NotesEngine.State.RateLimited -> LF("%@ 很忙，纪要稍后补上。字幕照常。", CicadaApp.shared.ling.serviceName)
                 NotesEngine.State.Updating -> L("正在整理纪要…")
                 else -> if (listening) L("说几句后生成纪要，之后每 45 秒更新") else ""
             }
             if (hint.isNotEmpty()) body.addView(ui.text(hint, 14f, Palette.secondary))
             return body
         }
+        // A busy service: the notes catch up by themselves, the subtitles never stopped.
+        if (status == NotesEngine.State.RateLimited && listening)
+            body.addView(ui.text(LF("%@ 很忙，纪要稍后补上。字幕照常。", CicadaApp.shared.ling.serviceName), 13f, AiCheckViews.warn).apply {
+                background = ui.rounded(AiCheckViews.warnPale, 10)
+                setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8))
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
         if (!compact) {
             val head = LinearLayout(ui.context).apply {
                 orientation = LinearLayout.HORIZONTAL

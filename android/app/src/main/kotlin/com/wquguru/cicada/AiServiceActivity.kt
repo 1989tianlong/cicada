@@ -7,9 +7,9 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
+import cicada.AICheck
 import cicada.AIConfig
 import cicada.AIKey
-import cicada.KeyState
 import cicada.Model
 import cicada.Provider
 import cicada.Providers
@@ -44,7 +44,7 @@ class AiServiceActivity : Activity() {
         val ling = app.ling
         val c = ling.config()
         val p = c.provider
-        val key = listOf(ling.keyState, ling.currentKey()?.takeLast(4), ling.hears, ling.problem, ling.seconds?.let { "%.1f".format(it) },
+        val key = listOf(ling.keyState, ling.currentKey()?.takeLast(4), ling.aiCheck.summary, ling.aiCheck.at?.let { it / 60_000 }, ling.lastVoice?.first,
                          ling.textCatalog.size, ling.hearCatalog.size, app.settings.toJson(), Strings.language).joinToString("|")
         if (key == shown) return
         shown = key
@@ -70,6 +70,24 @@ class AiServiceActivity : Activity() {
         if (k == null && p.site != null) rows.add(ui.listRow(LF("打开 %@", name), null, trailing = ui.icon(R.drawable.i_external, 18, Palette.link), chevron = false) {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.site))) } catch (_: Exception) {}
         })
+        // Where it broke and the one thing that fixes it; all passed folds into the key's line.
+        val check = ling.aiCheck
+        if (k != null && AiCheckViews.showSteps(check)) rows.add(AiCheckViews.steps(this, ui, recheck = false) { editKey(this, ui) })
+        check.balanceLine(name)?.let { low ->
+            // Wraps: English runs two lines.
+            rows.add(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = ui.dp(56)
+                setPadding(ui.dp(16), ui.dp(8), ui.dp(8), ui.dp(8))
+                setBackgroundColor(AiCheckViews.warnPale)
+                addView(ui.text(low, 15f, AiCheckViews.warn), ui.weight())
+                addView(ui.textButton(L("去充值")) { AiCheckViews.open(this@AiServiceActivity, AiCheckViews.topUp(p)) })
+            })
+        }
+        if (k != null) rows.add(ui.listRow(if (check.running) L("正在检查…") else L("重新检查"), null,
+            leading = ui.icon(R.drawable.i_restore, 22, if (check.running) Palette.tertiary else Palette.body), chevron = false,
+            onClick = if (check.running) null else ({ app.recheck() })))
         page.addView(ui.group(rows))
         val host = c.base?.let { Uri.parse(it).host } ?: L("你填的地址")
         page.addView(ui.helper(LF("加密存在这台手机上，只发给 %@（%@）", name, host)).apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0) })
@@ -87,28 +105,44 @@ class AiServiceActivity : Activity() {
     /// 现在能用的 (AISettings.swift › usage): what each part of the app uses with this service.
     private fun usesRows(app: CicadaApp, c: AIConfig, name: String): List<View> {
         val ling = app.ling
-        val on = ling.usable
+        // Only what the last result supports: when the service can't be reached (or the key
+        // fails) nothing says "用 ZenMux"; a deaf hear model greys only what hears.
+        val reason = ling.aiCheck.failure?.reason
+        val down = ling.hasKey && reason in listOf(AICheck.Reason.Unreachable, AICheck.Reason.BadAddress, AICheck.Reason.InvalidKey,
+                                                   AICheck.Reason.MgmtKey, AICheck.Reason.NoCredit)
+        val on = ling.usable && !down
         val uses = LF("用 %@", name)
-        val needKey = Triple(L("需要 key"), false, L("填好 key 后可用"))
-        val deaf = Triple(L("还不能用"), false, L("这个模型听不了声音，换一个支持音频输入的"))
+        val needKey = Triple(L("需要 key"), 0, L("填好 key 后可用"))
+        val off = Triple(L("暂不可用"), 0, if (reason == AICheck.Reason.Unreachable) LF("连上 %@ 后可用", name) else L("换好 key 后可用"))
+        val notReady = if (down) off else needKey
+        val deaf = Triple(L("还不能用"), 0, LF("%@ 听不了声音。", short(c.hearModel)))
         val hear = when {
-            !on -> needKey
+            !on -> notReady
             ling.hears == false -> deaf
-            c.isLing -> Triple(uses, true, L("Ming 一次识别并翻译"))
-            else -> Triple(uses, true, short(c.hearModel) + " · " + L("比 Ling 晚 1–2 秒出字"))
+            c.isLing -> Triple(uses, 1, L("Ming 一次识别并翻译"))
+            else -> Triple(uses, 1, short(c.hearModel) + " · " + L("比 Ling 晚 1–2 秒出字"))
         }
-        val notes = if (on) Triple(uses, true, L("会中每 45 秒更新")) else needKey
+        val notes = when {
+            !on -> notReady
+            reason == AICheck.Reason.NoModel -> Triple(L("暂不可用"), 0, L("换一个模型后可用"))
+            reason == AICheck.Reason.NoJSON -> Triple(L("暂不可用"), 0, L("这个服务不支持 JSON"))
+            ling.aiCheck.busy -> Triple(L("很忙"), 2, L("会自动重试，纪要可能晚一点"))
+            else -> Triple(uses, 1, L("会中每 45 秒更新"))
+        }
         val voice = cloudVoice(app)
         val say = when {
-            !on -> needKey
+            !on -> notReady
             ling.hears == false -> deaf
-            else -> Triple(uses, true, if (voice != null) LF("%@ 的声音读给对方", voice) else L("手机的声音读给对方"))
+            voice != null && ling.lastVoice?.first == false -> Triple(uses, 1, L("上次同传没出声，用了手机的声音"))
+            voice != null && ling.lastVoice?.first == true -> Triple(uses, 1, LF("%@ 的声音读给对方", voice) + " · " + L("上次同传时正常"))
+            else -> Triple(uses, 1, if (voice != null) LF("%@ 的声音读给对方", voice) else L("手机的声音读给对方"))
         }
         val rows = mutableListOf(L("听对方") to hear, L("实时纪要") to notes, L("我说 · 面对面") to say)
-        if (!c.isLing) rows.add(L("你自己的声音") to Triple(L("只有 Ling"), false, L("换用 Ling 才有")))
+        if (!c.isLing) rows.add(L("你自己的声音") to Triple(L("只有 Ling"), 0, L("换用 Ling 才有")))
         return rows.map { (title, u) ->
-            val (tag, ok, note) = u
-            ui.listRow(title, note, trailing = ui.badge(tag, fg = if (ok) Palette.ink else Palette.secondary, bg = if (ok) Palette.selected else Palette.ground), chevron = false)
+            val (tag, style, note) = u
+            val (fg, bg) = when (style) { 1 -> Palette.ink to Palette.selected; 2 -> AiCheckViews.warn to AiCheckViews.warnPale; else -> Palette.secondary to Palette.ground }
+            ui.listRow(title, note, trailing = ui.badge(tag, fg = fg, bg = bg), chevron = false)
         }
     }
 
@@ -170,27 +204,51 @@ class AiServiceActivity : Activity() {
         /// How the service is doing, under its key; null when there's nothing to say.
         fun status(app: CicadaApp): String? {
             val ling = app.ling
-            val c = ling.config()
-            val name = name(c.provider)
-            val problem = ling.problem?.let { pr -> LF(pr[0] as String, *pr.drop(1).map { if (it is String) L(it) else it }.toTypedArray()) }
-            return when (ling.keyState) {
-                KeyState.None, KeyState.Unchecked -> null
-                KeyState.Checking -> L("正在检查…")
-                KeyState.Invalid -> if (c.isLing) L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
-                                    else LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", name)
-                KeyState.Unreachable -> problem ?: if (c.isLing) L("连不上 Ling，检查一下网络") else LF("连不上 %@，请检查网络或代理", name)
-                KeyState.Ok -> problem ?: (L("已连接") + " · " + LF("%@ · 响应约 %@ 秒", short(c.textModel), "%.1f".format(ling.seconds ?: 0.0)))
+            val check = ling.aiCheck
+            if (!ling.hasKey) return null
+            if (check.running) return L("正在检查…")
+            // Named after the step that failed: a missing model is not a connection problem.
+            check.failure?.takeIf { it.reason != AICheck.Reason.Busy }?.let {
+                return when (it.step) {
+                    AICheck.StepID.Reach -> L("暂时连不上")
+                    AICheck.StepID.Key -> L("这个 key 用不了")
+                    AICheck.StepID.Text, AICheck.StepID.Hear -> L("模型用不了")
+                }
             }
+            if (check.busy) return LF("%@ 现在很忙", ling.serviceName)
+            return AiCheckViews.summary(check)
         }
 
         /// The 设置 row's line: connected (and what that costs in delay), or what's wrong.
         fun summary(app: CicadaApp): String {
             val ling = app.ling
             val k = ling.currentKey() ?: return L("还没填 API key")
-            if (ling.keyState != KeyState.Ok) return status(app) ?: AIKey.masked(k)
-            if (ling.hears == false) return L("这个模型听不了声音，换一个支持音频输入的")
-            if (ling.problem != null) return status(app)!!
-            return if (ling.config().isLing) AIKey.masked(k) + " · " + L("正常") else L("已连接") + " · " + L("听对方比 Ling 晚 1–2 秒出字")
+            val check = ling.aiCheck
+            if (check.failure != null || check.busy) return ling.checkMessage() ?: status(app) ?: AIKey.masked(k)
+            if (ling.config().isLing) return AIKey.masked(k) + " · " + L("正常")
+            return status(app) ?: L("已连接")
+        }
+
+        /// The prefix says whose key it is: a management key can't call models, and another
+        /// service's key goes there with one tap (改用 %@ into `into`), never a silent switch.
+        /// True when the key isn't for `service`: don't save it here.
+        fun keyHint(ui: Ui, key: String, service: String, status: android.widget.TextView, into: LinearLayout, switched: () -> Unit): Boolean {
+            val (owner, management) = AICheck.owner(key) ?: return false
+            if (management) {
+                status.text = L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。")
+            } else if (owner != service) {
+                val name = Providers.named(owner).name
+                status.text = LF("这是 %@ 的 key。", name)
+                into.addView(ui.button(LF("改用 %@", name), "primary", height = 44) {
+                    into.removeAllViews()
+                    ui.context.cicada.switchService(owner, key)
+                    switched()
+                })
+            } else return false
+            status.setTextColor(Palette.link)
+            status.setCompoundDrawablesRelative(null, null, null, null)
+            status.announceForAccessibility(status.text)
+            return true
         }
 
         /// Change or remove the key of the service in use: a sheet with the field, 粘贴, and 删除.
@@ -210,15 +268,18 @@ class AiServiceActivity : Activity() {
                 addView(box, ui.weight())
                 addView(ui.button(L("粘贴"), "white", R.drawable.i_clipboard, height = 44) { SettingsActivity.paste(box) })
             }
+            val other = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_HORIZONTAL }
             submit = submit@{
                 val text = box.text.toString().trim()
+                other.removeAllViews()
+                if (keyHint(ui, text, p.id, status, other) { dialog.dismiss() }) return@submit
                 if (isLing && !text.startsWith("sk-")) { status.text = L("要粘贴 sk- 开头的 Ling key"); status.setTextColor(Palette.link); return@submit }
                 if (text.isEmpty()) return@submit
                 if (!app.key.save(text)) { status.text = L("保存失败"); return@submit }
                 app.aiChanged()
                 dialog.dismiss()
             }
-            val body = ui.stack(10, field, status,
+            val body = ui.stack(10, field, status, other,
                 LinearLayout(activity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     addView(ui.button(L("取消"), "quiet") { dialog.dismiss() }, ui.weight())

@@ -30,7 +30,6 @@
 "换成面对面" = "Switch to In person";
 "正在听下一句…" = "Listening for next line…";
 "这个 Ling key 无效，看看有没有复制全，或换一个新的" = "Invalid Ling key. Check if it's complete, or create a new one.";
-"请求过于频繁，稍后会自动重试。" = "Too many requests; retrying shortly.";
 "说几句后生成纪要，之后每 45 秒更新" = "Notes appear after a few lines, then update every 45s";
 "返回" = "Back";
 "加密存在本机，只发给 Ling" = "Encrypted on this device. Sent only to Ling.";
@@ -207,3 +206,18 @@
 "没人说话时不乱写" = "Writes nothing when no one speaks";
 "最快，偶尔把杂音写成字" = "Fastest; sometimes writes noise as words";
 "更快" = "Faster";
+
+/* AI 服务检查 (AICheck.kt, AiCheckViews.kt): the phone's words */
+"文字 %@ 秒" = "text %@ s";
+"听 %@ 秒" = "listening %@ s";
+"修好之前听不了" = "Listening needs this fixed first";
+"字幕照常，纪要先停下" = "Subtitles go on; notes pause";
+"用完后就听不了了" = "Listening stops when it runs out";
+"%@ 听不了声音。" = "%@ can't take audio.";
+"%@ 只收文字。换成推荐的模型就能开始听。" = "%@ takes text only. Switch to the recommended model to start listening.";
+"换成推荐的并开始" = "Use Recommended and Start";
+"%@ 现在听不了声音" = "%@ can't take audio";
+"重新检查并开始" = "Check Again and Start";
+"上次同传没出声，用了手机的声音" = "Silent last time; the phone's voice spoke instead";
+"这台手机访问不到 %@。" = "This phone can't reach %@.";
+"这台手机没开代理。在国内通常要开代理才能用 %@。" = "No proxy is on. In mainland China, %@ usually needs one.";
