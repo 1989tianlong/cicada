@@ -17,7 +17,8 @@ public sealed class Segmenter
     const int Frame = 480;                       // 30 ms
     public static double Threshold = 0.01;       // the Mac AudioRouter's gate (about -40 dBFS)
     public static double Pause = 0.6, MaxLength = 8.0, MinSpeech = 0.25;
-    public static double Steady = 2.0;           // frames' 90th / 10th percentile below this: not speech
+    public static double Steady = 2.0;           // frames' 90th / 10th percentile below this: not speech…
+    public static double Dips = 2.5;             // …unless the median is this far over the 10th, quiet ones held at gate / 8
     const double PreRoll = 0.15, Tail = 0.15, CutWindow = 2.0;
 
     readonly List<short> pending = [];           // samples not yet a whole frame
@@ -112,14 +113,24 @@ public sealed class Segmenter
     /// Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
     /// the first loud one to the last counts, the quiet ones held at the gate: counting only the
     /// loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate.
+    /// A voice so quiet that its loudest frames barely clear the gate (about -38 dBFS: 6 of 6 lines
+    /// lost in testing) still pauses between syllables, its quietest tenth of frames far under its
+    /// median (8 dB and more); noise near the gate stays within about 6 dB of its median. So a flat
+    /// top is steady only when it has no such dips, measured with quiet frames held at gate / 8.
+    /// Very low rumble (brown noise with almost nothing over 20 Hz) can look like that and gets
+    /// through more often than before (about 1 in 3 segments, was 1 in 5); what Ming makes of it
+    /// still meets the hear filter (Translator.IsNoise).
     internal static bool IsSteady(IEnumerable<double> frameLevels, double? gate = null)
     {
         var all = frameLevels.ToList();
         var threshold = gate ?? Threshold;
         int first = all.FindIndex(l => l >= threshold), last = all.FindLastIndex(l => l >= threshold);
         if (first < 0 || last <= first) return false;
-        var body = all.GetRange(first, last - first + 1).Select(l => Math.Max(l, threshold)).Order().ToList();
-        return body[(int)(0.9 * (body.Count - 1))] < Steady * body[(int)(0.1 * (body.Count - 1))];
+        var body = all.GetRange(first, last - first + 1);
+        var top = body.Select(l => Math.Max(l, threshold)).Order().ToList();
+        if (top[(int)(0.9 * (top.Count - 1))] >= Steady * top[(int)(0.1 * (top.Count - 1))]) return false;
+        var low = body.Select(l => Math.Max(l, threshold / 8)).Order().ToList();
+        return low[(int)(0.5 * (low.Count - 1))] < Dips * low[(int)(0.1 * (low.Count - 1))];
     }
 
     /// Emits `current[..end]` and keeps what follows as the start of the next segment.

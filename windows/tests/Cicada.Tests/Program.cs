@@ -461,10 +461,12 @@ static class Tests
 
     // MARK: Segmenter
 
-    /// A 300 Hz tone that swells and fades four times a second like syllables; steady when not.
-    static short[] Tone(double seconds, double amp = 0.3, bool syllables = true) =>
+    /// A 300 Hz tone that swells and fades four times a second like syllables; steady when not, or
+    /// rising and falling by `wobble` twice a second like a fan.
+    static short[] Tone(double seconds, double amp = 0.3, bool syllables = true, double wobble = 0) =>
         Enumerable.Range(0, (int)(seconds * 16000)).Select(i => (short)(Math.Sin(2 * Math.PI * 300 * i / 16000)
-            * (syllables ? 0.55 + 0.45 * Math.Sin(2 * Math.PI * 4 * i / 16000) : 1) * amp * 32767)).ToArray();
+            * (syllables ? 0.55 + 0.45 * Math.Sin(2 * Math.PI * 4 * i / 16000) : 1 + wobble * Math.Sin(2 * Math.PI * 0.5 * i / 16000))
+            * amp * 32767)).ToArray();
     static short[] Silence(double seconds) => new short[(int)(seconds * 16000)];
 
     static List<Segment> Cut(params short[][] parts)
@@ -503,6 +505,8 @@ static class Tests
         Equal(0, Cut(Tone(3, 0.02, syllables: false), Silence(1)).Count, "a steady hum over the gate is not speech");
         Equal(1, Cut(Tone(3), Silence(1)).Count, "speech, which rises and falls, is");
         Equal(1, Cut(Tone(3, 0.03), Silence(1)).Count, "quiet speech, whose dips fall below the gate, is too");
+        Equal(1, Cut(Tone(3, 0.022), Silence(1)).Count, "a voice whose loudest frames barely clear the gate dips far between syllables");
+        Equal(0, Cut(Tone(4, 0.016, syllables: false, wobble: 0.3), Silence(1)).Count, "a hum at the gate that slowly rises and falls doesn't");
     }
 
     public static void WavRoundTrip()
