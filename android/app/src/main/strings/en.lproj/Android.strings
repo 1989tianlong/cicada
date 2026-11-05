@@ -26,6 +26,7 @@
 "%@ 分钟前更新" = "Updated %@ min ago";
 "连不上 Ling，检查网络" = "Can't reach Ling; check your network";
 "连不上 Ling，联网后继续出字幕" = "Can't reach Ling. Subtitles will resume when back online.";
+"连不上 %@，字幕和纪要暂停，连上后自动继续。" = "Can't reach %@. Subtitles and notes are paused and resume once it's back.";
 "20 秒没听到声音。通话和会议 app 的声音系统不让录" = "No sound for 20s. Call & meeting apps block audio capture.";
 "换成面对面" = "Switch to In person";
 "正在听下一句…" = "Listening for next line…";

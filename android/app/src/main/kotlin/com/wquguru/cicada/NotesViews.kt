@@ -102,7 +102,8 @@ object NotesViews {
         val (iconRes, text) = when {
             network -> R.drawable.i_wifi_off to
                 (if (app.ling.provider.id == "ling") L("连不上 Ling，联网后继续出字幕")
-                 else LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", app.ling.serviceName, notesClock(app)))
+                 // Hearing goes through the service too: the subtitles stopped with the notes, so no notes time.
+                 else LF("连不上 %@，字幕和纪要暂停，连上后自动继续。", serviceLabel(app)))
             app.micSilenced && app.listen.listening -> R.drawable.i_mic to L("麦克风正被通话或其他 app 占用，用完后接着听")
             blocking != null -> R.drawable.i_info to blocking
             problem != null -> R.drawable.i_info to problem
@@ -128,11 +129,9 @@ object NotesViews {
     }
 
     /// Where this meeting's notes stop: the time of the last line they cover.
-    private fun notesClock(app: CicadaApp): String {
-        val lines = app.listen.sessionId?.let { app.store.lines(it) }.orEmpty()
-        val covered = app.notes.notes.covered
-        return Languages.clock(if (covered in 1..lines.size) lines[covered - 1].t else 0.0)
-    }
+    /// Who the banner names: a custom service by its address, which says more than 这个服务.
+    private fun serviceLabel(app: CicadaApp): String =
+        app.ling.serviceHost.takeIf { app.ling.provider.id == "custom" && it.isNotEmpty() } ?: app.ling.serviceName
 
     /// An import's progress: the bar and "26:40 / 42:15".
     fun progress(ui: Ui, file: FileSource): LinearLayout {
@@ -268,7 +267,7 @@ object NotesViews {
                     if (p.id == "ling") L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
                     else cicada.Strings.LF("%@ 说这个 key 无效，可能没复制全，或已删除。", L(p.name))
                 }
-                NotesEngine.State.RateLimited -> LF("%@ 很忙，纪要稍后补上。字幕照常。", CicadaApp.shared.ling.serviceName)
+                NotesEngine.State.RateLimited -> LF("%@ 很忙，纪要稍后补上。字幕照常。", serviceLabel(CicadaApp.shared))
                 NotesEngine.State.Updating -> L("正在整理纪要…")
                 else -> ""
             }
@@ -277,7 +276,7 @@ object NotesViews {
         }
         // A busy service: the notes catch up by themselves, the subtitles never stopped.
         if (status == NotesEngine.State.RateLimited && listening)
-            body.addView(ui.text(LF("%@ 很忙，纪要稍后补上。字幕照常。", CicadaApp.shared.ling.serviceName), 13f, AiCheckViews.warn).apply {
+            body.addView(ui.text(LF("%@ 很忙，纪要稍后补上。字幕照常。", serviceLabel(CicadaApp.shared)), 13f, AiCheckViews.warn).apply {
                 background = ui.rounded(AiCheckViews.warnPale, 10)
                 setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8))
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
