@@ -627,6 +627,8 @@
 "今天" = "Today";
 "昨天" = "Yesterday";
 "本周" = "This Week";
+"现场" = "In room";
+"线上" = "Online";
 "不到 1 分钟" = "Under 1 min";
 "%lld 小时" = "%lld h";
 "%lld 小时 %lld 分" = "%lld h %lld min";
@@ -848,6 +850,8 @@
 "说话人 %lld" = "Speaker %lld";
 
 /* SpeakerViews */
+"会议室的麦克风听到的" = "Heard by the room mic";
+"电脑里放出来的" = "Played by the Mac";
 "没认出是谁：太短，或和已知的声音都不像" = "Not recognised: too short, or unlike the known voices";
 "关掉说话人识别，记录里的名字一起收起" = "Turn off speaker identification; the names in your records are hidden too";
 "Ling 从对话里认出，点一下可以改" = "Ling found this name in the conversation; click to change";

@@ -31,6 +31,18 @@ struct SpeakerTag: View {
     }
 }
 
+/// 现场 / 线上 beside a line in a meeting that heard the room and the Mac together.
+struct PlaceTag: View {
+    let line: TranscriptLine
+    var body: some View {
+        Text(RecordList.place(line)).font(.system(size: 10, weight: .medium)).foregroundStyle(Palette.secondary)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 4).fill(line.via == "room" ? Palette.fill : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.line, lineWidth: line.via == "room" ? 0 : 1))
+            .help(line.via == "room" ? L("会议室的麦克风听到的") : L("电脑里放出来的"))
+    }
+}
+
 /// A line from the other side whose voice isn't one of the people on show.
 struct UnknownSpeakerTag: View {
     var body: some View {

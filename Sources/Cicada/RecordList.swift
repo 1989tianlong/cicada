@@ -33,6 +33,30 @@ enum RecordList {
         }
         return title
     }
+    /// 电脑和会议室: the room mic and the Mac's audio both brought in the other side's lines, so each
+    /// one says where it was heard. Derived from the lines (`via`), not stored: a meeting that only
+    /// heard one side reads as before.
+    static func heardBoth(_ lines: [TranscriptLine]) -> Bool {
+        var room = false, mac = false
+        for l in lines where l.speaker == "them" {
+            if l.via == "room" { room = true } else { mac = true }
+            if room && mac { return true }
+        }
+        return false
+    }
+    /// Lines of the other side's where the place changes from the line before: their label shows again.
+    static func placeStarts(_ lines: [TranscriptLine]) -> Set<String> {
+        var out: Set<String> = [], last: String??
+        for l in lines {
+            let key: String? = l.speaker == "me" ? "me" : l.via
+            if l.speaker != "me", key != last { out.insert(l.id) }
+            last = key
+        }
+        return out
+    }
+    /// Where a line of the other side's was heard, in a meeting that heard both.
+    static func place(_ l: TranscriptLine) -> String { l.via == "room" ? L("现场") : L("线上") }
+
     /// Still on the stored "会议 <date>" title: not renamed, and no notes title to show.
     static func untitled(_ s: Session) -> Bool {
         !(s.renamed ?? !s.title.hasPrefix("会议 ")) && (s.notes?.title ?? "").isEmpty && s.sourceFile == nil

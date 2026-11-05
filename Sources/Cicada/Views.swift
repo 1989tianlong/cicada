@@ -824,6 +824,13 @@ struct MainWindowView: View {
                 } else if s.fromRecording, s.lines.isEmpty {
                     Image(systemName: "waveform").font(.system(size: 11)).foregroundStyle(Palette.secondary)
                         .help(L("只有录音"))
+                } else if RecordList.heardBoth(s.lines) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "mic")
+                        Image(systemName: "display")
+                    }
+                    .font(.system(size: 10)).foregroundStyle(Palette.secondary)
+                    .help(L("电脑和会议室"))
                 } else if s.room == true {
                     Image(systemName: "mic").font(.system(size: 11)).foregroundStyle(Palette.secondary)
                         .help(L("会议室"))
@@ -1039,7 +1046,7 @@ struct MainWindowView: View {
             HStack(spacing: 8) {
                 if live { Tag(L("正在记录"), live: true) }
                 Text(([dateText(s.startedAt, "MMMdHHmm"), RecordList.length(s)] + (s.sourceFile.map { [$0, L("导入")] } ?? [])
-                      + (s.room == true ? [L("会议室")] : [])).joined(separator: " · "))
+                      + (RecordList.heardBoth(s.lines) ? [L("电脑和会议室")] : s.room == true ? [L("会议室")] : [])).joined(separator: " · "))
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary).lineLimit(1)
                     .help(([dateLine(s, live: live)] + more.compactMap { $0 }).joined(separator: " · "))
             }
@@ -1137,10 +1144,12 @@ struct MainWindowView: View {
                     header(s).padding(.bottom, 16)
                     let speakers = settings.speakerVoices ? SpeakerLabels.numbers(s.lines) : [:]
                     if !speakers.isEmpty { SpeakerStrip(model: model, session: s).padding(.bottom, 8) }
-                    let starts = SpeakerLabels.runStarts(s.lines, speakers)
+                    let both = RecordList.heardBoth(s.lines)
+                    // In a meeting that heard the room and the Mac, a change of place starts a new run too.
+                    let starts = SpeakerLabels.runStarts(s.lines, speakers).union(both ? RecordList.placeStarts(s.lines) : [])
                     let voices = SpeakerLabels.voiceNumbers(s.lines)
                     ForEach(s.lines) { l in
-                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty, in: s)
+                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty, place: both, in: s)
                             .contextMenu { if !speakers.isEmpty, l.speaker == "them" { assignMenu(s, l, voices) } }
                             .id(l.id)
                     }
@@ -1162,7 +1171,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false, in shownSession: Session? = nil) -> some View {
+    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false, place: Bool = false, in shownSession: Session? = nil) -> some View {
         let me = l.speaker == "me"
         return HStack(alignment: .top, spacing: 16) {
             if let shownSession, player.sessionID == shownSession.id, player.ready {
@@ -1179,19 +1188,22 @@ struct MainWindowView: View {
                     .frame(width: 52, alignment: .leading).padding(.top, 1)
             }
             VStack(alignment: .leading, spacing: 5) {
-                if !label {
-                } else if voices, !me, let s = shownSession {
-                    // A click on whose line it is: say it was someone else's.
-                    Menu { assignMenu(s, l, SpeakerLabels.voiceNumbers(s.lines)) } label: {
-                        if let speaker { SpeakerTag(number: speaker) } else { UnknownSpeakerTag() }
+                HStack(spacing: 6) {
+                    if !label {
+                    } else if voices, !me, let s = shownSession {
+                        // A click on whose line it is: say it was someone else's.
+                        Menu { assignMenu(s, l, SpeakerLabels.voiceNumbers(s.lines)) } label: {
+                            if let speaker { SpeakerTag(number: speaker) } else { UnknownSpeakerTag() }
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                        .help(L("这句是谁说的"))
+                    } else if let speaker { SpeakerTag(number: speaker) }
+                    else if shownSession?.sourceFile == nil {
+                        // An imported file has no "other side": its lines carry no label.
+                        Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
                     }
-                    .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
-                    .help(L("这句是谁说的"))
-                } else if let speaker { SpeakerTag(number: speaker) }
-                else if shownSession?.sourceFile == nil {
-                    // An imported file has no "other side": its lines carry no label.
-                    Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
+                    if place, label, !me { PlaceTag(line: l) }
                 }
                 if view != "dst" {
                     Text(l.src)

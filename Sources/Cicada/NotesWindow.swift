@@ -742,6 +742,7 @@ struct NotesWindowView: View {
                                jumpTo: jumpTo, speakers: speakers, startedAt: store.liveStart,
                                identifying: model.identifyingLanguage,
                                voices: speakers.isEmpty ? [:] : SpeakerLabels.voiceNumbers(lines), marked: editingVoice,
+                               places: RecordList.heardBoth(lines),
                                onAssign: { ids, voice in if let s = session { model.assignLines(session: s.id, ids, to: voice) } }) {
                 LivePartialRow(model: model, startedAt: store.liveStart)
             }

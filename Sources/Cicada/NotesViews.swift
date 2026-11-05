@@ -530,6 +530,8 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     var voices: [Int: Int] = [:]
     /// The voice being edited above: its paragraphs are tinted.
     var marked: Int?
+    /// 电脑和会议室 heard both: each paragraph says 现场 or 线上 (RecordList.heardBoth).
+    var places = false
     var onAssign: ((Set<String>, Int) -> Void)?
     @ViewBuilder var partial: Partial
 
@@ -543,7 +545,7 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         a.lines == b.lines && a.topics == b.topics && a.terms == b.terms && a.currentMatch == b.currentMatch
             && a.bilingual == b.bilingual && a.live == b.live && a.partialShown == b.partialShown
             && a.jumpTo == b.jumpTo && a.speakers == b.speakers && a.startedAt == b.startedAt && a.voices == b.voices && a.marked == b.marked
-            && a.identifying == b.identifying
+            && a.identifying == b.identifying && a.places == b.places
     }
 
     private var searching: Bool { !terms.isEmpty }
@@ -754,22 +756,25 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                 .foregroundStyle(latest || isMatch ? Palette.accentInk : Palette.tertiary)
                 .frame(width: l.t >= 3600 ? 56 : 40, alignment: .leading).padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                if !label {
-                } else if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
-                else if onAssign != nil, !voices.isEmpty {
-                    Button { assigning = assigning == l.id ? nil : l.id } label: {
-                        HStack(spacing: 4) {
-                            if let n = speakers[l.id] { SpeakerTag(number: n) } else { UnknownSpeakerTag() }
-                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.tertiary)
+                HStack(spacing: 6) {
+                    if !label {
+                    } else if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
+                    else if onAssign != nil, !voices.isEmpty {
+                        Button { assigning = assigning == l.id ? nil : l.id } label: {
+                            HStack(spacing: 4) {
+                                if let n = speakers[l.id] { SpeakerTag(number: n) } else { UnknownSpeakerTag() }
+                                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.tertiary)
+                            }
+                            .padding(.horizontal, assigning == l.id ? 6 : 0).frame(height: 20)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(assigning == l.id ? Color.white : .clear))
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, assigning == l.id ? 6 : 0).frame(height: 20)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(assigning == l.id ? Color.white : .clear))
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain).help(ls.count > 1 ? L("这段是谁说的") : L("这句是谁说的"))
                     }
-                    .buttonStyle(.plain).help(ls.count > 1 ? L("这段是谁说的") : L("这句是谁说的"))
+                    else if let n = speakers[l.id] { SpeakerTag(number: n) }
+                    else if !speakers.isEmpty { UnknownSpeakerTag() }
+                    if places, label, l.speaker != "me" { PlaceTag(line: l) }
                 }
-                else if let n = speakers[l.id] { SpeakerTag(number: n) }
-                else if !speakers.isEmpty { UnknownSpeakerTag() }
                 Text(highlighted(src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                 if bilingual, !dst.isEmpty {
                     Text(highlighted(dst, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
@@ -819,7 +824,7 @@ enum TranscriptParagraphs {
         var out: [[TranscriptLine]] = []
         var key: String?
         for l in lines {
-            let k = l.speaker == "me" ? "me" : speakers[l.id].map { "n\($0)" } ?? "?"
+            let k = (l.speaker == "me" ? "me" : speakers[l.id].map { "n\($0)" } ?? "?") + (l.via ?? "")
             if k == key, let first = out.last?.first, l.t - first.t <= span {
                 out[out.count - 1].append(l)
             } else {
