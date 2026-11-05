@@ -200,8 +200,10 @@ class ListenEngine:
         Log.d("listen: started %s source=%s target=%s" % (session.id, kind, self.target))
         self._changed()
 
-    def _run(self, lane) -> None:
+    def _run(self, lane, at: float = 0.0) -> None:
+        """`at`: where in the meeting this lane begins (seconds), so its lines' times are the meeting's."""
         segmenter = Segmenter()
+        segmenter.consumed = int(at * RATE)
         segmenter.on_segment = lambda seg: self._send(lane, seg)
         q: queue.Queue = queue.Queue()
         lane.audio = q
@@ -279,7 +281,9 @@ class ListenEngine:
         lane.gate = VoiceGate(adaptive=True)
         lane.muted = any(l.muted for l in self._lanes())
         self.gated = gated
-        self._run(lane)
+        # Started mid-meeting (听哪里 changed to 电脑和会议室): its clock starts where the meeting is,
+        # not at 00:00, or its lines would sort before everything said so far.
+        self._run(lane, self._main.heard_seconds)
         with self._gate:
             self._room = lane
         self.store.mark_room(self.session_id)

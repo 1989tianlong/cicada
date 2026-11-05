@@ -298,6 +298,25 @@ class Both(Base):
         s = store.get(e.session_id)
         self.assertEqual([(None, ONLINE)], [(l.via, l.src) for l in s.lines])
 
+    def test_a_room_side_started_mid_meeting_keeps_the_meetings_clock(self):
+        # 听哪里 changed to 电脑和会议室 two seconds in: the room's line is timed after them, not at 00:00.
+        store = SessionStore()
+        e = both_engine(store, "I think we should check the numbers for Europe first.")
+        main = PcmAudioSource(lambda: concat(tone(1.0), silence(1.0)), speed=0)
+        room = PcmAudioSource(lambda: concat(silence(0.5), tone(1.6, amp=0.2), silence(1.0)), speed=0)
+        done = [threading.Event(), threading.Event()]
+        main.on_ended = lambda why: done[0].set()
+        room.on_ended = lambda why: done[1].set()
+        e.start(main, "both")
+        done[0].wait(10)
+        time.sleep(0.3)
+        e.start_room(room, gated=False)
+        done[1].wait(10)
+        time.sleep(0.6)
+        e.stop()
+        line = next(l for l in store.get(e.session_id).lines if l.via == "room")
+        self.assertGreaterEqual(line.t, 2.0)
+
     def test_stopping_the_room_side_keeps_the_meeting(self):
         store = SessionStore()
         e = both_engine(store, "x")
