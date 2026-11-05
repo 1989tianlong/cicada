@@ -469,6 +469,14 @@ static class Tests
             * (syllables ? 0.55 + 0.45 * Math.Sin(2 * Math.PI * 4 * i / 16000) : 1 + wobble * Math.Sin(2 * Math.PI * 0.5 * i / 16000))
             * amp * 32767)).ToArray();
     static short[] Silence(double seconds) => new short[(int)(seconds * 16000)];
+    /// Typing: a key click every 0.2 s, 6 ms of decaying crackle peaking near -12 dBFS (scripts/vad-clips.py).
+    static short[] Keys(double seconds)
+    {
+        var x = Silence(seconds);
+        for (int at = 1600; at < x.Length - 96; at += 3200)
+            for (int k = 0; k < 96; k++) x[at + k] = (short)(0.25 * Math.Exp(-k / 24.0) * (k % 2 == 1 ? 1 : -1) * 32767);
+        return x;
+    }
     /// A sine at `freq` that swells and fades four times a second like syllables.
     static short[] Hz(double freq, double seconds, double amp) =>
         Enumerable.Range(0, (int)(seconds * 16000)).Select(i => (short)(Math.Sin(2 * Math.PI * freq * i / 16000)
@@ -507,6 +515,14 @@ static class Tests
         Check(list[0].Seconds is > 6.9 and < 7.4, $"cut inside the dip, got {list[0].Seconds}");
         Check(list.All(s => s.Seconds <= 8.0), "no segment over 8 s");
         Check(Math.Abs(list[1].Start - (list[0].Start + list[0].Seconds)) < 0.001, "the rest carries on without a gap");
+    }
+
+    public static void KeyClicksAreNotSpeech()
+    {
+        var list = Cut(Tone(2), Keys(1.5), Tone(1.5), Silence(1));
+        Equal(2, list.Count, "clicks in a pause don't hold it open");
+        Check(Math.Abs(list[1].Start - 3.35) < 0.06, $"second start, got {list[1].Start}");
+        Equal(0, Cut(Silence(0.5), Keys(3), Silence(1)).Count, "typing alone makes no segment");
     }
 
     public static void IgnoresClicks()

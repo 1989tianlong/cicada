@@ -15,6 +15,8 @@ public sealed class Segmenter
 {
     public const int Rate = 16000;
     const int Frame = 480;                       // 30 ms
+    const int Step10 = 160;                      // 10 ms: a key click is judged in these, as the Mac's VoiceActivity does
+    const int Onset = 3;                         // steps of sound before it counts as speech
     public static double Threshold = 0.01;       // the Mac AudioRouter's gate (about -40 dBFS)
     public static double Pause = 0.6, MaxLength = 8.0, MinSpeech = 0.25;
     public static double MinWord = 0.2;          // a word on its own (IsWord): this much over gate / 4
@@ -31,6 +33,7 @@ public sealed class Segmenter
     readonly List<short> current = [];           // the open segment
     readonly List<double> levels = [];           // per frame of `current`
     readonly List<double> highs = [];            // per frame of `current`: its level over 100 Hz
+    readonly List<bool> speech = [];             // per frame of `current`: whether it held speech (IsSpeech)
     double hx, hy;                               // the high-pass's last input and output, carried from frame to frame
     readonly Queue<(short[] frame, double level, double high)> before = new(); // recent quiet frames, for the pre-roll
     readonly Queue<double> idle = new();         // levels of the last 0.6 s of quiet frames
@@ -38,6 +41,8 @@ public sealed class Segmenter
     long consumed;                               // samples seen, for timestamps
     double currentStart;
     int quietFrames, loudFrames, index;
+    int sounding;                                // 10 ms steps of sound in a row so far
+    bool carried;                                // the sound that made the last frame speech began in the frame before
     /// 会议室: a microphone's line follows the room's noise (VoiceGate); null keeps the fixed one.
     /// Swapped when 听哪里 changes mid-meeting (read once per frame on the audio thread).
     public VoiceGate? Gate { get => gate; set => gate = value; }
@@ -76,13 +81,42 @@ public sealed class Segmenter
         return Math.Sqrt(sum / frame.Length) / 32768;
     }
 
+    /// Whether the frame holds speech: sound that has lasted 30 ms, judged in 10 ms steps against the
+    /// line, so a lone key click (a few ms) neither opens a segment nor breaks the pause that ends one
+    /// (VoiceActivity.swift's onset); the pre-roll then reaches back to where that sound began. A
+    /// room's gate learns its noise per frame and takes whole ones, as the Mac's does per block: a
+    /// voiced 30 ms frame has lasted the onset already.
+    bool IsSpeech(short[] frame, double level, VoiceGate? g)
+    {
+        if (g is not null)
+        {
+            bool on = g.Voiced(level, Frame / (double)Rate);
+            sounding = on ? sounding + Frame / Step10 : 0;
+            carried = false;
+            return on;
+        }
+        bool said = false, early = sounding > 0;
+        for (int i = 0; i < frame.Length; i += Step10)
+        {
+            int end = Math.Min(frame.Length, i + Step10);
+            double sum = 0;
+            for (int k = i; k < end; k++) sum += (double)frame[k] * frame[k];
+            if (Math.Sqrt(sum / (end - i)) / 32768 >= line)
+            {
+                if (++sounding >= Onset && !said) { said = true; carried = early; }
+            }
+            else { sounding = 0; early = false; }
+        }
+        return said;
+    }
+
     void Step(short[] frame)
     {
         double level = Rms(frame);
         double high = High(frame);
         var g = gate;
         line = g?.Threshold ?? Threshold;
-        bool loud = g?.Voiced(level, Frame / (double)Rate) ?? level >= line;
+        bool loud = IsSpeech(frame, level, g);
         double now = consumed / (double)Rate;
         consumed += frame.Length;
 
@@ -93,13 +127,15 @@ public sealed class Segmenter
                 idle.Enqueue(level);
                 while (idle.Count > (int)(Pause * Rate / Frame)) idle.Dequeue();
                 before.Enqueue((frame, level, high));
-                while (before.Count > PreRoll * Rate / Frame) before.Dequeue();
+                while (before.Count > PreRoll * Rate / Frame + 1) before.Dequeue();
                 return;
             }
+            // One frame more when the sound began in the last quiet one.
+            while (before.Count > PreRoll * Rate / Frame + (carried ? 1 : 0)) before.Dequeue();
             currentStart = now - before.Count * Frame / (double)Rate;
             lead = idle.Count > 0 ? idle.Min() : null;
             idle.Clear();
-            foreach (var (f, l, h) in before) { current.AddRange(f); levels.Add(l); highs.Add(h); }
+            foreach (var (f, l, h) in before) { current.AddRange(f); levels.Add(l); highs.Add(h); speech.Add(false); }
             before.Clear();
             quietFrames = 0; loudFrames = 0;
         }
@@ -107,6 +143,7 @@ public sealed class Segmenter
         current.AddRange(frame);
         levels.Add(level);
         highs.Add(high);
+        speech.Add(loud);
         if (loud) { quietFrames = 0; loudFrames++; } else quietFrames++;
 
         if (quietFrames * Frame >= Pause * Rate)
@@ -211,28 +248,30 @@ public sealed class Segmenter
         var rest = current.GetRange(end, current.Count - end);
         var restLevels = levels.GetRange(end / Frame, levels.Count - end / Frame);
         var restHighs = highs.GetRange(end / Frame, highs.Count - end / Frame);
+        var restSpeech = speech.GetRange(end / Frame, speech.Count - end / Frame);
         double start = currentStart;
         var sent = levels.GetRange(0, Math.Min(levels.Count, end / Frame));
-        bool speech = IsWord(levels, line)
+        bool said = IsWord(levels, line)
             ? sent.Count(l => l >= line / 4) * Frame >= MinWord * Rate
             : loudFrames * Frame >= MinSpeech * Rate && !IsSteady(sent, line);
-        speech = speech && !IsRumble(sent, highs.GetRange(0, sent.Count), line);
-        current.Clear(); levels.Clear(); highs.Clear();
+        said = said && !IsRumble(sent, highs.GetRange(0, sent.Count), line);
+        current.Clear(); levels.Clear(); highs.Clear(); speech.Clear();
         quietFrames = 0; loudFrames = 0;
-        if (speech) Emitted?.Invoke(new Segment(++index, Math.Round(start, 3), samples));
+        if (said) Emitted?.Invoke(new Segment(++index, Math.Round(start, 3), samples));
 
         // A forced cut carries on with the remainder; after a pause the remainder is silence.
-        if (restLevels.Any(l => l >= line))
+        if (restSpeech.Contains(true))
         {
             currentStart = start + end / (double)Rate;
             lead = null;
             current.AddRange(rest);
             levels.AddRange(restLevels);
             highs.AddRange(restHighs);
+            speech.AddRange(restSpeech);
             int trailing = 0;
-            for (int i = levels.Count - 1; i >= 0 && levels[i] < line; i--) trailing++;
+            for (int i = speech.Count - 1; i >= 0 && !speech[i]; i--) trailing++;
             quietFrames = trailing;
-            loudFrames = levels.Count(l => l >= line);
+            loudFrames = speech.Count(v => v);
         }
     }
 }
