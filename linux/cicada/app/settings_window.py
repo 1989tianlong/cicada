@@ -244,6 +244,8 @@ class SettingsWindow(Gtk.Window):
         if sub is not None:
             ui.retext(sub, detail or " ")
             ui.classes(sub, "err") if u.failure and u.update else sub.get_style_context().remove_class("err")
+            # The release page's address, when no browser opened: copyable.
+            sub.set_selectable(bool(u.failure and u.update and not u.opened))
         key = (u.update is not None, u.progress is not None, bool(u.failure), u.check == "checking", u.after_meeting)
         if key == getattr(self, "_version_key", None):
             return
