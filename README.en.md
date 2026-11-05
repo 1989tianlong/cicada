@@ -60,6 +60,8 @@ For a meeting around a table, set **Listen to** in the menu bar panel to **Room*
 
 When some people are in the room and others are online, choose **Mac + Room** (macOS 26): the online side is heard from the Mac's audio and the table from the microphone, each in its own language, in one meeting record. The online voices coming out of the speakers reach the microphone too; Cicada takes them out with macOS echo cancellation, so people at the table can talk over a remote speaker and both are kept. When echo cancellation isn't available, the microphone pauses while someone online is talking. As a last check, a room line that is almost the same as what the Mac just played isn't recorded twice.
 
+In such a meeting each line is marked **In room** or **Online**. While you listen to the room alone and a meeting app is in a call, the panel asks whether to hear the Mac too; if an external microphone is unplugged mid-meeting, Cicada moves to the microphone that's left and says so. **Listen to** has the same three options on Windows and Linux: Linux uses the sound server's own echo cancellation, and on Windows the microphone pauses while someone online is talking.
+
 ### Speak back in their language
 
 Hold the right `⌥` key and speak so the room hears your translated voice through BlackHole 2ch, a virtual microphone you can install from the app with one click and that Cicada switches to automatically while interpreting is on. With an AI service key the other side hears natural voices (Gemini through OpenRouter or ZenMux, Ming through Ling), and Ling can also clone your own voice from an 8 to 30 second sample; without a key it uses macOS system voices.
