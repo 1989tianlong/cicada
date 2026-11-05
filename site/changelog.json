@@ -26,6 +26,14 @@
         ],
         "title": "Windows、Linux、Android 上，风扇声、电流声不再变成凭空编出的英文句子。",
         "text": "持续不变的底噪不再送去识别，只有忽高忽低的人声才会。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "android"
+        ],
+        "title": "Android 悬浮窗加了回到知了的按钮。",
+        "text": "点悬浮窗顶上的按钮，直接回到正在听的页面，看完整纪要或结束会议。"
       }
     ]
   },

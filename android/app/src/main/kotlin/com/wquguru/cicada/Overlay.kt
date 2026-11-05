@@ -126,6 +126,9 @@ class Overlay(private val app: CicadaApp) {
             addView(clock(if (dark) Palette.onScrim else Palette.ink), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(8) })
             if (app.settings.showInCapture) addView(ui.badge(L("对方可见")), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(8) })
             addView(ui.spacer())
+            // Back to 正在听 in Cicada (the full notes, 结束): without it the only way was the
+            // notification or the launcher. A video that does picture-in-picture keeps playing.
+            addView(ui.iconButton(R.drawable.i_external, L("回到正在听"), fg, 20, dark) { app.openLive() })
             addView(if (subtitles) ui.iconButton(R.drawable.i_list, L("换成纪要"), fg, 20, dark) { app.setView("notes") }
                     else ui.iconButton(R.drawable.i_captions, L("换成字幕条"), fg, 22, dark) { app.setView("subtitles") })
             addView(ui.iconButton(R.drawable.i_chevron_down, L("收起成小圆点"), fg, 22, dark) { collapsed = true; rebuild() })
