@@ -670,6 +670,9 @@ final class AppModel: ObservableObject {
         heldRoom = []
         liveMain = ("", "", .distantPast)
         liveRoom = ("", "", .distantPast)
+        // The caption under the notes would otherwise show the last meeting's line until someone speaks.
+        liveSource = ""
+        liveTranslation = ""
         speechHeard = false
         roomPromptDismissed = false
         onlinePromptDismissed = false
