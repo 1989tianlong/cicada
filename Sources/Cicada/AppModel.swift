@@ -1408,7 +1408,9 @@ final class AppModel: ObservableObject {
         lineForSegment[seg.id] = id
         store.append(TranscriptLine(id: id, t: t, speaker: "them", src: seg.text, dst: translation ?? seg.translation,
                                     srcLang: seg.sourceCode, dstLang: listen.resolvedTarget,
-                                    via: seg.id >= ListenEngine.roomIDs ? "room" : nil))
+                                    // 会议室 alone too: a meeting switched to it from 电脑和会议室
+                                    // would otherwise mark its later room lines 线上.
+                                    via: seg.id >= ListenEngine.roomIDs || settings.listensToRoom ? "room" : nil))
         var kept = seg
         kept.voiceSamples = nil
         lastHeard = (kept, id)
