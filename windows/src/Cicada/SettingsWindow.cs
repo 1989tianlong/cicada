@@ -581,7 +581,8 @@ sealed class SettingsWindow : Window
         KeyPlaceholder();
         Ui.StyleField(keyBox);
         var frame = Ui.FieldFrame(new Grid { Children = { keyBox, hint } }, keyBox);
-        frame.Width = 200; frame.Height = 34;
+        // Wide enough for the hint in English, Japanese and Korean ("Optional on this PC or your local network").
+        frame.Width = 340; frame.Height = 34;
         return Ui.Row(8, frame, SaveButton());
     }
 

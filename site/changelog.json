@@ -604,6 +604,14 @@
         ],
         "title": "Linux 英文、日文、韩文界面里，自建服务的 key 输入框够宽，提示不再被截断。",
         "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 英文、日文、韩文界面里，自建服务的 key 输入框能看全提示，也不再写成 Mac。",
+        "text": "原来提示被截断成 “Optional on this Mac or y…”；现在输入框更宽，写的是这台 PC。"
       }
     ]
   },
