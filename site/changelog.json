@@ -1,5 +1,35 @@
 [
   {
+    "version": "1.1.2",
+    "date": null,
+    "title": "修正字幕里多出来的话",
+    "summary": "字幕和记录里不再混进翻译指令，也不再把底噪听成一句话。",
+    "image": null,
+    "items": [
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac",
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "字幕里不再冒出一句孤零零的“翻译。”。",
+        "text": "有人说“请翻译成中文”这类话时，Ling 偶尔把指令本身当成译文返回；现在这一句会换别的翻译重译。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "Windows、Linux、Android 上，风扇声、电流声不再变成凭空编出的英文句子。",
+        "text": "持续不变的底噪不再送去识别，只有忽高忽低的人声才会。"
+      }
+    ]
+  },
+  {
     "version": "1.1.1",
     "date": "2026-11-04",
     "title": "修复 Android 首次设置",
