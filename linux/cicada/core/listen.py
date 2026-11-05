@@ -241,8 +241,8 @@ class ListenEngine:
                     LingError.NO_KEY: strings.L("需要 Ling key 才能听"),
                     LingError.INVALID_KEY: strings.L("Ling key 无效"),
                     LingError.RATE_LIMITED: strings.L("Ling 太忙，稍后再试"),
-                    LingError.NETWORK: strings.L("连不上 Ling"),
-                    LingError.TIMEOUT: strings.L("连不上 Ling"),
+                    LingError.NETWORK: strings.L("连不上 Ling，检查网络或代理"),
+                    LingError.TIMEOUT: strings.L("连不上 Ling，检查网络或代理"),
                 }.get(e.kind)
                 Log.d("listen: segment %d failed %s" % (seg.index, e))
             except Exception as e:  # noqa: BLE001

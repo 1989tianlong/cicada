@@ -191,7 +191,7 @@ class SettingsWindow(Gtk.Window):
         entry_row.show_all()
         self.key_group = ui.boxed([key_row, self.entry_row, get_key])
         page.pack_start(self._group(L("Ling key"), self.key_group,
-                                    L("仅保存在本机当前账户下，仅发送至 Ling（ant-ling.com）")), False, False, 0)
+                                    L("只存在这台电脑上（只有你的账户能读），只发给 Ling（ant-ling.com）")), False, False, 0)
 
         # Languages
         def set_target(v):
@@ -229,7 +229,7 @@ class SettingsWindow(Gtk.Window):
         warn_row = ui.panel(ui.pad(warn, 10, 14), "warnrow")
         page.pack_start(self._group(L("正在听时"), ui.boxed([
             ui.prow(L("悬浮窗"), ui.segmented([("notes", L("实时纪要")), ("subtitles", L("字幕条"))], s.view, app.set_view)),
-            ui.prow(L("登录时启动"), switch, L("登录后在顶栏待命")),
+            ui.prow(L("登录时打开"), switch, L("登录后在顶栏待命")),
             self._voices_row(),
             self._shortcut_row(),
             warn_row])), False, False, 0)
@@ -255,7 +255,7 @@ class SettingsWindow(Gtk.Window):
         rows = [self.version_row]
         for label, action in ((L("打开记录文件夹"), lambda: self._open_folder(Paths.sessions())),
                               (L("打开日志"), lambda: open_uri("file://" + Paths.log())),
-                              (L("重看新手引导"), app.show_onboarding)):
+                              (L("新手引导"), app.show_onboarding)):
             b = Gtk.Button()
             inner = ui.hbox(8, ui.text(label, 13, "ink", wrap=False))
             chevron = ui.icon("go-next-symbolic", 12)
@@ -494,7 +494,7 @@ class SettingsWindow(Gtk.Window):
             lingmod.OK: ("object-select-symbolic", "ok", L("可以用")),
             lingmod.CHECKING: ("content-loading-symbolic", "secondary", L("正在检查…")),
             lingmod.INVALID: ("dialog-error-symbolic", "warn", L("这个 key 无效，请检查是否复制完整，或重新创建一个")),
-            lingmod.UNREACHABLE: ("network-offline-symbolic", "warn", L("连不上 Ling，检查网络")),
+            lingmod.UNREACHABLE: ("network-offline-symbolic", "warn", L("连不上 Ling，检查网络或代理")),
         }.get(state, (None, "secondary", ""))
         if have and label:
             if icon_name:

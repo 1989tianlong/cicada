@@ -767,7 +767,7 @@ class NotesWindow(Gtk.Window):
             ui.retext(self.footer_time, "")
             return
         ago = max(0, int((datetime.now(timezone.utc) - when).total_seconds()))
-        ui.retext(self.footer_time, LF("纪要 %@ 秒前更新", ago) if ago < 60 else LF("纪要 %@ 分钟前更新", ago // 60))
+        ui.retext(self.footer_time, L("刚刚更新") if ago < 10 else LF("%lld 秒前更新", ago) if ago < 60 else LF("%lld 分钟前更新", ago // 60))
 
     def _banner(self, body, engine) -> None:
         """Why the notes stopped, above them, notes or not (the Mac's banner): a dead key, too many

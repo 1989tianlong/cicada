@@ -126,8 +126,8 @@ class RecordsWindow(Gtk.Window):
 
     def _app_menu(self) -> Gtk.MenuButton:
         menu = Gtk.Menu()
-        for label, action in ((L("显示纪要"), self.app.show_notes), (L("设置…"), self.app.show_settings),
-                              (L("重看新手引导"), self.app.show_onboarding), (None, None), (L("退出知了"), self.app.quit)):
+        for label, action in ((L("显示实时纪要"), self.app.show_notes), (L("设置…"), self.app.show_settings),
+                              (L("新手引导"), self.app.show_onboarding), (None, None), (LF("退出 %@", L("知了")), self.app.quit)):
             if label is None:
                 menu.append(Gtk.SeparatorMenuItem())
                 continue
@@ -531,10 +531,11 @@ class RecordsWindow(Gtk.Window):
         t = ui.text(title, 17, "heading", bold=True, wrap=False)
         t.set_halign(Gtk.Align.CENTER)
         page.pack_start(ui.gap(t, 22), False, False, 0)
-        b = ui.text(body, 13, "secondary", width_chars=44)
-        b.set_justify(Gtk.Justification.CENTER)
-        b.set_halign(Gtk.Align.CENTER)
-        page.pack_start(ui.gap(b, 8), False, False, 0)
+        if body:
+            b = ui.text(body, 13, "secondary", width_chars=44)
+            b.set_justify(Gtk.Justification.CENTER)
+            b.set_halign(Gtk.Align.CENTER)
+            page.pack_start(ui.gap(b, 8), False, False, 0)
         if actions:
             row = ui.hbox(10, *actions)
             row.set_halign(Gtk.Align.CENTER)
@@ -567,7 +568,7 @@ class RecordsWindow(Gtk.Window):
             d.show_all()
             return
         if no_match:
-            d.pack_start(self._status_page("system-search-symbolic", L("没有找到"), LF("没有标题或对话含有“%@”", self.query.strip()), []), True, True, 0)
+            d.pack_start(self._status_page("system-search-symbolic", LF("没有找到“%@”", self.query.strip()), "", []), True, True, 0)
             d.show_all()
             return
         s = self.app.store.get(self.selected) if self.selected else None

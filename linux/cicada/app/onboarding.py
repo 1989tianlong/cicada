@@ -230,7 +230,7 @@ class Onboarding(Gtk.Window):
         entry.connect("activate", lambda *_: self._save_key(entry.get_text()))
         if self.app.ling.has_key and self.app.ling.key_state == lingmod.OK:
             self._key_ok()
-        hint = ui.text(L("仅保存在本机当前账户下，仅发送至 Ling（ant-ling.com）"), 13, "secondary", wrap=False)
+        hint = ui.text(L("只存在这台电脑上（只有你的账户能读），只发给 Ling（ant-ling.com）"), 13, "secondary", wrap=False)
         self.footer.pack_start(hint, True, True, 0)
         self.footer.pack_end(self._primary(L("继续"), self._key_next), False, False, 0)
         GLib.idle_add(lambda: entry.grab_focus() and False)
@@ -286,7 +286,7 @@ class Onboarding(Gtk.Window):
                     GLib.timeout_add(700, lambda: (self.step == KEY and self.go(AUDIO)) and False)
                 else:
                     self._key_problem(L("这个 key 无效，请检查是否复制完整，或重新创建一个") if state == lingmod.INVALID
-                                      else L("连不上 Ling，检查网络"))
+                                      else L("连不上 Ling，检查网络或代理"))
                 return False
             GLib.idle_add(done)
         threading.Thread(target=check, daemon=True).start()

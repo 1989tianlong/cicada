@@ -87,11 +87,11 @@ class Tray:
         item(L("结束") if listening else L("开始听"), self.app.request_stop)
         if self.app.settings.speakEnabled:
             item(L("停止说") if self.app.speak.active else L("开始说"), self.app.toggle_speaking)
-        item(L("显示纪要"), self.app.show_notes)
+        item(L("显示实时纪要"), self.app.show_notes)
         item(L("打开会议记录"), self.app.show_records)
         item(L("设置…"), self.app.show_settings)
         menu.append(Gtk.SeparatorMenuItem())
-        item(L("退出知了"), self.app.quit)
+        item(LF("退出 %@", L("知了")), self.app.quit)
         menu.show_all()
         menu.connect("show", lambda *_: self.app.updates.menu_opened())  # an hour-old check: check again
         self.lib.app_indicator_set_menu(self.ind, _gpointer(menu))

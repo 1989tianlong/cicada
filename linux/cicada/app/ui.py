@@ -172,6 +172,7 @@ button.listenpill:hover { background-color: #F8F9FA; }
 /* monospacedDigit: the clock and the countdown don't shift every second. */
 .listenpill.live.ending { padding-left: 4px; }
 label.tnum { font-feature-settings: "tnum"; }
+label.err { color: #B23A12; }
 /* In the header bar Yaru pads every button to 36 px; the capsule's are the Mac's 24. */
 headerbar .listenpill.live button.pillshow, headerbar .listenpill.live button.pillend, headerbar .listenpill.live button.pillkeep {
   min-height: 24px; margin: 0; padding-top: 0; padding-bottom: 0; border: none; }

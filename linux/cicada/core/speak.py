@@ -196,7 +196,7 @@ class SpeakEngine:
             heard = None
         if heard is None:
             # Never the original, never a guess.
-            self.problem = strings.L("没听清，这句没有说出去")
+            self.problem = strings.L("翻译失败，这句话未发送")
             Log.d("speak: segment %d %.1fs not interpreted, not spoken" % (seg.index, seg.seconds))
             return None
         original, translation = heard
@@ -249,7 +249,7 @@ class SpeakEngine:
                 out.drain()
         except (LingError, queue.Empty) as e:
             Log.d("speak: voice failed %s" % e)
-            self.problem = strings.L("连不上 Ling")
+            self.problem = strings.L("连不上 Ling，检查网络或代理")
         finally:
             if out is not None:
                 out.close()
