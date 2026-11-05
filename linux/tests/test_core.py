@@ -500,6 +500,32 @@ class Notes(Base):
         notes._sync_key()
         self.assertEqual(notesmod.IDLE, notes.status)
 
+    def test_unreachable_is_the_notes_own_and_clears_when_the_service_answers(self):
+        # NotesWindow.swift › banner: only the notes' own network failure says "can't reach", it ends
+        # when anything reaches the service again, and a record opened later doesn't inherit it.
+        store = SessionStore()
+        down = [True]
+
+        def respond(body):
+            if down[0]:
+                raise OSError("no route")
+            return reply("ok")
+        ling = client(Fake(respond))
+        notes = NotesEngine(ling, store)
+        s = store.begin()
+        for i in range(3):
+            store.append(s.id, TranscriptLine(id="h%d-%d" % (i + 1, i + 1), t=i, src="x", srcLang="en", dstLang="zh-CN"))
+        notes._update(s.id, False)
+        self.assertEqual(notesmod.UNREACHABLE, notes.status)
+        self.assertEqual("unreachable", ling.check_result.reason)
+        down[0] = False
+        ling.chat("hello", "Translate.", TRANSLATE)
+        notes._tick()
+        self.assertEqual(notesmod.IDLE, notes.status, "the service answered: the banner goes now")
+        notes.status = notesmod.FAILED
+        notes.show(s.id)
+        self.assertEqual(notesmod.IDLE, notes.status, "no meeting going on: a failed round isn't the record's")
+
     def test_notes_language_as_on_the_mac(self):
         # "mine" or "source"; one meeting's choice over the setting; a change while live rewrites.
         store = SessionStore()

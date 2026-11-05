@@ -21,6 +21,9 @@ from .support import Log, clock, written_in
 
 INTERVAL = 45.0
 IDLE, UPDATING, NO_KEY, INVALID_KEY, RATE_LIMITED, FAILED = "idle", "updating", "noKey", "invalidKey", "rateLimited", "failed"
+# The notes' own request couldn't reach the service (network, proxy, timeout); another request
+# failing, such as naming speakers, never sets it.
+UNREACHABLE = "unreachable"
 
 
 class NotesEngine:
@@ -95,6 +98,9 @@ class NotesEngine:
             self.shown_id = sid
             s = self.store.get(sid)
             self.notes = (s.notes if s else None) or MeetingNotes()
+            # A round that failed belongs to the meeting it ran for, not to the record opened now.
+            if self._session_id is None and self.status in (FAILED, UNREACHABLE, RATE_LIMITED):
+                self.status = IDLE
         self._changed()
 
     def rewrite(self) -> None:
@@ -121,6 +127,14 @@ class NotesEngine:
             self.status = INVALID_KEY
 
     def _tick(self) -> None:
+        with self._gate:
+            # The service answers again (the check after a network change, or any other request): the
+            # banner goes now, not after the next round, which runs on its usual 45 s.
+            recovered = self.status == UNREACHABLE and self.ling.check_result.reason != "unreachable"
+            if recovered:
+                self.status = IDLE
+        if recovered:
+            self._changed()
         with self._gate:
             self._sync_key()
             sid = self._session_id
@@ -202,7 +216,8 @@ class NotesEngine:
                 "final" if final else "live", len(lines) - frm, len(nxt.topics), len(nxt.terms)))
         except LingError as e:
             self.status = {LingError.INVALID_KEY: INVALID_KEY, LingError.RATE_LIMITED: RATE_LIMITED,
-                           LingError.NO_KEY: NO_KEY}.get(e.kind, FAILED)
+                           LingError.NO_KEY: NO_KEY, LingError.NETWORK: UNREACHABLE,
+                           LingError.TIMEOUT: UNREACHABLE}.get(e.kind, FAILED)
             Log.d("notes: update failed %s" % e)
         except Exception as e:  # noqa: BLE001
             self.status = FAILED

@@ -861,8 +861,15 @@ class NotesWindow(Gtk.Window):
         covered = engine.notes.covered
         last = s.lines[covered - 1].t if s is not None and 0 < covered <= len(s.lines) else 0.0
         reason = self._reason()
+        ling = self.app.ling
+        # Who the banners name: a custom service by its address, which says more than 这个服务.
+        name = ling.service_host if ling.provider.id == "custom" and ling.service_host else ling.service_name
+        # All but the key are about a round of the meeting going on now: a record opened later has none.
+        live = self.app.listen.listening
         if engine.status == notesmod.INVALID_KEY:
-            text, tone = LF("key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。", clock(last)), "error"
+            text = (LF("key 已失效（被删或额度用完），纪要暂停在 %@。", clock(last)) if last > 0
+                    else L("key 已失效（被删或额度用完），换个 key 就能开始写纪要。"))
+            tone = "error"
         elif problem.blocking(reason) and (reason in problem.NOTES_ONLY or not self.live_box.get_visible()):
             # Only the user can fix it (the live card says it too, when it shows): what, and 打开设置.
             from .aicheck_view import blocking
@@ -875,19 +882,23 @@ class NotesWindow(Gtk.Window):
             row.pack_end(b, False, False, 0)
             body.pack_start(ui.pad(ui.panel(ui.pad(row, 12), "notice", "error"), 0, 0, 10, 0), False, False, 0)
             return
-        elif engine.status == notesmod.RATE_LIMITED:
-            text, tone = LF("%@ 很忙，纪要稍后补上。字幕照常。", self.app.ling.service_name), "busy"
-        elif engine.status == notesmod.FAILED and self.app.ling.check_result.reason == "unreachable":
-            # The network or the proxy, not the notes: say which, and that it picks up by itself.
-            text, tone = LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", self.app.ling.service_name, clock(last)), "error"
-        elif engine.status == notesmod.FAILED:
+        elif engine.status == notesmod.RATE_LIMITED and live:
+            text, tone = LF("%@ 很忙，纪要稍后补上。字幕照常。", name), "busy"
+        elif engine.status == notesmod.UNREACHABLE and live and ling.check_result.reason == "unreachable":
+            # The network or the proxy, not the notes: say which, and that it picks up by itself. Both:
+            # the notes' own request failed and the service answers nothing; notes that only timed out
+            # while translations still came back retry on the next round.
+            text = (LF("连不上 %@，纪要暂停在 %@，连上后自动继续。", name, clock(last)) if last > 0
+                    else LF("连不上 %@，连上后开始写纪要。", name))
+            tone = "error"
+        elif engine.status == notesmod.FAILED and live:
             text, tone = L("这轮没整理好，下一轮会自动重试。"), ""
         else:
             return
         row = ui.hbox(10)
         row.pack_start(ui.text(text, 12, "ink", width_chars=24), True, True, 0)
         if tone == "error":
-            unreachable = engine.status == notesmod.FAILED
+            unreachable = engine.status == notesmod.UNREACHABLE
             b = ui.button(L("设置") if unreachable else L("更换 key"), lambda: self.app.show_settings(ai=True),
                           "outline" if unreachable else "darkbtn")
             b.set_can_focus(False)
@@ -961,7 +972,10 @@ class NotesWindow(Gtk.Window):
             body.show_all()
             return
         if n.is_empty:
-            hint = {notesmod.NO_KEY: L("生成纪要需要 API key"), notesmod.UPDATING: L("正在整理纪要…")}.get(engine.status, "")
+            hint = {notesmod.NO_KEY: L("生成纪要需要 API key"),
+                    notesmod.UPDATING: L("正在整理纪要…")}.get(engine.status, "")
+            if engine.status in (notesmod.INVALID_KEY, notesmod.RATE_LIMITED, notesmod.FAILED, notesmod.UNREACHABLE):
+                hint = ""  # the banner says it
             if hint:
                 body.pack_start(ui.helper(hint), False, False, 0)
             body.show_all()
