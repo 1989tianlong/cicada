@@ -415,6 +415,11 @@ object Tests {
         (sin(2 * PI * 300 * it / 16000) * env * amp * 32767).toInt().toShort()
     }
     private fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
+    /// One word on its own ("Thanks."): a 300 Hz tone that swells from nothing and fades back.
+    private fun word(seconds: Double, amp: Double): ShortArray {
+        val n = (seconds * 16000).toInt()
+        return ShortArray(n) { (sin(2 * PI * 300 * it / 16000) * Math.pow(sin(PI * it / n), 2.0) * amp * 32767).toInt().toShort() }
+    }
     private fun concat(vararg parts: ShortArray): ShortArray = parts.fold(ShortArray(0)) { a, b -> a + b }
 
     private fun cut(vararg parts: ShortArray): List<Segment> {
@@ -451,6 +456,10 @@ object Tests {
         equal(1, cut(tone(3.0, 0.03), silence(1.0)).size, "quiet speech, whose dips fall below the gate, is too")
         equal(1, cut(tone(3.0, 0.022), silence(1.0)).size, "a voice whose loudest frames barely clear the gate dips far between syllables")
         equal(0, cut(tone(4.0, 0.016, syllables = false, wobble = 0.3), silence(1.0)).size, "a hum at the gate that slowly rises and falls doesn't")
+        equal(1, cut(silence(1.0), word(0.4, 0.028), silence(1.0)).size, "a quiet word on its own, 0.2 s over the gate")
+        equal(1, cut(silence(1.0), word(1.2, 0.022), silence(1.0)).size, "one smooth run of voice on its own, no dips inside")
+        equal(0, cut(silence(1.0), tone(1.0, 0.03, syllables = false), silence(1.0)).size, "a short hum in silence doesn't swell and fade")
+        equal(0, cut(silence(1.0), word(0.15, 0.3), silence(1.0)).size, "nor is a knock a word")
     }
 
     fun wavRoundTrip() {

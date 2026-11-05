@@ -20,8 +20,11 @@ class Segmenter {
         @Volatile var pause = 0.6
         @Volatile var maxLength = 8.0
         @Volatile var minSpeech = 0.25
+        @Volatile var minWord = 0.2 // a word on its own (isWord): this much over gate / 4
         @Volatile var steady = 2.0 // frames' 90th / 10th percentile below this: not speech…
         @Volatile var dips = 2.5 // …unless the median is this far over the 10th, quiet ones held at gate / 8
+        @Volatile var short = 2.0 // a sound up to this long, with real quiet (gate / 4) on both sides…
+        @Volatile var swell = Math.pow(10.0, 10 / 20.0) // …that swells and fades by 10 dB is a word: see isWord
         private const val PRE_ROLL = 0.15
         private const val TAIL = 0.15
         private const val CUT_WINDOW = 2.0
@@ -30,7 +33,9 @@ class Segmenter {
     private val pending = ShortList()            // samples not yet a whole frame
     private val current = ShortList()            // the open segment
     private val levels = ArrayList<Double>()     // per frame of `current`
-    private val before = ArrayDeque<ShortArray>() // recent quiet frames, for the pre-roll
+    private val before = ArrayDeque<Pair<ShortArray, Double>>() // recent quiet frames and their levels, for the pre-roll
+    private val idle = ArrayDeque<Double>()      // levels of the last 0.6 s of quiet frames
+    private var lead: Double? = null             // the quietest of those when the open segment began
     private var consumed = 0L                    // samples seen, for timestamps
     private var currentStart = 0.0
     private var quietFrames = 0
@@ -60,12 +65,16 @@ class Segmenter {
 
         if (current.size == 0) {
             if (!loud) {
-                before.addLast(frame)
+                idle.addLast(level)
+                while (idle.size > (pause * RATE / FRAME).toInt()) idle.removeFirst()
+                before.addLast(frame to level)
                 while (before.size > PRE_ROLL * RATE / FRAME) before.removeFirst()
                 return
             }
             currentStart = now - before.size * FRAME / RATE.toDouble()
-            for (f in before) { current.addAll(f, 0, f.size); levels.add(0.0) }
+            lead = idle.minOrNull()
+            idle.clear()
+            for ((f, l) in before) { current.addAll(f, 0, f.size); levels.add(l) }
             before.clear()
             quietFrames = 0; loudFrames = 0
         }
@@ -109,6 +118,29 @@ class Segmenter {
         return low[(0.5 * (low.size - 1)).toInt()] < dips * low[(0.1 * (low.size - 1)).toInt()]
     }
 
+    /// A short word on its own: a sound up to `short` that rises out of real quiet and falls back
+    /// into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after), and
+    /// that swells and fades by 10 dB or more (90th / 10th percentile of its frames over gate / 4).
+    /// Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run of voiced
+    /// ones, so the steady test, which looks for dips inside, dropped it even at -26 dBFS; and a
+    /// quiet one ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it needs `minWord` over
+    /// gate / 4 instead (a knock with a 150 ms tail has 0.15 s). A fan, hum or hiss is there on
+    /// both sides; a short burst of one in silence stays within about 9 dB (brown noise), 5 dB (the
+    /// rest), and Ming makes up a sentence for a hum or fan burst. Not for a forced cut, whose end
+    /// isn't a pause.
+    internal fun isWord(frameLevels: List<Double>): Boolean {
+        val first = frameLevels.indexOfFirst { it >= threshold }
+        val last = frameLevels.indexOfLast { it >= threshold }
+        if (first < 0 || (last - first + 1) * FRAME > short * RATE) return false
+        val quiet = threshold / 4
+        val q = lead ?: return false
+        if (q > quiet || last + 1 >= frameLevels.size || frameLevels.subList(last + 1, frameLevels.size).minOrNull()!! > quiet) return false
+        val from = frameLevels.indexOfFirst { it >= quiet }
+        val to = frameLevels.indexOfLast { it >= quiet }
+        val body = frameLevels.subList(from, to + 1).map { maxOf(it, threshold / 8) }.sorted()
+        return body[(0.9 * (body.size - 1)).toInt()] >= swell * body[(0.1 * (body.size - 1)).toInt()]
+    }
+
     /// Emits `current[0 until end]` and keeps what follows as the start of the next segment.
     private fun close(endAt: Int) {
         val end = endAt.coerceIn(0, current.size)
@@ -116,7 +148,9 @@ class Segmenter {
         val rest = current.slice(end, current.size)
         val restLevels = ArrayList(levels.subList(minOf(levels.size, end / FRAME), levels.size))
         val start = currentStart
-        val speech = loudFrames * FRAME >= minSpeech * RATE && !isSteady(levels.subList(0, minOf(levels.size, end / FRAME)))
+        val sent = ArrayList(levels.subList(0, minOf(levels.size, end / FRAME)))
+        val speech = if (isWord(levels)) sent.count { it >= threshold / 4 } * FRAME >= minWord * RATE
+            else loudFrames * FRAME >= minSpeech * RATE && !isSteady(sent)
         current.clear(); levels.clear()
         quietFrames = 0; loudFrames = 0
         if (speech) onSegment?.invoke(Segment(++index, Math.round(start * 1000) / 1000.0, samples))
@@ -124,6 +158,7 @@ class Segmenter {
         // A forced cut carries on with the remainder; after a pause the remainder is silence.
         if (restLevels.any { it >= threshold }) {
             currentStart = start + end / RATE.toDouble()
+            lead = null
             current.addAll(rest, 0, rest.size)
             levels.addAll(restLevels)
             var trailing = 0
