@@ -49,7 +49,7 @@ sealed class NotesWindow : Window
         };
         // Drag from anywhere that isn't a control (buttons and links mark the press handled).
         MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) try { DragMove(); } catch { } };
-        clock.Tick += (_, _) => Tick();
+        clock.Tick += (_, _) => { Tick(); Pulse(); };
         IsVisibleChanged += (_, _) => { if (IsVisible) clock.Start(); else clock.Stop(); };
         // The subtitle bar fits its text and grows upward, so its bottom edge stays put.
         SizeChanged += (_, e) =>
@@ -190,6 +190,7 @@ sealed class NotesWindow : Window
         footer.Content = Footer();
         var atBottom = scroll.VerticalOffset >= scroll.ScrollableHeight - 4;
         var offset = scroll.VerticalOffset;
+        soundBars.Clear();
         scroll.Content = tab == "transcript" ? Transcript() : NotesBody();
         // The transcript follows new lines while the reader is at its end; otherwise nothing jumps.
         if (tab == "transcript" && atBottom) scroll.ScrollToEnd(); else scroll.ScrollToVerticalOffset(offset);
@@ -359,12 +360,19 @@ sealed class NotesWindow : Window
         var body = new StackPanel();
         if (notes.IsEmpty)
         {
-            var (title, hint) = app.Notes.Status switch
+            var heard = app.Listen.SessionId is { } id ? app.Store.Get(id)?.Lines.Count ?? 0 : 0;
+            var status = app.Notes.Status;
+            // NotesWindow.swift › notesPane: while listening the placeholder stays up after lines
+            // arrive, until a request is actually out (the first waits for a few lines or 20 s);
+            // a key problem says so instead.
+            var keyProblem = status is NotesEngine.State.NoKey or NotesEngine.State.InvalidKey;
+            if (app.Listen.Listening && !keyProblem && !(status == NotesEngine.State.Updating && heard > 0)) return Listening(heard);
+            var (title, hint) = status switch
             {
                 NotesEngine.State.Updating => (L("正在整理纪要…"), ""),
                 NotesEngine.State.NoKey => (L("生成纪要需要 API key"), ""),
                 NotesEngine.State.InvalidKey => (L("这个 key 无效，请检查是否复制完整，或重新创建一个"), ""),
-                _ => app.Listen.Listening ? (L("纪要会在会议进行中自动生成"), "") : ("", ""),
+                _ => ("", ""),
             };
             var empty = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 48, 0, 0) };
             if (title.Length > 0) { var t = Ui.Text(title, 14, Palette.Body); t.TextAlignment = TextAlignment.Center; empty.Children.Add(t); }
@@ -399,6 +407,106 @@ sealed class NotesWindow : Window
             foreach (var todo in notes.Todos) body.Children.Add(Gap(Todo(todo), 6, top: true));
         }
         return body;
+    }
+
+    // MARK: Listening, no notes asked for yet (NotesViews.swift › NotesListeningView)
+
+    // Stepped once a second by the clock, like Ui.LiveDot: this window is redrawn in software, so a
+    // WPF animation would redraw it every frame. Holds only what the current render shows.
+    readonly List<ScaleTransform> soundBars = [];
+    readonly SolidColorBrush skeleton = new(SkeletonBase);
+    int beat;
+    static readonly Color SkeletonBase = Color.FromRgb(0xEE, 0xF0, 0xF3), SkeletonLight = Color.FromRgb(0xF7, 0xF8, 0xFA);
+    // The Mac's placeholder grey, its accentPale at 70% on white, and its chip fill.
+    static readonly SolidColorBrush Placeholder = Frozen(0xB8, 0xBD, 0xC6), ListeningRow = Frozen(0xFE, 0xF1, 0xEC), ChipFill = Frozen(0xF2, 0xF3, 0xF5);
+    // How tall each sound bar stands, step by step; each bar runs two steps ahead of the one before.
+    static readonly double[] levels = [0.35, 0.7, 1, 0.6, 0.3, 0.85, 0.5];
+
+    static SolidColorBrush Frozen(byte r, byte g, byte b) { var x = new SolidColorBrush(Color.FromRgb(r, g, b)); x.Freeze(); return x; }
+
+    void Pulse()
+    {
+        if (soundBars.Count == 0) return;
+        beat++;
+        for (int i = 0; i < soundBars.Count; i++) soundBars[i].ScaleY = levels[(beat + i * 2) % levels.Length];
+        skeleton.Color = beat % 2 == 0 ? SkeletonBase : SkeletonLight;
+    }
+
+    /// One quiet status row, then the notes' own shape waiting to be filled, so the first version
+    /// lands where the reader is already looking.
+    FrameworkElement Listening(int heard)
+    {
+        var body = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var bars = new StackPanel { Orientation = Orientation.Horizontal, Height = 22, VerticalAlignment = VerticalAlignment.Center };
+        for (int i = 0; i < 4; i++)
+        {
+            var scale = new ScaleTransform(1, levels[(beat + i * 2) % levels.Length]);
+            soundBars.Add(scale);
+            bars.Children.Add(new System.Windows.Shapes.Rectangle
+            {
+                Width = 3, Height = 22, RadiusX = 1.5, RadiusY = 1.5, Fill = Palette.Live, Margin = new Thickness(i == 0 ? 0 : 3, 0, 0, 0),
+                RenderTransform = scale, RenderTransformOrigin = new Point(0.5, 0.5),
+            });
+        }
+        var status = new DockPanel();
+        DockPanel.SetDock(bars, Dock.Left);
+        status.Children.Add(bars);
+        if (heard > 0)
+        {
+            var count = Ui.Text(LF("已听到 %lld 句", heard), 12, Palette.Tertiary, wrap: false);
+            count.VerticalAlignment = VerticalAlignment.Center; count.Margin = new Thickness(12, 0, 0, 0);
+            DockPanel.SetDock(count, Dock.Right);
+            status.Children.Add(count);
+        }
+        var say = Ui.Text(L("有人开口后，约半分钟出第一版"), 13, Palette.Ink);
+        say.VerticalAlignment = VerticalAlignment.Center; say.Margin = new Thickness(12, 0, 0, 0);
+        status.Children.Add(say);
+        body.Children.Add(new Border { Background = ListeningRow, CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 12, 14, 12), Child = status });
+
+        var summary = Ui.Stack(10, Ui.Text(L("总结"), 15, Placeholder, FontWeights.Bold), SkeletonBar(0.94, 10), SkeletonBar(0.8, 10), SkeletonBar(0.56, 10));
+        body.Children.Add(Gap(summary, 22, top: true));
+        var later = TopicSlot("--:--", [0.4, 0.76]);
+        later.Opacity = 0.6;
+        var topics = Ui.Stack(12, Ui.Text(L("议题"), 15, Placeholder, FontWeights.Bold), TopicSlot("00:00", [0.52, 0.88, 0.7]), later);
+        body.Children.Add(Gap(topics, 22, top: true));
+
+        // Wraps: the English chips don't fit one line in a narrow window.
+        var chips = new WrapPanel { Margin = new Thickness(0, 26, 0, 0) };
+        var lead = Ui.Text(L("会整理出"), 12, Palette.Tertiary, wrap: false);
+        lead.Margin = new Thickness(0, 4, 6, 10);
+        chips.Children.Add(lead);
+        foreach (var t in new[] { L("结论"), L("待办"), L("人名和术语"), L("鱼骨图") })
+            chips.Children.Add(new Border { Background = ChipFill, CornerRadius = new CornerRadius(11), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 6, 6), Child = Ui.Text(t, 12, Palette.Secondary, wrap: false) });
+        body.Children.Add(chips);
+        return body;
+    }
+
+    /// A placeholder line `fraction` of the width across, pulsing with the clock.
+    FrameworkElement SkeletonBar(double fraction, double height)
+    {
+        var grid = new Grid { Height = height };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(fraction, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - fraction, GridUnitType.Star) });
+        grid.Children.Add(new Border { Background = skeleton, CornerRadius = new CornerRadius(Math.Min(6, height / 2)) });
+        return grid;
+    }
+
+    /// A topic still to come: its time, then a heading and points as bars, in a dashed outline.
+    FrameworkElement TopicSlot(string time, double[] lines)
+    {
+        var bars = new StackPanel();
+        for (int i = 0; i < lines.Length; i++) bars.Children.Add(Gap(SkeletonBar(lines[i], i == 0 ? 11 : 8), i == 0 ? 0 : 8, top: true));
+        var clock = Ui.Text(time, 12, Placeholder, wrap: false);
+        clock.VerticalAlignment = VerticalAlignment.Top; clock.Margin = new Thickness(0, -2, 12, 0);
+        clock.Typography.NumeralAlignment = FontNumeralAlignment.Tabular;
+        var dock = new DockPanel { Margin = new Thickness(14) };
+        DockPanel.SetDock(clock, Dock.Left);
+        dock.Children.Add(clock); dock.Children.Add(bars);
+        var grid = new Grid();
+        // Dash lengths are in stroke widths: the Mac's 5 / 4 points at 1.5.
+        grid.Children.Add(new System.Windows.Shapes.Rectangle { Stroke = Palette.Line, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 5 / 1.5, 4 / 1.5 }, RadiusX = 12, RadiusY = 12 });
+        grid.Children.Add(dock);
+        return grid;
     }
 
     FrameworkElement Transcript()
