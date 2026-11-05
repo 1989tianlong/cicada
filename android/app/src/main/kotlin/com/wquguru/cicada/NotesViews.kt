@@ -260,6 +260,12 @@ object NotesViews {
             body.addView(listeningPlaceholder(ui, heard, compact))
             return body
         }
+        // The first version on its way (the Mac's NotesGeneratingView): the same shape, a spinner
+        // and how many lines it was written from, not a bare 正在整理纪要… for the 10–20 s it takes.
+        if (notes.isEmpty && listening && heard > 0 && status == NotesEngine.State.Updating) {
+            body.addView(listeningPlaceholder(ui, heard, compact, generating = true))
+            return body
+        }
         if (notes.isEmpty) {
             val hint = when (status) {
                 NotesEngine.State.NoKey -> CicadaApp.shared.noKeyText()
@@ -314,15 +320,25 @@ object NotesViews {
 
     /// The Mac's NotesListeningView: a quiet status row, then the notes' shape waiting to be
     /// filled and what they will hold. `compact` (the floating window) keeps the status row only.
-    fun listeningPlaceholder(ui: Ui, heard: Int, compact: Boolean): LinearLayout {
+    /// `generating`: the first request is out: a spinner and 正在生成纪要… instead of the sound bars,
+    /// and no list of what the notes will hold (the Mac's NotesGeneratingView).
+    fun listeningPlaceholder(ui: Ui, heard: Int, compact: Boolean, generating: Boolean = false): LinearLayout {
         val box = ui.stack(0)
         box.addView(LinearLayout(ui.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = ui.rounded(0xB3FDEBE4.toInt(), 12)  // accentPale at 70%, as on the Mac
             setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            addView(SoundBars(ui.context), LinearLayout.LayoutParams(ui.dp(21), ui.dp(22)))
-            addView(ui.text(L("有人开口后，约半分钟出第一版"), 13f, Palette.ink), ui.weight().apply { leftMargin = ui.dp(12) })
+            if (generating) {
+                addView(android.widget.ProgressBar(ui.context).apply {
+                    isIndeterminate = true
+                    indeterminateTintList = android.content.res.ColorStateList.valueOf(Palette.accent)
+                }, LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)))
+                addView(ui.text(L("正在生成纪要…"), 13f, Palette.ink, bold = true), ui.weight().apply { leftMargin = ui.dp(12) })
+            } else {
+                addView(SoundBars(ui.context), LinearLayout.LayoutParams(ui.dp(21), ui.dp(22)))
+                addView(ui.text(L("有人开口后，约半分钟出第一版"), 13f, Palette.ink), ui.weight().apply { leftMargin = ui.dp(12) })
+            }
             if (heard > 0) addView(ui.text(LF("已听到 %lld 句", heard), 12f, Palette.tertiary, lines = 1).apply { fontFeatureSettings = "tnum" },
                                    LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(12) })
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
@@ -334,6 +350,7 @@ object NotesViews {
         box.addView(heading(L("议题")), ui.lp(top = 22))
         box.addView(topicSlot(ui, "00:00", listOf(0.52f, 0.88f, 0.7f)), ui.lp(top = 12))
         box.addView(topicSlot(ui, "--:--", listOf(0.4f, 0.76f)).apply { alpha = 0.6f }, ui.lp(top = 12))
+        if (generating) return box
         // Wraps: the English chips don't fit one line on a phone.
         box.addView(FlowRow(ui.context, ui.dp(6)).apply {
             addView(ui.text(L("会整理出"), 12f, Palette.tertiary).apply { setPadding(0, ui.dp(4), 0, ui.dp(4)) })
