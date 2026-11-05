@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-14.4%2B%20·%20Apple%20silicon-black" alt="macOS 14.4+, Apple silicon">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
   <img src="https://img.shields.io/badge/Windows-10%202004%2B-black" alt="Windows 10 2004+">
   <img src="https://img.shields.io/badge/Ubuntu-22.04%2B-black" alt="Ubuntu 22.04+">
   <img src="https://img.shields.io/badge/Android-10%2B-black" alt="Android 10+">
@@ -25,7 +25,7 @@
 
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a></p>
 
-Cicada works with whatever is playing on your computer, from Zoom, Teams, and Feishu calls to X Spaces, Discord stages, and YouTube livestreams. By listening directly to system audio, it gives you live bilingual subtitles and structured meeting notes without sending bots into the call or asking anyone else to install a thing. And when you need to jump in, just hold the talk key (right `⌥` on the Mac, right `Ctrl` on Windows) to speak and broadcast your translated voice straight into the meeting. On the Mac, speech is recognized on your computer, so audio never leaves it.
+Cicada works with whatever is playing on your computer, from Zoom, Teams, and Feishu calls to X Spaces, Discord stages, and YouTube livestreams. By listening directly to system audio, it gives you live bilingual subtitles and structured meeting notes without sending bots into the call or asking anyone else to install a thing. And when you need to jump in, just hold the talk key (right `⌥` on the Mac, right `Ctrl` on Windows) to speak and broadcast your translated voice straight into the meeting. On Apple silicon Macs, speech is recognized on your computer, so audio never leaves it.
 
 <p align="center">
   <img src="docs/demo.gif" width="800" alt="A Bloomberg English livestream on YouTube with Cicada's live Chinese notes, topics, and fishbone diagram on the right and bilingual subtitles at the bottom">
@@ -35,7 +35,7 @@ Cicada works with whatever is playing on your computer, from Zoom, Teams, and Fe
 
 | Platform | Requirements | Notes |
 |---|---|---|
-| Mac | macOS 14.4+, Apple silicon | The full feature set; recognizes speech on your Mac, works without a key |
+| Mac | macOS 14.4+, Apple silicon / Intel | The full feature set; Apple silicon recognizes speech on your Mac (works without a key), Intel needs a Ling key (speech recognized by Ming) |
 | Windows | Windows 10 2004+, x64 / ARM64 | Needs a Ling key, or OpenRouter, ZenMux and others when Ling isn't an option; see [windows/](windows/README.md) |
 | Linux | Ubuntu 22.04 / 24.04 desktop | Needs a key for Ling or another AI service; the notes window shows in screen sharing; see [linux/](linux/README.md) |
 | Android | Android 10+ | Needs a key for Ling or another AI service; subtitles for videos and streams, face-to-face interpreting; see [android/](android/README.md) |
@@ -80,9 +80,9 @@ Every session saves its bilingual transcript, notes, and audio recording on your
 
 ## Privacy & Permissions
 
-On the Mac, audio capture, language detection, speech recognition (Apple SpeechAnalyzer; on macOS 14.4–15, SFSpeechRecognizer in on-device mode), and meeting recordings all stay on your computer. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. If a speech model is slow to download and you choose **Use Ling for Now**, the meeting audio goes to Ling until the model is in. Without an API key, subtitles, translation (via Google, with Apple on-device fallback on macOS 26), meeting records, and push-to-talk interpreting all work. Live meeting notes use your own AI service key, OpenRouter (recommended) or Ling (Ant Group's model service); see [below](#ling-api-key). One-step voice translation and voice cloning are Ling only. With Ling, an hour of live notes costs roughly ¥0.15 to ¥1 at current pricing, and Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
+On Apple silicon Macs, audio capture, language detection, speech recognition (Apple SpeechAnalyzer; on macOS 14.4–15, SFSpeechRecognizer in on-device mode), and meeting recordings all stay on your computer. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. If a speech model is slow to download and you choose **Use Ling for Now**, the meeting audio goes to Ling until the model is in. Without an API key, subtitles, translation (via Google, with Apple on-device fallback on macOS 26), meeting records, and push-to-talk interpreting all work. Live meeting notes use your own AI service key, OpenRouter (recommended) or Ling (Ant Group's model service); see [below](#ling-api-key). One-step voice translation and voice cloning are Ling only. With Ling, an hour of live notes costs roughly ¥0.15 to ¥1 at current pricing, and Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
 
-The Windows, Linux and Android apps recognize speech in the cloud: what is said goes in short pieces to Ling's Ming (or to OpenRouter, ZenMux or another service you switch to), so they need an AI service key. Recordings and meeting records stay on the device there too.
+Intel Macs, Windows, Linux and Android recognize speech in the cloud: what is said goes in short pieces to Ling's Ming (or on Windows, Linux and Android to OpenRouter, ZenMux or another service you switch to), so they need an AI service key. Recordings and meeting records stay on the device there too.
 
 The rest of this section is about the Mac app. Cicada asks for a permission only when you use the feature that needs it, and everything else keeps working if you decline.
 
@@ -135,9 +135,9 @@ ZenMux, OpenAI or the address of any OpenAI-compatible service (a model running 
 
 ### Mac
 
-Requires **macOS 14.4 or later** on **Apple silicon**. macOS 26 uses the newer on-device speech recognizer, which is more accurate; on 14.4–15 Cicada uses the system's earlier recognizer, which needs **Dictation** turned on in **System Settings › Keyboard**, with each language you want heard added to its languages. The UI is available in English, Chinese, Japanese, and Korean, following your macOS language or set per app in **System Settings › General › Language & Region**.
+Requires **macOS 14.4 or later** (Apple silicon or Intel). On Apple silicon, macOS 26 uses the newer on-device speech recognizer, which is more accurate, while 14.4–15 uses the system's earlier recognizer, which needs **Dictation** turned on in **System Settings › Keyboard** with each language you want heard added to its languages; on Intel Macs, speech recognition runs in the cloud via Ming and requires a Ling key. The UI is available in English, Chinese, Japanese, and Korean, following your macOS language or set per app in **System Settings › General › Language & Region**.
 
-Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it, and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`, which you can verify with `shasum -a 256 Cicada-*.dmg`. For questions, reach out to the author [@wquguru](https://x.com/wquguru) on X.
+Download `Cicada-<version>-macOS-AppleSilicon.dmg` (Apple silicon) or `Cicada-<version>-macOS-Intel.dmg` (Intel) from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it, and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`, which you can verify with `shasum -a 256 Cicada-*.dmg`. For questions, reach out to the author [@wquguru](https://x.com/wquguru) on X.
 
 The first-launch guide asks for one permission, plays a short two-person sample meeting so you can see live subtitles right away, helps you connect an AI service key (or skip it for now), and sets up the virtual microphone if you want interpreting. Later updates show as an orange dot on the menu bar icon and install in one click without losing your permissions.
 

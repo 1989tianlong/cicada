@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-14.4%2B%20·%20Apple%20silicon-black" alt="macOS 14.4+, Apple silicon">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
   <img src="https://img.shields.io/badge/Windows-10%202004%2B-black" alt="Windows 10 2004+">
   <img src="https://img.shields.io/badge/Ubuntu-22.04%2B-black" alt="Ubuntu 22.04+">
   <img src="https://img.shields.io/badge/Android-10%2B-black" alt="Android 10+">
@@ -37,7 +37,7 @@ Cicada は、Zoom、Teams、Feishu の通話から、X スペース、Discord �
 
 | プラットフォーム | 動作環境 | 備考 |
 |---|---|---|
-| Mac | macOS 14.4 以降、Apple シリコン | すべての機能に対応。音声認識は Mac の中で行い、キーなしでも使えます |
+| Mac | macOS 14.4 以降、Apple シリコン / Intel | すべての機能に対応。Apple シリコンは Mac の中で音声認識を行い（キーなしでも可）、Intel 版は Ling のキーが必要（Ming で音声認識） |
 | Windows | Windows 10 2004 以降、x64 / ARM64 | Ling のキーが必要（使えない場合は OpenRouter、ZenMux なども可）。[windows/](windows/README.md) を参照 |
 | Linux | Ubuntu 22.04 / 24.04 デスクトップ | Ling かほかの AI サービスのキーが必要。メモのウィンドウは画面共有に映ります。[linux/](linux/README.md) を参照 |
 | Android | Android 10 以降 | Ling かほかの AI サービスのキーが必要。動画や配信の字幕、対面での通訳。[android/](android/README.md) を参照 |
@@ -137,9 +137,9 @@ ZenMux、OpenAI、または OpenAI 互換の任意のサービス（たとえば
 
 ### Mac
 
-**Apple シリコン** を搭載した **macOS 14.4 以降** が必要です。macOS 26 ではより正確な新しいデバイス上の音声認識を使います。14.4〜15 ではシステムの以前の音声認識を使うため、**システム設定 › キーボード** で **音声入力** をオンにし、聞き取りたい言語をその言語に追加しておく必要があります。UI は英語、中国語、日本語、韓国語に対応しており、macOS の言語に従うか、**システム設定 › 一般 › 言語と地域** でアプリごとに設定できます。
+**Apple シリコンまたは Intel** を搭載した **macOS 14.4 以降** が必要です。Apple シリコンの Mac では、macOS 26 はより正確な新しいデバイス上の音声認識を使います。14.4〜15 ではシステムの以前の音声認識を使うため、**システム設定 › キーボード** で **音声入力** をオンにし、聞き取りたい言語をその言語に追加しておく必要があります。Intel 版の Mac ではクラウドの Ming モデルで音声を認識するため、Ling のキーが必要です。UI は英語、中国語、日本語、韓国語に対応しており、macOS の言語に従うか、**システム設定 › 一般 › 言語と地域** でアプリごとに設定できます。
 
-[Releases](https://github.com/wquguru/cicada/releases/latest) または[Web サイト](https://cicada.indaloop.app/ja/)から `Cicada-<version>-macOS-AppleSilicon.dmg` をダウンロードして開き、**Cicada** を **アプリケーション** にドラッグしてください。ビルドはアドホック署名で、まだ公証されていないため（[ロードマップ](#ロードマップ)を参照）、初回の起動を macOS がブロックした場合は、**システム設定 › プライバシーとセキュリティ** を開いて **このまま開く** をクリックしてください。各リリースには `checksums.txt` が含まれており、`shasum -a 256 Cicada-*.dmg` で検証できます。質問があれば、X で作者の [@wquguru](https://x.com/wquguru) にご連絡ください。
+[Releases](https://github.com/wquguru/cicada/releases/latest) または[Web サイト](https://cicada.indaloop.app/ja/)から `Cicada-<version>-macOS-AppleSilicon.dmg`（Apple シリコン）または `Cicada-<version>-macOS-Intel.dmg`（Intel）をダウンロードして開き、**Cicada** を **アプリケーション** にドラッグしてください。ビルドはアドホック署名で、まだ公証されていないため（[ロードマップ](#ロードマップ)を参照）、初回の起動を macOS がブロックした場合は、**システム設定 › プライバシーとセキュリティ** を開いて **このまま開く** をクリックしてください。各リリースには `checksums.txt` が含まれており、`shasum -a 256 Cicada-*.dmg` で検証できます。質問があれば、X で作者の [@wquguru](https://x.com/wquguru) にご連絡ください。
 
 初回起動時のガイドでは、1 つの権限を求めたあと、すぐにリアルタイムの字幕を確認できるよう 2 人の短いサンプルの会議を再生し、AI サービスのキーの接続（またはひとまずスキップ）を手伝い、通訳を使いたい場合は仮想マイクをセットアップします。以降のアップデートは、メニューバーのアイコンにオレンジ色の点として表示され、権限を失うことなくワンクリックでインストールできます。
 

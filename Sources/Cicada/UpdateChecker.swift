@@ -98,11 +98,17 @@ final class UpdateChecker {
 
     /// The newest published release that ships the Mac app. A release without the Mac zip only
     /// carries other platforms (the Mac app had no change), so it is skipped, not offered.
-    nonisolated static func newestMac(in releases: [Release]) -> Update? {
+    #if arch(x86_64)
+    nonisolated static let assetSuffix = "-macOS-Intel.zip"
+    #else
+    nonisolated static let assetSuffix = "-macOS-AppleSilicon.zip"
+    #endif
+
+    nonisolated static func newestMac(in releases: [Release], suffix: String = assetSuffix) -> Update? {
         let shipped = releases.compactMap { release -> Update? in
             guard release.draft != true, release.prerelease != true,
                   let url = URL(string: release.html_url),
-                  let zip = release.assets.first(where: { $0.name.hasPrefix("Cicada-") && $0.name.hasSuffix("-macOS-AppleSilicon.zip") })
+                  let zip = release.assets.first(where: { $0.name.hasPrefix("Cicada-") && $0.name.hasSuffix(suffix) })
             else { return nil }
             let checksums = release.assets.first { $0.name == "checksums.txt" }
             return Update(version: release.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "v")), url: url,
