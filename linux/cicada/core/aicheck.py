@@ -192,7 +192,9 @@ class AICheck:
 
     def proxy_line(self, service: str, host: str) -> str | None:
         """Under "can't reach": what this computer's proxy looks like, and what to do."""
-        if self.reason != UNREACHABLE or self.proxy is None:
+        from .providers import is_nearby
+        # A server on this computer or the local network: a proxy has nothing to do with it.
+        if self.reason != UNREACHABLE or self.proxy is None or is_nearby(host):
             return None
         if self.proxy[0] == "system":
             return LF("开了代理也连不上：换一个节点，或检查代理软件是否放过 %@。", host)

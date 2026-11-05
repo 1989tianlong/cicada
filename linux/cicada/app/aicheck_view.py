@@ -6,6 +6,7 @@ from __future__ import annotations
 from gi.repository import Gtk
 
 from ..core import aicheck
+from ..core.providers import is_nearby
 from ..core import strings
 from ..core.strings import L, LF
 from . import ui
@@ -39,6 +40,9 @@ def actions(app, change_key, recheck_in_step: bool = True) -> list:
     reason = f[1]
     recheck = [(L("重新检查"), app.recheck)] if recheck_in_step else []
     if reason == aicheck.UNREACHABLE:
+        # A proxy has nothing to do with a server on this computer or the local network.
+        if is_nearby(ling.service_host):
+            return recheck
         return [(L("怎么设置代理"), lambda: open_uri(aicheck.help_url(strings.language)))] + recheck
     if reason in (aicheck.INVALID_KEY, aicheck.MGMT_KEY):
         out = [(L("更换 key"), change_key)]
