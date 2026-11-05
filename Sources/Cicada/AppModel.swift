@@ -802,7 +802,7 @@ final class AppModel: ObservableObject {
 
     /// Asked for by name (菜单栏面板 打开, 窗口 › 实时纪要): shown even before anyone speaks, and
     /// without touching 显示方式, so 不显示 or 字幕条 is back at the next meeting.
-    func openNotesWindow() { notesWindow.show() }
+    func openNotesWindow() { notesWindow.show(asked: true) }
 
     /// The listening pill: bring back what shows this meeting, the subtitle bar in 字幕条 mode,
     /// else the notes window (in 不显示 just this once).
@@ -2167,12 +2167,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
         NSApp.setActivationPolicy(.regular)
         onboardingWindow?.makeKeyAndOrderFront(nil)
+        // After it's on screen: a notes window already showing has to make way.
+        model.notesWindow.avoid(onboardingWindow)
         NSApp.activate()
     }
 
     func windowWillClose(_ notification: Notification) {
         let w = notification.object as? NSWindow
         updateActivationPolicy(closing: w)
+        if w == onboardingWindow { model.notesWindow.avoid(nil) }
         if w == onboardingWindow, !model.relaunching {
             model.sample.stop()
             UserDefaults.standard.set(true, forKey: "onboarded")

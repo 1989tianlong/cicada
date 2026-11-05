@@ -21,6 +21,9 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
     }
 
     var isVisible: Bool { panel?.isVisible ?? false }
+    /// Not read back from the panel: its hosting view lowers `minSize` to the content's.
+    static let minWidth: CGFloat = 300
+    private static let autosave = "LiveSubsNotes"
 
     var layout: Layout {
         let w = panel?.frame.width ?? 460
@@ -42,7 +45,8 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
         commands.send(command)
     }
 
-    func show() {
+    /// `asked`: opened by name, so shown even where it can't keep clear of the onboarding window.
+    func show(asked: Bool = false) {
         guard let model else { return }
         if panel == nil {
             let p = NotesPanel(contentRect: defaultFrame(), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel],
@@ -63,23 +67,95 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
             // Others never see it when you share your screen, unless the user lets recordings in.
             p.sharingType = model.settings.notesCapturable ? .readOnly : .none
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            p.minSize = NSSize(width: 300, height: 180)
+            p.minSize = NSSize(width: Self.minWidth, height: 180)
             p.backgroundColor = .white
             p.contentView = FirstClickHostingView(rootView: NotesWindowView(
                 model: model, engine: model.notes, store: model.store, settings: model.settings,
                 commands: commands.eraseToAnyPublisher(),
                 setWidth: { [weak self] w, h in self?.resize(width: w, height: h) }))
-            p.setFrameAutosaveName("LiveSubsNotes")
-            if !p.setFrameUsingName("LiveSubsNotes") { p.setFrame(defaultFrame(), display: false) }
+            p.setFrameAutosaveName(Self.autosave)
+            if !p.setFrameUsingName(Self.autosave) { p.setFrame(defaultFrame(), display: false) }
             panel = p
         }
+        if !keepClear() && !asked { return }
+        waiting = false
         panel?.orderFrontRegardless()
         model.notesVisibilityChanged(true)
     }
 
     func hide() {
+        waiting = false
         panel?.orderOut(nil)
         model?.notesVisibilityChanged(false)
+    }
+
+    // MARK: Keeping clear of the onboarding window
+
+    /// The onboarding window while it's open. The panel floats above it and can't be clicked
+    /// through, so it must never sit on it: on a 1024×768 screen the sidebar covered 继续.
+    private weak var avoiding: NSWindow?
+    /// The user's own frame, put back when the window closes, and where we put the panel instead.
+    private var ownFrame: NSRect?
+    private var placedFrame: NSRect?
+    /// Asked to show while there was no room beside the window: shown once it closes.
+    private var waiting = false
+
+    /// `window`: the onboarding window as it opens; nil as it closes.
+    func avoid(_ window: NSWindow?) {
+        avoiding = window
+        if window != nil {
+            if panel?.isVisible == true && !keepClear() {
+                panel?.orderOut(nil)
+                model?.notesVisibilityChanged(false)
+            }
+            return
+        }
+        if let ownFrame, let p = panel {
+            // Unless the user has moved it since; either way it's remembered again from here.
+            if p.frame == placedFrame { p.setFrame(ownFrame, display: true) }
+            p.setFrameAutosaveName(Self.autosave)
+        }
+        ownFrame = nil
+        placedFrame = nil
+        if waiting {
+            waiting = false
+            show()
+        }
+    }
+
+    /// Moves the panel beside the window it avoids, or returns false (and waits) when neither side has room.
+    private func keepClear() -> Bool {
+        guard let p = panel, let w = avoiding, w.isVisible,
+              let screen = w.screen ?? NSScreen.main, p.frame.intersects(w.frame) else { return true }
+        guard let r = Self.beside(w.frame, in: screen.visibleFrame, width: p.frame.width, minWidth: Self.minWidth) else {
+            waiting = true
+            debugLog("notes window waits: no room beside onboarding \(w.frame) in \(screen.visibleFrame)")
+            return false
+        }
+        if ownFrame == nil {
+            ownFrame = p.frame
+            // Not remembered: quit during onboarding and the next meeting still opens where the user left it.
+            p.setFrameAutosaveName("")
+        }
+        p.setFrame(r, display: true)
+        placedFrame = p.frame
+        return true
+    }
+
+    /// The panel beside `window` within `visible`: right of it, else left, a gap away and as tall
+    /// as the screen allows, no wider than `width`; nil when neither side has `minWidth`.
+    nonisolated static func beside(_ window: NSRect, in visible: NSRect, width: CGFloat, minWidth: CGFloat) -> NSRect? {
+        let gap: CGFloat = 12
+        let right = visible.maxX - window.maxX - 2 * gap, left = window.minX - visible.minX - 2 * gap
+        let y = visible.minY + gap, h = visible.height - 2 * gap
+        if right >= minWidth {
+            let w = min(width, right)
+            return NSRect(x: visible.maxX - gap - w, y: y, width: w, height: h)
+        }
+        if left >= minWidth {
+            return NSRect(x: visible.minX + gap, y: y, width: min(width, left), height: h)
+        }
+        return nil
     }
 
     /// Closed with its close button (hide() doesn't come here): the meeting goes on in the

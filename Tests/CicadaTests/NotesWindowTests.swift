@@ -3,6 +3,25 @@ import Testing
 @testable import Cicada
 
 @Suite struct NotesWindowTests {
+    @Test func notesWindowStandsBesideOnboardingOnlyWhereItFits() {
+        let onboarding = { (screen: NSRect) in
+            NSRect(x: screen.midX - 430, y: screen.minY + 12, width: 860, height: 668)
+        }
+        // 1024×768 (the menu bar and Dock taken): 82 pt either side, no room, so it waits.
+        let small = NSRect(x: 0, y: 57, width: 1024, height: 686)
+        #expect(NotesWindowController.beside(onboarding(small), in: small, width: 460, minWidth: 300) == nil)
+        // 1920 wide: the full sidebar to the right, clear of the window.
+        let big = NSRect(x: 0, y: 0, width: 1920, height: 1055)
+        let r = NotesWindowController.beside(onboarding(big), in: big, width: 460, minWidth: 300)
+        #expect(r?.width == 460)
+        #expect(r.map { !$0.intersects(onboarding(big)) && big.contains($0) } == true)
+        // Room only on the left (the window pushed right): narrower, still clear.
+        let pushed = NSRect(x: 1600 - 860, y: 12, width: 860, height: 668)
+        let l = NotesWindowController.beside(pushed, in: NSRect(x: 0, y: 0, width: 1600, height: 900), width: 460, minWidth: 300)
+        #expect(l?.minX == 12)
+        #expect(l.map { !$0.intersects(pushed) } == true)
+    }
+
     private func line(_ id: String, _ t: Double, _ speaker: String = "them", _ src: String = "a line") -> TranscriptLine {
         TranscriptLine(id: id, t: t, speaker: speaker, src: src, dst: nil, srcLang: "en", dstLang: "zh-CN")
     }
