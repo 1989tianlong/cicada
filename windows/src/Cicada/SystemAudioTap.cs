@@ -74,10 +74,8 @@ sealed class SystemAudioTap : IAudioSource
         Marshal.ThrowExceptionForHR(client.Start());
         try
         {
-            // Loopback sends nothing while nothing plays, so we feed silence ourselves to end segments
-            // and keep the clock going. Only after 300 ms without a packet, though: a packet that is
-            // merely late (a busy PC, a VM) must not get silence put in front of it, or a sentence
-            // splits in two.
+            // Loopback sends nothing while nothing plays, so we feed silence ourselves (LoopbackGap:
+            // only after a second without a packet, or a late packet splits its sentence in two).
             var lastPacket = DateTime.UtcNow; var fedUntil = lastPacket;
             int gaps = 0;
             while (running)
@@ -85,13 +83,17 @@ sealed class SystemAudioTap : IAudioSource
                 if (!ready.WaitOne(100))
                 {
                     var now = DateTime.UtcNow;
-                    if ((now - lastPacket).TotalMilliseconds >= 300)
+                    var silence = LoopbackGap.Silence((now - lastPacket).TotalSeconds, (now - fedUntil).TotalSeconds);
+                    if (silence > 0)
                     {
-                        Samples?.Invoke(new short[(int)((now - fedUntil).TotalSeconds * 16000)]);
+                        Samples?.Invoke(new short[silence]);
                         fedUntil = now;
                     }
                     continue;
                 }
+                // How long packets stall here (a VM): a stall over LoopbackGap.Late puts a gap in a sentence.
+                var waited = (DateTime.UtcNow - lastPacket).TotalMilliseconds;
+                if (waited >= 300 && fedUntil == lastPacket) Log.Debug($"tap: packets late by {waited:F0} ms");
                 while (capture.GetNextPacketSize(out var packet) == 0 && packet > 0)
                 {
                     Marshal.ThrowExceptionForHR(capture.GetBuffer(out var data, out var frames, out var flags, out _, out _));

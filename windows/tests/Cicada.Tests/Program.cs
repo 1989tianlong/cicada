@@ -519,6 +519,23 @@ static class Tests
         Equal(0, Cut(Silence(1), Word(0.15, 0.3), Silence(1)).Count, "nor is a knock a word");
     }
 
+    public static void LateLoopbackPacketsDontSplitASentence()
+    {
+        // A VM held packets back for 0.3-0.7 s: silence went in front of them and lines split
+        // mid-phrase. The tap now waits a second before it calls a stall silence.
+        Equal(0, LoopbackGap.Silence(0.3, 0.3), "a 300 ms stall is no silence");
+        Equal(0, LoopbackGap.Silence(0.9, 0.9), "nor is a 900 ms one");
+        Equal(16000, LoopbackGap.Silence(1.0, 1.0), "a second of nothing is: all of it goes in");
+        Equal(1600, LoopbackGap.Silence(1.1, 0.1), "then what has passed since");
+        // The segmenter fed like the tap: speech, a 0.3 s break between words, a 0.5 s stall.
+        var whole = Cut(Tone(2), Silence(0.3), Tone(2), Silence(1));
+        Equal(1, whole.Count, "one sentence");
+        var stalled = Cut(Tone(2), Silence(0.3), new short[LoopbackGap.Silence(0.5, 0.5)], Tone(2), Silence(1));
+        Equal(1, stalled.Count, "still one after a late packet");
+        var old = Cut(Tone(2), Silence(0.3), Silence(0.5), Tone(2), Silence(1));
+        Equal(2, old.Count, "with 300 ms it was split in two");
+    }
+
     public static void WavRoundTrip()
     {
         var pcm = Tone(0.5);
