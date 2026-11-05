@@ -22,12 +22,17 @@ public sealed class Segmenter
     public static double Dips = 2.5;             // …unless the median is this far over the 10th, quiet ones held at gate / 8
     public static double Short = 2.0;            // a sound up to this long, with real quiet (gate / 4) on both sides…
     public static double Swell = Math.Pow(10, 10 / 20.0); // …that swells and fades by 10 dB is a word: see IsWord
+    public static double Above = 0.25;           // under this share of its loud frames' energy over 100 Hz: rumble, not speech
     const double PreRoll = 0.15, Tail = 0.15, CutWindow = 2.0;
+    // A first-order high-pass at 100 Hz, for how much of a sound is above it (IsRumble).
+    static readonly double HighPass = 1.0 / (1.0 + 2.0 * Math.PI * 100.0 / Rate);
 
     readonly List<short> pending = [];           // samples not yet a whole frame
     readonly List<short> current = [];           // the open segment
     readonly List<double> levels = [];           // per frame of `current`
-    readonly Queue<(short[] frame, double level)> before = new(); // recent quiet frames, for the pre-roll
+    readonly List<double> highs = [];            // per frame of `current`: its level over 100 Hz
+    double hx, hy;                               // the high-pass's last input and output, carried from frame to frame
+    readonly Queue<(short[] frame, double level, double high)> before = new(); // recent quiet frames, for the pre-roll
     readonly Queue<double> idle = new();         // levels of the last 0.6 s of quiet frames
     double? lead;                                // the quietest of those when the open segment began
     long consumed;                               // samples seen, for timestamps
@@ -74,6 +79,7 @@ public sealed class Segmenter
     void Step(short[] frame)
     {
         double level = Rms(frame);
+        double high = High(frame);
         var g = gate;
         line = g?.Threshold ?? Threshold;
         bool loud = g?.Voiced(level, Frame / (double)Rate) ?? level >= line;
@@ -86,20 +92,21 @@ public sealed class Segmenter
             {
                 idle.Enqueue(level);
                 while (idle.Count > (int)(Pause * Rate / Frame)) idle.Dequeue();
-                before.Enqueue((frame, level));
+                before.Enqueue((frame, level, high));
                 while (before.Count > PreRoll * Rate / Frame) before.Dequeue();
                 return;
             }
             currentStart = now - before.Count * Frame / (double)Rate;
             lead = idle.Count > 0 ? idle.Min() : null;
             idle.Clear();
-            foreach (var (f, l) in before) { current.AddRange(f); levels.Add(l); }
+            foreach (var (f, l, h) in before) { current.AddRange(f); levels.Add(l); highs.Add(h); }
             before.Clear();
             quietFrames = 0; loudFrames = 0;
         }
 
         current.AddRange(frame);
         levels.Add(level);
+        highs.Add(high);
         if (loud) { quietFrames = 0; loudFrames++; } else quietFrames++;
 
         if (quietFrames * Frame >= Pause * Rate)
@@ -163,6 +170,39 @@ public sealed class Segmenter
         return body[(int)(0.9 * (body.Count - 1))] >= Swell * body[(int)(0.1 * (body.Count - 1))];
     }
 
+    /// The frame's level over 100 Hz (RMS after the high-pass), the filter running on across frames.
+    double High(short[] frame)
+    {
+        double a = HighPass, x0 = hx, y = hy, total = 0;
+        foreach (var s in frame)
+        {
+            double x = s;
+            y = a * (y + x - x0);
+            x0 = x;
+            total += y * y;
+        }
+        hx = x0; hy = y;
+        return frame.Length == 0 ? 0 : Math.Sqrt(total / frame.Length) / 32768;
+    }
+
+    /// Rumble, not speech: under a quarter of the loud frames' energy is over 100 Hz. Speech keeps
+    /// nearly all of it there (-0.3 to -1 dB in testing, the low male voices included); brown noise
+    /// with almost nothing over 20 Hz keeps -20 to -28 dB, and Ming made a sentence of 15 of 17 such
+    /// segments ("I'm going to go ahead and start the meeting."), which the loudness rules can't
+    /// tell from a voice. Brown noise up to about 12 Hz keeps -10 dB and goes too; a 50 Hz hum or a
+    /// fan keeps about -5 dB and is left to the steady test.
+    internal static bool IsRumble(List<double> frameLevels, List<double> frameHighs, double gate)
+    {
+        double full = 0, above = 0;
+        for (int i = 0; i < frameLevels.Count && i < frameHighs.Count; i++)
+        {
+            if (frameLevels[i] < gate) continue;
+            full += frameLevels[i] * frameLevels[i];
+            above += frameHighs[i] * frameHighs[i];
+        }
+        return above < Above * full;
+    }
+
     /// Emits `current[..end]` and keeps what follows as the start of the next segment.
     void Close(int end)
     {
@@ -170,12 +210,14 @@ public sealed class Segmenter
         var samples = current.GetRange(0, end).ToArray();
         var rest = current.GetRange(end, current.Count - end);
         var restLevels = levels.GetRange(end / Frame, levels.Count - end / Frame);
+        var restHighs = highs.GetRange(end / Frame, highs.Count - end / Frame);
         double start = currentStart;
         var sent = levels.GetRange(0, Math.Min(levels.Count, end / Frame));
         bool speech = IsWord(levels, line)
             ? sent.Count(l => l >= line / 4) * Frame >= MinWord * Rate
             : loudFrames * Frame >= MinSpeech * Rate && !IsSteady(sent, line);
-        current.Clear(); levels.Clear();
+        speech = speech && !IsRumble(sent, highs.GetRange(0, sent.Count), line);
+        current.Clear(); levels.Clear(); highs.Clear();
         quietFrames = 0; loudFrames = 0;
         if (speech) Emitted?.Invoke(new Segment(++index, Math.Round(start, 3), samples));
 
@@ -186,6 +228,7 @@ public sealed class Segmenter
             lead = null;
             current.AddRange(rest);
             levels.AddRange(restLevels);
+            highs.AddRange(restHighs);
             int trailing = 0;
             for (int i = levels.Count - 1; i >= 0 && levels[i] < line; i--) trailing++;
             quietFrames = trailing;

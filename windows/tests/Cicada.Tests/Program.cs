@@ -468,6 +468,10 @@ static class Tests
             * (syllables ? 0.55 + 0.45 * Math.Sin(2 * Math.PI * 4 * i / 16000) : 1 + wobble * Math.Sin(2 * Math.PI * 0.5 * i / 16000))
             * amp * 32767)).ToArray();
     static short[] Silence(double seconds) => new short[(int)(seconds * 16000)];
+    /// A sine at `freq` that swells and fades four times a second like syllables.
+    static short[] Hz(double freq, double seconds, double amp) =>
+        Enumerable.Range(0, (int)(seconds * 16000)).Select(i => (short)(Math.Sin(2 * Math.PI * freq * i / 16000)
+            * (0.55 + 0.45 * Math.Sin(2 * Math.PI * 4 * i / 16000)) * amp * 32767)).ToArray();
     /// One word on its own ("Thanks."): a 300 Hz tone that swells from nothing and fades back.
     static short[] Word(double seconds, double amp)
     {
@@ -517,6 +521,8 @@ static class Tests
         Equal(1, Cut(Silence(1), Word(1.2, 0.022), Silence(1)).Count, "one smooth run of voice on its own, no dips inside");
         Equal(0, Cut(Silence(1), Tone(1, 0.03, syllables: false), Silence(1)).Count, "a short hum in silence doesn't swell and fade");
         Equal(0, Cut(Silence(1), Word(0.15, 0.3), Silence(1)).Count, "nor is a knock a word");
+        Equal(0, Cut(Silence(1), Hz(12, 3, 0.1), Silence(1)).Count, "rumble far under 100 Hz is no voice however it swells");
+        Equal(1, Cut(Silence(1), Hz(100, 3, 0.3), Silence(1)).Count, "a voice as low as 100 Hz stays");
     }
 
     public static void LateLoopbackPacketsDontSplitASentence()
