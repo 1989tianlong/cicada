@@ -341,7 +341,7 @@ class Overlay(private val app: CicadaApp) {
         notes?.let { box ->
             box.removeAllViews()
             val column = ui.stack(10)
-            column.addView(NotesViews.notesBody(ui, app.notes.notes, app.notes.status, app.listen.listening, compact = true))
+            column.addView(NotesViews.notesBody(ui, app.notes.notes, app.notes.status, app.listen.listening, compact = true, heard = NotesViews.currentLines(app).size))
             val privacy = if (app.settings.showInCapture) L("共享屏幕时对方能看到") else L("截图和录屏里看不到")
             val fresh = NotesViews.updated(app.notes.notes.updatedAt)
             column.addView(LinearLayout(app).apply {

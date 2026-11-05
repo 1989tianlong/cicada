@@ -252,8 +252,15 @@ object NotesViews {
 
     /// The notes: name and freshness, summary, topics, conclusions, to-dos. `compact` (the
     /// floating window) keeps the current topic only.
-    fun notesBody(ui: Ui, notes: MeetingNotes, status: NotesEngine.State, listening: Boolean, compact: Boolean = false): LinearLayout {
+    /// `heard`: this meeting's lines so far, for the listening placeholder.
+    fun notesBody(ui: Ui, notes: MeetingNotes, status: NotesEngine.State, listening: Boolean, compact: Boolean = false, heard: Int = 0): LinearLayout {
         val body = ui.stack(0)
+        // Listening and no request out yet (the first waits for a few lines or 20 s): the notes'
+        // own shape, kept after the first line is heard (the Mac's notesPane).
+        if (notes.isEmpty && listening && (status == NotesEngine.State.Idle || status == NotesEngine.State.Failed)) {
+            body.addView(listeningPlaceholder(ui, heard, compact))
+            return body
+        }
         if (notes.isEmpty) {
             val hint = when (status) {
                 NotesEngine.State.NoKey -> CicadaApp.shared.noKeyText()
@@ -263,7 +270,7 @@ object NotesViews {
                 }
                 NotesEngine.State.RateLimited -> LF("%@ 很忙，纪要稍后补上。字幕照常。", CicadaApp.shared.ling.serviceName)
                 NotesEngine.State.Updating -> L("正在整理纪要…")
-                else -> if (listening) L("说几句后生成纪要，之后每 45 秒更新") else ""
+                else -> ""
             }
             if (hint.isNotEmpty()) body.addView(ui.text(hint, 14f, Palette.secondary))
             return body
@@ -304,6 +311,144 @@ object NotesViews {
             for (t in notes.todos) body.addView(todo(ui, t.text, t.owner), ui.lp(top = 8))
         }
         return body
+    }
+
+    /// The Mac's NotesListeningView: a quiet status row, then the notes' shape waiting to be
+    /// filled and what they will hold. `compact` (the floating window) keeps the status row only.
+    fun listeningPlaceholder(ui: Ui, heard: Int, compact: Boolean): LinearLayout {
+        val box = ui.stack(0)
+        box.addView(LinearLayout(ui.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = ui.rounded(0xB3FDEBE4.toInt(), 12)  // accentPale at 70%, as on the Mac
+            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            addView(SoundBars(ui.context), LinearLayout.LayoutParams(ui.dp(21), ui.dp(22)))
+            addView(ui.text(L("有人开口后，约半分钟出第一版"), 13f, Palette.ink), ui.weight().apply { leftMargin = ui.dp(12) })
+            if (heard > 0) addView(ui.text(LF("已听到 %lld 句", heard), 12f, Palette.tertiary, lines = 1).apply { fontFeatureSettings = "tnum" },
+                                   LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(12) })
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        })
+        if (compact) return box
+        fun heading(text: String) = ui.text(text, 15f, PLACEHOLDER, bold = true).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        box.addView(heading(L("总结")), ui.lp(top = 22))
+        listOf(0.94f, 0.8f, 0.56f).forEach { box.addView(SkeletonBar(ui.context, it), ui.lp(top = 10, height = ui.dp(10))) }
+        box.addView(heading(L("议题")), ui.lp(top = 22))
+        box.addView(topicSlot(ui, "00:00", listOf(0.52f, 0.88f, 0.7f)), ui.lp(top = 12))
+        box.addView(topicSlot(ui, "--:--", listOf(0.4f, 0.76f)).apply { alpha = 0.6f }, ui.lp(top = 12))
+        // Wraps: the English chips don't fit one line on a phone.
+        box.addView(FlowRow(ui.context, ui.dp(6)).apply {
+            addView(ui.text(L("会整理出"), 12f, Palette.tertiary).apply { setPadding(0, ui.dp(4), 0, ui.dp(4)) })
+            for (t in listOf(L("结论"), L("待办"), L("人名和术语"), L("鱼骨图"))) addView(ui.text(t, 12f, Palette.secondary, lines = 1).apply {
+                background = ui.rounded(FILL, 100)
+                setPadding(ui.dp(10), ui.dp(4), ui.dp(10), ui.dp(4))
+            })
+        }, ui.lp(top = 26))
+        return box
+    }
+
+    private fun topicSlot(ui: Ui, time: String, fractions: List<Float>) = LinearLayout(ui.context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = ui.dp(12).toFloat()
+            setStroke(ui.dp(1.5f), Palette.line, ui.dp(5).toFloat(), ui.dp(4).toFloat())
+        }
+        setPadding(ui.dp(14), ui.dp(14), ui.dp(14), ui.dp(14))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        addView(ui.text(time, 12f, PLACEHOLDER, lines = 1).apply { fontFeatureSettings = "tnum" })
+        addView(ui.stack(0).apply {
+            fractions.forEachIndexed { i, f -> addView(SkeletonBar(ui.context, f), ui.lp(top = if (i == 0) 2 else 8, height = ui.dp(if (i == 0) 11 else 8))) }
+        }, ui.weight().apply { leftMargin = ui.dp(12) })
+    }
+
+    /// The Mac's Palette.placeholder and Palette.fill.
+    private val PLACEHOLDER = android.graphics.Color.parseColor("#B8BDC6")
+    private val FILL = android.graphics.Color.parseColor("#F2F3F5")
+
+    /// 0..1 through a repeating cycle (the Mac's phase()); with animations off, one still frame
+    /// (bars at mixed heights).
+    fun phase(period: Double, delay: Double = 0.0): Double {
+        val now = if (android.animation.ValueAnimator.areAnimatorsEnabled()) android.os.SystemClock.uptimeMillis() / 1000.0 else 0.4
+        val t = now - delay
+        return ((t % period) + period) % period / period
+    }
+
+    /// Four small orange bars rising and falling: "listening". Redraws itself only while drawn,
+    /// so it stops once detached or off screen.
+    class SoundBars(context: android.content.Context) : View(context) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = Palette.accent }
+        private val rect = android.graphics.RectF()
+        init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            val d = resources.displayMetrics.density
+            val w = 3 * d; val gap = 3 * d; val h = height.toFloat()
+            for (i in 0 until 4) {
+                val p = phase(1.1, i * 0.15)
+                val bar = h * (0.3f + 0.7f * (0.5f - 0.5f * Math.cos(p * 2 * Math.PI).toFloat()))
+                val x = i * (w + gap)
+                rect.set(x, (h - bar) / 2, x + w, (h + bar) / 2)
+                canvas.drawRoundRect(rect, w / 2, w / 2, paint)
+            }
+            if (android.animation.ValueAnimator.areAnimatorsEnabled()) postInvalidateDelayed(33)
+        }
+    }
+
+    /// A placeholder line with a light sweeping across it (the Mac's SkeletonBar), `fraction` of
+    /// the width. Redraws itself only while drawn.
+    class SkeletonBar(context: android.content.Context, private val fraction: Float) : View(context) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val rect = android.graphics.RectF()
+        init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            val w = width * fraction; val h = height.toFloat()
+            if (w <= 0f) return
+            val x = (phase(1.4) * 2 - 0.5).toFloat()
+            paint.shader = android.graphics.LinearGradient((x - 0.6f) * w, 0f, (x + 0.6f) * w, 0f,
+                intArrayOf(BASE, LIGHT, BASE), floatArrayOf(0f, 0.5f, 1f), android.graphics.Shader.TileMode.CLAMP)
+            val r = minOf(6 * resources.displayMetrics.density, h / 2)
+            rect.set(0f, 0f, w, h)
+            canvas.drawRoundRect(rect, r, r, paint)
+            if (android.animation.ValueAnimator.areAnimatorsEnabled()) postInvalidateDelayed(33)
+        }
+        companion object {
+            private val BASE = android.graphics.Color.parseColor("#EEF0F3")
+            private val LIGHT = android.graphics.Color.parseColor("#F7F8FA")
+        }
+    }
+
+    /// Children left to right, wrapping to the next line (the Mac's FlowLayout), each row
+    /// centred vertically.
+    class FlowRow(context: android.content.Context, private val gap: Int) : android.view.ViewGroup(context) {
+        private fun rows(max: Int): List<List<View>> {
+            val rows = mutableListOf<MutableList<View>>(mutableListOf())
+            var x = 0
+            for (i in 0 until childCount) {
+                val c = getChildAt(i)
+                if (x > 0 && x + c.measuredWidth > max) { rows.add(mutableListOf()); x = 0 }
+                rows.last().add(c); x += c.measuredWidth + gap
+            }
+            return rows
+        }
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val max = MeasureSpec.getSize(widthSpec) - paddingLeft - paddingRight
+            for (i in 0 until childCount) getChildAt(i).measure(MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            val rows = rows(max)
+            val widest = rows.maxOf { r -> r.sumOf { it.measuredWidth } + gap * (r.size - 1).coerceAtLeast(0) }
+            val h = rows.sumOf { r -> r.maxOfOrNull { it.measuredHeight } ?: 0 } + gap * (rows.size - 1)
+            setMeasuredDimension(resolveSize(widest + paddingLeft + paddingRight, widthSpec), h + paddingTop + paddingBottom)
+        }
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            var y = paddingTop
+            for (row in rows(r - l - paddingLeft - paddingRight)) {
+                val rowH = row.maxOfOrNull { it.measuredHeight } ?: 0
+                var x = paddingLeft
+                for (c in row) {
+                    val top = y + (rowH - c.measuredHeight) / 2
+                    c.layout(x, top, x + c.measuredWidth, top + c.measuredHeight)
+                    x += c.measuredWidth + gap
+                }
+                y += rowH + gap
+            }
+        }
     }
 
     fun bullet(ui: Ui, text: String, size: Float) = LinearLayout(ui.context).apply {

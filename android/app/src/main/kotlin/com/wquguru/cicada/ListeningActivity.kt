@@ -201,7 +201,7 @@ class ListeningActivity : Activity() {
             content.addView(NotesViews.bubbles(ui, app, 12))
             scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         } else {
-            val card = NotesViews.notesBody(ui, app.notes.notes, app.notes.status, app.listen.listening).apply {
+            val card = NotesViews.notesBody(ui, app.notes.notes, app.notes.status, app.listen.listening, heard = NotesViews.currentLines(app).size).apply {
                 background = ui.rounded(Palette.card, 22)
                 setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(20))
             }
