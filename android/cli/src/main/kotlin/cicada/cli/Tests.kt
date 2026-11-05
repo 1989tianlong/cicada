@@ -60,6 +60,11 @@ object Tests {
             "parsesNotes" to ::parsesNotes,
             "keepsEarliestTimes" to ::keepsEarliestTimes,
             "notesPromptIsTheMacs" to ::notesPromptIsTheMacs,
+            "keepsFrozenTopicsAndTakesTheRepliesTail" to ::keepsFrozenTopicsAndTakesTheRepliesTail,
+            "fullLiveNotesJoinTheShortestSettledPair" to ::fullLiveNotesJoinTheShortestSettledPair,
+            "livePromptSendsOnlyTheLatestTopics" to ::livePromptSendsOnlyTheLatestTopics,
+            "longMeetingsAreNotedInPartsByTime" to ::longMeetingsAreNotedInPartsByTime,
+            "topicStartsWhenItsLinesWereSaid" to ::topicStartsWhenItsLinesWereSaid,
             "loadsTheMacsTranslations" to ::loadsTheMacsTranslations,
             "keyFileIsPrivate" to ::keyFileIsPrivate,
             "onboardingKeepsAWorkingSavedKey" to ::onboardingKeepsAWorkingSavedKey,
@@ -520,8 +525,105 @@ object Tests {
         check(p.endsWith("No markdown, no text outside the JSON."), "ending")
         val f = NotesEngine.prompt(MeetingNotes(), lines, 0, "English", final = true)
         check(f.contains("This meeting ran 01:04: use at most 1 topic."), "final topic limit")
+        check(p.contains("at most 8 in total") && f.contains("at most 8 in total"), "with nothing frozen, the Mac's limit")
+        check(p.contains("never append to it"), "topic summaries stay one sentence")
         check(NotesEngine.written(MeetingNotes(summary = "讨论发布 Stripe"), "Simplified Chinese"), "Chinese notes")
         check(!NotesEngine.written(MeetingNotes(summary = "We talked"), "Simplified Chinese"), "English isn't Chinese")
+    }
+
+    private fun topic(start: Double, title: String, points: List<String> = listOf("p")) =
+        NoteTopic(start = start, title = title, summary = "s", points = points.toMutableList())
+
+    private fun notesLines(n: Int) = (0 until n).map { TranscriptLine(id = "l$it", t = it * 10.0, speaker = "them", src = "line $it") }
+
+    fun keepsFrozenTopicsAndTakesTheRepliesTail() {
+        val old = (0 until 5).map { topic(it * 100.0, "t$it") }
+        // The model echoed everything, renamed the current topic and added one.
+        val reply = listOf(topic(0.0, "t0"), topic(100.0, "t1 改"), topic(300.0, "t3"), topic(400.0, "t4 改"), topic(500.0, "t5"))
+        equal("t0,t1,t2,t3,t4 改,t5", NotesEngine.merge(old, 3, reply).joinToString(",") { it.title }, "frozen kept, the reply's tail after them")
+        // The first update over many lines: nothing to echo, so every topic is the model's own.
+        val five = (0 until 5).map { topic(it * 100.0, "t$it") }
+        equal("t0,t1,t2,t3,t4", NotesEngine.merge(emptyList(), 0, five).joinToString(",") { it.title }, "nothing frozen")
+        equal("t0,t1,t2,t3,t4", NotesEngine.merge(listOf(topic(0.0, "t0")), 0, five).joinToString(",") { it.title }, "nothing frozen keeps every topic")
+        val abc = listOf(topic(0.0, "a"), topic(100.0, "b"), topic(200.0, "c"))
+        equal("a,b,c", NotesEngine.merge(abc, 1, emptyList()).joinToString(",") { it.title }, "an empty reply keeps the topics")
+        equal("a,b,c", NotesEngine.merge(abc, 1, listOf(topic(0.0, "a"))).joinToString(",") { it.title }, "only an echo keeps them too")
+        // A runaway summary is cut to its first sentence.
+        val runaway = topic(0.0, "t0").apply { summary = "对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。" + "最新对方又补充了一些内容，".repeat(20) }
+        equal("对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。", NotesEngine.merge(emptyList(), 0, listOf(runaway))[0].summary, "a runaway summary")
+        equal(NotesEngine.TOPIC_SUMMARY_LIMIT + 1, NotesEngine.shortened("长".repeat(200)).length, "or cut to the limit")
+        equal("short", NotesEngine.shortened("short"), "a short one stays")
+    }
+
+    fun fullLiveNotesJoinTheShortestSettledPair() {
+        // Twelve topics, t3 and t4 the shortest neighbours (t3 to t5 is 100 s): a new topic
+        // still starts, and those two become one.
+        val starts = listOf(0, 100, 200, 300, 330, 400, 600, 700, 800, 900, 1000, 1100)
+        val old = starts.mapIndexed { i, s -> topic(s.toDouble(), "t$i", listOf("a$i", "b$i", "c$i")) }
+        val reply = listOf(topic(1000.0, "t10"), topic(1100.0, "t11"), topic(1200.0, "t12"))
+        val merged = NotesEngine.merge(old, 10, reply)
+        equal(NotesEngine.LIVE_MAX_TOPICS, merged.size, "no more than the live limit")
+        equal("t12", merged.last().title, "the new topic starts")
+        equal("t3 / t4", merged[3].title, "the shortest pair joined")
+        equal(300.0, merged[3].start, "from the first one's start")
+        equal("a3,b3,a4,b4", merged[3].points.joinToString(","), "points taken evenly")
+        equal("s s", merged[3].summary, "both summaries")
+    }
+
+    fun livePromptSendsOnlyTheLatestTopics() {
+        val notes = MeetingNotes(summary = "summary", covered = 20,
+                                 topics = mutableListOf(topic(0.0, "最早的话题"), topic(100.0, "第二个话题"), topic(200.0, "当前话题")))
+        val p = NotesEngine.prompt(notes, notesLines(24), 20, "Simplified Chinese", final = false, frozen = 1)
+        val json = p.split("Current notes")[1].split("\n\n")[0]
+        check(p.contains("Earlier topics"), "settled topics listed")
+        check(p.contains("- 00:00 最早的话题: s"), "as a line each")
+        check(!json.contains("最早的话题"), "not in the JSON")
+        check(json.contains("第二个话题") && json.contains("当前话题"), "the latest are")
+        check(p.contains("returning only the topics in the current notes and at most one new one after them"), "the topics rule")
+        check(!NotesEngine.prompt(notes, notesLines(24), 20, "Simplified Chinese", final = false).contains("Earlier topics"), "nothing frozen")
+        val eight = MeetingNotes(summary = "summary", covered = 20, topics = (0 until 8).map { topic(it * 10.0, "t$it") }.toMutableList())
+        val q = NotesEngine.prompt(eight, notesLines(24), 20, "English", final = false, frozen = 6)
+        check(!q.contains("do not start a new topic"), "an old topic may be followed")
+        check(q.contains("never append to it"), "one-sentence summaries")
+    }
+
+    fun longMeetingsAreNotedInPartsByTime() {
+        // A line every 10 s: 90 min stays whole, 4 h becomes four parts of an hour.
+        equal(listOf(0 until 540), NotesEngine.parts(notesLines(540)), "90 minutes in one")
+        val four = NotesEngine.parts(notesLines(1440))
+        equal(4, four.size, "4 hours in four")
+        check(four.first().first == 0 && four.last().last == 1439, "every line")
+        check(four.zipWithNext().all { (a, b) -> a.last + 1 == b.first }, "no gaps or overlaps")
+        equal(0, NotesEngine.parts(emptyList()).size, "nothing")
+
+        val all = notesLines(720)
+        val p = NotesEngine.prompt(MeetingNotes(), all.take(480), 240, "English", final = true, part = 2 to 3)
+        check(p.contains("part 2 of 3"), "which part")
+        check(p.contains("[L241 40:00 对方] line 240"), "original line numbers")
+        check(!p.contains("[L238 "), "no earlier lines")
+        check(p.contains("This part ran 39:50"), "the part's length")
+        // Each of three parts gets two of the eight topics.
+        check(p.contains("use at most 2 topics"), "the part's share of topics")
+        val merge = NotesEngine.mergePrompt(listOf("{\"summary\":\"a\"}", "{\"summary\":\"b\"}"), all, "English")
+        check(merge.contains("Part 2 of 2:\n{\"summary\":\"b\"}"), "the parts' notes")
+        check(merge.contains("Return the full notes as one JSON object"), "the usual format")
+        check(merge.contains("\"topics\": []"), "no topics back")
+
+        val ten = (0 until 10).map { topic(it * 300.0, "t$it") }
+        equal("t0,t3,t6,t9", NotesEngine.spread(ten, 4).joinToString(",") { it.title }, "topics spread over the part")
+        equal("t0", NotesEngine.spread(ten, 1).joinToString(",") { it.title }, "one")
+        equal(3, NotesEngine.spread(ten.take(3), 4).size, "fewer stay")
+    }
+
+    fun topicStartsWhenItsLinesWereSaid() {
+        val times = (0 until 100).map { it * 60.0 }
+        val raw = """
+        {"summary": "s", "topics": [
+          {"start": 1380, "title": "late", "summary": "s", "points": [{"text": "a", "evidence": ["L86"]}, {"text": "b", "evidence": ["L52"]}], "evidence": ["L60"]},
+          {"start": 300, "title": "no evidence", "summary": "s", "points": ["c"]}]}
+        """
+        val n = NotesEngine.parse(raw, times, 0.0)!!
+        equal(listOf(51 * 60.0, 300.0), n.topics.map { it.start }, "the earliest line, else the model's start")
     }
 
     // MARK: Strings
