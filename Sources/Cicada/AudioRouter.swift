@@ -31,11 +31,8 @@ final class AudioRouter: @unchecked Sendable {
     func holdAudio(_ seconds: Double) {
         queue.async { [self] in ringLimit = seconds }
     }
-    private var voicedTotal = 0.0
-    private var silenceRun = 0.0
-    private var sinceGap = 0.0
-    /// The last short pause between words, on the analyzer's clock: where it ended and how long it was.
-    private var pause: (end: Double, length: Double) = (0, 0)
+    /// Speech, pauses and gaps; pauses are on the analyzer's clock.
+    private var activity = VoiceActivity(gap: AudioRouter.gapSeconds)
 
     /// Voiceprints (说话人识别): the last `voiceLimit` seconds as 16 kHz mono floats, placed on
     /// the analyzer clock so a result's time range finds its audio.
@@ -79,11 +76,10 @@ final class AudioRouter: @unchecked Sendable {
     private var recorder: AVAudioFile?
 
     /// When a block counts as speech (pauses, language detection, the silence that ends a meeting).
-    private var gate = VoiceGate()
     func setRoomGate(_ on: Bool) {
-        queue.async { [self] in gate = VoiceGate(adaptive: on) }
+        queue.async { [self] in activity.gate = VoiceGate(adaptive: on) }
     }
-    func gateThreshold() -> Float { queue.sync { gate.threshold } }
+    func gateThreshold() -> Float { queue.sync { activity.gate.threshold } }
 
     /// Loudest buffer since the last `takeLevel()`, for the level meter.
     private var peak: Float = 0
@@ -106,16 +102,8 @@ final class AudioRouter: @unchecked Sendable {
         let rms = (sum / Float(n)).squareRoot()
         peak = max(peak, rms)
         let seconds = Double(n) / mono.format.sampleRate
-        let voiced = gate.voiced(rms)
-        if voiced {
-            if silenceRun >= 0.12, sink != nil { pause = (fed, silenceRun) }
-            if silenceRun >= Self.gapSeconds { sinceGap = 0 }
-            voicedTotal += seconds
-            silenceRun = 0
-        } else {
-            silenceRun += seconds
-        }
-        sinceGap += seconds
+        let voiced = activity.feed(UnsafeBufferPointer(start: data[0], count: n), rate: mono.format.sampleRate,
+                                   clock: fed, pauses: sink != nil)
 
         guard let format, let converted = converter.convert(mono, to: format) else { return }
         sink?.append(converted)
@@ -155,14 +143,14 @@ final class AudioRouter: @unchecked Sendable {
     /// Analyzer clock now, the silence running at the end of it, and the last pause before that.
     func clock() -> (fed: Double, silence: Double, pause: (end: Double, length: Double)) {
         // The return type spelled out: Swift 6.4 (Xcode 27) crashes inferring this labelled tuple.
-        queue.sync { () -> (fed: Double, silence: Double, pause: (end: Double, length: Double)) in (fed, silenceRun, pause) }
+        queue.sync { () -> (fed: Double, silence: Double, pause: (end: Double, length: Double)) in (fed, activity.silenceRun, activity.pause) }
     }
 
     func attach(_ stream: RecognitionStream, replaySeconds: Double = 0) {
         let format = stream.format
         queue.sync {
             fed = 0
-            pause = (0, 0)
+            activity.clearPause()
             // The clock restarts; replayed audio (below) keeps its samples at the new times.
             let keptVoice = voice
             voice = []
@@ -200,9 +188,7 @@ final class AudioRouter: @unchecked Sendable {
             ringSeconds = 0
             voice = []
             voiceStart = 0
-            voicedTotal = 0
-            silenceRun = 0
-            sinceGap = 0
+            activity = VoiceActivity(gate: activity.gate, gap: Self.gapSeconds)
         }
     }
 
@@ -214,7 +200,8 @@ final class AudioRouter: @unchecked Sendable {
                 acc += item.seconds
                 if item.voiced { voiced += item.seconds }
             }
-            return Stats(voicedTotal: voicedTotal, silenceRun: silenceRun, sinceGap: sinceGap, recentVoiced: voiced)
+            return Stats(voicedTotal: activity.voicedTotal, silenceRun: activity.silenceRun, sinceGap: activity.sinceGap,
+                         recentVoiced: voiced)
         }
     }
 
