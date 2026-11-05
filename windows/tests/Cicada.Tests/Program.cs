@@ -1286,6 +1286,26 @@ static class Tests
         Check((DateTime.UtcNow - t).TotalSeconds < 5, "fails soon after the stall");
     }
 
+    /// The system proxy watch: polled from the first unreachable result; a change made while a
+    /// check runs is still acted on once that check ends unreachable; a reachable result stops it.
+    public static void ProxyWatchKeepsAChangeMadeDuringACheck()
+    {
+        var w = new ProxyWatch();
+        var proxy = "1|10.0.2.2:7890|";
+        Check(!w.Update(false, false, () => proxy), "reachable: not polled");
+        Check(!w.Update(false, true, () => proxy), "a check from a good state: not polled");
+        Check(w.Update(true, false, () => proxy), "unreachable: polled");
+        Check(!w.Changed(proxy, false), "same settings");
+        Check(w.Update(false, true, () => proxy), "kept through the next check");
+        proxy = "0||";
+        Check(!w.Changed(proxy, true), "not while the check runs");
+        Check(w.Update(true, false, () => proxy), "the check ended unreachable");
+        Check(w.Changed(proxy, false), "the change made during it now counts");
+        Check(!w.Changed(proxy, false), "once");
+        Check(!w.Update(false, false, () => proxy), "reachable: stopped");
+        Check(!w.Changed("1|x|", false), "stopped means no changes reported");
+    }
+
     public static void UpdateSkipsReleasesWithoutAWindowsZip()
     {
         var list = UpdateChecker.Decode($"[{Rel("v1.6.0", "Cicada-1.6.0-macOS-AppleSilicon.zip")},{Rel("v1.5.0", "Cicada-1.5.0-Windows-x64.zip", "Cicada-1.5.0-Windows-ARM64.zip")}]")!;

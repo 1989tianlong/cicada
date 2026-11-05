@@ -286,6 +286,35 @@ public sealed class AICheck
 /// Words the "can't reach the AI service" hint. Read-only on purpose: the app never sets or uses a
 /// proxy of its own (HttpClient already goes through the system proxy); it only tells the user which
 /// of three situations they are in. The system settings come from the app (the registry on Windows).
+/// When to look at the AI service again after the system proxy changed (the app polls the
+/// settings while this says so). It watches from the first unreachable result until a check
+/// finishes reachable, and keeps watching while a check runs: a change made during that check
+/// counts once it is over (the check may have gone out on the old settings).
+public sealed class ProxyWatch
+{
+    string? seen;
+
+    /// After every change to the check. True while the settings should be polled.
+    public bool Update(bool unreachable, bool running, Func<string> settings)
+    {
+        if (!unreachable && !running) { seen = null; return false; }
+        if (seen is null)
+        {
+            if (!unreachable) return false; // a check from a good state: nothing to watch yet
+            seen = settings();
+        }
+        return true;
+    }
+
+    /// A poll: true when the settings differ from the last ones seen and no check is running.
+    public bool Changed(string now, bool running)
+    {
+        if (seen is null || running || now == seen) return false;
+        seen = now;
+        return true;
+    }
+}
+
 public static class ProxyProbe
 {
     /// Ports common proxy apps listen on (Clash 7890, Clash Verge 7897, SOCKS 1080).

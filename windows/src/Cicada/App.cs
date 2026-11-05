@@ -918,33 +918,32 @@ sealed class Controller
     }
 
     /// Turning the system proxy on or off (or pointing it elsewhere) changes no address, so the
-    /// watch above misses it. While the service is unreachable the proxy settings are read every
-    /// 3 s (three registry values; HttpClient follows them by itself) and a change is checked like
-    /// a network change. Not polled otherwise.
+    /// watch above misses it. While the service is unreachable (and through the check that follows)
+    /// the proxy settings are read every 3 s (three registry values; HttpClient follows them by
+    /// itself) and a change is checked like a network change. Not polled otherwise. ProxyWatch decides.
     void WatchProxy()
     {
-        var unreachable = Ling.HasKey && Ling.Health.Failure?.Why == AICheck.Reason.Unreachable;
-        if (!unreachable) { proxyPoll?.Stop(); return; }
+        var h = Ling.Health;
+        if (!proxyWatch.Update(Ling.HasKey && h.Failure?.Why == AICheck.Reason.Unreachable, Ling.HasKey && h.IsRunning, WinProxy.Snapshot))
+        {
+            proxyPoll?.Stop();
+            return;
+        }
         if (proxyPoll is null)
         {
             proxyPoll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             proxyPoll.Tick += (_, _) =>
             {
-                var now = WinProxy.Snapshot();
-                // A check under way may have started on the old settings: the change waits for it.
-                if (now == proxySeen || Ling.Health.IsRunning) return;
+                if (!proxyWatch.Changed(WinProxy.Snapshot(), Ling.Health.IsRunning)) return;
                 Log.Debug("proxy: system proxy settings changed");
-                proxySeen = now;
                 Ling.NetworkChanged();
             };
         }
-        if (proxyPoll.IsEnabled) return;
-        proxySeen = WinProxy.Snapshot();
-        proxyPoll.Start();
+        if (!proxyPoll.IsEnabled) proxyPoll.Start();
     }
 
     DispatcherTimer? proxyPoll;
-    string? proxySeen;
+    readonly ProxyWatch proxyWatch = new();
 
     /// The service, its address, models or key changed: forget the old check and check again.
     public void AIChanged()
