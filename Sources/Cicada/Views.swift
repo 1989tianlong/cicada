@@ -749,6 +749,8 @@ struct MainWindowView: View {
     /// A topic's time picked in the notes, for the bilingual column beside them.
     @State private var quoteJump: Double?
     @State private var detailWidth: CGFloat = 0
+    /// The title block has scrolled away: a slim bar with the title and tabs stays on top.
+    @State private var pinned = false
     @FocusState private var searchFocused: Bool
     /// The bilingual column beside the notes is opt-in: three full columns of text read as crowded.
     @AppStorage("mainShowQuotes") private var showQuotes = false
@@ -959,7 +961,7 @@ struct MainWindowView: View {
                 } else if tab == "notes", importer.status(of: s) == nil {
                     HStack(spacing: 0) {
                         SessionNotesView(model: model, engine: model.notes, ling: model.ling, session: s,
-                                         header: AnyView(header(s))) { t in
+                                         header: AnyView(header(s)), bar: { toTop in AnyView(pinnedBar(s, column: 600, inset: 44, toTop: toTop)) }) { t in
                             // Beside the notes, a topic's time scrolls the column; otherwise it opens the transcript.
                             if sideBySide { quoteJump = t } else { jumpTo = t; tab = "transcript" }
                         }
@@ -972,6 +974,8 @@ struct MainWindowView: View {
                 }
                 if s.id == store.liveID { liveNow }
             }
+            .onChange(of: s.id) { _, _ in pinned = false }
+            .onChange(of: tab) { _, _ in pinned = false }
         } else {
             welcome
         }
@@ -1037,12 +1041,28 @@ struct MainWindowView: View {
     /// Text tabs, the transcript's language choice and 导出…, under the title: no toolbar band.
     private func tabsRow(_ s: Session) -> some View {
         HStack(alignment: .center, spacing: 22) {
-            // Notes wait until an imported file is transcribed to the end.
-            let importing = importer.status(of: s) != nil
-            let active = importing ? "transcript" : tab
+            tabs(s)
+            Spacer()
+            tools(s)
+        }
+    }
+
+    /// Notes wait until an imported file is transcribed to the end.
+    private func activeTab(_ s: Session) -> String { importer.status(of: s) != nil ? "transcript" : tab }
+
+    private func tabs(_ s: Session) -> some View {
+        let importing = importer.status(of: s) != nil
+        let active = activeTab(s)
+        return HStack(alignment: .center, spacing: 22) {
             tabButton(L("纪要"), id: "notes", active: active, badge: importing ? L("转完后生成") : nil).disabled(importing)
             tabButton(L("文字记录"), id: "transcript", active: active, count: s.lines.count)
-            Spacer()
+        }
+    }
+
+    /// The transcript's language choice (or 原话 beside the notes) and 导出….
+    private func tools(_ s: Session) -> some View {
+        let active = activeTab(s)
+        return HStack(alignment: .center, spacing: 22) {
             if active == "transcript" {
                 Segments(options: [("both", L("双语")), ("src", L("原文")), ("dst", L("译文"))], value: view) { view = $0 }
             } else if wideEnough, !s.lines.isEmpty {
@@ -1082,11 +1102,39 @@ struct MainWindowView: View {
                 if let count { Text("\(count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary) }
                 if let badge { Tag(badge) }
             }
+            .fixedSize()
             .padding(.bottom, 6)
             .overlay(alignment: .bottom) { Rectangle().fill(on ? Palette.ink : .clear).frame(height: 2) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// Once the title block scrolls away: the title (a click goes back to the top) and the tabs row,
+    /// so switching tabs, the transcript's language or exporting never needs a scroll back up.
+    private func pinnedBar(_ s: Session, column: CGFloat = 680, inset: CGFloat = 40, toTop: @escaping () -> Void) -> some View {
+        HStack(spacing: 18) {
+            Button(action: toTop) {
+                HStack(spacing: 6) {
+                    if s.id == store.liveID { BreathingDot(size: 6) }
+                    Text(RecordList.untitled(s) ? L("未命名会议") : RecordList.listTitle(s))
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).help(L("回到顶部"))
+            // The title takes what the tabs and tools leave, so the bar keeps to the text column.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Rectangle().fill(Self.hairline).frame(width: 1, height: 14)
+            tabs(s).padding(.top, 6)
+            tools(s)
+        }
+        .frame(maxWidth: column)
+        .padding(.horizontal, inset).frame(height: 44)
+        .frame(maxWidth: .infinity)
+        .background(Color.white)
+        .overlay(alignment: .bottom) { Rectangle().fill(Self.hairline).frame(height: 1) }
+        .transition(.opacity)
     }
 
     /// One grey line of facts, the editable title, then the tabs: the top of the page, scrolling with it.
@@ -1194,8 +1242,12 @@ struct MainWindowView: View {
     private func transcript(_ s: Session) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
+                // The header outside the lazy stack, so it is never dropped and always reports where it is.
+                VStack(alignment: .leading, spacing: 0) {
+                header(s).padding(.bottom, 16)
+                    .id(PinnedHeader.top)
+                    .pinnedHeader($pinned)
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    header(s).padding(.bottom, 16)
                     let speakers = settings.speakerVoices ? SpeakerLabels.numbers(s.lines) : [:]
                     if !speakers.isEmpty { SpeakerStrip(model: model, session: s).padding(.bottom, 8) }
                     let both = RecordList.heardBoth(s.lines)
@@ -1208,11 +1260,17 @@ struct MainWindowView: View {
                             .id(l.id)
                     }
                 }
+                }
                 .environment(\.speakerNames, SpeakerLabels.names(s))
                 .frame(maxWidth: 680)
                 .padding(.horizontal, 40).padding(.vertical, 36)
                 .frame(maxWidth: .infinity)
             }
+            .coordinateSpace(name: PinnedHeader.space)
+            .overlay(alignment: .top) {
+                if pinned { pinnedBar(s) { withAnimation { proxy.scrollTo(PinnedHeader.top, anchor: .top) } } }
+            }
+            .animation(.easeOut(duration: 0.15), value: pinned)
             .onChange(of: s.lines.count) { _, _ in
                 if s.id == store.liveID, let last = s.lines.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -1303,16 +1361,20 @@ struct SessionNotesView: View {
     let session: Session
     /// The page's title block, scrolling with the notes.
     var header: AnyView = AnyView(EmptyView())
+    /// The slim bar shown on top once the header scrolls away, given a way back to the top.
+    var bar: ((@escaping () -> Void) -> AnyView)? = nil
     let onJump: (Double) -> Void
+    @State private var pinned = false
 
     private var live: Bool { session.id == model.store.liveID }
     private var notes: MeetingNotes? { live ? engine.notes : session.notes }
     private var generating: Bool { engine.generatingID == session.id }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 40) {
-                header
+                header.id(PinnedHeader.top).pinnedHeader($pinned)
                 if let notes, !notes.isEmpty {
                     NotesContentView(notes: SpeakerLabels.named(notes, SpeakerLabels.names(session)), fresh: live ? engine.fresh : [], live: live, document: true,
                                      endedAt: session.lines.last?.t, onJump: onJump)
@@ -1349,6 +1411,26 @@ struct SessionNotesView: View {
             .padding(.horizontal, 44).padding(.top, 52).padding(.bottom, 64)
             .frame(maxWidth: .infinity)
         }
+        .coordinateSpace(name: PinnedHeader.space)
+        .overlay(alignment: .top) {
+            if pinned, let bar { bar { withAnimation { proxy.scrollTo(PinnedHeader.top, anchor: .top) } } }
+        }
+        .animation(.easeOut(duration: 0.15), value: pinned)
+        .onChange(of: session.id) { _, _ in pinned = false }
+        }
+    }
+}
+
+/// A page's title block scrolling out of its scroll view, which names its coordinate space `space`.
+enum PinnedHeader {
+    static let space = "cicada.page"
+    static let top = "cicada.page.top"
+}
+
+extension View {
+    /// Sets `pinned` while this view's bottom is above the scroll view's top edge.
+    func pinnedHeader(_ pinned: Binding<Bool>) -> some View {
+        onGeometryChange(for: Bool.self) { $0.frame(in: .named(PinnedHeader.space)).maxY < 0 } action: { pinned.wrappedValue = $0 }
     }
 }
 

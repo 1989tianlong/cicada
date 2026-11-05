@@ -449,6 +449,7 @@
 "先看原话 →" = "Read the transcript →";
 "%@ 之后的 %lld 句还在整理" = "%2$lld lines after %1$@ not in the notes yet";
 "回到原话" = "Back to transcript";
+"回到顶部" = "Back to top";
 "点击分支跳回原话" = "Click a branch to jump to what was said";
 "鱼骨图" = "Fishbone";
 "为什么" = "Why";
