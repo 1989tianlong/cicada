@@ -36,7 +36,8 @@ class Segmenter:
     pause = 0.6
     max_length = 8.0
     min_speech = 0.25
-    steady = 2.0  # frames' 90th / 10th percentile below this: not speech
+    steady = 2.0  # frames' 90th / 10th percentile below this: not speech…
+    dips = 2.5  # …unless the median is this far over the 10th percentile, quiet ones held at gate / 8
 
     def __init__(self):
         self.pending = array("h")
@@ -103,12 +104,23 @@ class Segmenter:
         writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
         Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
         the first loud one to the last counts, the quiet ones held at the gate: counting only the
-        loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate."""
+        loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate.
+        A voice so quiet that its loudest frames barely clear the gate (about -38 dBFS: 6 of 6 lines
+        lost in testing) still pauses between syllables, its quietest tenth of frames far under its
+        median (8 dB and more); noise near the gate stays within about 6 dB of its median. So a flat
+        top is steady only when it has no such dips, measured with quiet frames held at gate / 8.
+        Very low rumble (brown noise with almost nothing over 20 Hz) can look like that and gets
+        through more often than before (about 1 in 3 segments, was 1 in 5); what Ming makes of it
+        still meets the hear filter (translator.is_noise)."""
         loud = [i for i, l in enumerate(levels) if l >= self.threshold]
         if len(loud) < 2:
             return False
-        body = sorted(max(l, self.threshold) for l in levels[loud[0]:loud[-1] + 1])
-        return body[int(0.9 * (len(body) - 1))] < self.steady * body[int(0.1 * (len(body) - 1))]
+        body = levels[loud[0]:loud[-1] + 1]
+        top = sorted(max(l, self.threshold) for l in body)
+        if top[int(0.9 * (len(top) - 1))] >= self.steady * top[int(0.1 * (len(top) - 1))]:
+            return False
+        low = sorted(max(l, self.threshold / 8) for l in body)
+        return low[int(0.5 * (len(low) - 1))] < self.dips * low[int(0.1 * (len(low) - 1))]
 
     def _close(self, end_at: int) -> None:
         """Emits current[:end] and keeps what follows as the start of the next segment."""

@@ -103,9 +103,11 @@ MAC = """{
 }"""
 
 
-def tone(seconds, amp=0.3, syllables=True):
-    """A 300 Hz tone that swells and fades four times a second like syllables; steady when not."""
-    env = (lambda i: 0.55 + 0.45 * math.sin(2 * math.pi * 4 * i / 16000)) if syllables else (lambda i: 1.0)
+def tone(seconds, amp=0.3, syllables=True, wobble=0.0):
+    """A 300 Hz tone that swells and fades four times a second like syllables; steady when not, or
+    rising and falling by `wobble` twice a second like a fan."""
+    env = (lambda i: 0.55 + 0.45 * math.sin(2 * math.pi * 4 * i / 16000)) if syllables else \
+        (lambda i: 1.0 + wobble * math.sin(2 * math.pi * 0.5 * i / 16000))
     return array("h", (int(math.sin(2 * math.pi * 300 * i / 16000) * env(i) * amp * 32767) for i in range(int(seconds * 16000))))
 
 
@@ -427,6 +429,10 @@ class Segmenting(Base):
         self.assertEqual(1, len(cut(tone(3.0), silence(1.0))))
         # Quiet speech, whose dips fall below the gate, is too.
         self.assertEqual(1, len(cut(tone(3.0, 0.03), silence(1.0))))
+        # A voice whose loudest frames barely clear the gate still dips far between syllables…
+        self.assertEqual(1, len(cut(tone(3.0, 0.022), silence(1.0))))
+        # …a hum at the gate that slowly rises and falls doesn't.
+        self.assertEqual(0, len(cut(tone(4.0, 0.016, syllables=False, wobble=0.3), silence(1.0))))
 
     def test_wav_round_trip(self):
         pcm = tone(0.5)
