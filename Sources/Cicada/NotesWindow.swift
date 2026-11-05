@@ -669,18 +669,22 @@ struct NotesWindowView: View {
         case .noKey where session?.lines.isEmpty == false || live:
             keyEntry
         case .invalidKey:
-            notice(L("key 已失效（令牌被删或免费额度用尽），纪要停留在 \(NotesEngine.clock(lastCovered))。"), tint: Palette.errorPale) {
+            notice(lastCovered > 0 ? L("key 已失效（被删或额度用完），纪要暂停在 \(NotesEngine.clock(lastCovered))。")
+                                   : L("key 已失效（被删或额度用完），换个 key 就能开始写纪要。"), tint: Palette.errorPale) {
                 SoftButton(L("更换 key"), dark: true) { model.openSettings(.ai) }
             }
-        case .rateLimited:
-            notice(L("\(model.ling.serviceName) 很忙，纪要稍后补上。字幕照常。"), tint: Palette.warnPale) { EmptyView() }
-        case .failed where model.ling.aiCheck.failure?.reason == .unreachable:
+        // The rest is about a round of the meeting going on now: a record opened later has none.
+        case .rateLimited where live:
+            notice(L("\(serviceLabel) 很忙，纪要稍后补上。字幕照常。"), tint: Palette.warnPale) { EmptyView() }
+        // Both: the notes' own request failed, and the service doesn't answer anything. Notes that
+        // only timed out while translations still came back aren't "can't reach"; the next round retries.
+        case .unreachable where live && model.ling.aiCheck.failure?.reason == .unreachable:
             // The network or the proxy, not the notes: say which, and that it picks up by itself.
-            notice(L("连不上 \(model.ling.serviceName)，这段时间的纪要先停在 \(NotesEngine.clock(lastCovered))。网络恢复后自动继续。"),
-                   tint: Palette.errorPale) {
+            notice(lastCovered > 0 ? L("连不上 \(serviceLabel)，纪要暂停在 \(NotesEngine.clock(lastCovered))，连上后自动继续。")
+                                   : L("连不上 \(serviceLabel)，连上后开始写纪要。"), tint: Palette.errorPale) {
                 SoftButton(L("设置")) { model.openSettings(.ai) }
             }
-        case .failed:
+        case .failed where live:
             notice(L("这轮没整理好，下一轮会自动重试。"), tint: Palette.fill) { EmptyView() }
         default:
             EmptyView()
@@ -721,6 +725,12 @@ struct NotesWindowView: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
+    }
+
+    /// Who the banners name: a custom service by its address, which says more than 这个服务.
+    private var serviceLabel: String {
+        let ling = model.ling
+        return ling.provider.id == .custom && !ling.serviceHost.isEmpty ? ling.serviceHost : ling.serviceName
     }
 
     /// Lines the notes don't cover yet, once they are two minutes behind the meeting (between

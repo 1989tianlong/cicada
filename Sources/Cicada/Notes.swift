@@ -93,6 +93,9 @@ final class NotesEngine: ObservableObject {
         case noKey
         case invalidKey
         case rateLimited
+        /// The notes' own request couldn't reach the service (network, proxy, timeout). Another
+        /// request failing, such as naming speakers, never sets this.
+        case unreachable
         case failed
     }
 
@@ -186,6 +189,8 @@ final class NotesEngine: ObservableObject {
         shownID = id
         notes = store.session(id)?.notes ?? MeetingNotes()
         fresh = []
+        // A round that failed belongs to the meeting it ran for, not to the record opened now.
+        if sessionID == nil, [.failed, .unreachable, .rateLimited].contains(state) { state = .idle }
     }
 
     /// Notes for a finished meeting that has none (e.g. recorded before a key was set).
@@ -212,6 +217,9 @@ final class NotesEngine: ObservableObject {
         if state == .idle, !ling.hasKey { state = .noKey }
         // A key that was just checked and refused says so, rather than asking for a key again.
         if state == .noKey || state == .idle, ling.hasKey, ling.keyState == .invalid { state = .invalidKey }
+        // The service answers again (the check after a network change, or any other request): the
+        // banner goes now, not after the next round, which runs on its usual 45 s.
+        if state == .unreachable, ling.aiCheck.failure?.reason != .unreachable { state = .idle }
         guard let id = sessionID, !inFlight else { return }
         guard let s = store.session(id), s.lines.count > notes.covered else { return }
         // First notes as soon as there is something to say, then every 45 s.
@@ -305,6 +313,9 @@ final class NotesEngine: ObservableObject {
             state = .rateLimited
         } catch LingClient.Failure.noKey {
             state = .noKey
+        } catch LingClient.Failure.network, LingClient.Failure.timeout {
+            debugLog("notes: update can't reach the service")
+            state = .unreachable
         } catch {
             debugLog("notes: update failed \(error)")
             state = .failed

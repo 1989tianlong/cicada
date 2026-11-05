@@ -398,6 +398,7 @@
 "%@ 暂时连不上，先用本机识别" = "Can't reach %@; recognizing on this Mac for now";
 "key 已失效，到设置 › AI 服务里重填" = "The key stopped working. Enter a new one in Settings › AI Service";
 "%@ 暂时连不上，正在重试" = "Can't reach %@. Retrying";
+"%@ 在听" = "%@ is listening";
 "翻译暂不可用" = "Translation unavailable for now";
 
 /* ListenPill */
@@ -473,9 +474,11 @@
 "现在结束" = "End now";
 
 /* NotesWindow */
-"key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。" = "The key stopped working (token deleted or free quota used up). Notes stop at %@.";
+"key 已失效（被删或额度用完），纪要暂停在 %@。" = "The key stopped working (deleted or out of credit). Notes paused at %@.";
+"key 已失效（被删或额度用完），换个 key 就能开始写纪要。" = "The key stopped working (deleted or out of credit). Change it to start the notes.";
 "%@ 很忙，纪要稍后补上。字幕照常。" = "%@ is busy; notes will catch up. Subtitles go on.";
-"连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。" = "Can't reach %1$@; notes stop at %2$@ for now. They resume when the network is back.";
+"连不上 %@，纪要暂停在 %@，连上后自动继续。" = "Can't reach %1$@. Notes paused at %2$@ and resume once it's back.";
+"连不上 %@，连上后开始写纪要。" = "Can't reach %@. Notes start once it's back.";
 "这轮没整理好，下一轮会自动重试。" = "This round failed; the next one will retry.";
 "会议纪要" = "Meeting notes";
 "结束这场会议" = "End this meeting";
