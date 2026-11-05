@@ -98,6 +98,8 @@ static class AICheckView
         switch (f.Why)
         {
             case AICheck.Reason.Unreachable:
+                // A proxy has nothing to do with a server on this PC or the local network.
+                if (AIProvider.IsNearby(ling.ServiceHost)) return recheck;
                 return [(L("怎么设置代理"), () => Open(AICheck.HelpUrl)), .. recheck];
             case AICheck.Reason.InvalidKey or AICheck.Reason.MgmtKey:
                 return p.Site is { } site ? [(L("更换 key"), changeKey), (LF("打开 %@", ling.ServiceName), () => Open(site))] : [(L("更换 key"), changeKey)];

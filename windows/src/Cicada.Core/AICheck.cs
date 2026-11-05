@@ -272,7 +272,8 @@ public sealed class AICheck
     /// The proxy line under "can't reach": what this computer's proxy looks like, and what to do.
     public string? ProxyLine(string service, string host)
     {
-        if (Failure?.Why != Reason.Unreachable || Proxy is not { } p) return null;
+        // A server on this PC or the local network: a proxy has nothing to do with it.
+        if (Failure?.Why != Reason.Unreachable || Proxy is not { } p || AIProvider.IsNearby(host)) return null;
         return p.Kind switch
         {
             ProxyKind.SystemOn => Strings.LF("开了代理也连不上：换一个节点，或检查代理软件是否放过 %@。", host),
