@@ -141,6 +141,125 @@
         ],
         "title": "Linux 上“听哪里”多了“电脑和会议室”：线上和桌边的人一起听，每句标出是现场还是线上。",
         "text": "线上的人从电脑声音听，桌边的人从麦克风听，各认各的语言。知了用系统声音服务的回声消除把扬声器里的线上声音从麦克风里去掉，结束、退出或崩溃后都会把原来的扬声器设回默认；用不了时线上有人说话那一会儿麦克风先不听，最后再按文字去掉重复的一句。只听会议室时，会议软件一开始通话就会问“线上也有人？”。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "Windows、Linux、Android 上，很小声的人说话也能出字幕，不再被当成风扇声。",
+        "text": "过滤底噪时看人声在字与字之间的起伏，声音比别人小很多的与会者也能被听到；风扇声、电流声照样过滤。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "Windows、Linux、Android 上，Ling 一时忙不过来时不再丢句子。",
+        "text": "被限流时所有请求一起等一会儿再试，会议里的话会逐句补上，顺序不乱。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "mac",
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "英文和韩文界面里，“Ling (Recommended)”括号前加了空格。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "小屏幕上，实时纪要窗口不再挡住欢迎引导的按钮。",
+        "text": "旁边有地方就挪到引导窗口旁边，没有就等引导关掉再出现。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 会用 设置 › 网络 › 网络代理 里设的代理。",
+        "text": "代理没有回应时会说出它的地址；设成“自动”时会提示改成“手动”。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 上更新下载慢或中断时会接着下，不再直接失败。",
+        "text": "实在下不下来时，只有真打开了下载页才说已打开，否则给出下载地址。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 上“改用 English 重新整理”这类按钮，英文语言名前后有空格了。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 上应用内更新不再 20 秒就放弃，网速慢也能下完。",
+        "text": "失败时托盘和设置只在真打开了下载页时才这么说。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 上开关系统代理后，连不上 AI 服务时会自动再检查一次。",
+        "text": ""
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 上连不上 AI 服务时按开始听，约 2 秒就会提示，不用等 20 秒。",
+        "text": "“重新检查并开始”检查时会显示“正在检查…”。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 设置 › AI 服务 在检查中、失败和通过时宽度不再跳动。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "android"
+        ],
+        "title": "Android 重看引导时，已存好能用的 Ling key，点“继续”不用再填。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "android"
+        ],
+        "title": "Android 英文界面里，面对面统一叫 In person。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "android"
+        ],
+        "title": "Android 接 Ling 那一步说明 key 存在哪，和其他服务用同样的说法。",
+        "text": ""
       }
     ]
   },
