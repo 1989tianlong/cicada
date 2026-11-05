@@ -11,6 +11,8 @@ from collections import deque
 from .audio import RATE, Wav
 
 FRAME = 480  # 30 ms
+STEP = 160  # 10 ms: a key click is judged in these, as the Mac's VoiceActivity does
+ONSET = 3  # steps of sound before it counts as speech
 PRE_ROLL = 0.15
 TAIL = 0.15
 CUT_WINDOW = 2.0
@@ -51,6 +53,9 @@ class Segmenter:
         self.current = array("h")
         self.levels: list = []
         self.highs: list = []  # per frame of `current`: its level over 100 Hz
+        self.speech: list = []  # per frame of `current`: whether it held speech (_speech)
+        self.sounding = 0  # 10 ms steps of sound in a row so far
+        self.carried = False  # the sound that made the last frame speech began in the frame before
         self._hx = 0.0  # the high-pass's last input and output, carried from frame to frame
         self._hy = 0.0
         self.before: deque = deque()
@@ -75,19 +80,39 @@ class Segmenter:
         if len(self.current):
             self._close(len(self.current) - self.quiet * FRAME + int(TAIL * RATE))
 
+    def _speech(self, frame) -> bool:
+        """Whether the frame holds speech: sound that has lasted 30 ms, judged in 10 ms steps against the
+        line, so a lone key click (a few ms) neither opens a segment nor breaks the pause that ends
+        one (VoiceActivity.swift's onset). The pre-roll then reaches back to where that sound began."""
+        said = False
+        carried = self.sounding > 0
+        for i in range(0, len(frame), STEP):
+            if Wav.rms(frame[i:i + STEP]) >= self.threshold:
+                self.sounding += 1
+                if self.sounding >= ONSET and not said:
+                    said = True
+                    self.carried = carried
+            else:
+                self.sounding = 0
+                carried = False
+        return said
+
     def _step(self, frame: array) -> None:
         level = Wav.rms(frame)
         high = self._high(frame)
-        loud = level >= self.threshold
+        loud = self._speech(frame)
         now = self.consumed / RATE
         self.consumed += len(frame)
         if not len(self.current):
             if not loud:
                 self.idle.append(level)
                 self.before.append((frame, level, high))
-                while len(self.before) > PRE_ROLL * RATE / FRAME:
+                while len(self.before) > PRE_ROLL * RATE / FRAME + 1:
                     self.before.popleft()
                 return
+            # One frame more when the sound began in the last quiet one.
+            while len(self.before) > PRE_ROLL * RATE / FRAME + self.carried:
+                self.before.popleft()
             self.current_start = now - len(self.before) * FRAME / RATE
             self.lead = min(self.idle) if self.idle else None
             self.idle.clear()
@@ -95,11 +120,13 @@ class Segmenter:
                 self.current.extend(f)
                 self.levels.append(l)
                 self.highs.append(h)
+                self.speech.append(False)
             self.before.clear()
             self.quiet = self.loud = 0
         self.current.extend(frame)
         self.levels.append(level)
         self.highs.append(high)
+        self.speech.append(loud)
         if loud:
             self.quiet = 0
             self.loud += 1
@@ -194,6 +221,7 @@ class Segmenter:
         rest = self.current[end:]
         rest_levels = self.levels[min(len(self.levels), end // FRAME):]
         rest_highs = self.highs[min(len(self.highs), end // FRAME):]
+        rest_speech = self.speech[min(len(self.speech), end // FRAME):]
         start = self.current_start
         sent = self.levels[:end // FRAME]
         if self._isolated(self.levels):
@@ -205,6 +233,7 @@ class Segmenter:
         self.current = array("h")
         self.levels = []
         self.highs = []
+        self.speech = []
         self.quiet = self.loud = 0
         if speech and self.on_segment:
             self.index += 1
@@ -212,16 +241,17 @@ class Segmenter:
         elif speech:
             self.index += 1
         # A forced cut carries on with the remainder; after a pause the remainder is silence.
-        if any(l >= self.threshold for l in rest_levels):
+        if any(rest_speech):
             self.current_start = start + end / RATE
             self.lead = None
             self.current.extend(rest)
             self.levels = list(rest_levels)
             self.highs = list(rest_highs)
+            self.speech = list(rest_speech)
             trailing = 0
-            for l in reversed(self.levels):
-                if l >= self.threshold:
+            for v in reversed(self.speech):
+                if v:
                     break
                 trailing += 1
             self.quiet = trailing
-            self.loud = sum(1 for l in self.levels if l >= self.threshold)
+            self.loud = sum(self.speech)

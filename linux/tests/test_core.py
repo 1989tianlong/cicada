@@ -128,6 +128,15 @@ def silence(seconds):
     return array("h", bytes(int(seconds * 16000) * 2))
 
 
+def keys(seconds):
+    """Typing: a key click every 0.2 s, 6 ms of decaying crackle peaking near -12 dBFS (scripts/vad-clips.py)."""
+    out = silence(seconds)
+    for at in range(1600, len(out) - 96, 3200):
+        for k in range(96):
+            out[at + k] = int(0.25 * math.exp(-k / 24) * (1 if k % 2 else -1) * 32767)
+    return out
+
+
 def concat(*parts):
     out = array("h")
     for p in parts:
@@ -449,6 +458,14 @@ class Segmenting(Base):
         self.assertTrue(6.9 <= got[0].seconds <= 7.4, got[0].seconds)
         self.assertTrue(all(s.seconds <= 8.0 for s in got))
         self.assertAlmostEqual(got[1].start, got[0].start + got[0].seconds, delta=0.001)
+
+    def test_key_clicks_are_not_speech(self):
+        # Clicks in a pause don't hold it open: the sentences either side stay apart.
+        got = cut(tone(2.0), keys(1.5), tone(1.5), silence(1.0))
+        self.assertEqual(2, len(got))
+        self.assertAlmostEqual(3.35, got[1].start, delta=0.06)
+        # Nor does typing alone make a segment.
+        self.assertEqual(0, len(cut(silence(0.5), keys(3.0), silence(1.0))))
 
     def test_ignores_clicks(self):
         self.assertEqual(0, len(cut(silence(1.0), tone(0.1), silence(1.0))))
