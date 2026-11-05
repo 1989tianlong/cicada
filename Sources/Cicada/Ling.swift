@@ -488,7 +488,8 @@ final class LingClient: ObservableObject {
                 }
                 let ms = Int(Date().timeIntervalSince(started) * 1000)
                 let usage = root["usage"] as? [String: Any]
-                debugLog("ling: \(priority) ok \(ms) ms tokens=\(usage?["prompt_tokens"] ?? "?")/\(usage?["completion_tokens"] ?? "?")")
+                // A reply cut at max_tokens is usually half a JSON object: say so, or it reads as a bad reply.
+                debugLog("ling: \(priority) ok \(ms) ms tokens=\(usage?["prompt_tokens"] ?? "?")/\(usage?["completion_tokens"] ?? "?")\(finish == "length" ? " cut at max_tokens" : "")")
                 report(call, priority, at: started, queued: queued, outcome: "ok",
                        tokens: (usage?["prompt_tokens"] as? Int ?? 0, usage?["completion_tokens"] as? Int ?? 0))
                 if rateLimitedAt != nil { rateLimitedAt = nil }

@@ -1785,7 +1785,9 @@ final class AppModel: ObservableObject {
             openNotesWindow()
             if v.count == 4 { notesWindow.place(NSRect(x: v[0], y: v[1], width: v[2], height: v[3])) }
         case "notesFrame": debugLog("notes window frame=\(String(describing: notesWindow.frame)) visible=\(notesWindow.isVisible) policy=\(NSApp.activationPolicy() == .regular ? "regular" : "accessory")")
-        case "notesReplay": Task { await notes.replay(arg) }
+        case "notesReplay":  // <id>[,<lines per update>]
+            let parts = arg.split(separator: ",").map(String.init)
+            Task { await notes.replay(parts[0], step: parts.count > 1 ? Int(parts[1]) ?? 4 : 4) }
         case "notesShow": notes.show(arg)
         case "notesCapturable": notesWindow.setCapturable(arg != "off")
         case "notesShare": setNotesCapturable(arg != "off")  // the setting itself, as its badge or switch does
