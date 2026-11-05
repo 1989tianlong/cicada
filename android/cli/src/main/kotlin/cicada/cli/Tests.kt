@@ -439,6 +439,7 @@ object Tests {
         equal(0, cut(tone(3.0, 0.002)).size, "below the gate is silence")
         equal(0, cut(tone(3.0, 0.02, syllables = false), silence(1.0)).size, "a steady hum over the gate is not speech")
         equal(1, cut(tone(3.0), silence(1.0)).size, "speech, which rises and falls, is")
+        equal(1, cut(tone(3.0, 0.03), silence(1.0)).size, "quiet speech, whose dips fall below the gate, is too")
     }
 
     fun wavRoundTrip() {
