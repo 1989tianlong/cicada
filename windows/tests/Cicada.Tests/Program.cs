@@ -588,7 +588,7 @@ static class Tests
         Equal(49.0, n.Topics[0].Start, "the cited line's time, not the model's 289");
         Equal(180.0, n.Topics[1].Start, "never after the last line");
         var late = NotesEngine.Parse("{\"summary\":\"s\",\"topics\":[{\"start\":5,\"title\":\"整场\",\"points\":[{\"text\":\"p\",\"evidence\":[\"L4\"]}]}]}", times, 0)!;
-        Equal(5.0, late.Topics[0].Start, "a rewrite citing only late lines keeps the model's earlier start");
+        Equal(180.0, late.Topics[0].Start, "the cited lines win over the model's start, as on the Mac");
     }
 
     public static void KeepsEarliestTimes()
@@ -631,8 +631,111 @@ static class Tests
         Check(p.EndsWith("No markdown, no text outside the JSON."), "ending");
         var f = NotesEngine.Prompt(new MeetingNotes(), lines, 0, "English", final: true);
         Check(f.Contains("This meeting ran 01:04: use at most 1 topic."), "final topic limit");
+        Check(p.Contains("at most 8 in total") && f.Contains("at most 8 in total"), "with nothing frozen, live and final say the Mac's 8");
+        Check(p.Contains("never append to it"), "topic summaries stay one sentence");
+        var log = "对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。" + string.Concat(Enumerable.Repeat("最新对方又补充了一些内容，", 20));
+        Equal("对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。", NotesEngine.Shortened(log), "a runaway summary is cut to its first sentence");
+        Equal(NotesEngine.TopicSummaryLimit + 1, NotesEngine.Shortened(new string('长', 200)).Length, "or to the limit");
         Check(NotesEngine.Written(new MeetingNotes { Summary = "讨论发布 Stripe" }, "Simplified Chinese"), "Chinese notes");
         Check(!NotesEngine.Written(new MeetingNotes { Summary = "We talked" }, "Simplified Chinese"), "English isn't Chinese");
+    }
+
+    static NoteTopic Topic(double start, string title, List<string>? points = null) =>
+        new() { Start = start, Title = title, Summary = "s", Points = points ?? ["p"] };
+
+    static List<TranscriptLine> TenSecondLines(int n) =>
+        Enumerable.Range(0, n).Select(i => new TranscriptLine { Id = $"l{i}", T = i * 10, Speaker = "them", Src = $"line {i}", SrcLang = "zh-CN", DstLang = "en" }).ToList();
+
+    static string Titles(IEnumerable<NoteTopic> topics) => string.Join(",", topics.Select(t => t.Title));
+
+    public static void LiveNotesKeepFrozenTopicsAndTakeTheReplysTail()
+    {
+        var old = Enumerable.Range(0, 5).Select(i => Topic(i * 100, $"t{i}")).ToList();
+        // The model echoed everything, renamed the current topic and added one.
+        var reply = new List<NoteTopic> { Topic(0, "t0"), Topic(100, "t1 改"), Topic(300, "t3"), Topic(400, "t4 改"), Topic(500, "t5") };
+        Equal("t0,t1,t2,t3,t4 改,t5", Titles(NotesEngine.Merge(old, 3, reply)), "frozen kept, the reply's tail after them");
+        // The first update over many lines: nothing to echo, so every topic is the model's own.
+        var own = Enumerable.Range(0, 5).Select(i => Topic(i * 100, $"t{i}")).ToList();
+        Equal(Titles(own), Titles(NotesEngine.Merge([], 0, own)), "nothing frozen keeps every topic");
+        Equal(Titles(own), Titles(NotesEngine.Merge([Topic(0, "t0")], 0, own)), "nothing frozen, with old topics");
+        var abc = new List<NoteTopic> { Topic(0, "a"), Topic(100, "b"), Topic(200, "c") };
+        Equal("a,b,c", Titles(NotesEngine.Merge(abc, 1, [])), "an empty reply keeps the topics");
+        Equal("a,b,c", Titles(NotesEngine.Merge(abc, 1, [Topic(0, "a")])), "a reply echoing only frozen topics too");
+    }
+
+    public static void FullLiveNotesJoinTheShortestSettledPair()
+    {
+        // Twelve topics, t3 and t4 the shortest neighbours (t3 to t5 is 100 s): a new topic
+        // still starts, and those two become one.
+        double[] starts = [0, 100, 200, 300, 330, 400, 600, 700, 800, 900, 1000, 1100];
+        var old = starts.Select((s, i) => Topic(s, $"t{i}", [$"a{i}", $"b{i}", $"c{i}"])).ToList();
+        var merged = NotesEngine.Merge(old, 10, [Topic(1000, "t10"), Topic(1100, "t11"), Topic(1200, "t12")]);
+        Equal(NotesEngine.LiveMaxTopics, merged.Count, "still at most 12");
+        Equal("t12", merged[^1].Title, "the newest topic starts");
+        Equal("t3 / t4", merged[3].Title, "the shortest pair joined");
+        Equal(300.0, merged[3].Start, "from the first one's start");
+        Equal("a3,b3,a4,b4", string.Join(",", merged[3].Points), "points from each");
+        Equal("s s", merged[3].Summary, "both summaries");
+        var t = Topic(0, "t0");
+        t.Summary = "对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。" + string.Concat(Enumerable.Repeat("最新对方又补充了一些内容，", 20));
+        Equal("对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。", NotesEngine.Merge([], 0, [t])[0].Summary, "merge cuts a runaway summary");
+        Equal("short", NotesEngine.Shortened("short"), "a short summary stays");
+    }
+
+    public static void LivePromptSendsOnlyTheLatestTopics()
+    {
+        var notes = new MeetingNotes { Summary = "summary", Topics = [Topic(0, "最早的话题"), Topic(100, "第二个话题"), Topic(200, "当前话题")], Covered = 20 };
+        var p = NotesEngine.Prompt(notes, TenSecondLines(24), 20, "Simplified Chinese", final: false, frozen: 1);
+        var json = p.Split("Current notes")[1].Split("\n\n")[0];
+        Check(p.Contains("Earlier topics") && p.Contains("- 00:00 最早的话题: s"), "frozen topics listed");
+        Check(p.Contains("returning only the topics in the current notes"), "the frozen topics rule");
+        Check(!json.Contains("最早的话题") && json.Contains("第二个话题") && json.Contains("当前话题"), "only the latest in the JSON");
+        Check(!NotesEngine.Prompt(notes, TenSecondLines(24), 20, "Simplified Chinese", final: false).Contains("Earlier topics"), "a full rewrite has nothing frozen");
+        var eight = new MeetingNotes { Summary = "summary", Topics = Enumerable.Range(0, 8).Select(i => Topic(i * 10, $"t{i}")).ToList(), Covered = 20 };
+        var e = NotesEngine.Prompt(eight, TenSecondLines(24), 20, "English", final: false, frozen: 6);
+        Check(!e.Contains("do not start a new topic") && e.Contains("never append to it"), "one-sentence summaries");
+    }
+
+    public static void LongMeetingsSplitByTime()
+    {
+        // A line every 10 s: 90 min stays whole, 4 h becomes four parts of an hour.
+        var whole = NotesEngine.Parts(TenSecondLines(540));
+        Check(whole.Count == 1 && whole[0].Equals(0..540), "90 minutes stays whole");
+        var four = NotesEngine.Parts(TenSecondLines(1440));
+        Equal(4, four.Count, "4 hours in four parts");
+        Check(four[0].Start.Value == 0 && four[^1].End.Value == 1440, "covering every line");
+        Check(four.Zip(four.Skip(1)).All(x => x.First.End.Value == x.Second.Start.Value), "back to back");
+        Equal(0, NotesEngine.Parts([]).Count, "no lines, no parts");
+        var ten = Enumerable.Range(0, 10).Select(i => Topic(i * 300, $"t{i}")).ToList();
+        Equal("t0,t3,t6,t9", Titles(NotesEngine.Spread(ten, 4)), "a part's topics spread from first to last");
+        Equal("t0", Titles(NotesEngine.Spread(ten, 1)), "one");
+        Equal(3, NotesEngine.Spread(ten.Take(3).ToList(), 4).Count, "fewer than asked stay");
+    }
+
+    public static void PartPromptKeepsLineNumbers()
+    {
+        var all = TenSecondLines(720);
+        var p = NotesEngine.Prompt(new MeetingNotes(), all.Take(480).ToList(), 240, "English", final: true, part: (2, 3));
+        Check(p.Contains("part 2 of 3"), "which part");
+        Check(p.Contains("[L241 40:00 对方] line 240") && !p.Contains("[L238 "), "the transcript's own line numbers");
+        Check(p.Contains("This part ran 39:50"), "the part's length");
+        // Each of three parts gets two of the eight topics.
+        Check(p.Contains("use at most 2 topics"), "the part's share of the topics");
+        var merge = NotesEngine.MergePrompt(["{\"summary\":\"a\"}", "{\"summary\":\"b\"}"], all, "English", voices: false);
+        Check(merge.Contains("Part 2 of 2:\n{\"summary\":\"b\"}"), "the parts' notes");
+        Check(merge.Contains("Return the full notes as one JSON object") && merge.Contains("\"topics\": []"), "the format, topics kept in code");
+    }
+
+    public static void TopicStartsWhenItsLinesWereSaid()
+    {
+        var times = Enumerable.Range(0, 100).Select(i => i * 60.0).ToList();
+        var raw = """
+        {"summary": "s", "topics": [
+          {"start": 1380, "title": "late", "summary": "s", "points": [{"text": "a", "evidence": ["L86"]}, {"text": "b", "evidence": ["L52"]}], "evidence": ["L60"]},
+          {"start": 300, "title": "no evidence", "summary": "s", "points": ["c"]}]}
+        """;
+        var n = NotesEngine.Parse(raw, times, 0)!;
+        Equal("3060,300", string.Join(",", n.Topics.Select(t => t.Start)), "the earliest cited line, else the model's start");
     }
 
     // MARK: Strings

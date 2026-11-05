@@ -113,14 +113,21 @@ public sealed class NotesEngine
             var lang = Language();
             // The language changed mid-meeting: write the notes again from the start in the new one.
             // (The script check can't tell Chinese from Japanese, so extending them would keep the old.)
-            if (!final && writtenIn is not null && writtenIn != lang) { baseNotes = new MeetingNotes(); Log.Debug($"notes: language now {lang}, rewriting"); }
+            bool fresh = !final && writtenIn is not null && writtenIn != lang;
+            if (fresh) { baseNotes = new MeetingNotes(); Log.Debug($"notes: language now {lang}, rewriting"); }
             int from = final ? 0 : Math.Min(baseNotes.Covered, lines.Count);
-            var prompt = Prompt(baseNotes, lines, from, lang, final, SpeakerLabels.Voices ? SpeakerLabels.Names(session) : null);
-            MeetingNotes? next = null;
-            for (int attempt = 1; attempt <= (final ? 2 : 1); attempt++)
+            var names = SpeakerLabels.Voices ? SpeakerLabels.Names(session) : null;
+            var startedAt = lines.FirstOrDefault()?.T ?? 0;
+            // A live update returns only the last topics: when it rewrote them all, its reply grew with
+            // the meeting until, about an hour in, it was cut off at max_tokens or fell into a loop and
+            // the notes stopped updating. The final pass still rewrites everything once.
+            int frozen = final || fresh ? 0 : Math.Max(0, baseNotes.Topics.Count - EditableTopics);
+            var prompt = Prompt(baseNotes, lines, from, lang, final, names, frozen);
+            var next = final ? await LongFinal(lines, names, lang, startedAt) : null;
+            for (int attempt = 1; next is null && attempt <= (final || fresh ? 2 : 1); attempt++)
             {
                 var raw = await ling.Chat(prompt, $"Update the notes. Write them in {lang}.", Priority.Notes, json: true, maxTokens: 6000, timeout: 90, patient: final);
-                var parsed = Parse(raw, lines.Select(l => l.T).ToList(), lines.FirstOrDefault()?.T ?? 0);
+                var parsed = Parse(raw, lines.Select(l => l.T).ToList(), startedAt);
                 if (parsed is null) break;
                 if (Written(parsed, lang)) { next = parsed; break; }
                 Log.Debug($"notes: {(final ? "final" : "live")} reply not in {lang} (attempt {attempt}), dropped");
@@ -131,6 +138,7 @@ public sealed class NotesEngine
                 Status = State.Failed;
                 return;
             }
+            if (!final && !fresh) next.Topics = Merge(baseNotes.Topics, frozen, next.Topics);
             CarryTimes(baseNotes, next);
             next.Title ??= baseNotes.Title ?? session.Notes?.Title;
             next.Covered = lines.Count;
@@ -184,10 +192,149 @@ public sealed class NotesEngine
     public static bool Written(MeetingNotes notes, string language) =>
         Languages.WrittenIn(notes.Summary + string.Concat(notes.Topics.Select(t => t.Title)), language);
 
+    /// A long meeting's final pass: each part noted on its own, all at once, then merged into one.
+    /// null when a step fails: the caller then makes one pass over the whole transcript, as before.
+    async Task<MeetingNotes?> LongFinal(List<TranscriptLine> lines, IReadOnlyDictionary<int, string>? names, string lang, double startedAt)
+    {
+        var parts = Parts(lines);
+        if (parts.Count <= 1) return null;
+        var started = DateTime.UtcNow;
+        var times = lines.Select(l => l.T).ToList();
+        async Task<string?> Ask(string prompt, string instruction)
+        {
+            try { return await ling.Chat(prompt, instruction, Priority.Notes, json: true, maxTokens: 6000, timeout: 90); }
+            catch (Exception e) { Log.Debug($"notes: long final call failed {e.Message}"); return null; }
+        }
+        var replies = await Task.WhenAll(parts.Select((r, i) =>
+            Ask(Prompt(new MeetingNotes(), lines.Take(r.End.Value).ToList(), r.Start.Value, lang, final: true, names, part: (i + 1, parts.Count)),
+                $"Write the notes for this part. Write them in {lang}.")));
+        var notes = new List<string>();
+        var topics = new List<NoteTopic>();
+        for (int i = 0; i < replies.Length; i++)
+        {
+            var raw = replies[i];
+            var parsed = raw is null ? null : Parse(raw, times, startedAt);
+            if (raw is null || parsed is null || parsed.Topics.Count == 0)
+            {
+                Log.Debug($"notes: final part {i + 1}/{parts.Count} failed, one pass instead");
+                return null;
+            }
+            // Without its topics: given them, the merge wrote them all back out and was cut off.
+            int a = raw.IndexOf('{'), b = raw.LastIndexOf('}');
+            if (JsonNode.Parse(raw[a..(b + 1)]) is not JsonObject part) return null;
+            part.Remove("topics");
+            notes.Add(part.ToJsonString(Json.Compact));
+            topics.AddRange(Spread(parsed.Topics, PartTopics(parts.Count)));
+        }
+        bool voices = SpeakerLabels.Voices && SpeakerLabels.Numbers(lines).Count > 0;
+        var prompt = MergePrompt(notes, lines, lang, voices);
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            var raw = await Ask(prompt, $"Merge the notes. Write them in {lang}.");
+            var merged = raw is null ? null : Parse(raw, times, startedAt);
+            if (merged is null) break;
+            merged.Topics = topics;
+            if (Written(merged, lang))
+            {
+                Log.Debug($"notes: final in {parts.Count} parts -> {merged.Topics.Count} topics in {(int)(DateTime.UtcNow - started).TotalSeconds} s");
+                return merged;
+            }
+            Log.Debug($"notes: merged reply not in {lang} (attempt {attempt}), dropped");
+        }
+        Log.Debug($"notes: merging {parts.Count} parts failed, one pass instead");
+        return null;
+    }
+
+    // MARK: Live topics (Notes.swift › merge)
+
+    /// The most topics the final notes have (the prompt says so too; the model doesn't always listen).
+    public const int MaxTopics = 8;
+    /// The most topics live notes have. Live notes used to stop at `MaxTopics` and pour everything
+    /// after into the last topic, whose summary then grew into a wall of "最新…又…补充…"; past this,
+    /// the two shortest neighbouring settled topics are joined instead, so the newest can start.
+    public const int LiveMaxTopics = 12;
+    /// A topic summary longer than this is a log the model kept appending to, not one sentence.
+    public const int TopicSummaryLimit = 160;
+    /// How many of the last topics a live update may rewrite; earlier ones stay as they are.
+    public const int EditableTopics = 2;
+
+    /// A live reply's topics after the `frozen` ones it was told to leave alone: with some frozen, at
+    /// most the editable ones plus one new, from the end (the model sometimes echoes the whole list),
+    /// never a copy of a frozen one, each summary kept to one sentence; and no more than
+    /// `LiveMaxTopics` in all (past that, settled neighbours are joined). A reply with no topics of
+    /// its own keeps the ones it had.
+    public static List<NoteTopic> Merge(IReadOnlyList<NoteTopic> old, int frozen, IReadOnlyList<NoteTopic> returned)
+    {
+        var kept = old.Take(frozen).ToList();
+        var fixedTitles = kept.Select(t => t.Title).ToHashSet();
+        var own = returned.Where(t => !fixedTitles.Contains(t.Title)).ToList();
+        var tail = kept.Count == 0 ? own : own.TakeLast(old.Count - kept.Count + 1).ToList();
+        if (tail.Count == 0) return old.ToList();
+        foreach (var t in tail) t.Summary = Shortened(t.Summary);
+        tail = Capped(tail, LiveMaxTopics - Math.Min(kept.Count, 1));
+        while (kept.Count + tail.Count > LiveMaxTopics && kept.Count >= 2)
+        {
+            // The pair spanning the least time, its end being the next topic's start.
+            var ends = kept.Skip(1).Select(t => t.Start).Append(tail[0].Start).ToList();
+            int i = 0;
+            for (int j = 1; j < kept.Count - 1; j++)
+                if (ends[j + 1] - kept[j].Start < ends[i + 1] - kept[i].Start) i = j;
+            kept[i] = Joined(kept[i], kept[i + 1]);
+            kept.RemoveAt(i + 1);
+        }
+        return Capped(kept.Concat(tail).ToList(), LiveMaxTopics);
+    }
+
+    /// Two neighbouring topics as one: both titles and summaries, and up to the 4 points the prompt
+    /// allows, taken evenly from each.
+    public static NoteTopic Joined(NoteTopic a, NoteTopic b)
+    {
+        int fromA = Math.Min(a.Points.Count, Math.Max(2, 4 - b.Points.Count));
+        int fromB = Math.Min(b.Points.Count, 4 - fromA);
+        var times = Enumerable.Range(0, fromA).Select(a.PointTime).Concat(Enumerable.Range(0, fromB).Select(b.PointTime)).ToList();
+        var gap = a.Summary.Length == 0 || "。！？；".Contains(a.Summary[^1]) ? "" : " ";
+        return new NoteTopic
+        {
+            Start = a.Start, Title = $"{a.Title} / {b.Title}", Summary = a.Summary + gap + b.Summary,
+            Points = a.Points.Take(fromA).Concat(b.Points.Take(fromB)).ToList(), Fishbone = a.Fishbone ?? b.Fishbone,
+            PointTimes = times.Any(x => x is not null) ? times : null,
+        };
+    }
+
+    /// A runaway topic summary cut back to its first sentence (or to the limit, with "…").
+    public static string Shortened(string summary)
+    {
+        if (summary.Length <= TopicSummaryLimit) return summary;
+        var head = summary[..TopicSummaryLimit];
+        var end = head.IndexOfAny("。！？；.!?;".ToCharArray(), 10);
+        return end >= 0 ? head[..(end + 1)] : head.Trim() + "…";
+    }
+
+    /// At most `count` topics (at least one): the points of any after that go into the last kept.
+    /// The last kept is a copy: it may be one of the shown notes' topics.
+    public static List<NoteTopic> Capped(List<NoteTopic> topics, int count)
+    {
+        topics = topics.ToList();
+        while (topics.Count > Math.Max(1, count))
+        {
+            var extra = topics[^1]; topics.RemoveAt(topics.Count - 1);
+            var last = topics[^1]; topics.RemoveAt(topics.Count - 1);
+            var times = Enumerable.Range(0, last.Points.Count).Select(last.PointTime)
+                .Concat(Enumerable.Range(0, extra.Points.Count).Select(extra.PointTime)).ToList();
+            topics.Add(new NoteTopic
+            {
+                Start = last.Start, Title = last.Title, Summary = last.Summary, Fishbone = last.Fishbone,
+                Points = last.Points.Concat(extra.Points).ToList(), PointTimes = times.Any(x => x is not null) ? times : null,
+            });
+        }
+        return topics;
+    }
+
     // MARK: Prompt (Notes.swift › prompt, word for word)
 
+    /// `part`: in a long meeting's final pass, which part `from..lines.Count` is (1-based, of `Of`).
     public static string Prompt(MeetingNotes notes, IReadOnlyList<TranscriptLine> lines, int from, string language, bool final,
-                                IReadOnlyDictionary<int, string>? names = null)
+                                IReadOnlyDictionary<int, string>? names = null, int frozen = 0, (int Index, int Of)? part = null)
     {
         var numbers = SpeakerLabels.Voices ? SpeakerLabels.Numbers(lines) : [];
         string Line(int i)
@@ -198,19 +345,29 @@ public sealed class NotesEngine
             var who = l.Speaker == "me" ? "你" : numbers.TryGetValue(l.Id, out var n) ? names?.GetValueOrDefault(n) ?? $"说话人{n}" : numbers.Count == 0 ? "对方" : "未识别";
             return $"[L{i + 1} {Languages.Clock(l.T)} {who}] {l.Src}";
         }
-        var current = notes.IsEmpty ? "{}" : CompactJson(notes);
+        var current = notes.IsEmpty ? "{}" : CompactJson(notes, frozen);
         int context = Math.Max(0, from - 2);
-        var p = $"You keep notes for a meeting {(final ? "that has just ended. Rewrite them from the whole transcript" : "that is still going on. Update them with the new lines")}.\n"
+        var task = part is { } pt ? $"that has just ended. It was long, so it is noted in parts: write the notes for part {pt.Index} of {pt.Of} only, from the lines below"
+                 : final ? "that has just ended. Rewrite them from the whole transcript" : "that is still going on. Update them with the new lines";
+        var p = $"You keep notes for a meeting {task}.\n"
               + $"Write the notes in {language}. Return JSON only.\n";
-        if (!final) p += $"Current notes (JSON):\n{current}\n\n";
+        if (!final)
+        {
+            if (frozen > 0)
+                p += "Earlier topics (settled: kept as they are, do not return them):\n"
+                   + string.Join("\n", notes.Topics.Take(frozen).Select(t => $"- {Languages.Clock(t.Start)} {t.Title}: {t.Summary}")) + "\n\n";
+            p += $"Current notes (JSON{(frozen > 0 ? ", latest topics only" : "")}):\n{current}\n\n";
+        }
         if (context < from) p += "Already covered (context only):\n" + string.Join("\n", Enumerable.Range(context, from - context).Select(Line)) + "\n\n";
         p += $"{(final ? "Transcript" : "New lines")} (id, mm:ss, speaker 对方=the other side / 你=me / a name or 说话人N=one person on the other side, told apart by voice and possibly wrong / 未识别=someone on the other side not identified, text). Speech recognition makes mistakes, often in names: correct them from context, and write a public figure's name as the news spells it.\n";
         p += string.Join("\n", Enumerable.Range(from, lines.Count - from).Select(Line));
-        if (final && lines.Count > 0)
+        // The model splits too eagerly when only told how long a topic should be: say plainly
+        // whether this update may start one.
+        if (final && from < lines.Count)
         {
-            var span = lines[^1].T - lines[0].T;
-            int most = Math.Max(1, Math.Min(8, (int)(span / 180) + 1));
-            p += $"\n\nThis meeting ran {Languages.Clock(span)}: use at most {most} topic{(most == 1 ? "" : "s")}.";
+            var span = lines[^1].T - lines[from].T;
+            int most = Math.Max(1, Math.Min(part is { } q ? PartTopics(q.Of) : MaxTopics, (int)(span / 180) + 1));
+            p += $"\n\nThis {(part is null ? "meeting" : "part")} ran {Languages.Clock(span)}: use at most {most} topic{(most == 1 ? "" : "s")}.";
         }
         else if (!final && notes.Topics.Count > 0 && lines.Count > 0 && lines[^1].T - notes.Topics[^1].Start < 120)
         {
@@ -221,18 +378,24 @@ public sealed class NotesEngine
         {
             p += "\n\nThese are the first lines: make one topic.";
         }
-        p += "\n\nReturn the full notes as one JSON object with exactly these keys:\n"
+        return p + "\n\n" + Format(language, numbers.Count > 0, final, frozen);
+    }
+
+    /// The reply's JSON shape and the rules for its contents.
+    static string Format(string language, bool voices, bool final, int frozen) =>
+        "Return the full notes as one JSON object with exactly these keys:\n"
            + "{\"title\": \"the meeting's name: what it is about, a few words\",\n"
            + " \"summary\": \"2-3 sentences on the whole meeting so far\",\n"
-           + " \"topics\": [{\"start\": seconds, \"title\": \"short title\", \"summary\": \"one sentence\", \"points\": [{\"text\": \"key point\", \"evidence\": [\"L4\"]}], \"evidence\": [\"L3\"],\n"
+           + " \"topics\": [{\"start\": seconds, \"title\": \"short title\", \"summary\": \"one sentence on the whole topic\", \"points\": [{\"text\": \"key point\", \"evidence\": [\"L4\"]}], \"evidence\": [\"L3\"],\n"
            + "             \"fishbone\": null or {\"question\": \"the problem or question\", \"branches\": [{\"label\": \"2-6 words\", \"detail\": \"one short line\", \"t\": seconds, \"evidence\": [\"L5\"]}]}}],\n"
            + " \"conclusions\": [{\"text\": \"...\", \"evidence\": [\"L7\", \"L8\"]}],\n"
-           + " \"todos\": [{\"text\": \"...\", \"owner\": \"对方\" or \"你\" or null, \"evidence\": [\"L9\"]}],\n"
+           + $" \"todos\": [{{\"text\": \"...\", \"owner\": {(!voices ? "\"对方\" or \"你\" or null" : "the person's label from the transcript (a name like \"George\", or \"说话人2\"), \"你\", or null when unclear")}, \"evidence\": [\"L9\"]}}],\n"
            + " \"terms\": [{\"name\": \"correct spelling\", \"note\": \"who or what, a few words\", \"heard\": [\"how it was misrecognised\"]}]}\n"
            + "Rules (be brief: these notes are read at a glance during the meeting):\n"
            + "- title: a name for the whole meeting, like a calendar entry (at most 12 Chinese characters or 6 words; no date, no quotes, not \"会议\" alone). Keep the current title unless the meeting's subject has clearly changed.\n"
            + "- summary: at most 3 short sentences.\n"
-           + $"- Topics in time order, at most 8 in total. A topic is a stretch of the meeting, usually 3-10 minutes, not a single remark: start a new one only when the subject clearly changes and the current topic started at least 2 minutes before the newest line{(final ? "" : "; add at most one new topic per update")}. Otherwise add to the current one, and merge small neighbouring topics. Keep earlier topics as they are unless new lines correct them. The last topic is the one being discussed now.\n"
+           + $"- Topics in time order, {(frozen > 0 ? "returning only the topics in the current notes and at most one new one after them" : $"at most {MaxTopics} in total")}. A topic is a stretch of the meeting, usually 3-10 minutes, not a single remark: start a new one only when the subject clearly changes and the current topic started at least 2 minutes before the newest line{(final ? "" : "; add at most one new topic per update")}. Otherwise add to the current one, and merge small neighbouring topics. Keep earlier topics as they are unless new lines correct them. The last topic is the one being discussed now.\n"
+           + "- A topic's summary is one sentence on the whole topic, at most 40 Chinese characters or 25 words: as the topic grows, rewrite it; never append to it or narrate what came next (\"最新\", \"又\", \"补充\", \"then\", \"later\").\n"
            + "- At most 4 points per topic, each one short phrase. Merge rather than repeat.\n"
            + "- At most 5 conclusions and only real to-dos (often none).\n"
            + "- Add a fishbone only to a topic that discusses causes, reasons or factors (3-5 branches); otherwise null.\n"
@@ -241,16 +404,15 @@ public sealed class NotesEngine
            + $"- Write the meeting title and every summary, title, point, branch, conclusion and to-do in {language}, even when the transcript is in another language. Only term names keep the transcript's spelling.\n"
            + "- Write about what was said, never about the transcript or recognition quality.\n"
            + "- Use empty arrays when there is nothing. No markdown, no text outside the JSON.";
-        return p;
-    }
 
-    /// The current notes as sent back to the model (no bookkeeping fields).
-    static string CompactJson(MeetingNotes n)
+    /// The current notes as sent back to the model (no bookkeeping fields). `from`: the first topic
+    /// sent (earlier ones go as a list of titles).
+    static string CompactJson(MeetingNotes n, int from = 0)
     {
         var o = new JsonObject();
         if (n.Title is not null) o["title"] = n.Title;
         o["summary"] = n.Summary;
-        o["topics"] = new JsonArray(n.Topics.Select(t => (JsonNode)new JsonObject
+        o["topics"] = new JsonArray(n.Topics.Skip(from).Select(t => (JsonNode)new JsonObject
         {
             ["start"] = t.Start, ["title"] = t.Title, ["summary"] = t.Summary,
             ["points"] = new JsonArray(t.Points.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
@@ -260,6 +422,58 @@ public sealed class NotesEngine
         o["todos"] = new JsonArray(n.Todos.Select(i => (JsonNode)JsonValue.Create(i.Text)!).ToArray());
         o["terms"] = JsonSerializer.SerializeToNode(n.Terms, Json.Compact);
         return o.ToJsonString(Json.Compact);
+    }
+
+    // MARK: Long meetings
+
+    /// How a long meeting's final pass is split: over `SplitMinutes`, into equal parts by time of at
+    /// most `PartMinutes`. One pass covered a 91-minute meeting but only the first hour of a 4-hour one.
+    public const double SplitMinutes = 100, PartMinutes = 60;
+    public static List<Range> Parts(IReadOnlyList<TranscriptLine> lines)
+    {
+        if (lines.Count == 0) return [];
+        double first = lines[0].T, last = lines[^1].T;
+        var minutes = (last - first) / 60;
+        if (minutes <= SplitMinutes) return [0..lines.Count];
+        int count = (int)Math.Ceiling(minutes / PartMinutes);
+        var length = (last - first) / count;
+        var bounds = new List<int> { 0 };
+        for (int k = 1; k < count; k++)
+        {
+            var at = first + length * k;
+            int i = -1;
+            for (int j = 0; j < lines.Count; j++) if (lines[j].T >= at) { i = j; break; }
+            if (i > bounds[^1]) bounds.Add(i);
+        }
+        bounds.Add(lines.Count);
+        return bounds.Zip(bounds.Skip(1), (a, b) => a..b).ToList();
+    }
+
+    /// Each part's share of the topics: the merge keeps them as they are, so every part has some.
+    public static int PartTopics(int parts) => Math.Max(2, MaxTopics / Math.Max(1, parts));
+
+    /// `count` of `topics`, spread evenly from the first to the last: a part's reply often has more
+    /// topics than asked, and keeping the first ones (or folding the rest into the last) lost the
+    /// end of each part.
+    public static List<NoteTopic> Spread(IReadOnlyList<NoteTopic> topics, int count)
+    {
+        if (topics.Count <= count || count <= 0) return topics.ToList();
+        if (count == 1) return [topics[0]];
+        return Enumerable.Range(0, count)
+            .Select(k => topics[(int)Math.Round((double)k * (topics.Count - 1) / (count - 1), MidpointRounding.AwayFromZero)]).ToList();
+    }
+
+    /// The whole meeting's title, summary, conclusions, to-dos and terms from its parts' notes (the
+    /// replies as they came, with their evidence line ids). Asked to merge topics too, the model
+    /// kept the first parts' and dropped the rest, so topics are joined in code.
+    public static string MergePrompt(IReadOnlyList<string> parts, IReadOnlyList<TranscriptLine> lines, string language, bool voices)
+    {
+        var p = "You keep notes for a meeting that has just ended. It was long, so each part was noted on its own; below are those notes, in time order (JSON; evidence ids are transcript lines, L1 the first). Merge them into the notes for the whole meeting.\n"
+              + $"Write the notes in {language}. Return JSON only.\n\n";
+        for (int i = 0; i < parts.Count; i++) p += $"Part {i + 1} of {parts.Count}:\n{parts[i]}\n\n";
+        if (lines.Count > 0)
+            p += $"This meeting ran {Languages.Clock(lines[^1].T - lines[0].T)}. Return \"topics\": []: the parts' topics are kept as they are. Name and summarise the whole meeting, every part of it; keep each conclusion, to-do and term once, with the evidence ids it had (joined when you merge two).\n\n";
+        return p + Format(language, voices, final: true, frozen: 0);
     }
 
     // MARK: Parse
@@ -321,12 +535,11 @@ public sealed class NotesEngine
                     pointTimes.Add(p is JsonObject po2 ? Time(po2["evidence"]) : null);
                 }
             }
-            // The model's "start" is sometimes misread (04:49 for 00:49), and the lines it cites can
-            // all be late ones (a rewrite cites what's fresh): a topic starts at the earlier of the two,
-            // and never after the last line.
+            // When it was first said, from its lines: the model's own "start" drifts by tens of
+            // minutes in a long meeting (a topic said at 51-85 min came back as starting at 23) and is
+            // sometimes misread (04:49 for 00:49). Never after the last line.
             var cited = new[] { Time(t["evidence"]) }.Concat(pointTimes).Where(x => x is not null).Select(x => x!.Value).ToList();
-            var said = Num(t["start"]);
-            var start = cited.Count == 0 ? said ?? startedAt : said is { } x0 ? Math.Min(x0, cited.Min()) : cited.Min();
+            var start = cited.Count > 0 ? cited.Min() : Num(t["start"]) ?? startedAt;
             if (times.Count > 0 && start > times[^1]) start = times[^1];
             n.Topics.Add(new NoteTopic
             {
