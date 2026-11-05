@@ -5,6 +5,33 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes. Since 1.1.2 every release ships
 every platform (one with nothing new says No changes); earlier ones shipped only those listed. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
+## 1.2.1 — 2026-11-05
+
+Everything in [1.2.0](#120--2026-11-05), which was not published on its own, plus the fixes below.
+
+### Mac
+
+No changes; released to keep every platform on the same version.
+
+### Windows
+
+#### Fixed
+
+- Quiet speech in a meeting is no longer mistaken for a fan or hum and left without subtitles ([e3c8b72](https://github.com/wquguru/cicada/commit/e3c8b723fccaf902e36ca2dcc051578926cc5761))
+
+### Android
+
+#### Fixed
+
+- Quiet speech in a meeting is no longer mistaken for a fan or hum and left without subtitles ([0a14926](https://github.com/wquguru/cicada/commit/0a14926ec6ab09dadd2e925b2b83166b3687d675))
+
+### Linux
+
+#### Fixed
+
+- Quiet speech in a meeting is no longer mistaken for a fan or hum and left without subtitles ([ed57f8f](https://github.com/wquguru/cicada/commit/ed57f8faddd922e2b461c7e5dfff46249847f037))
+- Settings shows the field for typing an AI service key again, so a key can be added or changed there ([9126e15](https://github.com/wquguru/cicada/commit/9126e150266cba978f04405747d597d08a9d3bd9))
+
 ## 1.2.0 — 2026-11-05
 
 ### Mac
