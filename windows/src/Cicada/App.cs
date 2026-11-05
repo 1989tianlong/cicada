@@ -448,8 +448,10 @@ sealed class Controller
 
     /// The user's 开始听: blocked only by a failure the last result knows of. A hear model that
     /// can't hear asks to switch to the recommended one; an unreachable service is looked at once
-    /// more first. Unknown or busy starts as usual. A dialog comes after a yield, so the debug pipe
-    /// that asked for the start replies first; a start that needs none has happened by then.
+    /// more, but only waited for briefly (a check that can't connect takes 10–20 s): still unknown
+    /// then, the dialog says what the last check found and its 重新检查并开始 waits in place, with
+    /// 正在检查… on the button. Unknown or busy starts as usual. A dialog comes after a yield, so
+    /// the debug pipe that asked for the start replies first; a start that needs none has happened by then.
     public async Task StartChecked(Func<IAudioSource> source)
     {
         if (Listen.Listening || starting) return;
@@ -457,8 +459,15 @@ sealed class Controller
         starting = true;
         try
         {
-            if (Ling.Health.Failure?.Why == AICheck.Reason.Unreachable) await Ling.Check();
-            var f = Ling.Health.Failure;
+            var shown = Ling.Health;
+            Task? recheck = null;
+            if (shown.Failure?.Why == AICheck.Reason.Unreachable)
+            {
+                recheck = Ling.Check();
+                if (await Task.WhenAny(recheck, Task.Delay(QuickLook)) == recheck) shown = Ling.Health;
+                else Log.Debug($"listen: start, the service still unreachable after {QuickLook.TotalSeconds:0} s, asking");
+            }
+            var f = shown.Failure;
             if (f?.Why == AICheck.Reason.Deaf)
             {
                 var service = Ling.ServiceName;
@@ -476,14 +485,25 @@ sealed class Controller
             }
             if (f?.Why == AICheck.Reason.Unreachable)
             {
-                var h = Ling.Health;
-                var body = h.Message(Ling.ServiceName, Ling.ServiceHost, Ling.Config.TextModel, Ling.HearName) ?? "";
-                if (h.ProxyLine(Ling.ServiceName, Ling.ServiceHost) is { } proxy) body += "\n" + proxy;
+                string Body(AICheck h) => (h.Message(Ling.ServiceName, Ling.ServiceHost, Ling.Config.TextModel, Ling.HearName) ?? "")
+                    + (h.ProxyLine(Ling.ServiceName, Ling.ServiceHost) is { } proxy ? "\n" + proxy : "");
                 await Task.Yield();
-                var choice = Dialogs.Choose(VisibleWindow(), LF("连不上 %@", Ling.ServiceName), body, L("重新检查并开始"), L("打开设置"));
+                // 重新检查并开始: the check already under way (or one that finished reachable while the
+                // dialog was up), else a new one; reachable closes the dialog.
+                async Task<string?> Retry()
+                {
+                    var under = recheck;
+                    recheck = null;
+                    if (under is null || under.IsCompleted && Ling.Health.Failure?.Why == AICheck.Reason.Unreachable) await Ling.Check();
+                    else await under;
+                    var h = Ling.Health;
+                    return h.Failure?.Why == AICheck.Reason.Unreachable ? Body(h) : null;
+                }
+                var choice = Dialogs.Choose(VisibleWindow(), LF("连不上 %@", Ling.ServiceName), Body(shown), L("重新检查并开始"), L("打开设置"), Retry);
                 if (choice == 2) ShowAISettings();
                 else if (choice == 1)
                 {
+                    // Reached now; the check may still have found something else (a deaf model): ask again.
                     starting = false;
                     await StartChecked(source);
                 }
@@ -495,6 +515,8 @@ sealed class Controller
     }
 
     bool starting;
+    /// How long 开始听 waits for a fresh look at an unreachable service before asking.
+    static readonly TimeSpan QuickLook = TimeSpan.FromSeconds(2);
 
     /// A window of ours to put a dialog over; null (the screen's centre) from the tray.
     Window? VisibleWindow() => new Window?[] { settingsWindow, mainWindow, onboarding }.FirstOrDefault(w => w?.IsVisible == true && w.WindowState != WindowState.Minimized);

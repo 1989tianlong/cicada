@@ -22,13 +22,16 @@ static class Dialogs
 
     /// Two ways on, both named (开始听 blocked: 换成推荐的并开始 / 打开设置): 1 for `primary`, 2 for
     /// `other`, 0 when closed. No `primary`: just `other` and 取消. No owner: the screen's centre.
-    public static int Choose(Window? owner, string title, string body, string? primary, string other)
+    /// `retry` makes `primary` work in place (重新检查并开始): the dialog stays with 正在检查… on the
+    /// button, then closes as 1 when it returns null, or shows the body it returns and waits again.
+    public static int Choose(Window? owner, string title, string body, string? primary, string other, Func<Task<string?>>? retry = null)
     {
         int chosen = 0;
         var text = Ui.Text(body, 14, Palette.Body);
         if (primary is null) return Show(owner, title, text, other, danger: false, null) is null ? 0 : 2;
         var second = Ui.Button(other, () => { chosen = 2; Window.GetWindow(text)?.Close(); });
-        var r = Show(owner, title, text, primary, danger: false, null, secondary: second);
+        var r = Show(owner, title, text, primary, danger: false, null, secondary: second,
+            work: retry is null ? null : async () => { if (await retry() is not { } again) return true; text.Text = again; return false; });
         return r is not null ? 1 : chosen;
     }
 
@@ -42,7 +45,7 @@ static class Dialogs
         return Show(owner, title, content, ok, danger: false, box);
     }
 
-    static string? Show(Window? owner, string title, FrameworkElement content, string ok, bool danger, TextBox? field, bool single = false, Button? secondary = null)
+    static string? Show(Window? owner, string title, FrameworkElement content, string ok, bool danger, TextBox? field, bool single = false, Button? secondary = null, Func<Task<bool>>? work = null)
     {
         string? result = null;
         var dialog = new Window
@@ -51,9 +54,24 @@ static class Dialogs
             ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false, SizeToContent = SizeToContent.Height, Width = 456 + 32,
             WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner, Topmost = owner is null, FontFamily = Palette.Font, Title = title,
         };
-        void Accept() { result = field?.Text.Trim() ?? ""; dialog.Close(); }
-        var primary = Ui.Button(ok, Accept, danger ? Ui.Kind.Danger : Ui.Kind.Primary);
-        var cancel = secondary ?? Ui.Button(L("取消"), dialog.Close);
+        Button? primary = null, cancel = null;
+        async void Accept()
+        {
+            if (work is not null)
+            {
+                var label = ((StackPanel)primary!.Content).Children.OfType<TextBlock>().First();
+                primary.IsEnabled = cancel!.IsEnabled = false;
+                label.Text = L("正在检查…");
+                var done = await work();
+                label.Text = ok;
+                primary.IsEnabled = cancel.IsEnabled = true;
+                if (!done) { primary.Focus(); return; }
+            }
+            result = field?.Text.Trim() ?? "";
+            dialog.Close();
+        }
+        primary = Ui.Button(ok, Accept, danger ? Ui.Kind.Danger : Ui.Kind.Primary);
+        cancel = secondary ?? Ui.Button(L("取消"), dialog.Close);
         // A named second way on isn't 取消: Esc just closes.
         primary.IsDefault = true; cancel.IsCancel = secondary is null;
         if (secondary is not null) dialog.KeyDown += (_, e) => { if (e.Key == Key.Escape) dialog.Close(); };
