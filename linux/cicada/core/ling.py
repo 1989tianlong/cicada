@@ -151,14 +151,15 @@ class StreamResponse:
 
 
 class UrlTransport:
-    """How requests leave the app: urllib (which honours http_proxy / https_proxy), or a fake in tests.
+    """How requests leave the app: urllib through this computer's proxy (proxy.urlopen: the
+    environment's, else GNOME's manual one), or a fake in tests.
     Raises TimeoutError on a timeout and OSError when the network fails."""
 
     @staticmethod
     def send(url: str, method: str, body: str | None, headers: dict, timeout: float) -> Response:
         req = urllib.request.Request(url, data=body.encode() if body is not None else None, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with proxy.urlopen(req, timeout=timeout) as r:
                 return Response(r.status, r.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             return Response(e.code, e.read().decode("utf-8", "replace") if e.fp else "",
@@ -176,7 +177,7 @@ class UrlTransport:
         raw pieces (OpenRouter's speech streams the PCM bytes themselves)."""
         req = urllib.request.Request(url, data=body.encode(), method="POST", headers=headers)
         try:
-            r = urllib.request.urlopen(req, timeout=timeout)
+            r = proxy.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             return StreamResponse(e.code, iter(()))
         except socket.timeout as e:
@@ -243,7 +244,7 @@ class LingClient:
         self.seconds: float | None = None   # how long the last good check took
         # The last time the room voice spoke (or failed to) through this service: (ok, time).
         self.last_voice: tuple | None = None
-        # Reads this computer's proxy settings to word the "can't reach" hint (never used to connect).
+        # Words the "can't reach" hint from the proxy requests go through (proxy.py).
         self.proxy_hint = proxy.hint
         # Debug control only: every check ends this way (a reason, or "lowBalance"), for screenshots.
         self.simulate: str | None = None

@@ -17,7 +17,7 @@ import tempfile
 import time
 import urllib.request
 
-from . import jsonfmt
+from . import jsonfmt, proxy
 from .support import Log, Paths
 
 # The list, not releases/latest: every platform shares one version, and a release that only ships
@@ -171,7 +171,7 @@ def should_notify(version: str, told: str | None, busy: bool) -> bool:
 
 def _get(url: str, timeout: float = 20):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"})
-    return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - our feed, or file:// in tests
+    return proxy.urlopen(req, timeout=timeout)  # our feed, or file:// in tests
 
 
 def check(current: str) -> tuple:

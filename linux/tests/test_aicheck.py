@@ -154,20 +154,32 @@ class Rules(unittest.TestCase):
 
 
 class ProxyHint(unittest.TestCase):
-    def test_three_cases(self):
+    def test_cases(self):
+        # More in test_proxy.py.
         nothing = lambda: ""  # noqa: E731
-        self.assertEqual(("system",), proxy.hint({"https_proxy": "http://10.0.2.2:7890"}, nothing, lambda p: False))
-        self.assertEqual(("system",), proxy.hint({}, lambda: "'manual'\n", lambda p: False))
-        self.assertEqual(("system",), proxy.hint({}, lambda: "'auto'", lambda p: False))
-        self.assertEqual(("app", 7897), proxy.hint({}, lambda: "'none'", lambda p: p == 7897))
-        self.assertEqual(("none",), proxy.hint({"https_proxy": " "}, nothing, lambda p: False))
+        up, down = (lambda h, p: True), (lambda h, p: False)  # noqa: E731
+        gnome = ("org.gnome.system.proxy mode '%s'\norg.gnome.system.proxy.https host '10.0.2.2'\n"
+                 "org.gnome.system.proxy.https port 7890\n")
+        self.assertEqual(("system",), proxy.hint({"https_proxy": "http://10.0.2.2:7890"}, nothing, lambda p: False, up))
+        # GNOME's manual proxy: requests go through it now, so "a proxy is on" is true when it answers.
+        self.assertEqual(("system",), proxy.hint({}, lambda: gnome % "manual", lambda p: False, up))
+        # One that doesn't answer isn't "a proxy is on, try another server".
+        self.assertEqual(("dead", "10.0.2.2:7890"), proxy.hint({}, lambda: gnome % "manual", lambda p: True, down))
+        # Automatic (PAC) isn't used: requests go direct, so it isn't "a proxy is on" either.
+        self.assertEqual(("pac",), proxy.hint({}, lambda: gnome % "auto", lambda p: False, up))
+        self.assertEqual(("app", 7897), proxy.hint({}, lambda: gnome % "none", lambda p: p == 7897, up))
+        self.assertEqual(("none",), proxy.hint({"https_proxy": " "}, nothing, lambda p: False, up))
+        # all_proxy, which urllib ignored, counts now that requests go through it.
+        self.assertEqual(("dead", "127.0.0.1:1"), proxy.hint({"all_proxy": "socks5://127.0.0.1:1"}, nothing, lambda p: False, down))
 
     def test_words(self):
         r = AICheck()
         r.fail("reach", "unreachable")
         for hint, words in ((("system",), "开了代理也连不上：换一个节点，或检查代理软件是否放过 zenmux.ai。"),
                             (("app", 7890), "代理软件在运行（端口 7890），但没开系统代理。在代理软件里打开“系统代理”。"),
-                            (("none",), "这台电脑没开代理。在国内通常要开代理才能用 ZenMux。")):
+                            (("none",), "这台电脑没开代理。在国内通常要开代理才能用 ZenMux。"),
+                            (("dead", "10.0.2.2:7890"), "代理 10.0.2.2:7890 没有回应。打开代理软件，或在 设置 › 网络 › 网络代理 里改正。"),
+                            (("pac",), "系统代理设成了“自动”，知了用不了。在 设置 › 网络 › 网络代理 里改成“手动”。")):
             r.proxy = hint
             self.assertEqual(words, r.proxy_line("ZenMux", "zenmux.ai"))
         r.fail("key", "invalidKey")

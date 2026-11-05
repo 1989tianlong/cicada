@@ -46,7 +46,8 @@ class AICheck:
         self.steps = {s: State() for s in STEPS}
         self.at: float | None = None
         self.passive = False
-        # ("system",) a proxy is on; ("app", port) a proxy app listens but the system proxy is off; ("none",).
+        # proxy.hint: ("system",) a proxy is in use; ("dead", "host:port") it doesn't answer; ("pac",)
+        # GNOME's is automatic; ("app", port) a proxy app listens but no proxy is set; ("none",).
         self.proxy: tuple | None = None
         self.balance: float | None = None
 
@@ -160,6 +161,12 @@ class AICheck:
             return None
         if self.proxy[0] == "system":
             return LF("开了代理也连不上：换一个节点，或检查代理软件是否放过 %@。", host)
+        if self.proxy[0] == "dead":
+            # Linux: the proxy requests go through (the environment's or GNOME's) doesn't answer.
+            return LF("代理 %@ 没有回应。打开代理软件，或在 设置 › 网络 › 网络代理 里改正。", self.proxy[1])
+        if self.proxy[0] == "pac":
+            # GNOME's "automatic" needs a PAC file evaluated, which the app can't: requests go direct.
+            return L("系统代理设成了“自动”，知了用不了。在 设置 › 网络 › 网络代理 里改成“手动”。")
         if self.proxy[0] == "app":
             # As text: a number would be grouped ("7,890") on the Mac, which keys it this way.
             return LF("代理软件在运行（端口 %@），但没开系统代理。在代理软件里打开“系统代理”。", str(self.proxy[1]))
