@@ -192,6 +192,8 @@ public sealed class NotesEngine
         {
             var times = t.Points.Select((p, i) => Min(t.PointTime(i), known.TryGetValue(p, out var k) ? k : null)).ToList();
             t.PointTimes = times.Any(x => x is not null) ? times : null;
+            // A topic starts no later than its first point (the reply dates it from the lines it cites now).
+            if (times.Where(x => x is not null).Min() is { } first && first < t.Start) t.Start = first;
         }
         var items = new Dictionary<string, double>();
         foreach (var i in old.Conclusions.Concat(old.Todos)) if (i.T is { } t) items.TryAdd(i.Text, t);
