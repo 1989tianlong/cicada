@@ -217,6 +217,7 @@ final class LingClient: ObservableObject {
 
     /// Settings switched service, address or model: forget the old state and check again.
     func reconfigure() {
+        settingsGeneration += 1
         noTemplateKwargs = false
         recheck?.cancel()
         catalog = []
@@ -236,6 +237,8 @@ final class LingClient: ObservableObject {
         }
     }
     private var recheck: Task<Void, Never>?
+    /// Bumped when settings change: a request sent to the service before says nothing about the new one.
+    private var settingsGeneration = 0
 
     // MARK: Key
 
@@ -403,8 +406,9 @@ final class LingClient: ObservableObject {
 
     /// A real request (notes, translation) came back: keep the steps current without a check.
     /// One server error in a meeting isn't worth repainting the settings for.
-    private func observe(_ failure: Failure?, seconds: Double = 0, audio: Bool = false) {
-        guard hasKey, !aiCheck.running, simulateCheck == nil else { return }
+    private func observe(_ failure: Failure?, seconds: Double = 0, audio: Bool = false, generation: Int) {
+        // Sent before the service, address or model changed (a meeting's last notes, say): not this one's.
+        guard hasKey, !aiCheck.running, simulateCheck == nil, generation == settingsGeneration else { return }
         var r = aiCheck
         if let failure {
             guard let (step, reason, code) = AICheck.classify(failure, at: .text), reason != .serverError else { return }
@@ -459,6 +463,7 @@ final class LingClient: ObservableObject {
             throw simulate
         }
         let c = config()
+        let generation = settingsGeneration
         let call = CallLabel(provider: c.provider.id.rawValue, model: model ?? c.textModel,
                              role: role ?? (priority == .notes ? "notes" : "translate"))
         var body: [String: Any] = [
@@ -499,11 +504,11 @@ final class LingClient: ObservableObject {
                 report(call, priority, at: started, queued: queued, outcome: "ok",
                        tokens: (usage?["prompt_tokens"] as? Int ?? 0, usage?["completion_tokens"] as? Int ?? 0))
                 if rateLimitedAt != nil { rateLimitedAt = nil }
-                observe(nil, seconds: Double(ms) / 1000, audio: audio != nil)
+                observe(nil, seconds: Double(ms) / 1000, audio: audio != nil, generation: generation)
                 return trimmed
             } catch let failure as Failure {
                 report(call, priority, at: started, queued: queued, outcome: Self.name(failure))
-                observe(failure, audio: audio != nil)
+                observe(failure, audio: audio != nil, generation: generation)
                 guard failure == .rateLimited else { throw failure }
                 guard attempt <= waits.count else {
                     rateLimitedAt = Date()
