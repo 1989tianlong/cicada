@@ -188,6 +188,7 @@ struct MenuPanelView: View {
             // In subtitle-bar mode this is where the bar sends you to pick.
             if model.running { LanguageNotice(model: model) }
             if model.roomPrompt { roomPromptStrip }
+            if let app = model.onlinePrompt { onlinePromptStrip(app) }
             AIServiceStrip(model: model, ling: model.ling)
             // Right under the header: below the settings it was easy to miss.
             UpdateBanner(updates: model.updates, model: model)
@@ -304,6 +305,25 @@ extension MenuPanelView {
             HStack(spacing: 8) {
                 SoftButton(L("改听会议室"), dark: true) { model.answerRoomPrompt(true) }
                 SoftButton(L("不是")) { model.answerRoomPrompt(false) }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Palette.accentPale))
+    }
+}
+
+extension MenuPanelView {
+    /// 线上也有人？: listening to the room while a meeting app here is in a call. Asked once a meeting.
+    func onlinePromptStrip(_ app: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("线上也有人？").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text(L("\(app) 正在通话")).font(.system(size: 11)).foregroundStyle(Palette.secondary)
+            }
+            HStack(spacing: 8) {
+                SoftButton(L("也听电脑"), dark: true) { model.answerOnlinePrompt(true) }
+                SoftButton(L("不用")) { model.answerOnlinePrompt(false) }
                 Spacer(minLength: 0)
             }
         }

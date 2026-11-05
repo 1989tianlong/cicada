@@ -949,6 +949,10 @@
 "电脑里 1 分钟没放出声音" = "Nothing has played on this Mac for a minute";
 "改听会议室" = "Listen to the room";
 "不是" = "No";
+"线上也有人？" = "Anyone online too?";
+"%@ 正在通话" = "%@ is in a call";
+"也听电脑" = "Hear the Mac too";
+"不用" = "No thanks";
 "后台转写 %@ · %lld%%" = "Transcribing %@ · %lld%%";
 "后台转写 %@ · %lld%%，还有 %lld 个" = "Transcribing %@ · %lld%%, %lld more";
 "屏幕上不出字幕，文字记录照常保存" = "Nothing on screen; the transcript is still saved";

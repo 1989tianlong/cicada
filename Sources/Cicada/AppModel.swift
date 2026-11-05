@@ -81,8 +81,15 @@ final class AppModel: ObservableObject {
     @Published var identifyingLanguage = false
     /// 在会议室里开会？ in the panel: the Mac has played nothing for a minute of listening.
     @Published var roomPrompt = false
+    /// 线上也有人？ in the panel: the meeting app on this Mac in a call while listening to the room
+    /// alone; its name for the grey line.
+    @Published var onlinePrompt: String?
+    private var callCheck: (at: Date, name: String?) = (.distantPast, nil)
     /// Answered (or 听哪里 changed) in this meeting: not asked again until the next one.
     var roomPromptDismissed = false
+    /// 线上也有人？ answered this meeting. Its own flag: picking 会议室 by hand answers the question
+    /// above, but a call starting afterwards is still worth asking about.
+    var onlinePromptDismissed = false
     /// Why the model 听不出 needed couldn't be had, when that is so.
     @Published var modelProblem: ModelProblem?
     /// That model was the one to start with and there is none to fall back on: nothing is listening.
@@ -307,10 +314,30 @@ final class AppModel: ObservableObject {
         applyToggleKey()
         refreshOutputs()
         let watch = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.watchEnd() }
+            MainActor.assumeIsolated {
+                self?.watchEnd()
+                self?.updateOnlinePrompt()
+            }
         }
         endTimer = watch
         RunLoop.main.add(watch, forMode: .common)
+    }
+
+    /// 线上也有人？: from refresh, and from the 2-second watch, since a quiet room may change nothing
+    /// in the engine for a while after a call starts.
+    private func updateOnlinePrompt() {
+        let roomOnly = listen.isRunning && settings.listensToRoom
+        var call: String?
+        if roomOnly, !onlinePromptDismissed, !Recognition.legacy {
+            // refresh runs on every engine change; asking Core Audio who reads the mic is not free.
+            if Date().timeIntervalSince(callCheck.at) >= 2 {
+                callCheck = (Date(), (fakeCalls ?? MicUsers.currentCalls()).sorted { $0.key < $1.key }.first?.value)
+            }
+            call = callCheck.name
+        }
+        let ask = RoomPrompt.asksOnline(roomOnly: roomOnly, bothAvailable: !Recognition.legacy,
+                                        answered: onlinePromptDismissed, inCall: call != nil) ? call : nil
+        if ask != onlinePrompt { onlinePrompt = ask }
     }
 
     func pickLanguage(_ lang: Lang) { listen.pickLanguage(lang) }
@@ -365,6 +392,7 @@ final class AppModel: ObservableObject {
         let roomAsk = listen.isRunning && RoomPrompt.shows(silent: listen.macSilent, answered: roomPromptDismissed,
                                                            inCall: listen.macSilent && !(fakeCalls ?? MicUsers.currentCalls()).isEmpty)
         if roomAsk != roomPrompt { roomPrompt = roomAsk }
+        updateOnlinePrompt()
         if listen.modelProblem != modelProblem { modelProblem = listen.modelProblem }
         if listen.blockedByModel != modelBlocked { modelBlocked = listen.blockedByModel }
         let notInstalled = !ask.isEmpty && listen.mismatch && ask.allSatisfy { !listen.candidates.contains($0) }
@@ -543,6 +571,7 @@ final class AppModel: ObservableObject {
         liveRoom = ("", "", .distantPast)
         speechHeard = false
         roomPromptDismissed = false
+        onlinePromptDismissed = false
         meetingSubtitles = nil
         autoEnded = false
         endWatch = MeetingEndWatch(config: endConfig, start: Date())
@@ -773,6 +802,13 @@ final class AppModel: ObservableObject {
         debugLog("room prompt answered: \(room ? "room" : "no")")
         roomPromptDismissed = true
         if room { listenSourceSelection = "room" } else { refresh() }
+    }
+
+    /// 也听电脑 / 不用 on the 线上也有人？ strip.
+    func answerOnlinePrompt(_ both: Bool) {
+        debugLog("online prompt answered: \(both ? "both" : "no")")
+        onlinePromptDismissed = true
+        if both { listenSourceSelection = "both" } else { refresh() }
     }
 
     /// The room mic hears silence from the talk key going down until the translation has been
@@ -1503,6 +1539,8 @@ final class AppModel: ObservableObject {
         case "source": sourceSelection = arg
         case "listenSource": listenSourceSelection = arg
         case "roomPrompt": answerRoomPrompt(arg == "room")
+        case "onlinePrompt":
+            if arg == "state" { debugLog("online prompt: \(onlinePrompt ?? "hidden")") } else { answerOnlinePrompt(arg == "both") }
         case "open": openMainWindow?()
         case "panel": showPanel?()
         case "onboarding":

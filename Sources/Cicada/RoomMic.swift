@@ -86,6 +86,14 @@ enum RoomPrompt {
     static func shows(silent: Bool, answered: Bool, inCall: Bool) -> Bool {
         silent && !answered && !inCall
     }
+
+    /// 线上也有人？: listening to the room alone while a meeting app on this Mac is in a call, so
+    /// people online are likely speaking through it. Only where the Mac and the room can be heard
+    /// together (not macOS 14/15), and once a meeting, like the question above. The call is the
+    /// sign, not the Mac's audio: in 会议室 the Mac's audio isn't listened to at all.
+    static func asksOnline(roomOnly: Bool, bothAvailable: Bool, answered: Bool, inCall: Bool) -> Bool {
+        roomOnly && bothAvailable && !answered && inCall
+    }
 }
 
 extension AudioDevices {
