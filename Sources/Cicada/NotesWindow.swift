@@ -596,7 +596,13 @@ struct NotesWindowView: View {
                 SoftButton(L("更换 key"), dark: true) { model.openSettings(.ai) }
             }
         case .rateLimited:
-            notice(L("请求过于频繁，稍后会自动重试。纪要停留在 \(NotesEngine.clock(lastCovered))。"), tint: Palette.fill) { EmptyView() }
+            notice(L("\(model.ling.serviceName) 很忙，纪要稍后补上。字幕照常。"), tint: Palette.warnPale) { EmptyView() }
+        case .failed where model.ling.aiCheck.failure?.reason == .unreachable:
+            // The network or the proxy, not the notes: say which, and that it picks up by itself.
+            notice(L("连不上 \(model.ling.serviceName)，这段时间的纪要先停在 \(NotesEngine.clock(lastCovered))。网络恢复后自动继续。"),
+                   tint: Palette.errorPale) {
+                SoftButton(L("设置")) { model.openSettings(.ai) }
+            }
         case .failed:
             notice(L("这轮没整理好，下一轮会自动重试。"), tint: Palette.fill) { EmptyView() }
         default:

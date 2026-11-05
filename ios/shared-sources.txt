@@ -3,6 +3,7 @@
 # needs the rest of the Mac app with #if !CICADA_IOS (the iOS build sets it). ios/scripts/typecheck.sh checks.
 Sources/Cicada/Ling.swift
 Sources/Cicada/AIProviders.swift
+Sources/Cicada/AICheck.swift
 Sources/Cicada/Notes.swift
 Sources/Cicada/HeardText.swift
 Sources/Cicada/MeetingEnd.swift

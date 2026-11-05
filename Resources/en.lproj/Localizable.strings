@@ -1,3 +1,39 @@
+/* AICheck */
+"连上 %@" = "Reach %@";
+"key 可以用" = "Key works";
+"纪要和翻译" = "Notes and translation";
+"这台 Mac 访问不到 %@。" = "This Mac can't reach %@.";
+"地址要用 https，只有 localhost 可以用 http。" = "The address must use https; only localhost can use http.";
+"%@ 说这个 key 无效，可能没复制全，或已删除。" = "%@ says this key is invalid. It may be incomplete or deleted.";
+"这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。" = "This is a ZenMux management key, which can't call models. Paste a key that starts with sk-payg.";
+"%@ 账户余额不足。" = "Your %@ balance has run out.";
+"%@ 上找不到 %@ 这个模型。" = "%1$@ doesn't have the model %2$@.";
+"这个服务不支持 JSON，纪要写不了；翻译照常。" = "This service doesn't support JSON, so notes can't be written. Translation still works.";
+"%@ 现在很忙，key 没问题。开会时会自动重试。" = "%@ is busy right now; the key is fine. Meetings retry automatically.";
+"%@ 暂时出错（HTTP %lld），稍后再试。" = "%@ has a temporary error (HTTP %lld). Try again shortly.";
+"开了代理也连不上：换一个节点，或检查代理软件是否放过 %@。" = "A proxy is on but it still can't connect. Try another server, or check that your proxy app routes %@.";
+"代理软件在运行（端口 %@），但没开系统代理。在代理软件里打开“系统代理”。" = "A proxy app is running (port %@), but the system proxy is off. Turn on “System Proxy” in the proxy app.";
+"这台电脑没开代理。在国内通常要开代理才能用 %@。" = "No proxy is on. In mainland China, %@ usually needs one.";
+"%@ 余额快用完了（还剩 $%@）" = "%1$@ balance is almost used up ($%2$@ left)";
+
+/* AICheckView */
+"%@ 秒" = "%@ s";
+"开会用过一次后确认" = "Confirmed after the first meeting";
+"重新检查" = "Check again";
+"怎么设置代理" = "How to set up a proxy";
+"更换 key" = "Change Key";
+"打开 %@" = "Open %@";
+"去充值" = "Add credits";
+"换成推荐的 %@" = "Use recommended %@";
+"字幕照常；纪要和整句翻译先停下" = "Subtitles go on; notes and full-sentence translation pause";
+"连不上 %@" = "Can't reach %@";
+"%@ 的 key 用不了" = "The %@ key doesn't work";
+"AI 服务的设置要改一下" = "AI service settings need a change";
+"打开设置" = "Open Settings";
+"用完后纪要会停下" = "Notes stop when it runs out";
+"%@ 开会时用过" = "used in a meeting %@";
+"响应约 %@ 秒" = "responds in about %@ s";
+
 /* AIProviders */
 "更准" = "More accurate";
 "更快、更省" = "Faster, cheaper";
@@ -13,13 +49,21 @@
 /* AISettings */
 "现在能用的" = "What works now";
 "用 %@" = "Uses %@";
+"连上 %@ 后可用" = "Available once %@ is reachable";
+"换好 key 后可用" = "Available with a working key";
+"填好 key 后可用" = "Available once a key is set";
 "实时纪要" = "Live notes";
+"很忙" = "Busy";
+"会自动重试，纪要可能晚一点" = "Retries automatically; notes may be a little late";
+"暂不可用" = "Unavailable";
 "需要 key" = "Needs key";
 "会中每 45 秒更新" = "Updated every 45 s during a meeting";
-"填好 key 后可用" = "Available once a key is set";
+"这个服务不支持 JSON" = "This service doesn't support JSON";
+"换一个模型后可用" = "Available with another model";
 "翻译" = "Translation";
 "整句用它；不行时换 Google、本机" = "Used for full sentences; falls back to Google, then on-device";
 "整句用它；不行时换 Google" = "Used for full sentences; falls back to Google";
+"先用 Google 翻译" = "Google Translate for now";
 "没有 key 时照常可用" = "Works without a key";
 "同传声音" = "Interpreting voice";
 "本机" = "On-device";
@@ -40,20 +84,21 @@
 "按所选模型计费。发出去的只有文字，语音识别留在本机。" = "Billed by chosen model. Only text is sent; speech recognition stays on-device.";
 "在 %@ 创建 key，复制后粘贴到这里。" = "Create a key on %@, then copy and paste it here.";
 "打开 %@ ↗" = "Open %@ ↗";
+"暂时连不上" = "Can't connect right now";
+"这个 key 用不了" = "This key doesn't work";
+"模型用不了" = "The model doesn't work";
 "还没填好" = "Incomplete";
 "还没填 API key" = "No API key yet";
 "正在检查…" = "Checking…";
 "已连接" = "Connected";
-"这个 key 用不了" = "This key doesn't work";
-"暂时连不上" = "Can't connect right now";
-"%@ · 响应约 %@ 秒" = "%1$@ · responds in about %2$@ s";
-"%@ 提示 key 无效，请检查是否复制完整，或重新创建一个" = "%@ says the key is invalid. Check if it's copied completely, or create a new one.";
+"%@ 现在很忙" = "%@ is busy right now";
 "不填 key 时，字幕和翻译仍可正常使用" = "Subtitles and translation work without a key";
 "更换" = "Change";
-"重试" = "Retry";
 "保存并检查" = "Save and check";
 "取消" = "Cancel";
 "本机服务可不填" = "Optional for local services";
+"这是 %@ 的 key。" = "This key is for %@.";
+"改用 %@" = "Switch to %@";
 "移除" = "Remove";
 "只存在这台 Mac 上（只有你的账户能读），只发给 %@" = "Stored only on this Mac (readable only by your account) and sent only to %@";
 "只存在这台 Mac 上（只有你的账户能读），只发给 %@（%@）" = "Stored only on this Mac (readable only by your account) and sent only to %@ (%@)";
@@ -61,6 +106,10 @@
 "地址" = "URL";
 "例如 qwen3:14b" = "e.g. qwen3:14b";
 "你填的地址" = "the URL you entered";
+"%@ · 响应约 %@ 秒" = "%1$@ · responds in about %2$@ s";
+"先用本机声音" = "Using this Mac's voice for now";
+"上次同传时正常" = "Worked last time it interpreted";
+"上次同传没出声，用了本机声音" = "Silent last time; this Mac's voice spoke instead";
 "Ming 的声音" = "Ming's voice";
 "没有 key 时用本机声音" = "Uses the Mac's voice without a key";
 "没填声音模型，用本机声音" = "No voice model set; using on-device voice";
@@ -159,6 +208,7 @@
 "导入" = "Import";
 "欢迎使用%@" = "Welcome to %@";
 "设置" = "Settings";
+"有新版本 %@" = "Version %@ is available";
 "正在记录会议" = "A meeting is being recorded";
 "退出会结束这场记录，已记下的内容会保存。" = "Quitting ends this recording. What has been recorded so far is saved.";
 "退出" = "Quit";
@@ -295,10 +345,6 @@
 
 /* Ling */
 "这个服务" = "this service";
-"找不到模型，或地址不对（HTTP %lld）" = "Model not found, or wrong URL (HTTP %lld)";
-"%@ 拒绝了请求（HTTP %lld），请检查模型名" = "%@ rejected the request (HTTP %lld). Check the model name.";
-"连不上 %@，请检查网络或代理" = "Can't connect to %@. Check your network or proxy.";
-"这个服务不支持 JSON（HTTP %lld），纪要用不了" = "This service doesn't support JSON (HTTP %lld), so notes won't work";
 
 /* ListenEngine */
 "%@（识别中…）→ %@" = "%1$@ (detecting…) → %2$@";
@@ -390,7 +436,8 @@
 
 /* NotesWindow */
 "key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。" = "The key stopped working (token deleted or free quota used up). Notes stop at %@.";
-"请求过于频繁，稍后会自动重试。纪要停留在 %@。" = "Too many requests; retrying shortly. Notes stop at %@.";
+"%@ 很忙，纪要稍后补上。字幕照常。" = "%@ is busy; notes will catch up. Subtitles go on.";
+"连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。" = "Can't reach %1$@; notes stop at %2$@ for now. They resume when the network is back.";
 "这轮没整理好，下一轮会自动重试。" = "This round failed; the next one will retry.";
 "会议纪要" = "Meeting notes";
 "结束这场会议" = "End this meeting";
@@ -434,7 +481,6 @@
 "改用%@重新整理" = "Rewrite in %@";
 "在会议记录中查看" = "View in Meetings";
 "开始新会议" = "New Meeting";
-"更换 key" = "Change Key";
 "生成纪要需要 API key" = "Notes need an API key";
 "文字记录仍在保存。填好 %@ 的 key 后，会从头整理出整场纪要。" = "Transcript is still being saved. Enter a %@ key to generate notes from the beginning.";
 "获取 %@ key ↗" = "Get %@ key ↗";
@@ -533,11 +579,6 @@
 "‹ 还是用 Ling" = "‹ Use Ling instead";
 "用不了 Ling？" = "Can't use Ling?";
 "粘贴 %@ 的 key" = "Paste %@ key";
-"打开 %@" = "Open %@";
-"这个 key 无效，请检查是否复制完整，或重新创建一个" = "This key doesn't work. Check it was copied in full, or create a new one";
-"剪贴板里没有 sk- 开头的 key，请先去 %@ 复制。" = "No key starting with sk- in clipboard. Copy one from %@ first.";
-"剪贴板里没有 sk- 开头的 key，先在 Ling 开放平台复制。" = "No key starting with sk- on the clipboard. Copy it from the Ling platform first.";
-"只保存在这台 Mac 上，只发给 %@" = "Stored only on this Mac, sent only to %@";
 "少了：" = "Missing:";
 "（只有 Ling 支持）" = "(Ling only)";
 "自然的同传声音、你自己的声音" = "Natural interpreting voice, your own voice";
@@ -545,6 +586,10 @@
 "国内直接注册，不用代理；登录后点“创建令牌”" = "Sign up directly in China without a proxy; click \"Create Token\" after signing in";
 "打开 Ling 开放平台" = "Open Ling platform";
 "复制 sk- 开头的 key，回来粘贴" = "Copy the key that starts with sk-, then paste it here";
+"这个 key 无效，请检查是否复制完整，或重新创建一个" = "This key doesn't work. Check it was copied in full, or create a new one";
+"剪贴板里没有 sk- 开头的 key，请先去 %@ 复制。" = "No key starting with sk- in clipboard. Copy one from %@ first.";
+"剪贴板里没有 sk- 开头的 key，先在 Ling 开放平台复制。" = "No key starting with sk- on the clipboard. Copy it from the Ling platform first.";
+"只保存在这台 Mac 上，只发给 %@" = "Stored only on this Mac, sent only to %@";
 "现在可以用了" = "Now available";
 "开会时，纪要会跟着字幕一起更新。" = "In meetings, the notes update along with the subtitles.";
 "人名、术语前后一致" = "Names and terms stay consistent";
@@ -757,7 +802,6 @@
 "同时录下对方那一侧" = "Recording their side at the same time";
 "停" = "Stop";
 "听" = "Play";
-"%@ 秒" = "%@ s";
 "合成首音" = "First audio";
 "到达虚拟麦克风" = "Into the virtual mic";
 "没有 Ling key 时用 Google 翻译，需要能访问 Google。" = "Without a Ling key, translation uses Google, which must be reachable.";
@@ -801,7 +845,6 @@
 "关掉说话人识别，记录里的名字一起收起" = "Turn off speaker identification; the names in your records are hidden too";
 "Ling 从对话里认出，点一下可以改" = "Ling found this name in the conversation; click to change";
 "改名字，或和别人合并" = "Rename, or merge with someone else";
-"改名字" = "Rename";
 "不准？关掉" = "Wrong? Turn off";
 "说了 %lld 句" = "%lld lines";
 "是谁" = "Who";
@@ -830,12 +873,14 @@
 "无法创建系统音频 Tap（%d）" = "Can't create the system audio tap (%d)";
 
 /* UpdateViews */
-"下载进度" = "Download progress";
 "新版本 %@" = "Version %@";
+"更新说明" = "Release Notes";
+"下载进度" = "Download progress";
 "正在下载 %lld%%，完成后自动重新打开" = "Downloading %lld%%, reopens when done";
 "没能自动更新：%@。已打开下载页" = "Couldn’t update automatically: %@. Opened the download page";
 "安装后自动重新打开" = "Reopens after installing";
-"更新说明" = "Release Notes";
+"安装并重新打开" = "Install and Reopen";
+"重试" = "Retry";
 "登录时打开" = "Open at Login";
 "版本 %@" = "Version %@";
 "首次引导" = "Getting started";
@@ -843,13 +888,9 @@
 "开机后在菜单栏待命，不弹窗口" = "Waits in the menu bar, no windows";
 "正在下载 %@：%lld%%" = "Downloading %@: %lld%%";
 "没能自动更新：%@" = "Couldn’t update automatically: %@";
-"有新版本 %@" = "Version %@ is available";
-"知了有新版本 %@" = "Cicada %@ is available";
-"点按安装，完成后自动重新打开" = "Click to install. Cicada reopens when it's done.";
 "已是最新版本" = "You’re up to date";
 "连不上 GitHub，请稍后再试" = "GitHub can’t be reached; try again later";
 "上次检查 %@" = "Last checked %@";
-"安装并重新打开" = "Install and Reopen";
 "检查更新" = "Check for Updates";
 "重新看" = "Show Again";
 
@@ -864,6 +905,8 @@
 "更新包无效" = "The update package is invalid";
 
 /* Updates */
+"知了有新版本 %@" = "Cicada %@ is available";
+"点按安装，完成后自动重新打开" = "Click to install. Cicada reopens when it's done.";
 "刚刚查过" = "checked now";
 "%lld 分钟前查过" = "checked %lld min ago";
 "%lld 小时前查过" = "checked %lld h ago";
@@ -1054,24 +1097,30 @@
 /* Debug */
 "导入录音或视频" = "Import a Recording or Video";
 
-/* RecordsView */
-"%lld 人" = "%lld people";
-
-/* RootView */
-"好" = "OK";
-"下一版就能用" = "Coming in the next version";
+/* LiveViews */
 "正在听 · %@" = "Listening · %@";
 "对方说和翻译成" = "They speak, and translate into";
 "%lld 人在说" = "%lld people talking";
 "纪要 · %lld 条新" = "Notes · %lld new";
 "开始说话后，字幕会出现在这里" = "Subtitles show up here once people start talking";
+
+/* RecordView */
 "只看 %@ · %lld 段 · 再点一下取消" = "Only %@ · %lld turns · tap again to clear";
 "只看这个人；按住可改名字，或和别人合并" = "Shows only this person; press and hold to rename or merge";
+"改名字" = "Rename";
+
+/* RecordsView */
+"%lld 人" = "%lld people";
+
+/* RoomListen */
 "正在准备…" = "Getting ready…";
 "请在设置里允许知了使用麦克风" = "Allow Cicada to use the microphone in Settings";
 "识别中断了，请重新开始听" = "Recognition stopped. Start listening again";
 
-/* SettingsView (iOS) */
+/* RootView */
+"下一版就能用" = "Coming in the next version";
+
+/* SettingsView */
 "在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
 "打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
 "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";

@@ -12,6 +12,8 @@ struct AISettingsView: View {
     @State private var editing = false
     @State private var baseDraft = ""
     @State private var textDraft = ""
+    /// A pasted key that belongs elsewhere: what it is, and (for another service's key) where it fits.
+    @State private var keyHint: (text: String, service: AIProvider.Kind?, key: String)?
 
     private var provider: AIProvider { settings.provider }
     private var name: String { provider.name }
@@ -36,7 +38,7 @@ struct AISettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .onAppear { syncDrafts() }
-        .onChange(of: settings.aiProvider) { _, _ in syncDrafts(); editing = false; draft = "" }
+        .onChange(of: settings.aiProvider) { _, _ in syncDrafts(); editing = false; draft = ""; keyHint = nil }
     }
 
     // MARK: Key
@@ -59,9 +61,22 @@ struct AISettingsView: View {
                         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line, lineWidth: 1))
                     SoftButton(L("更换")) { draft = ""; editing = true }
-                    if case .unreachable = ling.keyState {
-                        SoftButton(L("重试")) { Task { await ling.check() } }
+                    SoftButton(ling.aiCheck.running ? L("正在检查…") : L("重新检查")) { Task { await ling.check() } }
+                        .disabled(ling.aiCheck.running)
+                }
+                if showSteps {
+                    AICheckSteps(model: model, ling: ling, recheckInStep: false) { draft = ""; editing = true }
+                        .padding(.horizontal, 12).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line, lineWidth: 1))
+                }
+                if let low = ling.aiCheck.balanceLine(service: name) {
+                    HStack(spacing: 8) {
+                        Text(low).font(.system(size: 12)).foregroundStyle(Palette.warn)
+                        Spacer()
+                        SoftButton(L("去充值")) { NSWorkspace.shared.open(AICheckSteps.topUp(provider)) }
                     }
+                    .padding(10).background(RoundedRectangle(cornerRadius: 10).fill(Palette.warnPale))
                 }
             } else {
                 if ling.key == nil, provider.id != .custom {
@@ -76,7 +91,22 @@ struct AISettingsView: View {
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.ink.opacity(0.6), lineWidth: 1))
                         .onSubmit(save)
                     SoftButton(L("保存并检查"), dark: true, action: save)
-                    if editing { SoftButton(L("取消")) { editing = false } }
+                    if editing { SoftButton(L("取消")) { editing = false; keyHint = nil } }
+                }
+                if let hint = keyHint {
+                    HStack(spacing: 8) {
+                        Text(hint.text).font(.system(size: 12)).foregroundStyle(Palette.error)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        if let other = hint.service {
+                            SoftButton(L("改用 \(AIProvider.named(other.rawValue).name)"), dark: true) {
+                                let k = hint.key
+                                keyHint = nil
+                                editing = false
+                                model.switchService(other, key: k)
+                            }
+                        }
+                    }
                 }
                 if let site = provider.site, ling.key == nil {
                     Button(L("打开 \(name) ↗")) { NSWorkspace.shared.open(site) }
@@ -142,6 +172,19 @@ struct AISettingsView: View {
             model.applyAIService()
         }
         let k = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        keyHint = nil
+        // The prefix says whose key it is: a management key can't call models, and another
+        // service's key goes there with one click (never a silent switch).
+        if let owner = AICheck.owner(ofKey: k) {
+            if owner.management {
+                keyHint = (L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。"), nil, "")
+                return
+            }
+            if owner.service != provider.id {
+                keyHint = (L("这是 \(AIProvider.named(owner.service.rawValue).name) 的 key。"), owner.service, k)
+                return
+            }
+        }
         draft = ""
         editing = false
         if k.isEmpty {
@@ -156,8 +199,15 @@ struct AISettingsView: View {
         textDraft = settings.aiModels["custom"] ?? ""
     }
 
+    /// The steps show while something is wrong or being checked; all passed folds into the title line.
+    private var showSteps: Bool {
+        let c = ling.aiCheck
+        return c.running || c.failure != nil || c.busy || (c.at != nil && !c.passed)
+    }
+
     private var statusColor: Color {
-        switch ling.keyState {
+        if ling.aiCheck.busy, ling.aiCheck.failure == nil { return Palette.warn }
+        return switch ling.keyState {
         case .ok: Palette.ok
         case .invalid, .unreachable: Palette.error
         case .checking, .unchecked: Palette.accent
@@ -166,7 +216,15 @@ struct AISettingsView: View {
     }
 
     private var statusTitle: String {
-        switch ling.keyState {
+        // Named after the step that failed: a missing model is not a connection problem.
+        if let f = ling.aiCheck.failure, f.reason != .busy, !ling.aiCheck.running {
+            switch f.step {
+            case .reach: return L("暂时连不上")
+            case .key: return L("这个 key 用不了")
+            case .text: return L("模型用不了")
+            }
+        }
+        return switch ling.keyState {
         case .none: provider.id == .custom ? L("还没填好") : L("还没填 API key")
         case .unchecked, .checking: L("正在检查…")
         case .ok: L("已连接")
@@ -177,9 +235,9 @@ struct AISettingsView: View {
 
     private var statusDetail: String? {
         switch ling.keyState {
-        case .ok(let s): L("\(settings.textModel) · 响应约 \(String(format: "%.1f", s)) 秒")
-        case .invalid: L("\(name) 提示 key 无效，请检查是否复制完整，或重新创建一个")
-        case .unreachable(let why): why
+        case .ok(let s): ling.aiCheck.busy ? L("\(name) 现在很忙") : AICheckSummary.text(ling.aiCheck).map { "\(settings.textModel) · \($0)" }
+            ?? L("\(settings.textModel) · 响应约 \(String(format: "%.1f", s)) 秒")
+        case .invalid, .unreachable: nil
         case .none: L("不填 key 时，字幕和翻译仍可正常使用")
         default: nil
         }
@@ -187,37 +245,55 @@ struct AISettingsView: View {
 
     // MARK: What works
 
+    /// Only what the last result supports: when the service can't be reached (or the key fails)
+    /// nothing says "用 ZenMux" in green.
     @ViewBuilder private var usage: some View {
-        let on = ling.usable
+        let reason = ling.aiCheck.failure?.reason
+        let down = ling.hasKey && [.unreachable, .badAddress, .invalidKey, .mgmtKey, .noCredit].contains(reason)
+        let on = ling.usable && !down
+        let textOn = on && reason != .noModel
+        let notesOn = textOn && reason != .noJSON
         let uses = L("用 \(name)")
-        usageRow(L("实时纪要"), tag: on ? uses : L("需要 key"), style: on ? .ok : .off,
-                 note: on ? L("会中每 45 秒更新") : L("填好 key 后可用"))
-        usageRow(L("翻译"), tag: on ? uses : "Google", style: on ? .ok : .off,
-                 note: on ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))
-                          : L("没有 key 时照常可用"))
-        usageRow(L("同传声音"), tag: ling.speaks ? uses : L("本机"), style: ling.speaks ? .ok : .off, note: voiceNote)
+        let later = down ? (reason == .unreachable ? L("连上 \(name) 后可用") : L("换好 key 后可用")) : L("填好 key 后可用")
+        if notesOn, ling.aiCheck.busy {
+            usageRow(L("实时纪要"), tag: L("很忙"), style: .warn, note: L("会自动重试，纪要可能晚一点"))
+        } else {
+            usageRow(L("实时纪要"), tag: notesOn ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: notesOn ? .ok : .off,
+                     note: notesOn ? L("会中每 45 秒更新") : reason == .noJSON ? L("这个服务不支持 JSON") : reason == .noModel ? L("换一个模型后可用") : later)
+        }
+        usageRow(L("翻译"), tag: textOn ? uses : "Google", style: textOn ? .ok : .off,
+                 note: textOn ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))
+                              : ling.hasKey ? L("先用 Google 翻译") : L("没有 key 时照常可用"))
+        let speaks = ling.speaks && !down
+        usageRow(L("同传声音"), tag: speaks ? uses : L("本机"), style: speaks ? .ok : .off, note: voiceNote(down: down))
         if provider.clones {
-            usageRow(L("你自己的声音"), tag: on ? uses : L("需要 key"), style: on ? .ok : .off, note: L("录一段，让对方听到你的音色"))
+            usageRow(L("你自己的声音"), tag: on ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: on ? .ok : .off,
+                     note: on ? L("录一段，让对方听到你的音色") : later)
         } else {
             usageRow(L("你自己的声音"), tag: L("只有 Ling"), style: .ling, note: L("换用 Ling 才有"))
         }
         usageRow(L("语音识别"), tag: L("本机"), style: .off, note: L("更快，不花钱"), divider: false)
     }
 
-    private var voiceNote: String {
-        if ling.speaks { return provider.id == .ling ? L("Ming 的声音") : (settings.aiConfig.voiceModel ?? "") }
+    private func voiceNote(down: Bool) -> String {
+        if down { return L("先用本机声音") }
+        if ling.speaks {
+            if let last = ling.lastVoice { return last.ok ? L("上次同传时正常") : L("上次同传没出声，用了本机声音") }
+            return provider.id == .ling ? L("Ming 的声音") : (settings.aiConfig.voiceModel ?? "")
+        }
         if !ling.usable { return L("没有 key 时用本机声音") }
         return provider.id == .custom ? L("没填声音模型，用本机声音") : L("\(name) 暂不能出声音，用本机声音")
     }
 
-    private enum TagStyle { case ok, off, ling }
+    private enum TagStyle { case ok, off, ling, warn }
 
     private func usageRow(_ title: String, tag: String, style: TagStyle, note: String, divider: Bool = true) -> some View {
         SettingsRow(title: title, detail: note, divider: divider) {
             Text(tag).font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(style == .ok ? Palette.ok : style == .ling ? Palette.accentInk : Palette.secondary)
+                .foregroundStyle(style == .ok ? Palette.ok : style == .ling ? Palette.accentInk : style == .warn ? Palette.warn : Palette.secondary)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 6).fill(style == .ok ? Palette.okPale : style == .ling ? Palette.accentPale : Palette.fill))
+                .background(RoundedRectangle(cornerRadius: 6).fill(style == .ok ? Palette.okPale : style == .ling ? Palette.accentPale
+                                                                    : style == .warn ? Palette.warnPale : Palette.fill))
                 .lineLimit(1).fixedSize()
         }
     }

@@ -13,6 +13,8 @@ struct OnboardingKeyStep: View {
     @Binding var skipping: Bool
     @State private var draft = ""
     @State private var clipboardEmpty = false
+    /// A pasted key that belongs elsewhere: what it is, and (for another service's key) where it fits.
+    @State private var keyHint: (text: String, service: AIProvider.Kind?, key: String)?
     /// Showing another service instead of Ling: follows the setting, so a change made in Settings
     /// while this step is open (or a reused window) never leaves the Ling title over another service.
     private var other: Bool { settings.provider.id != .ling }
@@ -66,6 +68,7 @@ struct OnboardingKeyStep: View {
     private func switchTo(_ p: AIProvider) {
         draft = ""
         clipboardEmpty = false
+        keyHint = nil
         guard settings.aiProvider != p.id.rawValue else { return }
         settings.aiProvider = p.id.rawValue
         model.applyAIService()
@@ -152,9 +155,32 @@ struct OnboardingKeyStep: View {
     }
 
     @ViewBuilder private var status: some View {
+        if let hint = keyHint {
+            HStack(spacing: 8) {
+                line(Palette.error, hint.text, Palette.accentInk)
+                Spacer()
+                if let other = hint.service {
+                    SoftButton(L("改用 \(AIProvider.named(other.rawValue).name)"), dark: true) {
+                        let k = hint.key
+                        keyHint = nil
+                        model.switchService(other, key: k)
+                    }
+                }
+            }
+        } else if ling.hasKey, ling.aiCheck.running || ling.aiCheck.failure != nil {
+            // Where it broke and the one thing that fixes it, as in the settings.
+            AICheckSteps(model: model, ling: ling) { draft = "" }
+        } else {
+            switch ling.keyState {
+            case .checking, .unchecked:
+                line(Palette.accent, L("正在检查…"), Palette.secondary)
+            default: idleStatus
+            }
+        }
+    }
+
+    @ViewBuilder private var idleStatus: some View {
         switch ling.keyState {
-        case .checking, .unchecked:
-            line(Palette.accent, L("正在检查…"), Palette.secondary)
         case .invalid:
             line(Palette.error, L("这个 key 无效，请检查是否复制完整，或重新创建一个"), Palette.accentInk)
         case .unreachable(let why):
@@ -295,6 +321,18 @@ struct OnboardingKeyStep: View {
         let k = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !k.isEmpty else { return }
         clipboardEmpty = false
+        keyHint = nil
+        // The prefix says whose key it is (AISettingsView.save does the same).
+        if let owner = AICheck.owner(ofKey: k) {
+            if owner.management {
+                keyHint = (L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。"), nil, "")
+                return
+            }
+            if owner.service != settings.provider.id {
+                keyHint = (L("这是 \(AIProvider.named(owner.service.rawValue).name) 的 key。"), owner.service, k)
+                return
+            }
+        }
         draft = ""
         Task { await ling.setKey(k) }
     }

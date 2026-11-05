@@ -188,6 +188,7 @@ struct MenuPanelView: View {
             // In subtitle-bar mode this is where the bar sends you to pick.
             if model.running { LanguageNotice(model: model) }
             if model.roomPrompt { roomPromptStrip }
+            AIServiceStrip(model: model, ling: model.ling)
             // Right under the header: below the settings it was easy to miss.
             UpdateBanner(updates: model.updates, model: model)
 

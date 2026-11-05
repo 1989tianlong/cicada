@@ -158,8 +158,21 @@ final class LingClient: ObservableObject {
 
     @Published private(set) var keyState: KeyState
     @Published private(set) var rateLimitedAt: Date?
+    /// Step by step, where the service stands (`keyState` is its short form for older callers).
+    @Published private(set) var aiCheck = AICheck()
+    /// The last time the room voice spoke (or failed to) through this service.
+    @Published private(set) var lastVoice: (ok: Bool, at: Date)?
     /// The service's text models from its `/models`, recommended first (empty until fetched).
     @Published private(set) var catalog: [String] = []
+    /// Every model id the service lists, to tell whether the chosen one still exists.
+    private var listed: Set<String>?
+    /// Reads this device's proxy settings to word the "can't reach" hint (never used to connect).
+    var proxyHint: (() async -> AICheck.ProxyHint)?
+
+    /// Debug control only: the next checks end this way (for screenshots of every state).
+    var simulateCheck: AICheck.Reason?
+    /// Debug control only: report this OpenRouter balance instead of the real one.
+    var simulateBalance: Double?
     /// The service in use, its address and models. Set by the app from settings.
     var config: () -> AIConfig = { AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash",
                                             voiceModel: "Ming-3.0-tts-0.5B", voiceBase: AIProvider.ling.base) }
@@ -201,6 +214,9 @@ final class LingClient: ObservableObject {
     /// Settings switched service, address or model: forget the old state and check again.
     func reconfigure() {
         catalog = []
+        listed = nil
+        aiCheck = AICheck()
+        lastVoice = nil
         keyState = hasKey ? .unchecked : .none
         if hasKey { Task { await check() } }
     }
@@ -219,54 +235,168 @@ final class LingClient: ObservableObject {
     func removeKey() {
         AIKey.remove(provider.id.rawValue)
         catalog = []
+        listed = nil
+        aiCheck = AICheck()
         keyState = hasKey ? .unchecked : .none
     }
 
-    /// The cheapest request that proves the key: Ling's tiny model, OpenRouter's key info, OpenAI's
-    /// model list, else one token from the chosen model. A custom service must also return JSON
-    /// (the notes need it).
+    /// The service's name for messages ("这个服务" for a custom address) and its host.
+    var serviceName: String { provider.id == .custom ? L("这个服务") : provider.name }
+    var serviceHost: String { config().base?.host ?? provider.base?.host ?? "" }
+
+    /// The cheapest requests that prove each step: Ling's tiny model; OpenRouter's key info (plus
+    /// its credits, for the balance); OpenAI's model list; else one token from the chosen model. A
+    /// custom service must also return JSON (the notes need it). The model list then tells whether
+    /// the chosen text model still exists.
     func check() async {
-        guard let key else { keyState = .none; return }
+        guard let key else { keyState = .none; aiCheck = AICheck(); return }
         keyState = .checking
+        checkGeneration += 1
+        let generation = checkGeneration
         let c = config()
+        var r = AICheck()
+        r[.reach] = .running
+        aiCheck = r
         let started = Date()
-        let name = c.provider.id == .custom ? L("这个服务") : c.provider.name
+        if let reason = simulateCheck {
+            await finishCheck(Self.simulated(reason), c, generation)
+            return
+        }
+        if c.provider.id == .custom, c.base == nil {
+            r.fail(.reach, .badAddress, reached: false)
+            await finishCheck(r, c, generation)
+            return
+        }
+        if AICheck.owner(ofKey: key)?.management == true {
+            r.fail(.key, .mgmtKey, reached: false)
+            await finishCheck(r, c, generation)
+            return
+        }
         do {
             switch c.provider.id {
             case .ling:
                 _ = try await post("chat/completions", body: ["model": "Ling-3.0-tiny", "messages": [["role": "user", "content": "hi"]],
                                                              "max_tokens": 1, "thinking": ["type": "disabled"]], key: key, timeout: 15)
+                r.pass(upTo: .text, seconds: Date().timeIntervalSince(started))
             case .openrouter:
-                _ = try await get("key", key: key)
+                let info = try await get("key", key: key)
+                r.pass(upTo: .key, seconds: Date().timeIntervalSince(started))
+                let credits = try? await get("credits", key: key)
+                r.balance = AICheck.balance(key: info, credits: credits)
             case .openai:
                 _ = try await get("models", key: key)
+                r.pass(upTo: .key, seconds: Date().timeIntervalSince(started))
             case .zenmux, .custom:
                 var body: [String: Any] = ["model": c.textModel, "messages": [["role": "user", "content": "hi"]]]
                 c.shape(&body, maxTokens: 1)
                 _ = try await post("chat/completions", body: body, key: key, timeout: 20)
+                r.pass(upTo: .text, seconds: Date().timeIntervalSince(started))
                 if c.provider.id == .custom {
                     var json: [String: Any] = ["model": c.textModel, "response_format": ["type": "json_object"],
                                                "messages": [["role": "system", "content": "Reply with the JSON object {\"ok\": true}."],
                                                             ["role": "user", "content": "Reply."]]]
                     c.shape(&json, maxTokens: 20)
                     do { _ = try await post("chat/completions", body: json, key: key, timeout: 20) } catch Failure.http(let code) {
-                        keyState = .unreachable(L("这个服务不支持 JSON（HTTP \(code)），纪要用不了"))
-                        return
+                        r.fail(.text, .noJSON, code: code)
                     }
                 }
             }
-            keyState = .ok(seconds: Date().timeIntervalSince(started))
-        } catch Failure.invalidKey {
-            keyState = .invalid
-        } catch Failure.rateLimited {
-            keyState = .ok(seconds: Date().timeIntervalSince(started))
-        } catch Failure.http(let code) where code == 404 || code == 400 {
-            keyState = .unreachable(c.provider.id == .custom ? L("找不到模型，或地址不对（HTTP \(code)）") : L("\(name) 拒绝了请求（HTTP \(code)），请检查模型名"))
+        } catch let failure as Failure {
+            if let (step, reason, code) = AICheck.classify(failure, at: AICheck.firstStep(c.provider.id)) {
+                if reason == .busy { r.pass(upTo: step, seconds: nil); r[step] = .busy } else { r.fail(step, reason, code: code) }
+            }
         } catch {
-            keyState = .unreachable(L("连不上 \(name)，请检查网络或代理"))
+            r.fail(.reach, .unreachable)
         }
-        debugLog("ai \(c.provider.id.rawValue): key check → \(keyState)")
-        if case .ok = keyState, c.provider.id != .ling { await fetchCatalog() }
+        if r.failure == nil, c.provider.id != .ling {
+            await fetchCatalog()
+            // A model the service no longer lists fails here, before a meeting finds out.
+            if let listed, !c.textModel.isEmpty {
+                if !listed.contains(c.textModel) { r.fail(.text, .noModel) } else if r[.text] == .untested { r[.text] = .ok(seconds: nil) }
+            }
+        }
+        await finishCheck(r, c, generation)
+    }
+
+    /// Bumped by every check: a slower, older check (a model changed twice quickly) must not
+    /// land after the newer one and overwrite it.
+    private var checkGeneration = 0
+
+    private func finishCheck(_ result: AICheck, _ c: AIConfig, _ generation: Int) async {
+        var r = result
+        if r.failure?.reason == .unreachable, r.proxy == nil { r.proxy = await proxyHint?() }
+        guard generation == checkGeneration else {
+            debugLog("ai \(c.provider.id.rawValue): an older check finished late, dropped")
+            return
+        }
+        if let simulateBalance { r.balance = simulateBalance }
+        r.at = Date()
+        aiCheck = r
+        syncKeyState()
+        debugLog("ai \(c.provider.id.rawValue): check → \(r.summary)")
+    }
+
+    /// A made-up result for `reason` (debug screenshots of every state).
+    private static func simulated(_ reason: AICheck.Reason) -> AICheck {
+        var r = AICheck()
+        switch reason {
+        case .busy:
+            r.pass(upTo: .text, seconds: 1.2)
+            r[.text] = .busy
+        case .unreachable, .badAddress: r.fail(.reach, reason, reached: false)
+        case .invalidKey, .noCredit: r.fail(.key, reason, code: reason == .noCredit ? 402 : nil)
+        case .mgmtKey: r.fail(.key, reason, reached: false)
+        case .noModel, .noJSON: r.fail(.text, reason, code: 404)
+        case .serverError: r.fail(.text, reason, code: 503)
+        }
+        return r
+    }
+
+    /// The short form older callers read: invalid stops every request, another failure says why.
+    private func syncKeyState() {
+        guard hasKey else { keyState = .none; return }
+        let c = aiCheck
+        if let f = c.failure, f.reason != .busy {
+            keyState = f.reason == .invalidKey || f.reason == .mgmtKey ? .invalid
+                : .unreachable(c.message(service: serviceName, host: serviceHost, model: config().textModel) ?? "")
+        } else if c.passed {
+            var seconds = 0.0
+            for s in c.steps { if case .ok(let sec?) = s.state { seconds = sec } }
+            keyState = .ok(seconds: seconds)
+        }
+    }
+
+    /// A real request (notes, translation) came back: keep the steps current without a check.
+    /// One server error in a meeting isn't worth repainting the settings for.
+    private func observe(_ failure: Failure?, seconds: Double = 0, audio: Bool = false) {
+        guard hasKey, !aiCheck.running, simulateCheck == nil else { return }
+        var r = aiCheck
+        if let failure {
+            guard let (step, reason, code) = AICheck.classify(failure, at: .text), reason != .serverError else { return }
+            // An audio request (Ming hearing speak-back) says nothing about the text model.
+            if audio, step == .text { return }
+            if reason == .busy { r.pass(upTo: .key, seconds: nil); r[step] = .busy } else { r.fail(step, reason, code: code) }
+        } else {
+            r.pass(upTo: audio ? .key : .text, seconds: seconds)
+        }
+        let wasUnreachable = aiCheck.failure?.reason == .unreachable
+        r.at = Date()
+        r.passive = true
+        if r.failure?.reason != .unreachable { r.proxy = nil }
+        if r.steps == aiCheck.steps, aiCheck.passive { aiCheck.at = r.at; return }
+        aiCheck = r
+        syncKeyState()
+        debugLog("ai: from a real request → \(r.summary)")
+        if r.failure?.reason == .unreachable, !wasUnreachable, let proxyHint {
+            Task { let hint = await proxyHint(); if aiCheck.failure?.reason == .unreachable { aiCheck.proxy = hint } }
+        }
+    }
+
+    /// The network came back (or changed) while the service was unreachable: look again.
+    func networkChanged() {
+        guard hasKey, aiCheck.failure?.reason == .unreachable, !aiCheck.running else { return }
+        debugLog("ai: network changed while unreachable, checking again")
+        Task { await check() }
     }
 
     /// The service's text models, for the model menu. Quietly empty when it has no `/models`.
@@ -274,6 +404,7 @@ final class LingClient: ObservableObject {
         let c = config()
         guard let key, c.provider.id != .ling, let data = try? await getData("models", key: key) else { return }
         catalog = AIConfig.textModels(fromCatalog: data, recommended: c.provider.textModels.map(\.id))
+        listed = AICheck.listedModels(data)
         debugLog("ai \(c.provider.id.rawValue): \(catalog.count) models")
     }
 
@@ -332,9 +463,11 @@ final class LingClient: ObservableObject {
                 report(call, priority, at: started, queued: queued, outcome: "ok",
                        tokens: (usage?["prompt_tokens"] as? Int ?? 0, usage?["completion_tokens"] as? Int ?? 0))
                 if rateLimitedAt != nil { rateLimitedAt = nil }
+                observe(nil, seconds: Double(ms) / 1000, audio: audio != nil)
                 return trimmed
             } catch let failure as Failure {
                 report(call, priority, at: started, queued: queued, outcome: Self.name(failure))
+                observe(failure, audio: audio != nil)
                 guard failure == .rateLimited else { throw failure }
                 guard attempt <= waits.count else {
                     rateLimitedAt = Date()
@@ -463,11 +596,13 @@ final class LingClient: ObservableObject {
                         if !chunk.isEmpty { yield(chunk) }
                     }
                     self.report(call, .speak, at: started, queued: queued, outcome: "ok", chars: text.count, firstAudio: firstAudio)
+                    self.lastVoice = (true, Date())
                     cont.finish()
                 } catch {
                     // Cancelled: the voice was cut short on purpose (stop, a new press), not a failure.
                     let outcome = Task.isCancelled ? "cancelled" : (error as? Failure).map(Self.name) ?? "network"
                     self.report(call, .speak, at: started, queued: queued, outcome: outcome, chars: text.count, firstAudio: firstAudio)
+                    if !Task.isCancelled { self.lastVoice = (false, Date()) }
                     cont.finish(throwing: error)
                 }
             }

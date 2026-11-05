@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 import Combine
+import Network
 import SwiftUI
 import Speech
 import UserNotifications
@@ -107,6 +108,10 @@ final class AppModel: ObservableObject {
     private var shortcutsSuspended = false
     let installer = VirtualMicInstaller()
     let ling = LingClient()
+    /// Network changes (a proxy app turned on, Wi-Fi back): the AI service is looked at again
+    /// when it was unreachable. No timer: nothing is checked while the network stays the same.
+    private let networkMonitor = NWPathMonitor()
+    private var networkDebounce: DispatchWorkItem?
     lazy var translator = TranslationService(ling: ling)
     let diagnostics = Diagnostics()
     let updates = Updates()
@@ -185,6 +190,8 @@ final class AppModel: ObservableObject {
             await self?.listen.translate(text, source: from, target: to, kind: .speak, trace: TranslateTrace())
         }
         ling.onCall = { [weak self] in self?.diagnostics.record($0) }
+        ling.proxyHint = { await ProxyProbe.hint() }
+        watchNetwork()
         translator.onDraft = { [weak self] in self?.diagnostics.recordDraft(seconds: $0, ok: $1) }
 
         ling.config = { [weak self] in self?.settings.aiConfig ?? AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash") }
@@ -866,6 +873,38 @@ final class AppModel: ObservableObject {
         return VoiceCatalog.remote(for: language).contains { $0.id == id } ? id : fallback
     }
 
+    /// Any change of route (an interface, a VPN or TUN from a proxy app) waits 3 s for the network
+    /// to settle, then the AI client looks again if the service was unreachable.
+    private func watchNetwork() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.networkDebounce?.cancel()
+                    let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.ling.networkChanged() } }
+                    self.networkDebounce = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                }
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "cicada.ai-network"))
+    }
+
+    /// One click on "换成推荐的": the service's first recommended text model, then a fresh check.
+    func useRecommendedTextModel() {
+        guard let first = settings.provider.textModels.first?.id else { return }
+        if settings.provider.id == .ling { settings.aiModel = first } else { settings.aiModels[settings.aiProvider] = first }
+        applyAIService()
+    }
+
+    /// A key pasted for one service that belongs to another ("改用 OpenRouter"): switch, save it there, check.
+    func switchService(_ kind: AIProvider.Kind, key: String) {
+        settings.aiProvider = kind.rawValue
+        applyAIService()
+        Task { await ling.setKey(key) }
+    }
+
     /// Settings changed the AI service, its address or a model: voices follow, the key is checked again.
     func applyAIService() {
         let c = settings.aiConfig
@@ -1529,7 +1568,13 @@ final class AppModel: ObservableObject {
         case "aiState":
             let c = settings.aiConfig
             debugLog("ai state=\(ling.keyState) provider=\(c.provider.id.rawValue) hasKey=\(ling.hasKey) model=\(c.textModel) "
-                     + "voice=\(c.voiceModel ?? "-") speaks=\(ling.speaks) clones=\(ling.clones) catalog=\(ling.catalog.count)")
+                     + "voice=\(c.voiceModel ?? "-") speaks=\(ling.speaks) clones=\(ling.clones) catalog=\(ling.catalog.count)"
+                     + " check=[\(ling.aiCheck.summary)]")
+        case "aiCheckSim":
+            // aiCheckSim:<reason|lowBalance|off>: every check ends this way (screenshots of each state).
+            ling.simulateCheck = AICheck.Reason(rawValue: arg)
+            ling.simulateBalance = arg == "lowBalance" ? 0.4 : nil
+            Task { await ling.check() }
         // AI service: aiProvider:<ling|openrouter|zenmux|openai|custom>, aiTextModel:<id>, aiVoiceModel:<id|"">,
         // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>.
         case "aiProvider": settings.aiProvider = AIProvider.named(arg).id.rawValue; applyAIService()
