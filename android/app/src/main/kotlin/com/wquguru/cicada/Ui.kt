@@ -532,16 +532,20 @@ class Ui(val context: Context) {
     }
 
     /// A text to type (rename): the field, 取消 and 保存. The keyboard comes up with the sheet.
-    fun input(activity: Activity, title: String, initial: String, helper: String? = null, hint: String? = null, onSave: (String) -> Unit) {
+    /// `type`: an InputType for the field (an address or a model id wants the URL keyboard: a pinyin
+    /// keyboard types "192。168" and "：").
+    fun input(activity: Activity, title: String, initial: String, helper: String? = null, hint: String? = null, type: Int? = null, onSave: (String) -> Unit) {
         lateinit var d: android.app.Dialog
         val box = android.widget.EditText(activity).apply {
             setText(initial); setSelectAllOnFocus(true); setSingleLine()
+            type?.let { inputType = it; imeHintLocales = android.os.LocaleList(java.util.Locale.US) }
             this.hint = hint
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             background = rounded(Palette.ground, 16)
             setPadding(dp(16), 0, dp(16), 0)
             minHeight = dp(52)
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE or
+                (if (type != null) android.view.inputmethod.EditorInfo.IME_FLAG_FORCE_ASCII else 0)
             setOnEditorActionListener { _, a, _ -> if (a == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { d.dismiss(); onSave(text.toString().trim()); true } else false }
         }
         val body = stack(0, box)

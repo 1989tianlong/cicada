@@ -335,7 +335,9 @@ class AiServiceActivity : Activity() {
     private fun fieldRow(label: String, current: String, hint: String, helper: String?, empty: String = L("未填"),
                          shown: (String) -> String = ::short, save: (String) -> Unit) =
         ui.listRow(label, helper, trailing = value(if (current.isEmpty()) empty else shown(current))) {
-            ui.input(this, label, current, helper = helper, hint = hint) { if (it != current) save(it) }
+            // Addresses, model ids and voice names: ASCII, no autocorrect, the URL keyboard.
+            ui.input(this, label, current, helper = helper, hint = hint,
+                     type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI) { if (it != current) save(it) }
         }
 
     companion object {
