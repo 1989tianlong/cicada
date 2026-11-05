@@ -5,7 +5,7 @@ scripts/changelog.py 1.0.1            # replaces "## Unreleased" (or adds a sect
 scripts/changelog.py 1.0.1 --print    # only prints the section
 
 Release notes are the commit subjects, grouped by platform (one version covers them all): the scope
-picks it, (windows) (android) (linux) or (site) for the website, anything else Mac; feat: goes under
+picks it, (windows) (android) (linux) or (site) for the website, (ios) none yet, anything else Mac; feat: goes under
 New and fix: under Fixed; chore/docs/build/test/refactor stay out. A platform with no feat or fix
 gets no group, and its update check then finds nothing new. `fix(windows,linux):` lands in both.
 Each line links its commit. Lines written by hand under "## Unreleased" stay on top, as the
@@ -36,11 +36,17 @@ def commits():
 
 
 PLATFORMS = {"mac": "Mac", "windows": "Windows", "android": "Android", "linux": "Linux", "site": "Website"}
+# Platforms in the repo that no release builds yet: their commits stay out of the notes instead of
+# falling to Mac (a `feat(ios):` line would read as a Mac feature).
+UNSHIPPED = {"ios"}
 
 
 def platforms(scope):
     """The groups a commit's scope puts it in: Mac unless it names another platform."""
-    names = [PLATFORMS[s] for s in re.split(r"[,\s]+", scope or "") if s in PLATFORMS]
+    scopes = re.split(r"[,\s]+", scope or "")
+    names = [PLATFORMS[s] for s in scopes if s in PLATFORMS]
+    if not names and any(s in UNSHIPPED for s in scopes):
+        return []
     return names or ["Mac"]
 
 
