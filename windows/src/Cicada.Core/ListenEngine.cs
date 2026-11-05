@@ -50,19 +50,20 @@ public sealed class ListenEngine
     public int ProblemStatus { get; private set; }
 
     /// A stretch that couldn't be heard, in words: (title, what to do, whether 设置 fixes it). Ling
-    /// keeps its own words; another service is named. A hear model that refuses audio (400 / 404)
-    /// is a settings problem, not the network.
-    public static (string? Title, string Body, bool Settings) Words(LingException.Kind kind, int status, string service)
+    /// keeps its own words; another service is named. A hear model that refuses audio (400, 404,
+    /// 415, 422: AICheck's deaf) is a settings problem, not the network; `hear` names it. A lost
+    /// connection needs nothing from the user: segments keep going out and pick up by themselves.
+    public static (string? Title, string Body, bool Settings) Words(LingException.Kind kind, int status, string service, string? hear = null)
     {
         var ling = service == "Ling";
-        if (kind == LingException.Kind.Http && status is 400 or 404 && !ling)
-            return (Strings.L("这个模型听不了声音，换一个支持音频输入的"), Strings.L("在 设置 › AI 服务 里换一个"), true);
+        if (kind == LingException.Kind.Http && status is 400 or 404 or 415 or 422 && !ling)
+            return (Strings.LF("%@ 听不了声音。", hear ?? service), Strings.L("在 设置 › AI 服务 里换一个"), true);
         return kind switch
         {
             LingException.Kind.RateLimited => ling ? (Strings.L("Ling 太忙"), Strings.L("稍后会自动重试。"), false) : (null, Strings.LF("%@ 太忙，稍后再试", service), false),
             LingException.Kind.InvalidKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("%@ 的 key 无效", service), Strings.L("去设置里换一个 key。"), true),
             LingException.Kind.NoKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("需要 %@ 的 key 才能听", service), Strings.L("去设置里换一个 key。"), true),
-            _ => (ling ? Strings.L("连不上 Ling") : Strings.LF("连不上 %@", service), Strings.L("这段时间的话没能识别。检查网络后点重试。"), false),
+            _ => (ling ? Strings.L("连不上 Ling") : Strings.LF("连不上 %@", service), Strings.L("这段时间的话没能识别。网络恢复后自动继续。"), false),
         };
     }
 

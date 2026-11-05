@@ -31,6 +31,8 @@ sealed class Onboarding : Window
     readonly TextBox keyText = new() { FontSize = 14, MinHeight = 34, VerticalContentAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     readonly ContentControl keyStatus = new();
     bool checking;
+    // A pasted key's prefix said something (a management key, another service's): that stays until the next paste.
+    bool hinting;
 
     /// Opened by the installer: step 1 says so, and 开机时启动知了 shows what the installer set.
     readonly bool installed;
@@ -49,11 +51,14 @@ sealed class Onboarding : Window
         var dock = new DockPanel();
         DockPanel.SetDock(stepper, Dock.Top);
         DockPanel.SetDock(footer, Dock.Bottom);
-        dock.Children.Add(stepper); dock.Children.Add(footer); dock.Children.Add(page);
+        // The page scrolls if it must (a failed check's reason and proxy hint under the key).
+        dock.Children.Add(stepper); dock.Children.Add(footer);
+        dock.Children.Add(new ScrollViewer { Content = page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Content = Ui.Frameless(this, dock, resizable: false, captionHeight: 24);
         meter.Tick += (_, _) => { if (step == 1) Meter(); };
         app.Speak.Changed += SpeakChanged;
-        Closed += (_, _) => { StopTap(); app.Speak.Changed -= SpeakChanged; LeaveSpeak(keep: false); };
+        app.Ling.Changed += LingChanged;
+        Closed += (_, _) => { StopTap(); app.Speak.Changed -= SpeakChanged; app.Ling.Changed -= LingChanged; LeaveSpeak(keep: false); };
         System.Windows.Automation.AutomationProperties.SetName(keyBox, L("API key"));
         System.Windows.Automation.AutomationProperties.SetName(keyText, L("API key"));
         keyBox.PasswordChanged += (_, _) => { if (keyText.Text != keyBox.Password) keyText.Text = keyBox.Password; };
@@ -97,7 +102,7 @@ sealed class Onboarding : Window
 
     void Render()
     {
-        if (shownProvider != app.Settings.AiProvider) { shownProvider = app.Settings.AiProvider; keyBox.Clear(); keyStatus.Content = null; }
+        if (shownProvider != app.Settings.AiProvider) { shownProvider = app.Settings.AiProvider; keyBox.Clear(); keyStatus.Content = null; hinting = false; }
         stepper.Content = Stepper();
         page.Content = step switch { 0 => Other ? OtherStep() : KeyStep(), 1 => AudioStep(), 2 => SampleStep(), 3 => SpeakStep(), _ => DoneStep() };
         footer.Content = Footer();
@@ -242,7 +247,7 @@ sealed class Onboarding : Window
         var open = Ui.Button(L("打开"), () => Process.Start(new ProcessStartInfo("https://chat.ant-ling.com/platform/api") { UseShellExecute = true }), icon: Icons.OpenExternal, height: 36, iconAfter: true);
         open.MinWidth = 0;
         var row = KeyRow("sk-…");
-        if (app.Ling.HasKey && keyBox.Password.Length == 0 && keyStatus.Content is null) Status(true, AIKey.Masked(app.Ling.CurrentKey() ?? "") + " · " + L("已连接，可以用了"));
+        if (keyBox.Password.Length == 0 && keyStatus.Content is null) ShowCheck();
         keyStatus.Margin = new Thickness(0, 12, 0, 0);
         var second = new StackPanel { Children = { row, keyStatus } };
         var card = StepCard(new StackPanel
@@ -279,7 +284,7 @@ sealed class Onboarding : Window
 
     void Switch(string provider)
     {
-        keyBox.Clear(); keyStatus.Content = null;
+        keyBox.Clear(); keyStatus.Content = null; hinting = false;
         app.SetAIProvider(provider);
         Render();
     }
@@ -296,8 +301,7 @@ sealed class Onboarding : Window
             open.MinWidth = 0;
             top = Ui.Spread(choices, open);
         }
-        if (app.Ling.HasKey && app.Ling.KeyState == KeyState.Ok && keyBox.Password.Length == 0 && keyStatus.Content is null)
-            Status(true, AIKey.Masked(app.Ling.CurrentKey() ?? "") + " · " + L("已连接") + " · " + L("现在可以用了"));
+        if (keyBox.Password.Length == 0 && keyStatus.Content is null) ShowCheck();
         var row = KeyRow(LF("粘贴 %@ 的 key", app.Ling.Config.Name));
         keyStatus.Margin = new Thickness(0, 12, 0, 0);
         row.Margin = new Thickness(0, 18, 0, 0);
@@ -352,28 +356,56 @@ sealed class Onboarding : Window
     async Task SaveKey()
     {
         var text = keyBox.Password.Trim();
+        // 继续 is always allowed once a key is in: a failed check stays in 还差几步 and the settings.
         if (text.Length == 0 && app.Ling.HasKey) { Go(1); return; }
         if (!text.StartsWith("sk-")) { Status(false, L("要粘贴 sk- 开头的那串")); return; }
+        // The prefix says whose key it is (SettingsWindow.SaveKey does the same).
+        if (AICheck.Owner(text) is { } whose)
+        {
+            var (owner, management) = whose;
+            if (management) { hinting = true; Status(false, L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。")); return; }
+            if (owner != app.Settings.AiProvider)
+            {
+                hinting = true;
+                var words = Ui.Text(LF("这是 %@ 的 key。", AIProvider.Named(owner).Name), 13, Palette.Danger);
+                words.VerticalAlignment = VerticalAlignment.Center;
+                keyStatus.Content = Ui.Spread(words, Ui.Button(LF("改用 %@", AIProvider.Named(owner).Name), () =>
+                {
+                    hinting = false;
+                    keyBox.Clear();
+                    app.SwitchService(owner, text);
+                    Render();
+                }, Ui.Kind.Primary, height: 32));
+                return;
+            }
+        }
+        hinting = false;
         checking = true; footer.Content = Footer();
         Status(null, L("正在检查…"));
-        var previous = app.Key.Read();
         app.Key.Save(text);
+        keyBox.Clear();
         app.Ling.KeyChanged();
-        var (state, _) = await app.Ling.Check();
+        await app.Ling.Check();
         checking = false; footer.Content = Footer();
-        // The key is good but the chosen model can't hear: listening would show nothing, so say so here.
-        if (state == KeyState.Ok && app.Ling.Hears == false) { Status(false, L("这个模型听不了声音，换一个支持音频输入的")); return; }
-        if (state == KeyState.Ok) { Status(true, L("已连接，可以用了")); await Task.Delay(600); Go(1); return; }
-        // A key Ling turned down isn't kept: the one that worked before, if any, comes back.
-        if (state == KeyState.Invalid)
-        {
-            if (previous is not null) app.Key.Save(previous); else app.Key.Remove();
-            app.Ling.KeyChanged();
-        }
-        var name = app.Ling.Config.Name;
-        Status(false, state == KeyState.Invalid ? L("这个 key 不能用，检查是否复制完整，或重新创建一个")
-            : app.Ling.Config.IsLing ? L("连不上 Ling，检查网络") : app.Ling.Problem is { } why ? LF(why.Key, why.Args) : LF("连不上 %@，请检查网络或代理", name));
+        ShowCheck();
+        if (app.Ling.Health.Passed) { await Task.Delay(600); if (step == 0) Go(1); }
     }
+
+    /// What the last check found, under the key: a tick when it passed (busy too), else where it
+    /// broke and the one thing that fixes it, as in the settings.
+    void ShowCheck()
+    {
+        var ling = app.Ling;
+        var h = ling.Health;
+        if (!ling.HasKey || hinting) return;
+        if (h.IsRunning) Status(null, L("正在检查…"));
+        else if (h.Passed) Status(true, AIKey.Masked(ling.CurrentKey() ?? "") + " · " + (h.IsBusy ? LF("%@ 现在很忙，key 没问题。开会时会自动重试。", ling.ServiceName) : L("已连接，可以用了")));
+        else if (h.At is null) keyStatus.Content = null;
+        else keyStatus.Content = AICheckView.Steps(app, () => { keyBox.Clear(); keyStatus.Content = null; keyBox.Focus(); }, recheckInStep: true, compact: true);
+    }
+
+    /// A check finished or a meeting request reported back while the key page is open.
+    void LingChanged() => Dispatcher.BeginInvoke(() => { if (step == 0 && !checking && keyBox.Password.Length == 0) ShowCheck(); });
 
     // MARK: 2 · System audio
 

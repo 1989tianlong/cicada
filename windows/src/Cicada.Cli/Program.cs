@@ -61,9 +61,12 @@ switch (args_[0])
     {
         var ling = Client();
         var (state, seconds) = await ling.Check();
-        var problem = ling.Problem is { } p ? Strings.LF(p.Key, p.Args) : "-";
-        Console.WriteLine($"{provider}: {state} in {seconds:F1} s, text {ling.Config.TextModel} {ling.Seconds:F1} s, hears={ling.Hears?.ToString() ?? "?"} ({ling.Config.HearModel}), catalog {ling.TextCatalog.Count}/{ling.HearCatalog.Count}, problem {problem}");
-        return state == KeyState.Ok ? 0 : 1;
+        var h = ling.Health;
+        var problem = h.Message(ling.ServiceName, ling.ServiceHost, ling.Config.TextModel, ling.HearName) ?? "-";
+        Console.WriteLine($"{provider}: {state} in {seconds:F1} s, text {ling.Config.TextModel}, hear {ling.Config.HearModel}, catalog {ling.TextCatalog.Count}/{ling.HearCatalog.Count}");
+        Console.WriteLine($"  {h.Summary}");
+        Console.WriteLine($"  problem {problem}{(h.ProxyLine(ling.ServiceName, ling.ServiceHost) is { } px ? " / " + px : "")}");
+        return h.Passed ? 0 : 1;
     }
     case "speak":
     {

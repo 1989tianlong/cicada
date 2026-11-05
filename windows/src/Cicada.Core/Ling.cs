@@ -130,18 +130,39 @@ public sealed class LingClient
     readonly AIKey key;
     readonly HttpClient http;
     readonly Func<AIConfig> config;
+    /// The short form older callers read (Usable, the early stop of every request): derived from Health.
     public KeyState KeyState { get; private set; }
     public DateTimeOffset? RateLimitedAt { get; private set; }
-    /// Why the last check failed, shown under the key: a Mac string key and its arguments for LF()
-    /// ("连不上 %@，请检查网络或代理", "ZenMux"); null when it didn't.
-    public (string Key, object[] Args)? Problem { get; private set; }
-    /// How long the last good check took.
-    public double? Seconds { get; private set; }
-    /// Whether the hear model takes audio: null until a check asked (always true on Ling).
-    public bool? Hears { get; private set; }
+    /// Step by step, where the service stands (AICheck). Swapped whole: requests report from worker threads.
+    public AICheck Health { get { lock (healthGate) return health; } }
+    AICheck health = new();
+    readonly object healthGate = new();
+    int checking;
+    /// Which check is the newest: a check that started before a change (a model switched while
+    /// one ran) finishes into nothing, so an old answer never lands over the new setting.
+    int generation;
+    /// How long the text model took in the last check that reached it.
+    public double? Seconds => Health[AICheck.StepId.Text].Seconds;
+    /// Whether the hear model takes audio: null until a check or a meeting found out.
+    public bool? Hears => Health[AICheck.StepId.Hear] switch
+    {
+        { Kind: AICheck.Kind.Ok or AICheck.Kind.Busy } => true,
+        { Kind: AICheck.Kind.Fail, Why: AICheck.Reason.Deaf } => false,
+        _ => null,
+    };
+    /// The last time the room voice spoke (or failed to) through this service.
+    public (bool Ok, DateTimeOffset At)? LastVoice { get; private set; }
     /// The service's models from `/models`, recommended first: all that chat, and those that hear.
     public IReadOnlyList<string> TextCatalog { get; private set; } = [];
     public IReadOnlyList<string> HearCatalog { get; private set; } = [];
+    /// Every model id the service lists, and those it says take audio: whether the chosen ones still exist.
+    HashSet<string>? listed, listedHearing;
+    /// Reads this computer's proxy settings to word the "can't reach" hint (never used to connect).
+    public Func<Task<AICheck.ProxyHint>>? ProxyHint { get; set; }
+    /// Debug pipe only: the next checks end this way (screenshots of every state).
+    public AICheck.Reason? SimulateCheck { get; set; }
+    /// Debug pipe only: report this OpenRouter balance instead of the real one.
+    public double? SimulateBalance { get; set; }
     public event Action? Changed;
 
     public LingClient(AIKey key, HttpMessageHandler? handler = null, Func<AIConfig>? config = null)
@@ -152,7 +173,6 @@ public sealed class LingClient
         http.Timeout = Timeout.InfiniteTimeSpan; // per request below
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Cicada-Windows/0.1");
         KeyState = CurrentKey() is null ? KeyState.None : KeyState.Unchecked;
-        Hears = Config.IsLing ? true : null;
     }
 
     public AIConfig Config => config();
@@ -178,78 +198,216 @@ public sealed class LingClient
     public void KeyChanged()
     {
         key.Reload();
+        Interlocked.Increment(ref generation);
+        lock (healthGate) health = new AICheck();
         KeyState = CurrentKey() is null ? KeyState.None : KeyState.Unchecked;
-        Problem = null;
-        Hears = Config.IsLing ? true : null;
+        LastVoice = null;
+        listed = listedHearing = null;
         TextCatalog = HearCatalog = [];
         Changed?.Invoke();
     }
 
-    /// The cheapest request that proves the key: Ling's tiny model, else one token from the text
-    /// model. The others' hear model must also take audio (half a second of silence), and a custom
-    /// service must return JSON (the notes need it).
+    /// What messages call the service ("这个服务" for a custom address) and its host.
+    public string ServiceName => Config.Provider.Id == "custom" ? Strings.L("这个服务") : Config.Name;
+    public string ServiceHost => Config.Base is { } b && Uri.TryCreate(b, UriKind.Absolute, out var u) ? u.Host : "";
+    /// The hear model in messages; the service when none is named (a custom one not filled in).
+    public string HearName => Config.HearModel.Length > 0 ? Config.HearModel : ServiceName;
+
+    /// The cheapest requests that prove each step: Ling's tiny model, else one token from the text
+    /// model; the others' hear model must take audio (half a second of silence), a custom service
+    /// must return JSON (the notes need it), and the model list must still have both models.
+    /// OpenRouter also tells the balance. Ling's Ming isn't asked: a meeting records how it hears.
     public async Task<(KeyState state, double seconds)> Check()
     {
-        KeyState = KeyState.Checking; Problem = null; Changed?.Invoke();
-        var c = Config;
-        var name = c.Provider.Id == "custom" ? "这个服务" : c.Name;
         var started = DateTime.UtcNow;
-        var state = KeyState.Unreachable;
+        var c = Config;
+        if (CurrentKey() is not { } k)
+        {
+            lock (healthGate) health = new AICheck();
+            KeyState = KeyState.None;
+            Changed?.Invoke();
+            return (KeyState, 0);
+        }
+        Interlocked.Increment(ref checking);
+        var gen = Interlocked.Increment(ref generation);
         try
         {
-            if (c.IsLing)
-            {
-                await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 10, model: "Ling-3.0-tiny");
-                Seconds = (DateTime.UtcNow - started).TotalSeconds;
-                Hears = true;
-            }
-            else
-            {
-                if (c.Base is null || c.TextModel.Length == 0) throw new LingException(LingException.Kind.NoKey);
-                await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 20);
-                Seconds = (DateTime.UtcNow - started).TotalSeconds;
-                if (c.Provider.Id == "custom")
-                {
-                    try { await Chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json: true, maxTokens: 20, timeout: 20); }
-                    catch (LingException e) when (e.Failure == LingException.Kind.Http) { Problem = ("这个服务不支持 JSON（HTTP %lld），纪要用不了", [e.Status]); }
-                }
-                Hears = await HearsAudio(c);
-            }
-            state = KeyState.Ok;
+            var r = new AICheck();
+            r[AICheck.StepId.Reach] = AICheck.State.Running;
+            lock (healthGate) health = r;
+            KeyState = KeyState.Checking;
+            Changed?.Invoke();
+            r = new AICheck();
+            if (SimulateCheck is { } sim) r = Simulated(sim);
+            else if (c.Provider.Id == "custom" && c.Base is null) r.Fail(AICheck.StepId.Reach, AICheck.Reason.BadAddress, reached: false);
+            else if (AICheck.Owner(k) is { Management: true }) r.Fail(AICheck.StepId.Key, AICheck.Reason.MgmtKey, reached: false);
+            else await Probe(r, c, k);
+            await Finish(r, c, gen);
         }
-        catch (LingException e)
-        {
-            // A busy key is still a good key.
-            state = e.Failure switch { LingException.Kind.NoKey => KeyState.None, LingException.Kind.InvalidKey => KeyState.Invalid, LingException.Kind.RateLimited => KeyState.Ok, _ => KeyState.Unreachable };
-            if (e.Failure == LingException.Kind.Http && e.Status is 400 or 404)
-                Problem = c.Provider.Id == "custom" ? ("找不到模型，或地址不对（HTTP %lld）", [e.Status]) : ("%@ 拒绝了请求（HTTP %lld），请检查模型名", [name, e.Status]);
-            else if (state == KeyState.Unreachable) Problem = ("连不上 %@，请检查网络或代理", [name]);
-        }
-        catch (Exception)
-        {
-            state = KeyState.Unreachable;
-            Problem = ("连不上 %@，请检查网络或代理", [name]);
-        }
-        KeyState = state;
-        Log.Debug($"ai {c.Provider.Id}: key check -> {state}{(Hears == false ? " (hear model refuses audio)" : "")}");
-        Changed?.Invoke();
-        if (state == KeyState.Ok && !c.IsLing) await FetchCatalog();
+        finally { Interlocked.Decrement(ref checking); }
         return (KeyState, (DateTime.UtcNow - started).TotalSeconds);
     }
 
-    /// Whether the hear model takes audio: a 400, 404, 415 or 422 says no; anything else can't tell.
-    async Task<bool?> HearsAudio(AIConfig c)
+    async Task Probe(AICheck r, AIConfig c, string k)
     {
-        if (c.HearModel.Length == 0) return false;
+        double Since(DateTime t) => (DateTime.UtcNow - t).TotalSeconds;
+        void Failed(LingException e, AICheck.StepId step)
+        {
+            if (AICheck.Classify(e.Failure, e.Status, step) is not { } f) return;
+            if (f.Why == AICheck.Reason.Busy) r.Busy(f.Step); else r.Fail(f.Step, f.Why, f.Code);
+        }
+        var t = DateTime.UtcNow;
         try
         {
-            await Chat("Transcribe the audio.", "Reply with what is said, or NONE.", Priority.Speak, maxTokens: 10, timeout: 20,
-                model: c.HearModel, audio: Wav.Bytes(new short[8000]));
-            return true;
+            if (c.IsLing) await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 10, model: "Ling-3.0-tiny");
+            else await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 20);
+            r.Pass(AICheck.StepId.Text, Since(t));
+            if (c.Provider.Id == "custom")
+            {
+                try { await Chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json: true, maxTokens: 20, timeout: 20); }
+                catch (LingException e) when (e.Failure == LingException.Kind.Http) { r.Fail(AICheck.StepId.Text, AICheck.Reason.NoJSON, e.Status); }
+            }
         }
-        catch (LingException e) when (e.Failure == LingException.Kind.Http && e.Status is 400 or 404 or 415 or 422) { return false; }
-        catch (LingException e) when (e.Failure == LingException.Kind.Hijacked) { return true; }
-        catch (LingException) { return null; }
+        catch (LingException e) { Failed(e, AICheck.StepId.Text); }
+        catch (Exception) { r.Fail(AICheck.StepId.Reach, AICheck.Reason.Unreachable); }
+        // The address and the key work: hearing is its own question (the text model may be the one gone).
+        if (c.IsLing || r.Failure is { Step: AICheck.StepId.Reach or AICheck.StepId.Key }) return;
+        if (c.HearModel.Length == 0) r.Fail(AICheck.StepId.Hear, AICheck.Reason.Deaf);
+        else
+        {
+            t = DateTime.UtcNow;
+            try
+            {
+                await Chat("Transcribe the audio.", "Reply with what is said, or NONE.", Priority.Speak, maxTokens: 10, timeout: 20,
+                    model: c.HearModel, audio: Wav.Bytes(new short[8000]));
+                r.Pass(AICheck.StepId.Hear, Since(t));
+            }
+            // A made-up answer to silence still came from a model that took the audio.
+            catch (LingException e) when (e.Failure == LingException.Kind.Hijacked) { r.Pass(AICheck.StepId.Hear, Since(t)); }
+            catch (LingException e) { Failed(e, AICheck.StepId.Hear); }
+            catch (Exception) { }
+        }
+        await FetchCatalog();
+        // A model the service no longer lists fails here, before a meeting finds out.
+        if (listed is { } ids && c.TextModel.Length > 0 && r[AICheck.StepId.Text].Kind != AICheck.Kind.Fail && !ids.Contains(c.TextModel))
+            r.Fail(AICheck.StepId.Text, AICheck.Reason.NoModel);
+        if (listedHearing is { } hearing && c.HearModel.Length > 0 && r[AICheck.StepId.Hear].Kind != AICheck.Kind.Fail && !hearing.Contains(c.HearModel))
+            r.Fail(AICheck.StepId.Hear, AICheck.Reason.Deaf);
+        if (c.Provider.Id == "openrouter") r.Balance = AICheck.BalanceFrom(await GetText("key", k), await GetText("credits", k));
+    }
+
+    async Task Finish(AICheck r, AIConfig c, int gen)
+    {
+        if (gen != Volatile.Read(ref generation)) { Log.Debug($"ai {c.Provider.Id}: an older check -> {r.Summary}, dropped"); return; }
+        if (r.Failure?.Why == AICheck.Reason.Unreachable && r.Proxy is null && ProxyHint is { } hint) r.Proxy = await hint();
+        if (SimulateBalance is { } b) r.Balance = b;
+        r.At = DateTimeOffset.Now;
+        lock (healthGate) { if (gen != generation) return; health = r; }
+        SyncKeyState();
+        Log.Debug($"ai {c.Provider.Id}: check -> {r.Summary}");
+        Changed?.Invoke();
+    }
+
+    /// A made-up result for `reason` (debug screenshots of every state).
+    static AICheck Simulated(AICheck.Reason reason)
+    {
+        var r = new AICheck();
+        switch (reason)
+        {
+            case AICheck.Reason.Busy: r.Pass(AICheck.StepId.Text, 1.2); r[AICheck.StepId.Text] = AICheck.State.Busy; r.Pass(AICheck.StepId.Hear, 0.9); break;
+            case AICheck.Reason.Unreachable or AICheck.Reason.BadAddress: r.Fail(AICheck.StepId.Reach, reason, reached: false); break;
+            case AICheck.Reason.InvalidKey: r.Fail(AICheck.StepId.Key, reason); break;
+            case AICheck.Reason.NoCredit: r.Fail(AICheck.StepId.Key, reason, 402); break;
+            case AICheck.Reason.MgmtKey: r.Fail(AICheck.StepId.Key, reason, reached: false); break;
+            case AICheck.Reason.NoModel or AICheck.Reason.NoJSON: r.Fail(AICheck.StepId.Text, reason, 404); r.Pass(AICheck.StepId.Hear, 0.9); break;
+            case AICheck.Reason.Deaf: r.Pass(AICheck.StepId.Text, 1.2); r.Fail(AICheck.StepId.Hear, reason, 400); break;
+            default: r.Pass(AICheck.StepId.Text, 1.2); r.Fail(AICheck.StepId.Hear, reason, 503); break;
+        }
+        return r;
+    }
+
+    /// The short form older callers read: a refused key stops every request; a hear model that
+    /// can't hear leaves the key good (notes and translation work).
+    void SyncKeyState()
+    {
+        var h = Health;
+        KeyState = !HasKey ? KeyState.None
+            : h.IsRunning ? KeyState.Checking
+            : h.Failure is { Why: AICheck.Reason.InvalidKey or AICheck.Reason.MgmtKey } ? KeyState.Invalid
+            : h.Failure is { Step: AICheck.StepId.Reach or AICheck.StepId.Key } or { Why: AICheck.Reason.NoModel or AICheck.Reason.ServerError } ? KeyState.Unreachable
+            : h.At is null ? KeyState.Unchecked
+            : KeyState.Ok;
+    }
+
+    /// A real request (hearing, notes, translation) came back: keep the steps current without a
+    /// check. One server error in a meeting isn't worth repainting the settings for, nor is the
+    /// same good result again.
+    void Observe(LingException? failure, double seconds, bool audio)
+    {
+        if (!HasKey || Volatile.Read(ref checking) > 0 || SimulateCheck is not null) return;
+        var step = audio ? AICheck.StepId.Hear : AICheck.StepId.Text;
+        AICheck r;
+        bool wasUnreachable;
+        lock (healthGate)
+        {
+            var old = health;
+            r = old.Clone();
+            if (failure is not null)
+            {
+                if (AICheck.Classify(failure.Failure, failure.Status, step) is not { } f || f.Why == AICheck.Reason.ServerError) return;
+                if (f.Why == AICheck.Reason.Busy) r.Busy(f.Step); else r.Fail(f.Step, f.Why, f.Code);
+            }
+            else r.Pass(step, seconds);
+            r.At = DateTimeOffset.Now;
+            r.Passive = true;
+            if (r.SameSteps(old) && old.Passive) { old.At = r.At; return; }
+            wasUnreachable = old.Failure?.Why == AICheck.Reason.Unreachable;
+            if (r.Failure?.Why == AICheck.Reason.Unreachable) r.Proxy = old.Proxy;
+            health = r;
+        }
+        SyncKeyState();
+        Log.Debug($"ai: from a real request -> {r.Summary}");
+        Changed?.Invoke();
+        if (r.Failure?.Why == AICheck.Reason.Unreachable && !wasUnreachable && ProxyHint is { } hint)
+            _ = Task.Run(async () =>
+            {
+                var p = await hint();
+                lock (healthGate) { if (health.Failure?.Why != AICheck.Reason.Unreachable) return; health = health.Clone(); health.Proxy = p; }
+                Changed?.Invoke();
+            });
+    }
+
+    /// The network changed while the service was unreachable: look again (never on a timer).
+    public void NetworkChanged()
+    {
+        var h = Health;
+        if (!HasKey || h.Failure?.Why != AICheck.Reason.Unreachable || h.IsRunning) return;
+        Log.Debug("ai: network changed while unreachable, checking again");
+        _ = Check();
+    }
+
+    /// One click on 换成推荐的: the model that was wrong is the service's first recommended one now.
+    /// Null when there is none (a custom service), or the chosen one is it already.
+    public string? Recommended(AICheck.StepId step)
+    {
+        var c = Config;
+        var (models, current) = step == AICheck.StepId.Hear ? (c.Provider.HearModels, c.HearModel) : (c.Provider.TextModels, c.TextModel);
+        return models.FirstOrDefault()?.Id is { } id && id != current ? id : null;
+    }
+
+    /// One GET on the service's API (OpenRouter's key info and credits); null when it fails.
+    async Task<string?> GetText(string path, string k)
+    {
+        if (Config.Base is not { } b) return null;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(b), path));
+            if (k.Length > 0) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", k);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var res = await http.SendAsync(req, cts.Token);
+            return res.StatusCode == HttpStatusCode.OK ? await res.Content.ReadAsStringAsync(cts.Token) : null;
+        }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { return null; }
     }
 
     /// The service's models, for the model menus. Quietly just the recommended ones when the
@@ -258,20 +416,13 @@ public sealed class LingClient
     {
         var c = Config;
         if (c.IsLing || CurrentKey() is not { } k || c.Base is null) return;
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(c.Base), "models"));
-            if (k.Length > 0) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", k);
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            using var res = await http.SendAsync(req, cts.Token);
-            if (res.StatusCode != HttpStatusCode.OK) return;
-            var body = await res.Content.ReadAsStringAsync(cts.Token);
-            TextCatalog = AIProvider.Catalog(body, c.Provider.TextModels.Select(m => m.Id), hears: false);
-            HearCatalog = AIProvider.Catalog(body, c.Provider.HearModels.Select(m => m.Id), hears: true);
-            Log.Debug($"ai {c.Provider.Id}: {TextCatalog.Count} models, {HearCatalog.Count} hear");
-            Changed?.Invoke();
-        }
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+        if (await GetText("models", k) is not { } body) return;
+        TextCatalog = AIProvider.Catalog(body, c.Provider.TextModels.Select(m => m.Id), hears: false);
+        HearCatalog = AIProvider.Catalog(body, c.Provider.HearModels.Select(m => m.Id), hears: true);
+        listed = AICheck.ListedModels(body);
+        listedHearing = AICheck.ListedHearing(body);
+        Log.Debug($"ai {c.Provider.Id}: {TextCatalog.Count} models, {HearCatalog.Count} hear");
+        Changed?.Invoke();
     }
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
@@ -324,10 +475,13 @@ public sealed class LingClient
                 var usage = root["usage"];
                 Log.Debug($"ai {c.Provider.Id}: {priority} ok {(int)(DateTime.UtcNow - started).TotalMilliseconds} ms tokens={usage?["prompt_tokens"]}/{usage?["completion_tokens"]}");
                 if (RateLimitedAt is not null) { RateLimitedAt = null; Changed?.Invoke(); }
+                Observe(null, (DateTime.UtcNow - started).TotalSeconds, audio is not null);
                 return trimmed;
             }
-            catch (LingException e) when (e.Failure == LingException.Kind.RateLimited)
+            catch (LingException e)
             {
+                Observe(e, 0, audio is not null);
+                if (e.Failure != LingException.Kind.RateLimited) throw;
                 if (attempt > waits.Length) { RateLimitedAt = DateTimeOffset.Now; Changed?.Invoke(); throw; }
                 var wait = waits[attempt - 1] + Random.Shared.NextDouble() * 0.5;
                 Log.Debug($"ling: {priority} 429, retry in {wait:F1} s");
@@ -389,7 +543,7 @@ public sealed class LingClient
             {
                 case HttpStatusCode.OK: break;
                 case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden:
-                    if (KeyState != KeyState.Invalid) { KeyState = KeyState.Invalid; Changed?.Invoke(); }
+                    Observe(new LingException(LingException.Kind.InvalidKey), 0, audio: false);
                     throw new LingException(LingException.Kind.InvalidKey);
                 case HttpStatusCode.TooManyRequests: throw new LingException(LingException.Kind.RateLimited);
                 default: Log.Debug($"ai {c.Provider.Id}: voice HTTP {(int)res.StatusCode}"); throw new LingException(LingException.Kind.Http, (int)res.StatusCode);
@@ -439,6 +593,13 @@ public sealed class LingClient
                 }
             }
         }
+    }
+
+    /// The room voice spoke through this service, or failed and Windows spoke instead (现在能用的 says which).
+    public void VoiceSpoke(bool ok)
+    {
+        LastVoice = (ok, DateTimeOffset.Now);
+        Changed?.Invoke();
     }
 
     /// One SSE line of a voice stream: the PCM it carries, or `done` at the end.
@@ -492,9 +653,8 @@ public sealed class LingClient
             switch (res.StatusCode)
             {
                 case HttpStatusCode.OK: break;
-                case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden:
-                    if (KeyState != KeyState.Invalid) { KeyState = KeyState.Invalid; Changed?.Invoke(); }
-                    throw new LingException(LingException.Kind.InvalidKey);
+                // Chat reports it to the check (Observe), which stops every request after it.
+                case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden: throw new LingException(LingException.Kind.InvalidKey);
                 case HttpStatusCode.TooManyRequests: throw new LingException(LingException.Kind.RateLimited);
                 default:
                     Log.Debug($"ling: HTTP {(int)res.StatusCode}");

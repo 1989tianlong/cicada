@@ -164,3 +164,21 @@ static class MicReaders
         return MicUse.Calls(entries);
     }
 }
+
+/// Windows' own proxy settings (Settings › Network & internet › Proxy, which proxy apps switch on as
+/// "system proxy"): only read, to word the "can't reach" hint. Cicada never sets or uses one itself.
+static class WinProxy
+{
+    const string Key = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+
+    /// A manual proxy, or an auto-config (PAC) script, is on.
+    public static bool SystemOn()
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(Key);
+            return k?.GetValue("ProxyEnable") is int on && on == 1 || k?.GetValue("AutoConfigURL") is string { Length: > 0 };
+        }
+        catch (Exception e) { Log.Debug($"proxy: unreadable ({e.GetType().Name})"); return false; }
+    }
+}

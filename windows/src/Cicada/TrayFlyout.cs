@@ -100,6 +100,19 @@ sealed class TrayFlyout : Window
             stack.Children.Add(strip);
         }
 
+        // The AI service needs the user (can't reach it, the key, money, a model gone or deaf; the
+        // Mac's AIServiceStrip). On Windows the service hears too, so it comes before 开始听.
+        if (app.AIProblem() is { } ai)
+        {
+            var text = Ui.Stack(2, Ui.Text(ai.Title, 13, Palette.AccentText, Palette.Strong), Ui.Text(ai.Detail, 11, Palette.Secondary));
+            var open = Ui.Button(L("打开设置"), () => Do(app.ShowAISettings), Ui.Kind.Primary, height: 30);
+            open.VerticalAlignment = VerticalAlignment.Center; open.Margin = new Thickness(10, 0, 0, 0);
+            var dock = new DockPanel();
+            DockPanel.SetDock(open, Dock.Right);
+            dock.Children.Add(open); dock.Children.Add(text);
+            stack.Children.Add(new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 14, 0, 0), Child = dock });
+        }
+
         // The one thing to do
         var main = new StackPanel { Margin = new Thickness(0, 18, 0, 0) };
         if (listen.Listening && app.Ending is { } p)

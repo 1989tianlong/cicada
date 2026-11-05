@@ -106,7 +106,8 @@ sealed class Controller
         var ui = Settings.UiLanguage == "system" ? null : Settings.UiLanguage;
         Strings.Load(Bundled.Strings, ui);
         Key = new AIKey(new DpapiProtector(), service: () => Settings.AiProvider);
-        Ling = new LingClient(Key, config: Settings.AIConfig);
+        Ling = new LingClient(Key, config: Settings.AIConfig) { ProxyHint = () => ProxyProbe.Hint(WinProxy.SystemOn) };
+        Ling.Changed += Changed;
         SpeakerLabels.Voices = Settings.SpeakerVoices;
         Notes = new NotesEngine(Ling, Store);
         Translator = new Translator(Ling);
@@ -140,6 +141,7 @@ sealed class Controller
         talk.Released += () => Dispatch.BeginInvoke(PressEnded);
         Log.Debug($"audio: speakers {Endpoints.Default(Endpoints.Flow.Render)?.Name ?? "none"}, mic {Endpoints.Microphone()?.Name ?? "none"}, cable {(Endpoints.Cable() is null ? "absent" : "present")}");
         DebugServer.Start(this);
+        WatchNetwork();
         // A dev build isn't what a release replaces: it checks only when pointed at a test feed.
         UpdateChecker.CleanDownloads();
         if (!Paths.Dev || Environment.GetEnvironmentVariable("CICADA_UPDATE_FEED") is { Length: > 0 }) { checksUpdates = true; Updates.Start(); }
@@ -268,7 +270,16 @@ sealed class Controller
             item.Click += (_, _) => act();
             return item;
         }
-        // The Mac's status menu: where it stands, then what to do, then the windows, then 退出.
+        // The Mac's status menu: what the AI service needs from the user, where it stands, then what
+        // to do, then the windows, then 退出.
+        if (AIProblem() is { } ai)
+        {
+            var (problem, detail) = ai;
+            var first = new MenuItem { Header = Ui.Stack(1, Ui.Text(problem, 13, Palette.AccentText, Palette.Strong, wrap: false), Ui.Text(detail + " · " + L("打开设置"), 12, Palette.Secondary, wrap: false)) };
+            first.Click += (_, _) => ShowAISettings();
+            menu.Items.Add(first);
+            menu.Items.Add(new Separator());
+        }
         if (Listen.Listening && Listen.SessionId is { } sid && Store.Get(sid) is { } live)
         {
             var head = new MenuItem { Header = Ui.Row(8, Ui.Dot(Palette.Live, 6), Ui.Text($"{L("正在听")} · {Languages.Clock((DateTimeOffset.Now - live.StartedAt).TotalSeconds)}", 13, Palette.Secondary, wrap: false)), IsEnabled = false };
@@ -301,9 +312,61 @@ sealed class Controller
     public async Task ToggleListening()
     {
         if (Listen.Listening) RequestStop();
-        else StartListening(new SystemAudioTap());
-        await Task.CompletedTask;
+        else await StartChecked(() => new SystemAudioTap());
     }
+
+    /// The user's 开始听: blocked only by a failure the last result knows of. A hear model that
+    /// can't hear asks to switch to the recommended one; an unreachable service is looked at once
+    /// more first. Unknown or busy starts as usual. A dialog comes after a yield, so the debug pipe
+    /// that asked for the start replies first; a start that needs none has happened by then.
+    public async Task StartChecked(Func<IAudioSource> source)
+    {
+        if (Listen.Listening || starting) return;
+        if (!Ling.HasKey) { StartListening(source()); return; }
+        starting = true;
+        try
+        {
+            if (Ling.Health.Failure?.Why == AICheck.Reason.Unreachable) await Ling.Check();
+            var f = Ling.Health.Failure;
+            if (f?.Why == AICheck.Reason.Deaf)
+            {
+                var service = Ling.ServiceName;
+                var recommended = Ling.Recommended(AICheck.StepId.Hear);
+                await Task.Yield();
+                var choice = Dialogs.Choose(VisibleWindow(), LF("%@ 现在听不了声音", service), LF("%@ 只收文字。换成推荐的模型就能开始听。", Ling.HearName),
+                    recommended is null ? null : L("换成推荐的并开始"), L("打开设置"));
+                if (choice == 1 && recommended is not null)
+                {
+                    UseRecommended(AICheck.StepId.Hear);
+                    StartListening(source());
+                }
+                else if (choice == 2) ShowAISettings();
+                return;
+            }
+            if (f?.Why == AICheck.Reason.Unreachable)
+            {
+                var h = Ling.Health;
+                var body = h.Message(Ling.ServiceName, Ling.ServiceHost, Ling.Config.TextModel, Ling.HearName) ?? "";
+                if (h.ProxyLine(Ling.ServiceName, Ling.ServiceHost) is { } proxy) body += "\n" + proxy;
+                await Task.Yield();
+                var choice = Dialogs.Choose(VisibleWindow(), LF("连不上 %@", Ling.ServiceName), body, L("重新检查并开始"), L("打开设置"));
+                if (choice == 2) ShowAISettings();
+                else if (choice == 1)
+                {
+                    starting = false;
+                    await StartChecked(source);
+                }
+                return;
+            }
+            StartListening(source());
+        }
+        finally { starting = false; }
+    }
+
+    bool starting;
+
+    /// A window of ours to put a dialog over; null (the screen's centre) from the tray.
+    Window? VisibleWindow() => new Window?[] { settingsWindow, mainWindow, onboarding }.FirstOrDefault(w => w?.IsVisible == true && w.WindowState != WindowState.Minimized);
 
     /// The user's 结束 (buttons, menu, hotkey): a meeting with lines ends only after asking, in the
     /// notes window or subtitle bar, which never take focus, so no modal dialog fights them for it.
@@ -553,7 +616,11 @@ sealed class Controller
 
     /// The setup steps, as the onboarding numbers them: what is done, by what really happened
     /// rather than by "the onboarding was finished".
-    public (bool Key, bool Audio, bool Sample) SetupDone => (Ling.HasKey, Settings.HeardSystemAudio || Settings.Onboarded, Settings.SampleSeen || Settings.Onboarded);
+    public (bool Key, bool Audio, bool Sample) SetupDone => (Ling.HasKey && !KeyStepFailed, Settings.HeardSystemAudio || Settings.Onboarded, Settings.SampleSeen || Settings.Onboarded);
+
+    /// The AI service's last result is a failure only the user can fix (not "still checking", not
+    /// busy, not a server error, not a balance running low): 还差几步 shows it as not done yet.
+    public bool KeyStepFailed => Ling.Health is { NeedsUser: true, Failure: not null };
 
     /// Steps left before listening works; 0 once set up. 同声传译 is optional and never counted.
     public int SetupLeft
@@ -562,6 +629,8 @@ sealed class Controller
         {
             var (k, a, sm) = SetupDone;
             if (Settings.Onboarded && k) return 0;
+            // Set up once, and the service broke later: that one step is left.
+            if (Settings.Onboarded && Ling.HasKey) return 1;
             return (k ? 0 : 1) + (a ? 0 : 1) + (sm ? 0 : 1);
         }
     }
@@ -630,6 +699,62 @@ sealed class Controller
         AIChanged();
     }
 
+    /// 设置 › AI 服务, opened at its page (the fix for every AI problem the app names).
+    public void ShowAISettings()
+    {
+        ShowSettings();
+        SettingsPage("ai");
+    }
+
+    /// One click on 换成推荐的: the service's first recommended text or hear model, then a fresh check.
+    public void UseRecommended(AICheck.StepId step)
+    {
+        if (Ling.Recommended(step) is not { } id) return;
+        Log.Debug($"ai: {step} model -> the recommended {id}");
+        SetAIModel(step == AICheck.StepId.Hear ? "hear" : "text", id);
+    }
+
+    /// A key pasted for one service that belongs to another (改用 OpenRouter): switch, keep it there, check.
+    public void SwitchService(string provider, string key)
+    {
+        if (AIProvider.Named(provider).Id != provider) return;
+        Settings.AiProvider = provider;
+        Settings.Save();
+        Key.Save(key);
+        AIChanged();
+    }
+
+    /// What the tray says first when the AI service needs the user (title, detail); null otherwise.
+    /// On Windows the service hears too, so a dead service means no subtitles either.
+    public (string Title, string Detail)? AIProblem()
+    {
+        var h = Ling.Health;
+        if (!Ling.HasKey || !h.NeedsUser) return null;
+        var name = Ling.ServiceName;
+        if (h.Failure is not { } f) return h.BalanceLine(name) is { } low ? (low, L("用完后就听不了对方")) : null;
+        var stopped = L("听对方暂时用不了");
+        return f.Why switch
+        {
+            AICheck.Reason.Unreachable => (LF("连不上 %@", name), stopped),
+            AICheck.Reason.InvalidKey or AICheck.Reason.MgmtKey => (LF("%@ 的 key 用不了", name), stopped),
+            AICheck.Reason.NoCredit => (LF("%@ 账户余额不足。", name), stopped),
+            AICheck.Reason.NoModel => (LF("%@ 上找不到 %@ 这个模型。", name, Ling.Config.TextModel), L("纪要和整句翻译先停下")),
+            AICheck.Reason.Deaf => (LF("%@ 听不了声音。", Ling.HearName), stopped),
+            _ => (L("AI 服务的设置要改一下"), L("纪要和整句翻译先停下")),
+        };
+    }
+
+    /// Network changes (Wi-Fi back, a proxy app's TUN, a cable): 3 s for it to settle, then the AI
+    /// service is looked at again if it was unreachable. No timer: nothing is checked while it stays the same.
+    void WatchNetwork()
+    {
+        var settle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        settle.Tick += (_, _) => { settle.Stop(); Ling.NetworkChanged(); };
+        void Changed() => Dispatch.BeginInvoke(() => { settle.Stop(); settle.Start(); });
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) => Changed();
+        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, e) => { if (e.IsAvailable) Changed(); };
+    }
+
     /// The service, its address, models or key changed: forget the old check and check again.
     public void AIChanged()
     {
@@ -646,7 +771,11 @@ sealed class Controller
         {
             ["provider"] = c.Provider.Id, ["base"] = c.Base, ["text"] = c.TextModel, ["hear"] = c.HearModel, ["voice"] = c.VoiceModel,
             ["state"] = Ling.KeyState.ToString(), ["hears"] = Ling.Hears, ["seconds"] = Ling.Seconds is { } s ? Math.Round(s, 1) : null,
-            ["problem"] = Ling.Problem is { } p ? LF(p.Key, p.Args) : null,
+            ["check"] = Ling.Health.Summary,
+            ["problem"] = Ling.Health.Message(Ling.ServiceName, Ling.ServiceHost, Ling.Config.TextModel, Ling.HearName),
+            ["proxy"] = Ling.Health.ProxyLine(Ling.ServiceName, Ling.ServiceHost),
+            ["tray"] = AIProblem()?.Title,
+            ["simulated"] = Ling.SimulateCheck?.ToString() ?? (Ling.SimulateBalance is null ? null : "lowBalance"),
             ["catalog"] = new JsonArray(Ling.TextCatalog.Count, Ling.HearCatalog.Count), ["keyFile"] = Path.GetFileName(Key.File_),
         };
     }
@@ -798,6 +927,7 @@ sealed class Controller
 ///   updatefeed <url or file> | checkupdate
 ///   calls <program=name,…>|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
 ///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; no id: the recommended)
+///   ai-check | ai-check-sim <reason|lowBalance|off> (unreachable, invalidKey, noCredit, noModel, deaf, busy…)
 static class DebugServer
 {
     static string Pipe => Paths.Dev ? "cicada-dev" : "cicada";
@@ -846,11 +976,11 @@ static class DebugServer
                 "quit" => Quitting(app),
                 _ => Opened(app),
             };
-            case "start": app.StartListening(new SystemAudioTap()); break;
+            case "start": _ = app.StartChecked(() => new SystemAudioTap()); break;
             case "stop": _ = app.StopListening(); break;
             case "end": app.RequestStop(); break;  // the user's 结束: asks first when anything was said
             case "notesproblem": app.Notes.SimulateStatus(arg); break;
-            case "feed": app.StartListening(new FileAudioSource(arg)); break;
+            case "feed": _ = app.StartChecked(() => new FileAudioSource(arg)); break;
             case "sample": _ = app.PlaySample(); break;
             case "view": app.SetView(arg == "subtitles" ? "subtitles" : "notes"); break;
             case "capture": app.Settings.ShowInCapture = arg == "on"; app.Settings.Save(); app.CaptureSettingChanged(); break;
@@ -869,6 +999,15 @@ static class DebugServer
                 else _ = app.Speak.Speak(Wav.Bytes(Wav.Read(arg)), new DeviceSpeaker(Endpoints.Cable));
                 break;
             case "provider": app.SetAIProvider(arg); break;
+            case "ai-check":
+                // ai-check: a check now; ai-check-sim <reason|lowBalance|off>: every check ends this way (screenshots).
+                _ = app.Ling.Check();
+                break;
+            case "ai-check-sim":
+                app.Ling.SimulateCheck = Enum.TryParse<AICheck.Reason>(arg, true, out var reason) ? reason : null;
+                app.Ling.SimulateBalance = arg == "lowBalance" ? 0.4 : null;
+                _ = app.Ling.Check();
+                break;
             case "ai-model":
             {
                 var kv = arg.Split(' ', 2);

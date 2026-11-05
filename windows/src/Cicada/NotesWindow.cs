@@ -176,7 +176,7 @@ sealed class NotesWindow : Window
         if (Subtitles) { live.Content = SubtitleLine(); return; }
         var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
-        var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited ? app.Notes.Status : null)}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
+        var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Ling.Health.Proxy}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
         live.Content = LiveCard();
         var count = app.Listen.SessionId is { } sid ? app.Store.Get(sid)?.Lines.Count ?? 0 : 0;
@@ -263,9 +263,13 @@ sealed class NotesWindow : Window
         void Add(FrameworkElement bar) { bar.Margin = new Thickness(0, 0, 0, 8); stack.Children.Add(bar); }
         if (app.Listen.Problem is { } problem)
         {
-            var (title, body, settings) = ListenEngine.Words(problem, app.Listen.ProblemStatus, app.Ling.Config.Name);
+            var ling = app.Ling;
+            var (title, body, settings) = ListenEngine.Words(problem, app.Listen.ProblemStatus, ling.Config.Name, ling.HearName);
+            // Can't reach it: what this computer's proxy looks like says what to do.
+            var offline = problem is LingException.Kind.Network or LingException.Kind.Timeout;
+            if (offline && ling.Health.ProxyLine(ling.ServiceName, ling.ServiceHost) is { } proxy) body += "\n" + proxy;
             if (problem == LingException.Kind.RateLimited) Add(Ui.InfoBar(Ui.Severity.Warning, title, body));
-            else if (settings) Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("打开设置"), app.ShowSettings, height: 32)));
+            else if (settings || offline) Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("设置"), app.ShowAISettings, height: 32)));
             else Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); }, height: 32)));
         }
         // The notes' own trouble (NotesWindow.swift › banner): the last round didn't land.
@@ -273,7 +277,14 @@ sealed class NotesWindow : Window
             switch (app.Notes.Status)
             {
                 case NotesEngine.State.RateLimited:
-                    Add(Ui.InfoBar(Ui.Severity.Warning, null, LF("请求过于频繁，稍后会自动重试。纪要停留在 %@。", NotesCoveredUntil())));
+                    Add(Ui.InfoBar(Ui.Severity.Warning, null, LF("%@ 很忙，纪要稍后补上。字幕照常。", app.Ling.ServiceName)));
+                    break;
+                // The network or the proxy, not the notes: say which, and that it picks up by itself.
+                // (When hearing failed too, its bar above says so already.)
+                case NotesEngine.State.Failed when app.Ling.Health.Failure?.Why == AICheck.Reason.Unreachable:
+                    if (app.Listen.Problem is not (LingException.Kind.Network or LingException.Kind.Timeout))
+                        Add(Ui.InfoBar(Ui.Severity.Error, null, LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", app.Ling.ServiceName, NotesCoveredUntil()),
+                            Ui.Button(L("设置"), app.ShowAISettings, height: 32)));
                     break;
                 case NotesEngine.State.Failed:
                     Add(Ui.InfoBar(Ui.Severity.Warning, null, L("这轮没整理好，下一轮会自动重试。")));

@@ -213,6 +213,7 @@ public sealed class SpeakEngine
                 }
             }
             catch (LingException e) { Log.Debug($"speak: {config.Provider.Id} voice failed {e.Message}"); }
+            ling.VoiceSpoke(chunks > 0);
             if (chunks > 0) { await sink.End(); LastVoice = config.IsLing ? "ming" : "cloud"; return true; }
         }
         var own = await systemVoice.Speak(text, language);

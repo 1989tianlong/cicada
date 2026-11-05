@@ -4,6 +4,7 @@
 using System.Net;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Cicada;
 
 Environment.SetEnvironmentVariable("CICADA_HOME", Path.Combine(Path.GetTempPath(), "cicada-tests-" + Environment.ProcessId));
@@ -1172,14 +1173,16 @@ static class Tests
         try
         {
             var (ling, s) = Using(new Service((url, body) =>
-                url.EndsWith("models") ? Status(200, "{\"data\":[{\"id\":\"a/b\",\"input_modalities\":[\"text\"],\"output_modalities\":[\"text\"]}]}")
+                url.EndsWith("models") ? Status(200, "{\"data\":[{\"id\":\"inclusionai/ling-3.0-flash\",\"input_modalities\":[\"text\"],\"output_modalities\":[\"text\"]}]}")
                 : body.Contains("input_audio") ? Status(400) : Reply("OK")),
                 s: new AppSettings { AiHearModels = { ["zenmux"] = "x/text-only" } });
             var (state, _) = await ling.Check();
             Equal(KeyState.Ok, state, "the key is good");
             Equal(false, ling.Hears, "but the model can't hear");
+            Equal("reach=ok key=ok text=ok(0.0s) hear=fail(deaf 400)", Regex.Replace(ling.Health.Summary, @"\d+\.\ds", "0.0s"), "the hear step failed");
             Check(!ling.CanHear && ling.Usable, "notes and translation still work");
-            Check(ling.TextCatalog.Contains("a/b"), "catalog fetched after a good check");
+            Check(ling.TextCatalog.Contains("inclusionai/ling-3.0-flash"), "catalog fetched after a good check");
+            Equal("qwen/qwen3.8-omni-flash", ling.Recommended(AICheck.StepId.Hear), "换成推荐的");
             s.AiHearModels.Clear();
             ling.KeyChanged();
             Equal(null, ling.Hears, "a new model is asked again");
@@ -1194,13 +1197,228 @@ static class Tests
         {
             var (ling, _) = Using(new Service((_, _) => Status(401)));
             Equal(KeyState.Invalid, (await ling.Check()).state, "401");
-            (ling, _) = Using(new Service((_, _) => Status(404)));
+            Equal("reach=ok key=fail(invalidKey) text=skipped hear=skipped", ling.Health.Summary, "401 stops at the key");
+            (ling, _) = Using(new Service((url, body) => body.Contains("input_audio") || url.EndsWith("models") ? Status(200, "{\"data\":[]}") : Status(404)));
             await ling.Check();
-            Equal("%@ 拒绝了请求（HTTP %lld），请检查模型名 ZenMux 404", $"{ling.Problem?.Key} {string.Join(" ", ling.Problem?.Args ?? [])}", "404 names the service and the status");
+            Equal(AICheck.Reason.NoModel, ling.Health.Failure?.Why, "a 404 on the text model");
+            Equal("ZenMux 上找不到 inclusionai/ling-3.0-flash 这个模型。", ling.Health.Message(ling.ServiceName, ling.ServiceHost, ling.Config.TextModel, ling.HearName), "names the service and the model");
+            (ling, _) = Using(new Service((_, _) => throw new HttpRequestException("no route")));
+            ling.ProxyHint = () => Task.FromResult(new AICheck.ProxyHint(AICheck.ProxyKind.AppRunning, 7890));
+            await ling.Check();
+            Equal("reach=fail(unreachable) key=skipped text=skipped hear=skipped proxy=appRunning(7890)", ling.Health.Summary, "a network error stops at reach, with the proxy");
+            (ling, _) = Using(new Service((url, _) => url.EndsWith("models") ? Status(404) : Status(429)));
+            await ling.Check();
+            Check(ling.Health.Passed && ling.Health.IsBusy && !ling.Health.NeedsUser, "429 passes as busy");
+            (ling, _) = Using(new Service((_, _) => Reply("ok")), key: "sk-mgmt-0000");
+            await ling.Check();
+            Equal("reach=untested key=fail(mgmtKey) text=skipped hear=skipped", ling.Health.Summary, "a management key isn't sent");
             (ling, _) = Using(new Service((_, _) => Reply("ok")), "openrouter", key: null);
             Equal(KeyState.None, ling.KeyState, "no key");
         }
         finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task CheckFindsModelsGoneFromTheList()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            // ZenMux lists modalities at the top level: the text model is gone, and the hear model doesn't take audio.
+            var (ling, _) = Using(new Service((url, _) => url.EndsWith("models")
+                ? Status(200, "{\"data\":[{\"id\":\"qwen/qwen3.8-flash\",\"input_modalities\":[\"text\"]},{\"id\":\"qwen/qwen3.8-omni-flash\",\"input_modalities\":[\"text\"]},{\"id\":\"a/ears\",\"input_modalities\":[\"audio\",\"text\"]}]}")
+                : Reply("OK")));
+            await ling.Check();
+            Equal(AICheck.Kind.Fail, ling.Health[AICheck.StepId.Text].Kind, "the text model is gone");
+            Equal(AICheck.Reason.Deaf, ling.Health[AICheck.StepId.Hear].Why, "the hear model isn't listed as hearing");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task CheckReadsOpenRouterBalance()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var (ling, _) = Using(new Service((url, _) =>
+                url.EndsWith("/key") ? Status(200, "{\"data\":{\"limit_remaining\":0.3}}")
+                : url.EndsWith("/credits") ? Status(200, "{\"data\":{\"total_credits\":10,\"total_usage\":3}}")
+                : url.EndsWith("models") ? Status(404) : Reply("OK")), "openrouter");
+            await ling.Check();
+            Equal(0.3, ling.Health.Balance, "the key's limit is the smaller");
+            Check(ling.Health.Passed && ling.Health.NeedsUser, "passed, but low");
+            Equal("OpenRouter 余额快用完了（还剩 $0.30）", ling.Health.BalanceLine("OpenRouter"), "balance line");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task RealRequestsKeepTheStepsCurrent()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            int status = 200;
+            var (ling, _) = Using(new Service((url, body) => status == 200 ? Reply("OK") : Status(status)));
+            await ling.Chat("c", "i", Priority.Translate);
+            Equal("reach=ok key=ok text=ok(0.0s) hear=untested passive", Regex.Replace(ling.Health.Summary, @"\d+\.\ds", "0.0s"), "a translation proves the text model");
+            status = 404;
+            try { await ling.Chat("c", "i", Priority.Translate, model: ling.Config.HearModel, audio: [1]); } catch (LingException) { }
+            Equal(AICheck.Reason.Deaf, ling.Health.Failure?.Why, "a 404 on audio is the hear model, never the text model");
+            Equal(AICheck.Kind.Ok, ling.Health[AICheck.StepId.Text].Kind, "the text model stays proven");
+            status = 200;
+            await ling.Chat("c", "i", Priority.Translate, model: ling.Config.HearModel, audio: [1]);
+            Equal(null, ling.Health.Failure, "heard again: clear");
+            int changes = 0;
+            ling.Changed += () => changes++;
+            await ling.Chat("c", "i", Priority.Translate);
+            await ling.Chat("c", "i", Priority.Translate);
+            Equal(0, changes, "the same good result again changes nothing");
+            status = 503;
+            try { await ling.Chat("c", "i", Priority.Translate); } catch (LingException) { }
+            Equal(null, ling.Health.Failure, "one server error in a meeting is left alone");
+            status = 401;
+            try { await ling.Chat("c", "i", Priority.Translate); } catch (LingException) { }
+            Equal(KeyState.Invalid, ling.KeyState, "a refused key stops every request");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task AnOlderCheckNeverLandsOverANewerOne()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var (ling, s) = Using(new Service((url, body) =>
+            {
+                if (body.Contains("slow/gone")) { Thread.Sleep(400); return Status(404); }
+                return url.EndsWith("models") ? Status(404) : Reply("OK");
+            }), s: new AppSettings { AiModels = { ["zenmux"] = "slow/gone" } });
+            var first = ling.Check();
+            await Task.Delay(50);
+            s.AiModels["zenmux"] = "fast/here";
+            ling.KeyChanged();
+            await ling.Check();
+            await first;
+            Equal(null, ling.Health.Failure, "the model chosen since is the one checked");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    // MARK: AI 服务检查 (the Mac's AICheckTests, case for case, plus hearing)
+
+    public static void EachFailureStopsAtItsStep()
+    {
+        static string C(LingException.Kind k, int status, AICheck.StepId at) => AICheck.Classify(k, status, at)?.ToString() ?? "null";
+        Equal("(Reach, Unreachable, )", C(LingException.Kind.Network, 0, AICheck.StepId.Text), "network");
+        Equal("(Reach, Unreachable, )", C(LingException.Kind.Timeout, 0, AICheck.StepId.Key), "timeout");
+        Equal("(Key, InvalidKey, )", C(LingException.Kind.InvalidKey, 0, AICheck.StepId.Text), "401");
+        Equal("(Key, NoCredit, 402)", C(LingException.Kind.Http, 402, AICheck.StepId.Text), "402");
+        Equal("(Text, NoModel, 404)", C(LingException.Kind.Http, 404, AICheck.StepId.Text), "404");
+        Equal("(Text, NoModel, 400)", C(LingException.Kind.Http, 400, AICheck.StepId.Text), "400");
+        Equal("(Text, Busy, )", C(LingException.Kind.RateLimited, 0, AICheck.StepId.Text), "429");
+        Equal("(Key, ServerError, 503)", C(LingException.Kind.Http, 503, AICheck.StepId.Key), "5xx");
+        Equal("null", C(LingException.Kind.Hijacked, 0, AICheck.StepId.Text), "hijacked says nothing");
+        foreach (var code in new[] { 400, 404, 415, 422 })
+            Equal($"(Hear, Deaf, {code})", C(LingException.Kind.Http, code, AICheck.StepId.Hear), $"{code} on audio");
+        Equal("(Hear, Busy, )", C(LingException.Kind.RateLimited, 0, AICheck.StepId.Hear), "429 on audio");
+    }
+
+    public static void AFailedStepSkipsTheRestAndAReplyProvesTheOnesBefore()
+    {
+        var c = new AICheck();
+        c.Fail(AICheck.StepId.Key, AICheck.Reason.InvalidKey);
+        Equal("reach=ok key=fail(invalidKey) text=skipped hear=skipped", c.Summary, "key");
+        Equal(AICheck.StepId.Key, c.Failure?.Step, "failure");
+        var m = new AICheck();
+        m.Fail(AICheck.StepId.Key, AICheck.Reason.MgmtKey, reached: false);
+        Equal(AICheck.Kind.Untested, m[AICheck.StepId.Reach].Kind, "nothing sent");
+        // Hearing doesn't need the text model, nor the other way round.
+        var t = new AICheck();
+        t.Fail(AICheck.StepId.Text, AICheck.Reason.NoModel, 404);
+        Equal("reach=ok key=ok text=fail(noModel 404) hear=untested", t.Summary, "text");
+        var h = new AICheck();
+        h.Fail(AICheck.StepId.Hear, AICheck.Reason.Deaf, 400);
+        Equal("reach=ok key=ok text=untested hear=fail(deaf 400)", h.Summary, "hear");
+    }
+
+    public static void ASuccessClearsAnEarlierFailure()
+    {
+        var c = new AICheck();
+        c.Fail(AICheck.StepId.Reach, AICheck.Reason.Unreachable);
+        c.Proxy = new AICheck.ProxyHint(AICheck.ProxyKind.None);
+        c.Pass(AICheck.StepId.Text, 1.5);
+        Equal(null, c.Failure, "cleared");
+        Equal("reach=ok key=ok text=ok(1.5s) hear=untested", c.Summary, "a chat proves reach, key and text");
+        Equal(null, c.Proxy, "proxy hint gone");
+    }
+
+    public static void BusyPassesAndNeedsNobody()
+    {
+        var c = new AICheck();
+        c.Busy(AICheck.StepId.Text);
+        c.At = DateTimeOffset.Now;
+        Check(c.Passed && c.IsBusy && !c.NeedsUser, "busy passes");
+        Equal("ZenMux 现在很忙，key 没问题。开会时会自动重试。", c.Message("ZenMux", "zenmux.ai", "m", "h"), "busy words");
+    }
+
+    public static void KeyPrefixesTellWhoseKeyItIs()
+    {
+        Equal(("openrouter", false), AICheck.Owner("sk-or-v1-abc"), "OpenRouter");
+        Equal(("zenmux", false), AICheck.Owner(" sk-payg-abc\n"), "ZenMux");
+        Equal(("zenmux", true), AICheck.Owner("sk-mgmt-abc"), "management");
+        Equal(null, AICheck.Owner("sk-abc"), "nothing to tell");
+    }
+
+    public static void BalanceIsTheSmallerOfKeyLimitAndCredits()
+    {
+        const string key = "{\"data\":{\"limit_remaining\":1.72}}", credits = "{\"data\":{\"total_credits\":10.0,\"total_usage\":3.92}}";
+        Equal(1.72, AICheck.BalanceFrom(key, credits), "both");
+        Check(Math.Abs(AICheck.BalanceFrom("{\"data\":{\"limit_remaining\":null}}", credits)!.Value - 6.08) < 0.001, "no key limit: credits");
+        Equal(1.72, AICheck.BalanceFrom(key, null), "key only");
+        Equal(null, AICheck.BalanceFrom(null, null), "nothing");
+        var c = new AICheck { Balance = 0.3 };
+        Check(c.IsLowBalance && c.NeedsUser, "low");
+    }
+
+    public static void ListedModelsReadsEveryID()
+    {
+        var ids = AICheck.ListedModels("{\"data\":[{\"id\":\"inclusionai/ling-3.0-flash\"},{\"id\":\"qwen/qwen3.8-flash\"}]}");
+        Equal("inclusionai/ling-3.0-flash,qwen/qwen3.8-flash", string.Join(",", ids!.Order()), "ids");
+        Equal(null, AICheck.ListedModels("{}"), "no data");
+        Equal(null, AICheck.ListedModels("{\"data\":[]}"), "empty");
+        // OpenRouter says modalities under architecture; a list that says nothing proves nothing about hearing.
+        var hearing = AICheck.ListedHearing("{\"data\":[{\"id\":\"a\",\"architecture\":{\"input_modalities\":[\"text\",\"audio\"]}},{\"id\":\"b\",\"architecture\":{\"input_modalities\":[\"text\"]}}]}");
+        Equal("a", string.Join(",", hearing!), "hearing");
+        Equal(null, AICheck.ListedHearing("{\"data\":[{\"id\":\"a\"}]}"), "nothing said");
+    }
+
+    public static void MessagesNameTheServiceAndTheProxyHintFollowsTheProxy()
+    {
+        var c = new AICheck();
+        c.Fail(AICheck.StepId.Reach, AICheck.Reason.Unreachable);
+        Equal("这台电脑访问不到 zenmux.ai。", c.Message("ZenMux", "zenmux.ai", "m", "h"), "unreachable");
+        Equal(null, c.ProxyLine("ZenMux", "zenmux.ai"), "no hint yet");
+        c.Proxy = new AICheck.ProxyHint(AICheck.ProxyKind.AppRunning, 7890);
+        Check(c.ProxyLine("ZenMux", "zenmux.ai")!.Contains("7890"), "port, not 7,890");
+        c.Proxy = new AICheck.ProxyHint(AICheck.ProxyKind.SystemOn);
+        Check(c.ProxyLine("ZenMux", "zenmux.ai")!.Contains("zenmux.ai"), "system on names the host");
+        c.Proxy = new AICheck.ProxyHint(AICheck.ProxyKind.None);
+        Check(c.ProxyLine("ZenMux", "zenmux.ai")!.Contains("ZenMux"), "none names the service");
+        var m = new AICheck();
+        m.Fail(AICheck.StepId.Text, AICheck.Reason.NoModel, 404);
+        Check(m.Message("ZenMux", "zenmux.ai", "x/y", "h")!.Contains("x/y"), "model named");
+        var d = new AICheck();
+        d.Fail(AICheck.StepId.Hear, AICheck.Reason.Deaf, 400);
+        Equal("qwen3:14b 听不了声音。", d.Message("ZenMux", "zenmux.ai", "m", "qwen3:14b"), "deaf names the hear model");
+        Check(d.NeedsUser, "deaf needs the user");
+    }
+
+    public static async Task ProxyProbeReadsTheSystemThenThePorts()
+    {
+        Equal(AICheck.ProxyKind.SystemOn, (await ProxyProbe.Hint(() => true)).Kind, "system proxy on");
+        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try { Check(await ProxyProbe.Listening(((IPEndPoint)listener.LocalEndpoint).Port), "something listens"); }
+        finally { listener.Stop(); }
     }
 
     static async Task<string> Joined(IAsyncEnumerable<byte[]> chunks)

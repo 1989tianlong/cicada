@@ -23,6 +23,8 @@ sealed class SettingsWindow : Window
     string? typing;
     // A custom service's address and models as typed, kept across re-renders until 保存并检查.
     readonly Dictionary<string, TextBox> customFields = [];
+    /// A pasted key that belongs elsewhere: what it is, and (another service's key) where it fits.
+    (string Text, string? Service, string Key)? keyHint;
 
     public SettingsWindow(Controller app)
     {
@@ -181,7 +183,7 @@ sealed class SettingsWindow : Window
         if (id == "speak") h = Ui.Spread(h, Ui.Switch(app.Settings.Speak, v => { app.Settings.Speak = v; Save(); }, L("同声传译")));
         // The service menu in the page's header, Ling first and recommended.
         if (id == "ai") h = Ui.Spread(h, Ui.Choice(AIProvider.All.Select(p => (p.Id, p.Id == "ling" ? "Ling" + L("（推荐）") : L(p.Name))), app.Settings.AiProvider,
-            v => { editingKey = false; typing = null; customFields.Clear(); app.SetAIProvider(v); }, 220));
+            v => { editingKey = false; typing = null; keyHint = null; customFields.Clear(); app.SetAIProvider(v); }, 220));
         h.Margin = new Thickness(0, 0, 0, 20);
         sections[id] = h;
         page.Children.Add(h);
@@ -316,33 +318,45 @@ sealed class SettingsWindow : Window
     }
 
     /// 现在能用的 (AISettings.swift › usage), with 听对方 first: on the ports the service hears.
-    /// Windows has no voice of the user's own on any service, so that row isn't here.
+    /// Only what the last result supports: when the service can't be reached (or the key fails)
+    /// nothing says "用 ZenMux" in green. Windows has no voice of the user's own on any service.
     IEnumerable<FrameworkElement> UsesRows()
     {
         var ling = app.Ling;
         var c = ling.Config;
-        var on = ling.Usable;
+        var check = ling.Health;
+        var reason = check.Failure?.Why;
+        var down = ling.HasKey && reason is AICheck.Reason.Unreachable or AICheck.Reason.BadAddress or AICheck.Reason.InvalidKey or AICheck.Reason.MgmtKey or AICheck.Reason.NoCredit;
+        var on = ling.Usable && !down;
+        var textOn = on && reason != AICheck.Reason.NoModel;
+        var notesOn = textOn && reason != AICheck.Reason.NoJSON;
         var uses = LF("用 %@", c.Name);
         FrameworkElement Row(string title, string tag, string style, string note)
         {
             var (bg, fg) = style switch
             {
                 "ok" => ((Brush)new SolidColorBrush(Color.FromRgb(0xE3, 0xF1, 0xE8)), (Brush)Palette.Success),
+                "warn" => (Palette.WarnBg, Palette.WarnIcon),
                 "local" => (Palette.Mica, Palette.Body),
                 _ => (Palette.Subtle, Palette.Tertiary),
             };
             return Card(null, title, note, Ui.Badge(tag, bg, fg));
         }
-        var needKey = (L("需要 key"), "off", L("填好 key 后可用"));
-        var hear = !on ? needKey
-            : ling.Hears == false ? (L("还不能用"), "off", L("这个模型听不了声音，换一个支持音频输入的"))
+        var later = !ling.HasKey ? L("填好 key 后可用") : reason == AICheck.Reason.Unreachable ? LF("连上 %@ 后可用", ling.ServiceName) : L("换好 key 后可用");
+        var off = ling.HasKey ? L("暂不可用") : L("需要 key");
+        var hear = !on ? (off, "off", later)
+            : ling.Hears == false ? (L("暂不可用"), "off", LF("%@ 听不了声音。", ling.HearName))
             : c.IsLing ? (uses, "ok", L("Ming 一次识别并翻译"))
             : (uses, "ok", c.HearModel + " · " + L("比 Ling 晚 1–2 秒出字"));
         yield return Row(L("听对方"), hear.Item1, hear.Item2, hear.Item3);
-        yield return on ? Row(L("实时纪要"), uses, "ok", L("会中每 45 秒更新")) : Row(L("实时纪要"), needKey.Item1, needKey.Item2, needKey.Item3);
-        yield return on ? Row(L("翻译"), uses, "ok", L("整句用它；不行时换 Google")) : Row(L("翻译"), "Google", "off", L("没有 key 时照常可用"));
+        yield return notesOn && check.IsBusy ? Row(L("实时纪要"), L("很忙"), "warn", L("会自动重试，纪要可能晚一点"))
+            : notesOn ? Row(L("实时纪要"), uses, "ok", L("会中每 45 秒更新"))
+            : Row(L("实时纪要"), off, "off", reason == AICheck.Reason.NoJSON ? L("这个服务不支持 JSON") : reason == AICheck.Reason.NoModel ? L("换一个模型后可用") : later);
+        yield return textOn ? Row(L("翻译"), uses, "ok", L("整句用它；不行时换 Google")) : Row(L("翻译"), "Google", "off", ling.HasKey ? L("先用 Google 翻译") : L("没有 key 时照常可用"));
         // Windows speaks when the service can't, as the Mac does with its own voice.
-        yield return ling.Speaks ? Row(L("同传声音"), uses, "ok", c.IsLing ? L("Ming 的声音") : c.VoiceModel!)
+        var speaks = ling.Speaks && !down;
+        yield return speaks ? Row(L("同传声音"), uses, "ok", ling.LastVoice is { } last ? (last.Ok ? L("上次同传时正常") : L("上次同传没出声，用了 Windows 的声音")) : c.IsLing ? L("Ming 的声音") : c.VoiceModel!)
+            : down ? Row(L("同传声音"), L("本机"), "local", L("先用 Windows 的声音"))
             : on ? Row(L("同传声音"), L("本机"), "local", L("没填声音模型，用 Windows 的声音"))
             : Row(L("同传声音"), L("本机"), "local", L("填好 key 前用 Windows 的声音"));
     }
@@ -416,41 +430,65 @@ sealed class SettingsWindow : Window
         var ling = app.Ling;
         var c = ling.Config;
         var p = c.Provider;
-        var state = ling.KeyState;
+        var check = ling.Health;
         var key = ling.CurrentKey();
-        var problem = ling.Problem is { } why ? LF(why.Key, why.Args.Select(a => a is string s ? L(s) : a).ToArray()) : null;
         var title = key is { Length: > 0 } ? AIKey.Masked(key) : key is not null ? L("本机服务，不用 key") : p.Id == "custom" ? L("还没填好") : L("还没填 API key");
-        string? desc = state switch
+        // One line under the key: what failed (the steps below say why), busy, or all passed in short.
+        string? desc = null;
+        Brush color = Palette.Secondary;
+        if (key is not null)
         {
-            KeyState.None or KeyState.Unchecked => null,
-            KeyState.Checking => L("正在检查…"),
-            KeyState.Invalid => LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", c.Name),
-            KeyState.Unreachable => problem ?? LF("连不上 %@，请检查网络或代理", c.Name),
-            _ => problem ?? L("已连接") + " · " + LF("%@ · 响应约 %@ 秒", c.TextModel, (ling.Seconds ?? 0).ToString("0.0")),
-        };
+            if (AICheckView.Status(check) is { } status) { desc = status; color = check.IsRunning ? Palette.Secondary : Palette.Danger; }
+            else if (check.IsBusy) { desc = LF("%@ 现在很忙", ling.ServiceName); color = Palette.WarnIcon; }
+            else if (AICheckView.Summary(check) is { } passed) { desc = passed; color = Palette.Success; }
+        }
         FrameworkElement control;
-        if (editingKey || key is null || state == KeyState.Invalid)
+        if (editingKey || key is null)
         {
             if (keyBox.Parent is Panel old) old.Children.Remove(keyBox);
             if (keyBox.Parent is Border oldBorder) oldBorder.Child = null;
             var field = Ui.Field(keyBox); field.Width = 260; field.Height = 34;
             var buttons = new List<UIElement> { field, Ui.Button(L("保存并检查"), () => _ = SaveKey(), Ui.Kind.Primary, height: 34) };
-            if (editingKey) buttons.Add(Ui.Button(L("取消"), () => { editingKey = false; Render(); }, height: 34));
+            if (editingKey) buttons.Add(Ui.Button(L("取消"), () => { editingKey = false; keyHint = null; Render(); }, height: 34));
             control = Ui.Row(8, [.. buttons]);
         }
         else
         {
-            var change = Ui.Button(L("更换"), () => { editingKey = true; keyBox.Clear(); Render(); keyBox.Focus(); }, height: 32);
-            control = key.Length == 0 ? change : Ui.Row(8, change, Ui.Button(L("删除"), () => { app.Key.Remove(); app.AIChanged(); }, height: 32));
+            var change = Ui.Button(L("更换"), ChangeKey, height: 32);
+            var recheck = Ui.Button(check.IsRunning ? L("正在检查…") : L("重新检查"), () => _ = ling.Check(), height: 32);
+            recheck.IsEnabled = !check.IsRunning;
+            control = key.Length == 0 ? Ui.Row(8, change, recheck) : Ui.Row(8, change, Ui.Button(L("删除"), () => { app.Key.Remove(); app.AIChanged(); }, height: 32), recheck);
         }
         var card = Card(Icons.Key, title, desc, control);
         if (desc is not null && card is DockPanel dock && dock.Children.OfType<StackPanel>().LastOrDefault() is { Children.Count: > 1 } text && text.Children[1] is TextBlock line)
-            line.Foreground = state == KeyState.Ok && problem is null ? Palette.Success : state is KeyState.Checking ? Palette.Secondary : Palette.Danger;
+            line.Foreground = color;
+        var rows = new List<FrameworkElement> { card };
+        // A pasted key that belongs elsewhere, before it is saved: what it is, and where it fits.
+        if (keyHint is { } kh)
+        {
+            var (hintText, service, pasted) = kh;
+            var words = Ui.Text(hintText, 13, Palette.Danger);
+            FrameworkElement hint = words;
+            if (service is not null)
+                hint = Ui.Spread(words, Ui.Button(LF("改用 %@", AIProvider.Named(service).Name), () => { keyHint = null; editingKey = false; keyBox.Clear(); app.SwitchService(service, pasted); }, Ui.Kind.Primary, height: 30));
+            hint.Margin = new Thickness(0, 0, 0, 12);
+            rows.Add(hint);
+        }
+        // Where it broke and the one thing that fixes it; all passed folds into the line above.
+        if (key is not null && (check.IsRunning || check.Failure is not null || check.IsBusy || check.At is not null && !check.Passed))
+            rows.Add(AICheckView.Steps(app, ChangeKey, recheckInStep: false));
+        if (check.BalanceLine(ling.ServiceName) is { } low)
+        {
+            var strip = Ui.Spread(Ui.Text(low, 13, Palette.WarnIcon), Ui.Button(L("去充值"), () => AICheckView.Open(AICheckView.TopUp(p)), height: 30));
+            rows.Add(new Border { Background = Palette.WarnBg, CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 8, 8, 8), Margin = new Thickness(0, 4, 0, 12), Child = strip });
+        }
         // Where to get one, while there is none.
         if (p.Site is { } site && key is null)
-            return Group(card, Card(null, LF("打开 %@", c.Name), new Uri(site).Host, Ui.IconButton(Icons.OpenExternal, LF("打开 %@", c.Name), () => Process.Start(new ProcessStartInfo(site) { UseShellExecute = true }), Palette.Secondary, 32, 16)));
-        return Group(card);
+            rows.Add(Card(null, LF("打开 %@", c.Name), new Uri(site).Host, Ui.IconButton(Icons.OpenExternal, LF("打开 %@", c.Name), () => Process.Start(new ProcessStartInfo(site) { UseShellExecute = true }), Palette.Secondary, 32, 16)));
+        return Group([.. rows]);
     }
+
+    void ChangeKey() { editingKey = true; keyHint = null; keyBox.Clear(); Render(); keyBox.Focus(); }
 
     async Task SaveKey()
     {
@@ -468,6 +506,16 @@ sealed class SettingsWindow : Window
             s.Save();
         }
         var text = keyBox.Password.Trim();
+        keyHint = null;
+        // The prefix says whose key it is: a management key can't call models, and another
+        // service's key goes there with one click (never a silent switch). A custom address may
+        // well take an aggregator's key.
+        if (s.AiProvider != "custom" && AICheck.Owner(text) is { } whose)
+        {
+            var (owner, management) = whose;
+            if (management) { keyHint = (L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。"), null, ""); Render(); return; }
+            if (owner != s.AiProvider) { keyHint = (LF("这是 %@ 的 key。", AIProvider.Named(owner).Name), owner, text); Render(); return; }
+        }
         // Ling's and the aggregators' keys start with sk-; a company gateway's may not.
         if (text.Length > 0 && (s.AiProvider == "custom" || text.StartsWith("sk-")))
         {
