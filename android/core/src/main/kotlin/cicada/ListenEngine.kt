@@ -242,7 +242,7 @@ class ListenEngine(
             onWords?.invoke()
             if (text != null) onSaid?.invoke(text, their) else sayProblem = Strings.L("这句已经是对方的语言")
         } catch (e: LingException) {
-            val name = ling.provider.name
+            val name = ling.hearName
             sayProblem = when {
                 e.kind == LingException.Kind.Http && e.status in listOf(400, 404) && name != "Ling" -> Strings.L("这个模型听不了声音，换一个支持音频输入的")
                 e.kind == LingException.Kind.NoKey || e.kind == LingException.Kind.InvalidKey ->
@@ -286,7 +286,7 @@ class ListenEngine(
                 }
                 problem = null; problemKind = null
             } catch (e: LingException) {
-                val (kind, text) = problem(e, ling.provider.name)
+                val (kind, text) = problem(e, ling.hearName)
                 problemKind = kind; problem = text
                 Log.d("listen: segment ${seg.index} failed ${e.message}")
             } catch (e: Exception) {

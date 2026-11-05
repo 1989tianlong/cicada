@@ -220,6 +220,7 @@ object ProviderTests {
         equal("http://192.168.1.21:8001/v1/chat/completions", fake.sent[0].first, "audio to the hear model's address")
         ling.chat("c", "i", Priority.Translate)
         equal("http://192.168.1.20:8000/v1/chat/completions", fake.sent[1].first, "text to the text model's")
+        equal("192.168.1.21", ling.hearName, "a hearing problem names the hear model's address")
         try {
             s.aiCustomHearBase = "http://192.168.1.21:8001/v1"
             s.save()

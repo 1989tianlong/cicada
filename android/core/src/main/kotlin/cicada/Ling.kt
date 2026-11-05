@@ -272,6 +272,9 @@ class LingClient(
     val serviceHost: String get() = host(config().base ?: provider.base)
     /// Where the hear model is asked: the service's host unless a custom service names its own.
     val hearHost: String get() = config().let { c -> if (c.hearsElsewhere) host(c.hearBase) else serviceHost }
+    /// Who a line about hearing names (连不上 …, … 的 key 无效): a custom service by the address it
+    /// hears at, as the live screen's banner does, not 其他（兼容 OpenAI）.
+    val hearName: String get() = if (provider.id == "custom") hearHost.ifEmpty { provider.name } else provider.name
 
     private fun host(base: String?) = base?.let { try { java.net.URI(it).host } catch (_: Exception) { null } } ?: ""
 
