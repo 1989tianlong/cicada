@@ -194,6 +194,12 @@ object ProviderTests {
         val t = ling.aiCheck.translate
         check(t != null && t.thinks, "thinking found: ${ling.aiCheck.summary}")
         check(ling.aiCheck.slow && ling.aiCheck.failure == null, "works, but slow")
+        // All 120 tokens spent thinking, no answer: still a thinking model, not a silent pass.
+        val noAnswer = Transport.Response(200, Json.write(mapOf("choices" to listOf(mapOf(
+            "message" to mapOf("content" to null, "reasoning" to "Okay, the user wants…"), "finish_reason" to "length"))), pretty = false))
+        val spent = client(Fake({ url, b -> if (url.endsWith("models")) Transport.Response(404, "") else if ("Translate the text" in b) noAnswer else reply("{\"ok\": true}") }), s, key = null)
+        spent.check()
+        check(spent.aiCheck.translate?.thinks == true && spent.aiCheck.slow, "thinking found without an answer: ${spent.aiCheck.summary}")
     }
 
     fun hearBase() {

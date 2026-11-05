@@ -361,8 +361,16 @@ class LingClient(
                     // A real sentence, the way a meeting translates: one token says nothing about a
                     // model that thinks for six seconds before every answer.
                     var thinks = false
-                    chat("Translate the text into Simplified Chinese. Reply with the translation only.\n\nWe will ship the new version on Friday after the design review.",
-                         "Translate.", Priority.Speak, maxTokens = 120, timeout = 30.0) { thinks = AIConfig.thought(it) }
+                    var answered = false
+                    try {
+                        chat("Translate the text into Simplified Chinese. Reply with the translation only.\n\nWe will ship the new version on Friday after the design review.",
+                             "Translate.", Priority.Speak, maxTokens = 120, timeout = 30.0) { answered = true; thinks = AIConfig.thought(it) }
+                    } catch (e: LingException) {
+                        // A model that thinks can spend all its tokens on thinking and answer nothing:
+                        // it did answer, slowly, and that is what this step is here to say (the Mac
+                        // reads only the reply's thinking, not its words).
+                        if (!answered || (e.kind != LingException.Kind.Parse && e.kind != LingException.Kind.Hijacked)) throw e
+                    }
                     val seconds = (System.nanoTime() - started) / 1e9
                     r = r.pass(AICheck.StepID.Text, seconds).copy(translate = AICheck.Speed(seconds, thinks))
                 } else {
