@@ -82,6 +82,9 @@ final class ListenEngine {
     /// The language the service says is spoken.
     private var cloudLang: Lang?
     private var cloudFailures = 0
+    /// Who was hearing the meeting when it went to a service, and whether it was the user's own
+    /// recognition server (rather than 先用○○听): a change in settings must not move the audio elsewhere.
+    private var cloudVia: (provider: AIProvider.Kind?, server: Bool)?
     /// The user's own service stopped answering in this meeting: listening went back to this Mac.
     private var serverFellBack = false
     /// The meeting is recognized by the user's own service (`Recognition.serverPreferred`).
@@ -1106,6 +1109,7 @@ final class ListenEngine {
             Task { await old.cancel() }
         }
         cloudListening = true
+        cloudVia = (translator.ling.provider.id, serverHears)
         cloudReplaced = replaced
         cloudAwaiting = awaiting
         cloudLang = nil
@@ -1180,7 +1184,19 @@ final class ListenEngine {
         Task { await switchTranscriber(to: lang) }
     }
 
+    /// AI settings changed while a service hears the meeting. The audio stays only with the service
+    /// it went to: another service (Ling chosen instead of a custom one), or 语音识别 set back to
+    /// 本机, takes the meeting back to this Mac rather than sending its audio to a service nobody chose.
+    func aiServiceChanged() {
+        guard cloudListening, let via = cloudVia else { return }
+        let provider = translator?.ling.provider.id
+        guard provider != via.provider || (via.server && !Recognition.serverPreferred) else { return }
+        debugLog("cloud: the AI service changed (\(via.provider?.rawValue ?? "?") → \(provider?.rawValue ?? "?")), back to this Mac")
+        stopCloud()
+    }
+
     private func resetCloud() {
+        cloudVia = nil
         cloudListening = false
         cloudReplaced = nil
         cloudAwaiting = nil

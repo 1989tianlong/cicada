@@ -1122,9 +1122,12 @@ final class AppModel: ObservableObject {
             guard let id = self?.settings.provider.id, id != .ling else { return "ming" }
             return id.rawValue
         }
-        // Takes effect from the next meeting: one already running keeps how it listens.
+        // Takes effect from the next meeting: one already running keeps how it listens, except that
+        // its audio never goes on to a service other than the one hearing it (`aiServiceChanged`).
         Recognition.serverPreferred = c.transcribes
         ling.reconfigure()
+        listen.aiServiceChanged()
+        roomListen.aiServiceChanged()
         applyVoice()
     }
 
