@@ -188,12 +188,12 @@ public sealed class LingClient
     public AIConfig Config => config();
     public AIProvider Provider => Config.Provider;
 
-    /// The key for the service in use. A custom service on this computer may need none: "".
+    /// The key for the service in use. A custom service on this computer or the local network may need none: "".
     public string? CurrentKey()
     {
         var c = Config;
         var k = key.Read();
-        if (k is null && c.Provider.Id == "custom" && c.Base is { } b && AIProvider.IsLocal(b)) return "";
+        if (k is null && c.Provider.Id == "custom" && c.Base is { } b && AIProvider.IsNearby(b)) return "";
         return k;
     }
 
@@ -203,11 +203,15 @@ public sealed class LingClient
     public bool Speaks => Usable && Config.HasVoices;
     /// Listening and 同声传译 can work: the hear model wasn't found to refuse audio.
     public bool CanHear => Usable && Hears != false && Config.HearModel.Length > 0;
+    /// The addresses that refused `chat_template_kwargs` once (a custom service's text and hear
+    /// models may be separate servers): left out there until settings change.
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> noTemplateKwargs = new();
 
     /// The key, the service or its models changed: forget what the last check found.
     public void KeyChanged()
     {
         key.Reload();
+        noTemplateKwargs.Clear();
         Interlocked.Increment(ref generation);
         lock (healthGate) health = new AICheck();
         KeyState = CurrentKey() is null ? KeyState.None : KeyState.Unchecked;
@@ -219,7 +223,10 @@ public sealed class LingClient
 
     /// What messages call the service ("这个服务" for a custom address) and its host.
     public string ServiceName => Config.Provider.Id == "custom" ? Strings.L("这个服务") : Config.Name;
-    public string ServiceHost => Config.Base is { } b && Uri.TryCreate(b, UriKind.Absolute, out var u) ? u.Host : "";
+    public string ServiceHost => Host(Config.Base);
+    /// Where the hear model is asked (a custom service's own address for it, else the service's).
+    public string HearHost => Host(Config.HearBase ?? Config.Base);
+    static string Host(string? b) => b is not null && Uri.TryCreate(b, UriKind.Absolute, out var u) ? u.Host : "";
     /// The hear model in messages; the service when none is named (a custom one not filled in).
     public string HearName => Config.HearModel.Length > 0 ? Config.HearModel : ServiceName;
 
@@ -231,6 +238,9 @@ public sealed class LingClient
     {
         var started = DateTime.UtcNow;
         var c = Config;
+        // Counted before anything else: a slower check still running (a custom service that thinks
+        // for seconds) must not land on top of what this one finds, even "no key".
+        var gen = Interlocked.Increment(ref generation);
         if (CurrentKey() is not { } k)
         {
             lock (healthGate) health = new AICheck();
@@ -239,7 +249,6 @@ public sealed class LingClient
             return (KeyState, 0);
         }
         Interlocked.Increment(ref checking);
-        var gen = Interlocked.Increment(ref generation);
         try
         {
             var r = new AICheck();
@@ -263,18 +272,32 @@ public sealed class LingClient
         double Since(DateTime t) => (DateTime.UtcNow - t).TotalSeconds;
         void Failed(LingException e, AICheck.StepId step)
         {
-            if (AICheck.Classify(e.Failure, e.Status, step) is not { } f) return;
+            if (AICheck.Classify(e.Failure, e.Status, step, c.HearElsewhere) is not { } f) return;
             if (f.Why == AICheck.Reason.Busy) r.Busy(f.Step); else r.Fail(f.Step, f.Why, f.Code);
         }
         var t = DateTime.UtcNow;
         try
         {
             if (c.IsLing) await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 10, model: "Ling-3.0-tiny");
-            else await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 20);
+            else if (c.Provider.Id != "custom") await Chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens: 5, timeout: 20);
+            else
+            {
+                // A real sentence, the way a meeting translates: one token says nothing about a
+                // model that thinks for six seconds before every answer.
+                JsonNode? root = null;
+                try
+                {
+                    await Chat("Translate the text into Simplified Chinese. Reply with the translation only.\n\nWe will ship the new version on Friday after the design review.",
+                        "Translate.", Priority.Speak, maxTokens: 120, timeout: 30, reply: n => root = n);
+                }
+                // A reasoning parser that put the whole answer in reasoning_content: it answered, by thinking.
+                catch (LingException e) when (e.Failure == LingException.Kind.Parse && AIConfig.Thought(root)) { }
+                r.Translate = new AICheck.Speed(Since(t), AIConfig.Thought(root));
+            }
             r.Pass(AICheck.StepId.Text, Since(t));
             if (c.Provider.Id == "custom")
             {
-                try { await Chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json: true, maxTokens: 20, timeout: 20); }
+                try { await Chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json: true, maxTokens: 20, timeout: 30); }
                 catch (LingException e) when (e.Failure == LingException.Kind.Http) { r.Fail(AICheck.StepId.Text, AICheck.Reason.NoJSON, e.Status); }
             }
         }
@@ -283,6 +306,7 @@ public sealed class LingClient
         // The address and the key work: hearing is its own question (the text model may be the one gone).
         if (c.IsLing || r.Failure is { Step: AICheck.StepId.Reach or AICheck.StepId.Key }) return;
         if (c.HearModel.Length == 0) r.Fail(AICheck.StepId.Hear, AICheck.Reason.Deaf);
+        else if (c.HearBase is null) r.Fail(AICheck.StepId.Hear, AICheck.Reason.BadAddress);
         else
         {
             t = DateTime.UtcNow;
@@ -301,7 +325,8 @@ public sealed class LingClient
         // A model the service no longer lists fails here, before a meeting finds out.
         if (listed is { } ids && c.TextModel.Length > 0 && r[AICheck.StepId.Text].Kind != AICheck.Kind.Fail && !ids.Contains(c.TextModel))
             r.Fail(AICheck.StepId.Text, AICheck.Reason.NoModel);
-        if (listedHearing is { } hearing && c.HearModel.Length > 0 && r[AICheck.StepId.Hear].Kind != AICheck.Kind.Fail && !hearing.Contains(c.HearModel))
+        // The list is the text address's: it says nothing about a hear model served elsewhere.
+        if (listedHearing is { } hearing && !c.HearElsewhere && c.HearModel.Length > 0 && r[AICheck.StepId.Hear].Kind != AICheck.Kind.Fail && !hearing.Contains(c.HearModel))
             r.Fail(AICheck.StepId.Hear, AICheck.Reason.Deaf);
         if (c.Provider.Id == "openrouter") r.Balance = AICheck.BalanceFrom(await GetText("key", k), await GetText("credits", k));
     }
@@ -364,7 +389,7 @@ public sealed class LingClient
             r = old.Clone();
             if (failure is not null)
             {
-                if (AICheck.Classify(failure.Failure, failure.Status, step) is not { } f || f.Why == AICheck.Reason.ServerError) return;
+                if (AICheck.Classify(failure.Failure, failure.Status, step, Config.HearElsewhere) is not { } f || f.Why == AICheck.Reason.ServerError) return;
                 if (f.Why == AICheck.Reason.Busy) r.Busy(f.Step); else r.Fail(f.Step, f.Why, f.Code);
             }
             else r.Pass(step, seconds);
@@ -440,15 +465,17 @@ public sealed class LingClient
     /// with backoff (RetryWaits); the rest fail fast so the caller can fall back. `model` defaults to
     /// the service's text model. `patient` (the final notes) keeps retrying for about a minute. A 429
     /// holds every request start for a while (RateLimited), and a retry keeps its place in the
-    /// queue, so lines stay in order.
+    /// queue, so lines stay in order. Audio goes to the hear model's address (a custom service's own
+    /// one for it). `reply` sees the whole reply before its text is read (the check's thinking test).
     public async Task<string> Chat(string content, string instruction, Priority priority, bool json = false,
         int maxTokens = 1024, double timeout = 30, string? model = null, byte[]? audio = null, bool patient = false,
-        CancellationToken cancel = default)
+        CancellationToken cancel = default, Action<JsonNode>? reply = null)
     {
         var k = CurrentKey() ?? throw new LingException(LingException.Kind.NoKey);
         if (KeyState == KeyState.Invalid) throw new LingException(LingException.Kind.InvalidKey);
         var c = Config;
-        if (c.Base is null) throw new LingException(LingException.Kind.NoKey);
+        var b = audio is null ? c.Base : c.Provider.Id == "custom" ? c.HearBase : c.HearBase ?? c.Base;
+        if (b is null) throw new LingException(LingException.Kind.NoKey);
         model ??= c.TextModel;
         JsonNode user = audio is null ? JsonValue.Create(instruction)! : new JsonArray(c.AudioPart(audio, model), new JsonObject { ["type"] = "text", ["text"] = instruction });
         var body = new JsonObject
@@ -459,10 +486,10 @@ public sealed class LingClient
                 new JsonObject { ["role"] = "user", ["content"] = user }),
             ["stream"] = false,
         };
-        c.Shape(body, maxTokens);
+        c.Shape(body, maxTokens, templateKwargs: !noTemplateKwargs.ContainsKey(b));
         if (json) body["response_format"] = new JsonObject { ["type"] = "json_object" };
         var payload = body.ToJsonString();
-        var url = new Uri(new Uri(c.Base), "chat/completions");
+        var url = new Uri(new Uri(b), "chat/completions");
 
         var waits = RetryWaits(priority, audio is not null, patient);
         long? ticket = null;
@@ -475,7 +502,19 @@ public sealed class LingClient
             if ((started - queued).TotalSeconds > 1) Log.Debug($"ling: {priority} waited {(started - queued).TotalMilliseconds:F0} ms at the gate");
             try
             {
-                var root = await Post(url, payload, k, timeout, cancel);
+                JsonNode root;
+                try { root = await Post(url, payload, k, timeout, cancel); }
+                // A strict gateway answers 400 or 422 to a field it doesn't know: asked again
+                // without it, and not sent it again until settings change.
+                catch (LingException e) when (e.Failure == LingException.Kind.Http && e.Status is 400 or 422 && body.ContainsKey("chat_template_kwargs"))
+                {
+                    Log.Debug($"ai custom: chat_template_kwargs refused (HTTP {e.Status}), sent without it from now on");
+                    noTemplateKwargs[b] = true;
+                    body.Remove("chat_template_kwargs");
+                    payload = body.ToJsonString();
+                    root = await Post(url, payload, k, timeout, cancel);
+                }
+                reply?.Invoke(root);
                 var choice = root["choices"]?[0];
                 var text = Str(choice?["message"]?["content"]) ?? throw new LingException(LingException.Kind.Parse);
                 var finish = Str(choice?["finish_reason"]);

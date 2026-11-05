@@ -66,7 +66,9 @@ static class AICheckView
     static void Problem(Controller app, AICheck check, StackPanel into, Action changeKey, bool recheckInStep)
     {
         var ling = app.Ling;
-        if (check.Message(ling.ServiceName, ling.ServiceHost, ling.Config.TextModel, ling.HearName) is { } why)
+        // A hear model at its own address: the one it couldn't reach is that one.
+        var host = check.Failure?.Step == AICheck.StepId.Hear ? ling.HearHost : ling.ServiceHost;
+        if (check.Message(ling.ServiceName, host, ling.Config.TextModel, ling.HearName) is { } why)
         {
             var t = Ui.Text(why, 13, check.Failure is null ? Palette.WarnIcon : Palette.Danger);
             t.Margin = new Thickness(0, 4, 0, 0);

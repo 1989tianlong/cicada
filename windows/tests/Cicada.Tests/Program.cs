@@ -1444,6 +1444,143 @@ static class Tests
         Equal(null, AIProvider.CustomBase(" "), "nothing");
     }
 
+    public static void TheLocalNetworkMayUsePlainHttp()
+    {
+        foreach (var ok in new[] { "http://192.168.1.20:8000/v1", "10.0.0.5:8000/v1", "http://172.20.1.1/v1", "http://100.101.102.103:8000/v1",
+                     "http://169.254.3.4/v1", "http://gpu.local:30000/v1", "http://GPU.LOCAL/v1", "http://[fd12:3456::1]:8000/v1", "http://[fe80::1]/v1", "http://[::1]:8000/v1" })
+            Check(AIProvider.CustomBase(ok)?.StartsWith("http://") == true, ok);
+        foreach (var no in new[] { "http://172.32.0.1/v1", "http://172.15.0.1/v1", "http://100.128.0.1/v1", "http://100.63.0.1/v1", "http://8.8.8.8/v1",
+                     "http://192.169.1.1/v1", "http://gpu.example.com/v1", "http://10.0.0.5.evil.com/v1", "http://[2001:db8::1]/v1" })
+            Equal(null, AIProvider.CustomBase(no), no);
+        Equal("http://192.168.1.20:8000/v1/", AIProvider.CustomBase("192.168.1.20:8000/v1"), "no scheme on the local network: http");
+        Equal("https://10.0.0.5.evil.com/v1/", AIProvider.CustomBase("10.0.0.5.evil.com/v1"), "a name that looks like one: https");
+        Check(AIProvider.IsNearby("http://192.168.1.20:8000/v1/") && !AIProvider.IsLocal("http://192.168.1.20:8000/v1/"), "nearby but not this computer");
+        var (ling, s) = Using(new Service((_, _) => Reply("ok")), "custom", key: null, new AppSettings { AiCustomBase = "http://192.168.1.20:8000/v1" });
+        Equal("", ling.CurrentKey(), "a service on the local network needs no key");
+    }
+
+    public static void ACustomHearModelMayHaveItsOwnAddress()
+    {
+        var s = new AppSettings { AiProvider = "custom", AiCustomBase = "http://192.168.1.20:8000/v1", AiHearModels = { ["custom"] = "qwen3-omni" } };
+        Equal("http://192.168.1.20:8000/v1/", s.AIConfig().HearBase, "empty: the text model's address");
+        Check(!s.AIConfig().HearElsewhere, "same address");
+        s.AiCustomHearBase = "192.168.1.21:8001/v1";
+        Equal("http://192.168.1.21:8001/v1/", s.AIConfig().HearBase, "its own");
+        Check(s.AIConfig().HearElsewhere, "elsewhere");
+        s.AiCustomHearBase = "http://example.com/v1";
+        Equal(null, s.AIConfig().HearBase, "http off the local network is no address");
+        Equal("https://zenmux.ai/api/v1/", new AppSettings { AiProvider = "zenmux" }.AIConfig().HearBase, "other services: theirs");
+        Equal("https://api.ant-ling.com/v1/", new AppSettings().AIConfig().HearBase, "Ling");
+        // Not reaching a hear server of its own says nothing about the text address.
+        Equal((AICheck.StepId.Hear, AICheck.Reason.Unreachable, (int?)null), AICheck.Classify(LingException.Kind.Network, 0, AICheck.StepId.Hear, hearElsewhere: true), "hear elsewhere");
+        Equal((AICheck.StepId.Reach, AICheck.Reason.Unreachable, (int?)null), AICheck.Classify(LingException.Kind.Timeout, 0, AICheck.StepId.Hear), "same address");
+    }
+
+    public static void ACustomServiceIsAskedNotToThink()
+    {
+        var c = new AppSettings { AiProvider = "custom", AiCustomBase = "https://x.example/v1" }.AIConfig();
+        var body = new JsonObject();
+        c.Shape(body, 50);
+        Equal("{\"enable_thinking\":false}", body["chat_template_kwargs"]?.ToJsonString(), "Qwen3 on vLLM / SGLang / llama.cpp");
+        var plain = new JsonObject();
+        c.Shape(plain, 50, templateKwargs: false);
+        Check(plain["chat_template_kwargs"] is null, "left out for a server that refused it");
+        var zen = new JsonObject();
+        new AppSettings { AiProvider = "zenmux" }.AIConfig().Shape(zen, 50);
+        Check(zen["chat_template_kwargs"] is null, "only a custom service");
+    }
+
+    public static void AThinkingModelIsSeenFromItsReply()
+    {
+        static JsonNode R(string message, string? usage = null) => JsonNode.Parse($"{{\"choices\":[{{\"message\":{message}}}]{(usage is null ? "" : ",\"usage\":" + usage)}}}")!;
+        Check(!AIConfig.Thought(R("{\"content\":\"周五发布。\"}")), "a plain answer");
+        Check(AIConfig.Thought(R("{\"content\":\"周五发布。\",\"reasoning_content\":\"The user wants…\"}")), "reasoning_content");
+        Check(AIConfig.Thought(R("{\"content\":null,\"reasoning_content\":\"周五发布。\"}")), "the answer in reasoning_content");
+        Check(AIConfig.Thought(R("{\"content\":\"周五发布。\",\"reasoning\":\"hmm\"}")), "reasoning");
+        Check(AIConfig.Thought(R("{\"content\":\"<think>hmm</think>周五发布。\"}")), "<think>");
+        Check(AIConfig.Thought(R("{\"content\":\"周五发布。\"}", "{\"completion_tokens_details\":{\"reasoning_tokens\":212}}")), "reasoning tokens");
+        Check(!AIConfig.Thought(R("{\"content\":\"周五发布。\",\"reasoning_content\":\"  \"}", "{\"completion_tokens_details\":{\"reasoning_tokens\":0}}")), "blank and zero");
+        Check(!AIConfig.Thought(null), "no reply");
+        Check(!new AICheck.Speed(0.4, false).Slow && new AICheck.Speed(0.4, true).Slow && new AICheck.Speed(3.0, false).Slow, "slow: thinks, or 3 s and more");
+    }
+
+    public static async Task ACustomCheckTranslatesASentenceAndRetriesWithoutKwargs()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            // A strict gateway refuses chat_template_kwargs; the model thinks, its answer in reasoning_content.
+            var fake = new Service((url, body) =>
+                body.Contains("chat_template_kwargs") ? Status(400)
+                : url.EndsWith("/models") ? Status(404)
+                : body.Contains("input_audio") ? Reply("NONE")
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"choices\":[{\"message\":{\"content\":null,\"reasoning_content\":\"我们将在周五发布。\"},\"finish_reason\":\"stop\"}]}") });
+            var (ling, s) = Using(fake, "custom", key: null, new AppSettings
+            {
+                AiCustomBase = "http://192.168.1.20:8000/v1", AiCustomHearBase = "http://192.168.1.21:8001/v1",
+                AiModels = { ["custom"] = "qwen3" }, AiHearModels = { ["custom"] = "qwen3-omni" },
+            });
+            await ling.Check();
+            var first = fake.Sent[0];
+            Check(first.url == "http://192.168.1.20:8000/v1/chat/completions" && first.body.Contains("chat_template_kwargs") && first.body.Contains("design review"), "a real sentence, thinking off");
+            Check(!fake.Sent[1].body.Contains("chat_template_kwargs") && fake.Sent[1].body.Contains("design review"), "asked again without it");
+            const string text = "http://192.168.1.20:8000/v1/chat/completions", hear = "http://192.168.1.21:8001/v1/chat/completions";
+            Check(fake.Sent.Skip(2).Where(x => x.url == text).All(x => !x.body.Contains("chat_template_kwargs")), "and not sent it again");
+            var heard = fake.Sent.Where(x => x.url == hear).ToList();
+            Check(heard.Count == 2 && heard[0].body.Contains("input_audio") && heard[0].body.Contains("chat_template_kwargs") && !heard[1].body.Contains("chat_template_kwargs"),
+                "the hear model at its own address, which refused it on its own");
+            Check(ling.Health.Translate is { Thinks: true } && ling.Health.Slow, ling.Health.Summary);
+            Check(ling.Health.SlowLine()!.Contains("先思考"), "says why");
+            Equal(AICheck.Kind.Ok, ling.Health[AICheck.StepId.Hear].Kind, "hears");
+            ling.KeyChanged();
+            fake.Sent.Clear();
+            try { await ling.Chat("x", "Translate.", Priority.Translate); } catch (LingException) { } // its answer is all reasoning
+            Check(fake.Sent[0].body.Contains("chat_template_kwargs"), "settings changed: tried again");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task AHearServerRefusingKwargsLeavesTheTextServerAlone()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var fake = new Service((url, body) => url.Contains(":8001/") && body.Contains("chat_template_kwargs") ? Status(422) : url.EndsWith("/models") ? Status(404) : Reply("周五发布。"));
+            var (ling, _) = Using(fake, "custom", key: null, new AppSettings
+            {
+                AiCustomBase = "http://192.168.1.20:8000/v1", AiCustomHearBase = "http://192.168.1.21:8001/v1",
+                AiModels = { ["custom"] = "qwen3" }, AiHearModels = { ["custom"] = "qwen3-omni" },
+            });
+            await ling.Check();
+            Equal(AICheck.Kind.Ok, ling.Health[AICheck.StepId.Hear].Kind, "heard on the retry");
+            fake.Sent.Clear();
+            await ling.Chat("x", "Translate.", Priority.Translate);
+            Check(fake.Sent.Single().body.Contains("chat_template_kwargs"), "the text server still gets it");
+            Check(ling.Health.Translate is { Thinks: false } && !ling.Health.Slow, ling.Health.Summary);
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task ANoKeyCheckOutranksAnOlderSlowOne()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var gate = new TaskCompletionSource();
+            var fake = new Service((_, _) => { gate.Task.Wait(); return Reply("周五发布。"); });
+            var (ling, s) = Using(fake, "custom", key: null, new AppSettings { AiCustomBase = "http://localhost:8000/v1", AiModels = { ["custom"] = "m" } });
+            var slow = Task.Run(ling.Check);
+            while (fake.Sent.Count == 0) await Task.Delay(5);
+            s.AiCustomBase = "https://api.example.com/v1"; // remote now, and no key
+            await ling.Check();
+            gate.SetResult();
+            await slow;
+            Equal(KeyState.None, ling.KeyState, "the newer \"no key\" stays");
+            Check(ling.Health.At is null, "the older check dropped");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
     public static void SettingsKeepTheServiceAcrossARestart()
     {
         new AppSettings { AiProvider = "zenmux", AiHearModels = { ["zenmux"] = "bytedance/doubao-seed-2.0-mini" } }.Save();

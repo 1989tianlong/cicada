@@ -21,6 +21,8 @@ public sealed class AppSettings
     [JsonPropertyName("aiCustomBase")] public string AiCustomBase { get; set; } = "";
     [JsonPropertyName("aiCustomVoiceBase")] public string AiCustomVoiceBase { get; set; } = "";
     [JsonPropertyName("aiCustomVoice")] public string AiCustomVoice { get; set; } = "";
+    /// A custom service's hear model at its own address (the Mac's key); empty: the same one.
+    [JsonPropertyName("aiCustomHearBase")] public string AiCustomHearBase { get; set; } = "";
     /// 听哪里 (the Mac's key): "system" (电脑声音), "room" (会议室) or "both" (电脑和会议室).
     [JsonPropertyName("listenSource")] public string ListenSourceValue { get; set; } = ListenSource.System;
     [JsonIgnore] public string Listens => ListenSource.Parse(ListenSourceValue);

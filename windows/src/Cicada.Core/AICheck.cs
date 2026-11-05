@@ -55,6 +55,19 @@ public sealed class AICheck
     public ProxyHint? Proxy { get; set; }
     /// OpenRouter only: dollars left (the smaller of the key's limit and the account's credits).
     public double? Balance { get; set; }
+    /// A custom service: how long one real sentence took, and whether the model thought first.
+    public Speed? Translate { get; set; }
+
+    /// A sentence that takes `SlowAfter` seconds often misses the 6 s a translation is given
+    /// (Translator) and falls back to Google; a model that thinks first does every time.
+    public readonly record struct Speed(double Seconds, bool Thinks)
+    {
+        public const double SlowAfter = 3;
+        public bool Slow => Thinks || Seconds >= SlowAfter;
+    }
+
+    /// Text works but every sentence is slow (a thinking model): translations will fall back.
+    public bool Slow => Failure is null && Translate?.Slow == true;
 
     public const double LowBalance = 0.5;
 
@@ -68,7 +81,7 @@ public sealed class AICheck
 
     public AICheck Clone()
     {
-        var c = new AICheck { At = At, Passive = Passive, Proxy = Proxy, Balance = Balance };
+        var c = new AICheck { At = At, Passive = Passive, Proxy = Proxy, Balance = Balance, Translate = Translate };
         steps.CopyTo(c.steps, 0);
         return c;
     }
@@ -145,8 +158,11 @@ public sealed class AICheck
 
     /// Which step a failed request stops at, and why. `step` is the step the request was proving
     /// (the text model for a chat, the hear model for audio). Null: says nothing about the service.
-    public static (StepId Step, Reason Why, int? Code)? Classify(LingException.Kind kind, int status, StepId step) => kind switch
+    /// `hearElsewhere`: the hear model has an address of its own, so not reaching it says nothing
+    /// about the service's address.
+    public static (StepId Step, Reason Why, int? Code)? Classify(LingException.Kind kind, int status, StepId step, bool hearElsewhere = false) => kind switch
     {
+        LingException.Kind.Network or LingException.Kind.Timeout when hearElsewhere && step == StepId.Hear => (StepId.Hear, Reason.Unreachable, null),
         LingException.Kind.Network or LingException.Kind.Timeout => (StepId.Reach, Reason.Unreachable, null),
         LingException.Kind.InvalidKey => (StepId.Key, Reason.InvalidKey, null),
         LingException.Kind.RateLimited => (step, Reason.Busy, null),
@@ -231,7 +247,7 @@ public sealed class AICheck
         return f.Why switch
         {
             Reason.Unreachable => Strings.LF("这台电脑访问不到 %@。", host),
-            Reason.BadAddress => Strings.L("地址要用 https，只有 localhost 可以用 http。"),
+            Reason.BadAddress => Strings.L("地址要用 https；这台电脑和局域网里的服务可以用 http。"),
             Reason.InvalidKey => Strings.LF("%@ 说这个 key 无效，可能没复制全，或已删除。", service),
             Reason.MgmtKey => Strings.L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。"),
             Reason.NoCredit => Strings.LF("%@ 账户余额不足。", service),
@@ -241,6 +257,16 @@ public sealed class AICheck
             Reason.Busy => Strings.LF("%@ 现在很忙，key 没问题。开会时会自动重试。", service),
             _ => Strings.LF("%@ 暂时出错（HTTP %lld），稍后再试。", service, f.Code ?? 0),
         };
+    }
+
+    /// Why translations are slow, and what to do (a custom service). The Mac's words: the
+    /// translation timeout is the same 6 s here.
+    public string? SlowLine()
+    {
+        if (!Slow || Translate is not { } t) return null;
+        var secs = t.Seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+        return t.Thinks ? Strings.LF("这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒会改用 Google。在服务端关掉思考，或换一个不思考的模型。", secs)
+            : Strings.LF("翻一句要 %@ 秒，超过 6 秒会改用 Google。换一个更小的模型会快一些。", secs);
     }
 
     /// The proxy line under "can't reach": what this computer's proxy looks like, and what to do.
@@ -273,7 +299,8 @@ public sealed class AICheck
                 var k => Lower(k),
             });
             return string.Join(" ", parts) + (Proxy is { } p ? $" proxy={p}" : "")
-                + (Balance is { } b ? $" balance={b.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" : "") + (Passive ? " passive" : "");
+                + (Balance is { } b ? $" balance={b.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" : "") + (Passive ? " passive" : "")
+                + (Translate is { } t ? $" translate={t.Seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}s{(t.Thinks ? " thinks" : "")}" : "");
         }
     }
 

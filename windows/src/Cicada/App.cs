@@ -993,7 +993,7 @@ sealed class Controller
         var c = Ling.Config;
         return new JsonObject
         {
-            ["provider"] = c.Provider.Id, ["base"] = c.Base, ["text"] = c.TextModel, ["hear"] = c.HearModel, ["voice"] = c.VoiceModel,
+            ["provider"] = c.Provider.Id, ["base"] = c.Base, ["hearBase"] = c.HearBase, ["text"] = c.TextModel, ["hear"] = c.HearModel, ["voice"] = c.VoiceModel,
             ["state"] = Ling.KeyState.ToString(), ["hears"] = Ling.Hears, ["seconds"] = Ling.Seconds is { } s ? Math.Round(s, 1) : null,
             ["check"] = Ling.Health.Summary,
             ["problem"] = Ling.Health.Message(Ling.ServiceName, Ling.ServiceHost, Ling.Config.TextModel, Ling.HearName),

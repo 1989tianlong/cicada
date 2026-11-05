@@ -312,3 +312,6 @@
 "也听电脑" = "Hear the PC too";
 "电脑里放出来的" = "Played on the PC";
 "%@。点按去设置" = "%@. Click to open Settings";
+"每样可以接不同的机器；这台电脑和局域网里的服务可以用 http。" = "Each can use a different machine; services on this PC or your local network can use http.";
+"没填，用 Windows 的声音" = "Not set: the Windows voice";
+"地址要用 https；这台电脑和局域网里的服务可以用 http。" = "The address must use https; services on this PC or your local network can use http.";
