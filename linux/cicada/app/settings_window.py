@@ -663,8 +663,9 @@ class SettingsWindow(Gtk.Window):
         trailing = ui.text("", 12, "tertiary", wrap=False, ellipsize=False)
         chevron = ui.icon("pan-end-symbolic", 12)
         left = ui.vbox(2, ui.text(title, 13, "ink", wrap=False), detail)
-        row = ui.hbox(10, dot, left)
-        left.set_hexpand(True)
+        # The middle takes the room left over and keeps its text at the start (not centred in it).
+        row = ui.hbox(10, dot)
+        row.pack_start(left, True, True, 0)
         row.pack_end(chevron, False, False, 0)
         row.pack_end(trailing, False, False, 0)
         b = Gtk.Button()
