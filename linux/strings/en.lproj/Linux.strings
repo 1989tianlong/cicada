@@ -195,3 +195,5 @@
 "系统代理设成了“自动”，知了用不了。在 设置 › 网络 › 网络代理 里改成“手动”。" = "The system proxy is set to Automatic, which Cicada can’t use. Set it to Manual in Settings › Network › Network Proxy.";
 /* An update that failed and couldn't open the browser either (updater.py): the address to open. */
 "没能自动更新：%@。请在浏览器里打开 %@ 下载" = "Couldn’t update automatically: %@. Open %@ in a browser to download it";
+/* The Mac's 改用%@重新整理 with spaces around the language (notes_window.py); same translations. */
+"改用 %@ 重新整理" = "Rewrite in %@";

@@ -643,7 +643,11 @@ class NotesWindow(Gtk.Window):
                 listen.notes_for[sid] = choice
                 notes.generate(sid)
                 GLib.timeout_add(150, lambda: self.refresh() or False)
-            b = ui.button(LF("改用%@重新整理", name(other[1])), again, "outline")
+            # A Latin name gets spaces in Chinese ("改用 English 重新整理"), unlike the Mac's one key;
+            # a Chinese one doesn't ("改用简体中文重新整理"). Both translate alike.
+            label = name(other[1])
+            spaced = label[:1].isascii()
+            b = ui.button(LF("改用 %@ 重新整理" if spaced else "改用%@重新整理", label), again, "outline")
             b.set_can_focus(False)
             b.set_halign(Gtk.Align.START)
             self.lang_box.pack_start(b, False, False, 0)
