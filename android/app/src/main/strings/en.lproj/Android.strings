@@ -159,7 +159,7 @@
 "转成一场会议记录：双语文字记录和纪要。也可以在别的 app 里分享到知了。" = "Becomes a meeting record with a bilingual transcript and notes. You can also share a file to Cicada from another app.";
 "选择文件" = "Choose file";
 "知了 · 正在转写" = "Cicada · Transcribing";
-"面对面翻译" = "Face-to-face interpreting";
+"面对面翻译" = "In-person interpreting";
 "查看进度" = "View progress";
 "改名" = "Rename";
 "%@ 是谁？" = "Who is %@?";
@@ -168,7 +168,7 @@
 "配回原视频用" = "To put back on the video";
 "显示 Mac 和 Windows 上分出的说话人；这台手机还不能按声音分人" = "Shows speakers told apart on Mac and Windows. This phone can't tell voices apart yet.";
 "只存在这台手机上，会议记录里能回放原声" = "Kept on this phone only. Play it back in the record.";
-"我说 · 面对面" = "Me · Face to face";
+"我说 · 面对面" = "Me · In person";
 "按住说话，松开后用对方的语言读出来" = "Hold to speak; let go and it's read aloud in their language";
 "用手机的声音读一句英语" = "Hear an English sentence in the phone's voice";
 "转成一场会议记录" = "Turn it into a meeting record";
@@ -195,7 +195,7 @@
 "要能输入音频：听对方和“我说”都用它" = "Must take audio in: used for Listening and for Me";
 "听对方和“我说”都用它" = "Used for Listening and for Me";
 "需支持 /audio/speech；不填就用手机的声音" = "Must support /audio/speech. Leave empty to use the phone's voice";
-"面对面时读给对方" = "Reads to them face to face";
+"面对面时读给对方" = "Reads to them in person";
 "未填" = "Not set";
 "需要 %@ 的 key 才能听" = "Needs a %@ key to listen";
 "注册或登录后点“创建令牌”" = "Sign up or log in, then tap “Create token”";
