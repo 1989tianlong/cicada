@@ -162,19 +162,9 @@ object AiCheckViews {
         if (!ling.hasKey || !c.needsUser || c.running) return null
         val name = ling.serviceName
         val cfg = ling.config()
-        val stops = L("修好之前听不了")
-        val notesStop = L("字幕照常，纪要先停下")
         val f = c.failure ?: return c.balanceLine(name)?.let { it to L("用完后就听不了了") }
-        return when (f.reason) {
-            Reason.Unreachable -> LF("连不上 %@", name) to stops
-            Reason.InvalidKey, Reason.MgmtKey -> LF("%@ 的 key 用不了", name) to stops
-            Reason.NoCredit -> LF("%@ 账户余额不足。", name) to stops
-            Reason.NoModel -> LF("%@ 上找不到 %@ 这个模型。", name, AiServiceActivity.short(cfg.textModel)) to notesStop
-            Reason.Deaf -> LF("%@ 听不了声音。", AiServiceActivity.short(cfg.hearModel)) to stops
-            Reason.BadAddress -> L("AI 服务的设置要改一下") to stops
-            Reason.NoJSON -> L("AI 服务的设置要改一下") to notesStop
-            Reason.Busy, Reason.ServerError -> null
-        }
+        if (f.reason == Reason.Unreachable) return LF("连不上 %@", name) to L("修好之前听不了")
+        return c.blocking(name, cfg.textModel, cfg.hearModel)
     }
 
     fun card(a: Activity, ui: Ui): View? {

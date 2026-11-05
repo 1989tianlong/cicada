@@ -31,7 +31,7 @@ object NotesViews {
         val line = listen.sessionId?.let { app.store.lines(it).lastOrNull() }
         return listOf(listen.listening, listen.sourceKind, listen.sessionId, listen.pending > 0, listen.problem, app.startProblem, silent(app), app.micSilenced,
                       line?.id, line?.src, line?.dst, app.notes.status, app.notes.notes.updatedAt, app.notes.notes.covered,
-                      app.ending?.deadline).joinToString("|")
+                      app.ending?.deadline, app.ling.blocking).joinToString("|")
     }
 
     /// "正在听 · 03:12" / "面对面 · 03:12".
@@ -97,11 +97,14 @@ object NotesViews {
     fun banner(ui: Ui, app: CicadaApp, onMic: (() -> Unit)?): View? {
         val problem = app.listen.problem
         val network = app.listen.problemKind == "network"
+        // A key, the credit or a model: before the hearing's own words ("Ling key 无效"), which say less.
+        val blocking = app.ling.blocking
         val (iconRes, text) = when {
             network -> R.drawable.i_wifi_off to
                 (if (app.ling.provider.id == "ling") L("连不上 Ling，联网后继续出字幕")
                  else LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", app.ling.serviceName, notesClock(app)))
             app.micSilenced && app.listen.listening -> R.drawable.i_mic to L("麦克风正被通话或其他 app 占用，用完后接着听")
+            blocking != null -> R.drawable.i_info to blocking
             problem != null -> R.drawable.i_info to problem
             silent(app) -> R.drawable.i_speaker_off to L("20 秒没听到声音。通话和会议 app 的声音系统不让录")
             else -> return null
@@ -114,9 +117,11 @@ object NotesViews {
             minimumHeight = ui.dp(56)
             addView(ui.icon(R.drawable.i_info, 22, Palette.link).apply { setImageDrawable(ui.drawable(iconRes, Palette.link)) })
             addView(ui.text(text, 14f, Palette.ink), ui.weight().apply { leftMargin = ui.dp(12) })
-            if (silent(app) && onMic != null) addView(ui.textButton(L("换成面对面"), onClick = onMic))
+            if (silent(app) && text != blocking && onMic != null) addView(ui.textButton(L("换成面对面"), onClick = onMic))
             // The network or the proxy, not the notes: 设置 says which (only on Cicada's own screens).
-            if (network && onMic != null && app.ling.provider.id != "ling")
+            if (blocking != null && text == blocking && onMic != null)
+                addView(ui.textButton(L("打开设置")) { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) })
+            else if (network && onMic != null && app.ling.provider.id != "ling")
                 addView(ui.textButton(L("设置")) { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) })
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }

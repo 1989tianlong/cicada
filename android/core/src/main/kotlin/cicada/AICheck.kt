@@ -123,6 +123,25 @@ data class AICheck(
         }
     }
 
+    /// What stops listening or the notes until the user changes something (the Mac's
+    /// AIServiceStrip.blocking): (what's wrong, what it stops). Not the network, a busy service or
+    /// a server error: those fix themselves. Said beyond 设置, on the listening notification and the
+    /// live screens. Models by their short name (after the last "/").
+    fun blocking(service: String, textModel: String, hearModel: String): Pair<String, String>? {
+        val f = failure ?: return null
+        val stops = L("修好之前听不了")
+        val notesStop = L("字幕照常，纪要先停下")
+        return when (f.reason) {
+            Reason.InvalidKey, Reason.MgmtKey -> LF("%@ 的 key 用不了", service) to stops
+            Reason.NoCredit -> LF("%@ 账户余额不足。", service) to stops
+            Reason.NoModel -> LF("%@ 上找不到 %@ 这个模型。", service, textModel.substringAfterLast('/')) to notesStop
+            Reason.Deaf -> LF("%@ 听不了声音。", hearModel.substringAfterLast('/')) to stops
+            Reason.BadAddress -> L("AI 服务的设置要改一下") to stops
+            Reason.NoJSON -> L("AI 服务的设置要改一下") to notesStop
+            Reason.Unreachable, Reason.Busy, Reason.ServerError -> null
+        }
+    }
+
     /// The proxy line under "can't reach": what this phone's proxy looks like, and what to do.
     fun proxyLine(service: String, host: String): String? {
         if (failure?.reason != Reason.Unreachable) return null

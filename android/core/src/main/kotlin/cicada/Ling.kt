@@ -272,6 +272,14 @@ class LingClient(
     /// The failed (or busy) step's sentence, for the screens.
     fun checkMessage(): String? = config().let { aiCheck.message(serviceName, serviceHost, it.textModel, it.hearModel) }
 
+    /// Something only the user can fix, in one line ("Ling 的 key 用不了 · 修好之前听不了"): the
+    /// listening notification and the live screens. Null without a key (onboarding asks for it).
+    val blocking: String? get() {
+        if (!hasKey) return null
+        val (what, stops) = config().let { aiCheck.blocking(serviceName, it.textModel, it.hearModel) } ?: return null
+        return what.trimEnd('。', '.') + " · " + stops
+    }
+
     /// The key, the service or its models changed: forget what the last check found.
     fun keyChanged() {
         key.reload()

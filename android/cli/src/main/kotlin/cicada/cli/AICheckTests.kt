@@ -26,6 +26,7 @@ object AICheckTests {
         "aiCheckUnreachableAsksTheProxyAndTheNetworkLooksAgain" to ::clientUnreachable,
         "aiCheckRealRequestsKeepTheStepsCurrent" to ::clientPassive,
         "aiCheckSimulatedReasonsForScreenshots" to ::simulated,
+        "aiCheckOnlyWhatTheUserMustFixIsSaidBeyondSettings" to ::blocking,
     )
 
     private fun check(ok: Boolean, what: String) { if (!ok) throw AssertionError(what) }
@@ -76,6 +77,22 @@ object AICheckTests {
         equal(State.Untested, d[StepID.Text], "text still unproven")
         val m = AICheck().fail(StepID.Text, Reason.NoModel, 404).pass(StepID.Hear, 1.0)
         equal(Reason.NoModel, m.failure?.reason, "a missing text model stays missing")
+    }
+
+    fun blocking() {
+        // The Mac's AIServiceStrip.blocking, plus the port's deaf hear model: a key, the credit, a
+        // model or the settings. The network, a busy service and a server error fix themselves.
+        val needs = setOf(Reason.InvalidKey, Reason.MgmtKey, Reason.NoCredit, Reason.NoModel, Reason.NoJSON, Reason.BadAddress, Reason.Deaf)
+        for (r in Reason.values()) {
+            val b = AICheck.simulated(r).blocking("Ling", "openai/gpt-x", "google/omni-y")
+            equal(r in needs, b != null, "blocking $r")
+        }
+        equal(null, AICheck().blocking("Ling", "t", "h"), "nothing known yet")
+        equal("Ling 的 key 用不了" to "修好之前听不了", AICheck.simulated(Reason.InvalidKey).blocking("Ling", "t", "h"), "key")
+        equal("ZenMux 上找不到 gpt-x 这个模型。" to "字幕照常，纪要先停下", AICheck.simulated(Reason.NoModel).blocking("ZenMux", "openai/gpt-x", "h"), "short model, notes only")
+        equal("omni-y 听不了声音。", AICheck.simulated(Reason.Deaf).blocking("ZenMux", "t", "google/omni-y")?.first, "deaf")
+        // A heard segment after a bad key clears it: back to normal.
+        equal(null, AICheck.simulated(Reason.InvalidKey).pass(StepID.Hear, 1.0).blocking("Ling", "t", "h"), "fixed")
     }
 
     fun busyPasses() {
