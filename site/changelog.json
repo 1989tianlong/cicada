@@ -400,7 +400,8 @@
         "platforms": [
           "linux"
         ],
-        "title": "Linux 版的 key 被判无效时，纪要页会直接说 key 无效，不再像在正常等待。"
+        "title": "Linux 版的 key 被判无效时，纪要页会直接说 key 无效，不再像在正常等待。",
+        "text": ""
       },
       {
         "kind": "fixed",
