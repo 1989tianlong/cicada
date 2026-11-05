@@ -34,7 +34,7 @@ class Segmenter:
     pause = 0.6
     max_length = 8.0
     min_speech = 0.25
-    steady = 2.0  # loud frames' 90th / 10th percentile below this: not speech
+    steady = 2.0  # frames' 90th / 10th percentile below this: not speech
 
     def __init__(self):
         self.pending = array("h")
@@ -100,11 +100,14 @@ class Segmenter:
         """Steady sound just over the gate (a fan, hum, hiss) isn't speech: its loud frames barely vary
         (90th / 10th percentile about 1.1; speech, even over such a floor, 3 and up). Given one, Ming
         writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
-        Speech buried under steady noise goes too; system audio rarely carries it."""
-        loud = sorted(l for l in levels if l >= cls.threshold)
+        Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
+        the first loud one to the last counts, the quiet ones held at the gate: counting only the
+        loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate."""
+        loud = [i for i, l in enumerate(levels) if l >= cls.threshold]
         if len(loud) < 2:
             return False
-        return loud[int(0.9 * (len(loud) - 1))] < cls.steady * loud[int(0.1 * (len(loud) - 1))]
+        body = sorted(max(l, cls.threshold) for l in levels[loud[0]:loud[-1] + 1])
+        return body[int(0.9 * (len(body) - 1))] < cls.steady * body[int(0.1 * (len(body) - 1))]
 
     def _close(self, end_at: int) -> None:
         """Emits current[:end] and keeps what follows as the start of the next segment."""

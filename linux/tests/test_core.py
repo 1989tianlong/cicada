@@ -416,6 +416,8 @@ class Segmenting(Base):
         # A steady hum over the gate isn't speech: Ming would make up a sentence for it.
         self.assertEqual(0, len(cut(tone(3.0, 0.02, syllables=False), silence(1.0))))
         self.assertEqual(1, len(cut(tone(3.0), silence(1.0))))
+        # Quiet speech, whose dips fall below the gate, is too.
+        self.assertEqual(1, len(cut(tone(3.0, 0.03), silence(1.0))))
 
     def test_wav_round_trip(self):
         pcm = tone(0.5)
