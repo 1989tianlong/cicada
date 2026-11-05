@@ -125,6 +125,16 @@
         "text": "一下下的按键声会打断静音，知了等不到停顿：换语言的判断和会议结束的提示都会推迟。"
       },
       {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "Windows、Linux、Android 上，停顿时有人敲键盘，前后两句话不再并成一句。",
+        "text": ""
+      },
+      {
         "kind": "improved",
         "platforms": [
           "mac"
