@@ -14,7 +14,7 @@
   "suggest_label": "Language suggestion",
   "suggest_close": "Dismiss",
   "home_title": "Cicada: live subtitles, interpreting and meeting notes for any call or stream | Free for Mac, Windows, Linux and Android",
-  "home_desc": "Cicada listens to whatever your computer or phone is playing and gives you live translated subtitles, push-to-talk interpreting and AI meeting notes. Works in Zoom, Teams, Google Meet, X Spaces, YouTube Live and Discord, with no bot in the call. For Mac, Windows, Linux and Android, free and open source; on the Mac, audio never leaves your computer.",
+  "home_desc": "Cicada listens to whatever your computer or phone is playing and gives you live translated subtitles, push-to-talk interpreting and AI meeting notes. Works in Zoom, Teams, Google Meet, X Spaces, YouTube Live and Discord, with no bot in the call. For Mac, Windows, Linux and Android, free and open source; on Apple silicon Macs, audio never leaves your computer.",
   "og_title": "Cicada: any call, any stream, no language barrier",
   "og_desc": "Live subtitles, interpreting and AI meeting notes on Mac, Windows, Linux and Android. Understand, speak up, remember.",
   "ld_desc": "Live translated subtitles, interpreting and AI meeting notes on Mac, Windows, Linux and Android, for any call or stream.",
@@ -144,7 +144,7 @@
   "start_desc": "Pick your platform, install Cicada, connect OpenRouter or Ling (Ling gives ¥10 of credit every month), then follow the app’s first-run guide. About five minutes.",
   "start_h1": "Get started in three steps",
   "start_lead": "Pick your platform, install Cicada, connect an AI service, then follow the guide in the app. About five minutes.",
-  "start_req": "Requires macOS 14.4 or later on an Apple silicon Mac",
+  "start_req": "Requires macOS 14.4 or later (Apple silicon or Intel)",
   "start_mac_q": "Will it run on my Mac?",
   "start_mob_h": "Install it on your computer",
   "start_mob_p": "The iPhone app is on its way. Send the download link to your computer; you can sign up for an AI service key on your phone right now.",
@@ -263,12 +263,7 @@
       "Listening to the room, face-to-face interpreting and meeting records"
     ]
   ],
-  "road_none_items": [
-    [
-      "Intel Macs",
-      "The Mac app is for Apple silicon only"
-    ]
-  ],
+  "road_none_items": [],
   "faq_small": "FAQ",
   "faq_h": "Before you download",
   "faq_sub": "Didn’t find your question? Ask us on GitHub.",
@@ -278,7 +273,7 @@
   "faq": [
     [
       "Will it run on my Mac?",
-      "You need macOS 14.4 or later on an Apple silicon Mac. macOS 26 uses the newer on-device speech recognizer, the most accurate; 14.4 to 15 use the system's earlier one, a little weaker, which needs Dictation turned on in System Settings › Keyboard, with each language you want heard added to it."
+      "You need macOS 14.4 or later. Intel Macs have no on-device speech model, so Ling's Ming hears the meeting and a Ling key is required; the rest is about Apple silicon. macOS 26 uses the newer on-device speech recognizer, the most accurate; 14.4 to 15 use the system's earlier one, a little weaker, which needs Dictation turned on in System Settings › Keyboard, with each language you want heard added to it."
     ],
     [
       "What about Windows, Linux and phones?",
@@ -324,7 +319,7 @@
   "reqs": [
     [
       "Mac",
-      "macOS 14.4+, Apple silicon"
+      "macOS 14.4+, Apple silicon / Intel"
     ],
     [
       "Windows",
@@ -345,10 +340,11 @@
   "dlp_lead": "Free and open source, from GitHub Releases. All four apps share one meeting record format.",
   "dlp_yours": "Your system",
   "dlp_soon": "Coming soon",
-  "dlp_mac_sys": "macOS 14.4 or later · Apple silicon (M series)",
+  "dlp_mac_sys": "macOS 14.4 or later · Apple silicon or Intel",
   "dlp_mac_btn": "Download .dmg",
   "dlp_mac_zip": "Or the zip",
-  "dlp_mac_note": "Recognizes speech on your Mac, so audio never leaves it; subtitles work without a key.",
+  "dlp_mac_intel": "Intel version (needs a Ling key)",
+  "dlp_mac_note": "Apple silicon recognizes speech on your Mac, so audio never leaves it and subtitles work without a key; on Intel, Ming recognizes it.",
   "dlp_windows_sys": "Windows 10 (2004) or later",
   "dlp_win_x64": "Most PCs",
   "dlp_win_arm": "Snapdragon laptops",
@@ -363,14 +359,14 @@
   "cmp_rows": [
     [
       "Speech recognition",
-      "On the Mac, audio never leaves it",
+      "On the Mac, audio never leaves it (Intel: Ming)",
       "Ming (cloud)",
       "Ming (cloud)",
       "Ming (cloud)"
     ],
     [
       "Without a Ling key",
-      "Subtitles, translation and records",
+      "Subtitles, translation and records (not on Intel)",
       "Doesn’t work",
       "Doesn’t work",
       "Doesn’t work"

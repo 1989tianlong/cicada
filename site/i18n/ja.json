@@ -14,7 +14,7 @@
   "suggest_label": "言語の提案",
   "suggest_close": "閉じる",
   "home_title": "Cicada：あらゆる会議・配信のリアルタイム字幕、同時通訳、議事メモ | Mac・Windows・Linux・Android 用・無料",
-  "home_desc": "Cicada はパソコンやスマートフォンで再生中の音声を直接聞き取り、翻訳字幕、同時通訳、AI 議事メモを届けます。Zoom、Teams、Google Meet、X スペース、YouTube ライブ、Discord で使え、会議にボットは入りません。Mac・Windows・Linux・Android に対応、無料・オープンソース。Mac 版は端末内で認識し、音声が外に出ません。",
+  "home_desc": "Cicada はパソコンやスマートフォンで再生中の音声を直接聞き取り、翻訳字幕、同時通訳、AI 議事メモを届けます。Zoom、Teams、Google Meet、X スペース、YouTube ライブ、Discord で使え、会議にボットは入りません。Mac・Windows・Linux・Android に対応、無料・オープンソース。Apple シリコンの Mac は端末内で認識し、音声が外に出ません。",
   "og_title": "Cicada：どんな会議も配信も、言葉の壁なく",
   "og_desc": "Mac・Windows・Linux・Android で使えるリアルタイム字幕、同時通訳、AI 議事メモ。聞き取れて、話せて、残せる。",
   "ld_desc": "Mac・Windows・Linux・Android で使える翻訳字幕、同時通訳、AI 議事メモ。あらゆる会議と配信で。",
@@ -144,7 +144,7 @@
   "start_desc": "プラットフォームを選び、Cicada をインストールして OpenRouter か Ling をつなぎ（Ling は毎月 ¥10 分の無料枠）、アプリのガイドに沿って進めるだけ。約 5 分です。",
   "start_h1": "3 ステップではじめる",
   "start_lead": "プラットフォームを選び、Cicada をインストールし、AI サービスをつないで、アプリのガイドに沿って進めるだけ。約 5 分です。",
-  "start_req": "macOS 14.4 以降・Apple シリコン搭載の Mac が必要です",
+  "start_req": "macOS 14.4 以降の Mac が必要です（Apple シリコンまたは Intel）",
   "start_mac_q": "自分の Mac で使える？",
   "start_mob_h": "パソコンにインストールしてください",
   "start_mob_p": "iPhone 版は準備中です。ダウンロードのリンクをパソコンに送りましょう。AI サービスのキーはいまスマートフォンで登録できます。",
@@ -263,12 +263,7 @@
       "会議室の聞き取り、対面通訳、会議の記録"
     ]
   ],
-  "road_none_items": [
-    [
-      "Intel Mac",
-      "Mac 版は Apple シリコン専用です"
-    ]
-  ],
+  "road_none_items": [],
   "faq_small": "よくある質問",
   "faq_h": "ダウンロードの前に",
   "faq_sub": "答えが見つからなければ、GitHub でお尋ねください。",
@@ -278,7 +273,7 @@
   "faq": [
     [
       "自分の Mac で使えますか？",
-      "macOS 14.4 以降、Apple シリコン搭載の Mac が必要です。macOS 26 では新しいオンデバイス音声認識を使い、最も正確です。14.4〜15 ではシステムの従来の認識を使うため精度はやや下がり、システム設定 › キーボードで「音声入力」をオンにして、聞き取りたい言語を追加しておく必要があります。"
+      "macOS 14.4 以降の Mac が必要です。Intel の Mac には端末内の音声モデルがないため Ling の Ming が認識し、Ling キーが必要です。以下は Apple シリコンの場合です。macOS 26 では新しいオンデバイス音声認識を使い、最も正確です。14.4〜15 ではシステムの従来の認識を使うため精度はやや下がり、システム設定 › キーボードで「音声入力」をオンにして、聞き取りたい言語を追加しておく必要があります。"
     ],
     [
       "Windows・Linux・スマートフォンでも使えますか？",
@@ -324,7 +319,7 @@
   "reqs": [
     [
       "Mac",
-      "macOS 14.4+、Apple シリコン"
+      "macOS 14.4+、Apple シリコン / Intel"
     ],
     [
       "Windows",
@@ -345,10 +340,11 @@
   "dlp_lead": "無料・オープンソース、GitHub Releases から配布しています。4 つのアプリは同じ会議記録の形式を使います。",
   "dlp_yours": "お使いのシステム",
   "dlp_soon": "近日公開",
-  "dlp_mac_sys": "macOS 14.4 以降 · Apple シリコン（M シリーズ）",
+  "dlp_mac_sys": "macOS 14.4 以降 · Apple シリコンまたは Intel",
   "dlp_mac_btn": "DMG をダウンロード",
   "dlp_mac_zip": "zip もあります",
-  "dlp_mac_note": "端末内で認識し、音声は Mac の外に出ません。キーなしでも字幕が使えます。",
+  "dlp_mac_intel": "Intel 版（Ling キーが必要）",
+  "dlp_mac_note": "Apple シリコンは端末内で認識し、音声は Mac の外に出ず、キーなしでも字幕が使えます。Intel 版は Ming が認識します。",
   "dlp_windows_sys": "Windows 10（2004）以降",
   "dlp_win_x64": "ほとんどの PC",
   "dlp_win_arm": "Snapdragon ノート PC",
@@ -363,14 +359,14 @@
   "cmp_rows": [
     [
       "音声認識",
-      "端末内、音声は外に出ない",
+      "端末内、音声は外に出ない（Intel は Ming）",
       "Ming（クラウド）",
       "Ming（クラウド）",
       "Ming（クラウド）"
     ],
     [
       "Ling キーなし",
-      "字幕、翻訳、記録が使える",
+      "字幕、翻訳、記録が使える（Intel は不可）",
       "使えない",
       "使えない",
       "使えない"

@@ -34,13 +34,16 @@ DOWNLOAD = REPO + "/releases/latest"
 # The files each platform's release carries (release.yml); {v} is the version.
 PLATFORMS = ["mac", "windows", "linux", "android"]
 ASSETS = {
-    "mac": {"dmg": "Cicada-{v}-macOS-AppleSilicon.dmg", "zip": "Cicada-{v}-macOS-AppleSilicon.zip"},
+    "mac": {"dmg": "Cicada-{v}-macOS-AppleSilicon.dmg", "zip": "Cicada-{v}-macOS-AppleSilicon.zip",
+            "intel": "Cicada-{v}-macOS-Intel.dmg"},
     "windows": {"x64": "Cicada-{v}-Windows-x64.exe", "arm64": "Cicada-{v}-Windows-ARM64.exe"},
     "linux": {"tar": "Cicada-{v}-Linux.tar.gz"},
     "android": {"apk": "Cicada-{v}-Android.apk"},
 }
 # Releases whose files were named otherwise: Windows 1.1.0 only has Cicada-Setup.exe and -arm64.exe.
 OLD_ASSETS = {("windows", "1.1.0"): {"x64": "Cicada-Setup.exe", "arm64": "Cicada-Setup-arm64.exe"}}
+# The first release with an Intel Mac build: older ones have no Intel link.
+FIRST_INTEL = (1, 3, 0)
 # The author on X: the app is not notarized yet, so a real person to ask helps people trust the first launch.
 X = "https://x.com/wquguru"
 STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "og-en.png", "og-ja.png", "og-ko.png", "img", "audio"]
@@ -146,7 +149,10 @@ def downloads(released):
         for p in shipped.get(r["version"], ()):
             if p not in out:
                 v = r["version"]
-                out[p] = (v, {k: f"{REPO}/releases/download/v{v}/{name.format(v=v)}" for k, name in OLD_ASSETS.get((p, v), ASSETS[p]).items()})
+                names = OLD_ASSETS.get((p, v), ASSETS[p])
+                if p == "mac" and tuple(map(int, v.split("."))) < FIRST_INTEL:
+                    names = {k: n for k, n in names.items() if k != "intel"}
+                out[p] = (v, {k: f"{REPO}/releases/download/v{v}/{name.format(v=v)}" for k, name in names.items()})
     return out
 
 
@@ -163,7 +169,8 @@ def download_cards(t, dl):
             v, urls = dl[p]
             if p == "mac":
                 acts = (f'<a class="btn btn-orange" href="{urls["dmg"]}">{arrow}{t["dlp_mac_btn"]}</a>'
-                        f'<a class="alt" href="{urls["zip"]}">{t["dlp_mac_zip"]}</a>')
+                        f'<a class="alt" href="{urls["zip"]}">{t["dlp_mac_zip"]}</a>'
+                        + (f'<a class="alt" href="{urls["intel"]}">{t["dlp_mac_intel"]}</a>' if "intel" in urls else ""))
             elif p == "windows":
                 acts = (f'<div class="pair"><a class="btn btn-dark" href="{urls["x64"]}">x64<small>{t["dlp_win_x64"]}</small></a>'
                         f'<a class="btn btn-light" href="{urls["arm64"]}">ARM64<small>{t["dlp_win_arm"]}</small></a></div>')
@@ -332,6 +339,7 @@ def main():
             "SPEAK_JSON": json.dumps({"src": "../" * prefix.count("/") + f"audio/speak-{'zh' if code == 'en' else 'en'}.m4a?v=" + common["REV"], "at": SPEAK_AT}), "SAMPLE_LEN": f"0:{round(length):02d}",
             "APPS": apps, "LATEST_SECTION": latest_section,
             "ROAD_NEXT": road_next, "ROAD_LATER": road(t["road_later_items"]), "ROAD_NONE": road(t["road_none_items"]),
+            "ROAD_NONE_HIDDEN": "" if t["road_none_items"] else " hidden",
             "REQS": "".join(f"<div><dt>{e(k)}</dt><dd>{e(val)}</dd></div>" for k, val in t["reqs"]),
             "FAQ": faq, "FAQLD": json.dumps(faq_ld, ensure_ascii=False).replace("</", "<\\/"),
             "JSONLD": json.dumps(app_ld, ensure_ascii=False).replace("</", "<\\/")})

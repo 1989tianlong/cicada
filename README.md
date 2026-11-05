@@ -118,7 +118,7 @@ Intel 版 Mac 以及 Windows、Linux 和 Android 版在云端识别：说话的�
 3. 在知了里打开设置里的 AI 服务，粘贴后点保存并检查，也可以直接粘贴到纪要窗口顶部的提示框里。知了会发一个只用一个 token 的请求确认 key 可用。
 4. 同一页面可以选模型（默认 `Ling-3.1-flash`），每种语言用哪个 Ming 声音在同声传译设置里选。想移除 key，在同一页面点移除即可。
 
-**注册不了 Ling？**可以在“设置 › AI 服务”右上角换成 OpenRouter、ZenMux、OpenAI，或填任何 OpenAI 兼容服务的地址（比如本机跑的模型）。实时纪要和整句翻译都能用，模型已经按效果和价格选好，也可以自己换；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆只有 Ling 有，其他服务下同传先在本机识别再翻译。每个服务的 key 各存一份，切换时不用重填。Windows、Linux、Android 版也能换：在引导里点“用不了 Ling？”或在设置 › AI 服务里选，听对方也交给这家服务，字幕比 Ling 晚 1–2 秒。连不上或 key、模型有问题时，设置里会一步步说清坏在哪、怎么修：是没开代理、代理软件没接管系统代理，还是开了代理也不通（知了不会自己改代理，说明见网站的[设置页](https://cicada.indaloop.app/start/#proxy)）；用 OpenRouter 时余额快用完会提前提醒。
+**注册不了 Ling？**可以在“设置 › AI 服务”右上角换成 OpenRouter、ZenMux、OpenAI，或填任何 OpenAI 兼容服务的地址（比如本机跑的模型）。实时纪要和整句翻译都能用，模型已经按效果和价格选好，也可以自己换；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆只有 Ling 有，其他服务下，Apple 芯片的 Mac 同传先在本机识别再翻译（Intel 版听和说都要 Ling）。每个服务的 key 各存一份，切换时不用重填。Windows、Linux、Android 版也能换：在引导里点“用不了 Ling？”或在设置 › AI 服务里选，听对方也交给这家服务，字幕比 Ling 晚 1–2 秒。连不上或 key、模型有问题时，设置里会一步步说清坏在哪、怎么修：是没开代理、代理软件没接管系统代理，还是开了代理也不通（知了不会自己改代理，说明见网站的[设置页](https://cicada.indaloop.app/start/#proxy)）；用 OpenRouter 时余额快用完会提前提醒。
 
 ## 系统要求与安装
 

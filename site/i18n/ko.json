@@ -14,7 +14,7 @@
   "suggest_label": "언어 제안",
   "suggest_close": "닫기",
   "home_title": "Cicada: 모든 회의와 방송의 실시간 자막, 동시통역, 회의록 | Mac·Windows·Linux·Android 무료",
-  "home_desc": "Cicada는 컴퓨터나 휴대폰에서 재생 중인 소리를 직접 듣고 번역 자막, 동시통역, AI 회의록을 제공합니다. Zoom, Teams, Google Meet, X Spaces, YouTube 라이브, Discord에서 쓸 수 있고 회의에 봇이 들어가지 않습니다. Mac·Windows·Linux·Android 지원, 무료 오픈 소스. Mac 버전은 기기 안에서 인식해 소리가 밖으로 나가지 않습니다.",
+  "home_desc": "Cicada는 컴퓨터나 휴대폰에서 재생 중인 소리를 직접 듣고 번역 자막, 동시통역, AI 회의록을 제공합니다. Zoom, Teams, Google Meet, X Spaces, YouTube 라이브, Discord에서 쓸 수 있고 회의에 봇이 들어가지 않습니다. Mac·Windows·Linux·Android 지원, 무료 오픈 소스. Apple 실리콘 Mac은 기기 안에서 인식해 소리가 밖으로 나가지 않습니다.",
   "og_title": "Cicada: 어떤 회의도, 어떤 방송도 언어 장벽 없이",
   "og_desc": "Mac·Windows·Linux·Android에서 쓰는 실시간 자막, 동시통역, AI 회의록. 알아듣고, 말하고, 기억합니다.",
   "ld_desc": "Mac·Windows·Linux·Android에서 쓰는 번역 자막, 동시통역, AI 회의록. 모든 회의와 방송에서.",
@@ -144,7 +144,7 @@
   "start_desc": "플랫폼을 고르고 Cicada를 설치한 뒤 OpenRouter나 Ling을 연결하고(Ling은 매달 ¥10 크레딧 제공), 앱의 안내를 따라가면 됩니다. 약 5분.",
   "start_h1": "3단계로 시작하기",
   "start_lead": "플랫폼을 고르고, Cicada를 설치하고, AI 서비스를 연결한 뒤 앱의 안내를 따라가세요. 약 5분이면 됩니다.",
-  "start_req": "macOS 14.4 이상, Apple 실리콘 Mac이 필요합니다",
+  "start_req": "macOS 14.4 이상 Mac이 필요합니다(Apple 실리콘 또는 Intel)",
   "start_mac_q": "내 Mac에서 쓸 수 있나요?",
   "start_mob_h": "컴퓨터에 설치하세요",
   "start_mob_p": "iPhone 버전은 준비 중입니다. 다운로드 링크를 컴퓨터로 보내세요. AI 서비스 키는 지금 휴대폰에서 가입할 수 있습니다.",
@@ -263,12 +263,7 @@
       "회의실 듣기, 대면 통역, 회의 기록"
     ]
   ],
-  "road_none_items": [
-    [
-      "Intel Mac",
-      "Mac 버전은 Apple 실리콘 전용입니다"
-    ]
-  ],
+  "road_none_items": [],
   "faq_small": "자주 묻는 질문",
   "faq_h": "다운로드 전에 확인하세요",
   "faq_sub": "원하는 답이 없다면 GitHub에서 물어보세요.",
@@ -278,7 +273,7 @@
   "faq": [
     [
       "내 Mac에서 쓸 수 있나요?",
-      "macOS 14.4 이상, Apple 실리콘 Mac이 필요합니다. macOS 26에서는 새 온디바이스 음성 인식을 써서 가장 정확합니다. 14.4~15에서는 시스템의 이전 인식을 쓰므로 조금 약하고, 시스템 설정 › 키보드에서 ‘받아쓰기’를 켜고 들을 언어를 추가해야 합니다."
+      "macOS 14.4 이상 Mac이 필요합니다. Intel Mac에는 기기 내 음성 모델이 없어 Ling의 Ming이 인식하므로 Ling 키가 필요합니다. 아래는 Apple 실리콘 기준입니다. macOS 26에서는 새 온디바이스 음성 인식을 써서 가장 정확합니다. 14.4~15에서는 시스템의 이전 인식을 쓰므로 조금 약하고, 시스템 설정 › 키보드에서 ‘받아쓰기’를 켜고 들을 언어를 추가해야 합니다."
     ],
     [
       "Windows, Linux, 휴대폰에서도 되나요?",
@@ -324,7 +319,7 @@
   "reqs": [
     [
       "Mac",
-      "macOS 14.4+, Apple 실리콘"
+      "macOS 14.4+, Apple 실리콘 / Intel"
     ],
     [
       "Windows",
@@ -345,10 +340,11 @@
   "dlp_lead": "무료 오픈 소스, GitHub Releases에서 배포합니다. 네 앱은 같은 회의 기록 형식을 씁니다.",
   "dlp_yours": "내 시스템",
   "dlp_soon": "곧 출시",
-  "dlp_mac_sys": "macOS 14.4 이상 · Apple 실리콘(M 시리즈)",
+  "dlp_mac_sys": "macOS 14.4 이상 · Apple 실리콘 또는 Intel",
   "dlp_mac_btn": "DMG 다운로드",
   "dlp_mac_zip": "zip도 있습니다",
-  "dlp_mac_note": "기기 안에서 인식해 소리가 Mac 밖으로 나가지 않습니다. 키 없이도 자막을 볼 수 있습니다.",
+  "dlp_mac_intel": "Intel 버전(Ling 키 필요)",
+  "dlp_mac_note": "Apple 실리콘은 기기 안에서 인식해 소리가 Mac 밖으로 나가지 않고 키 없이도 자막을 볼 수 있습니다. Intel 버전은 Ming이 인식합니다.",
   "dlp_windows_sys": "Windows 10(2004) 이상",
   "dlp_win_x64": "대부분의 PC",
   "dlp_win_arm": "Snapdragon 노트북",
@@ -363,14 +359,14 @@
   "cmp_rows": [
     [
       "음성 인식",
-      "기기 안, 소리가 밖으로 안 나감",
+      "기기 안, 소리가 밖으로 안 나감(Intel은 Ming)",
       "Ming(클라우드)",
       "Ming(클라우드)",
       "Ming(클라우드)"
     ],
     [
       "Ling 키 없이",
-      "자막, 번역, 기록 가능",
+      "자막, 번역, 기록 가능(Intel 제외)",
       "안 됨",
       "안 됨",
       "안 됨"

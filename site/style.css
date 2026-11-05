@@ -363,6 +363,7 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .roadmap .head p { margin: 8px 0 0; font-size: 15px; color: var(--grey); }
 /* Three columns: next on the Mac (numbered), later, not planned. */
 .road { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 16px; align-items: stretch; }
+.road:has(> .none[hidden]) { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .road-col { padding: 24px 26px; }
 .road-col.none { border-radius: 18px; border: 1px dashed #DADDE2; background: var(--soft); }
 .road-col small { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: var(--grey); }

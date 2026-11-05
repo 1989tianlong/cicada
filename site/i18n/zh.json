@@ -14,7 +14,7 @@
   "suggest_label": "语言建议",
   "suggest_close": "关闭",
   "home_title": "知了 Cicada：任意会议与直播的实时字幕、同声传译、会议纪要 | Mac、Windows、Linux、Android 免费开源",
-  "home_desc": "知了直接听电脑或手机正在播放的声音，实时给出翻译字幕、写 AI 会议纪要，还能同声传译。腾讯会议、Zoom、飞书、Teams、X Spaces、YouTube 直播、Discord 里都能用，不用机器人进会。Mac、Windows、Linux、Android 都有，免费开源；Mac 版在本机识别，声音不出电脑。",
+  "home_desc": "知了直接听电脑或手机正在播放的声音，实时给出翻译字幕、写 AI 会议纪要，还能同声传译。腾讯会议、Zoom、飞书、Teams、X Spaces、YouTube 直播、Discord 里都能用，不用机器人进会。Mac、Windows、Linux、Android 都有，免费开源；Apple 芯片的 Mac 在本机识别，声音不出电脑。",
   "og_title": "知了：任何会议和直播，都没有语言障碍",
   "og_desc": "Mac、Windows、Linux 和 Android 上的实时字幕、同声传译和 AI 会议纪要。听得懂，说得出，记得住。",
   "ld_desc": "Mac、Windows、Linux 和 Android 上的实时翻译字幕、同声传译和 AI 会议纪要，任意会议与直播都能用。",
@@ -144,7 +144,7 @@
   "start_desc": "选你的平台：下载并安装知了，接上 Ling 或 OpenRouter（Ling 每月赠送 ¥10 额度），再跟着 App 里的引导走一遍，大约 5 分钟。",
   "start_h1": "三步开始使用",
   "start_lead": "选你的平台，装好知了，接上一个 AI 服务，再跟着 App 里的引导走一遍。大约 5 分钟。",
-  "start_req": "需要 macOS 14.4 及以上 · Apple 芯片的 Mac",
+  "start_req": "需要 macOS 14.4 及以上的 Mac（Apple 芯片或 Intel）",
   "start_mac_q": "我的 Mac 能用吗？",
   "start_mob_h": "请在电脑上安装",
   "start_mob_p": "iPhone 版准备中。把下载链接发到你的电脑；AI 服务的 key 可以现在就在手机上注册。",
@@ -263,12 +263,7 @@
       "听会议室、面对面互译，保留会议记录"
     ]
   ],
-  "road_none_items": [
-    [
-      "Intel Mac",
-      "Mac 版只支持 Apple 芯片"
-    ]
-  ],
+  "road_none_items": [],
   "faq_small": "常见问题",
   "faq_h": "下载前，先看看这些",
   "faq_sub": "没找到你的问题？在 GitHub 上问我们。",
@@ -278,7 +273,7 @@
   "faq": [
     [
       "我的 Mac 能用吗？",
-      "需要搭载 Apple 芯片、macOS 14.4 或更新版本的 Mac。macOS 26 上用新的本机语音识别，最准；14.4 到 15 用系统较早的识别，效果稍弱，还要在系统设置 › 键盘里打开“听写”，并把要听的语言加进听写语言。"
+      "需要 macOS 14.4 或更新版本的 Mac。Intel 的 Mac 没有本机语音模型，交给 Ling 的 Ming 识别，必须填 Ling key；以下说的是 Apple 芯片。macOS 26 上用新的本机语音识别，最准；14.4 到 15 用系统较早的识别，效果稍弱，还要在系统设置 › 键盘里打开“听写”，并把要听的语言加进听写语言。"
     ],
     [
       "Windows、Linux、手机能用吗？",
@@ -324,7 +319,7 @@
   "reqs": [
     [
       "Mac",
-      "macOS 14.4+，Apple 芯片"
+      "macOS 14.4+，Apple 芯片 / Intel"
     ],
     [
       "Windows",
@@ -345,10 +340,11 @@
   "dlp_lead": "免费开源，安装包来自 GitHub Releases。四个平台共用一种会议记录格式。",
   "dlp_yours": "你的系统",
   "dlp_soon": "即将发布",
-  "dlp_mac_sys": "macOS 14.4 及以上 · Apple 芯片（M 系列）",
+  "dlp_mac_sys": "macOS 14.4 及以上 · Apple 芯片或 Intel",
   "dlp_mac_btn": "下载 DMG",
   "dlp_mac_zip": "也有 zip",
-  "dlp_mac_note": "本机识别，声音不出电脑；不填 key 也能看字幕。",
+  "dlp_mac_intel": "Intel 版（要 Ling key）",
+  "dlp_mac_note": "Apple 芯片本机识别，声音不出电脑，不填 key 也能看字幕；Intel 版由 Ming 识别。",
   "dlp_windows_sys": "Windows 10（2004）及以上",
   "dlp_win_x64": "大多数电脑",
   "dlp_win_arm": "骁龙笔记本",
@@ -363,14 +359,14 @@
   "cmp_rows": [
     [
       "语音识别",
-      "本机，声音不出电脑",
+      "本机，声音不出电脑（Intel 用 Ming）",
       "Ming（云端）",
       "Ming（云端）",
       "Ming（云端）"
     ],
     [
       "不填 Ling key",
-      "字幕、翻译、记录都能用",
+      "字幕、翻译、记录都能用（Intel 不能用）",
       "不能用",
       "不能用",
       "不能用"
