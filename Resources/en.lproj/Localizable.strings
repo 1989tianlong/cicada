@@ -185,6 +185,7 @@
 /* AppModel */
 "准备就绪" = "Ready";
 "会议室 · %@" = "Room · %@";
+"电脑和会议室 · %@" = "Mac + Room · %@";
 "%@ 转好了" = "%@ is transcribed";
 "%@ · %lld 句" = "%@ · %lld lines";
 "，正在整理纪要" = ", writing notes";
@@ -360,6 +361,7 @@
 "识别出错，%lld 秒后重试" = "Recognition error; retrying in %lld s";
 "听不出是哪种语言，到菜单栏里选一下" = "Can't tell the language. Pick one from the menu bar";
 "正在识别语言…" = "Detecting language…";
+"%@ 在听" = "%@ is listening";
 "翻译暂不可用" = "Translation unavailable for now";
 
 /* ListenPill */
@@ -637,6 +639,11 @@
 "法语" = "French";
 "德语" = "German";
 "葡语" = "Portuguese";
+
+/* RecordTitle */
+"回车保存，Esc 取消" = "Return to save, Esc to cancel";
+"点击改标题" = "Click to rename";
+"标题" = "Title";
 
 /* RoomMic */
 "没有可用的麦克风" = "No microphone available";
@@ -920,12 +927,11 @@
 "选中后自动下载语音模型" = "Downloads its speech model when chosen";
 "听哪里" = "Listen to";
 "会议室" = "Room";
+"电脑和会议室" = "Mac + Room";
 "电脑声音" = "This Mac";
 "电脑声音（线上会议、视频）" = "This Mac (online meetings, videos)";
 "会议室（用麦克风听桌边的人）" = "Room (the mic hears people at the table)";
-"电脑和会议室" = "Mac + Room";
 "电脑和会议室（线上和桌边的人都听）" = "Mac + Room (people online and at the table)";
-"电脑和会议室 · %@" = "Mac + Room · %@";
 "系统" = "System";
 "系统麦克风还是 %@" = "System mic is still %@";
 "别的软件现在听不到你说话" = "Other apps can't hear you now";
@@ -995,7 +1001,6 @@
 "导出…" = "Export…";
 "完整版纪要" = "Full notes";
 "速记版纪要" = "Draft notes";
-"标题" = "Title";
 "全部 %lld 句" = "All %lld lines";
 "翻译中…" = "Translating…";
 "从这里播放" = "Play from here";
@@ -1011,7 +1016,6 @@
 "听着不像已装的语言" = "Doesn't sound like a language installed here";
 "听不出是哪种语言，你来选一下" = "Can't tell which language this is. Pick one:";
 "更多…" = "More…";
-"%@ 在听" = "%@ is listening";
 "正在补装 %@ 语音模型" = "Adding the %@ speech model";
 "正在下载 %@ 语音模型" = "Downloading the %@ speech model";
 "已等 %@，比平常慢。可以先交给 %@ 听：声音会发给 %@，整句出字、慢 2–3 秒" = "Waited %1$@, slower than usual. %2$@ can listen meanwhile: the audio goes to %3$@, and lines come whole, 2–3 s late";
@@ -1031,9 +1035,9 @@
 "网络连不上，连上后会自动继续" = "No internet. It carries on once you're back online";
 "这台 Mac 的磁盘空间不够了" = "This Mac is low on disk space";
 "这台 Mac 上的语音模型已满 5 种" = "This Mac already holds the most speech models it allows (5)";
-"先用已装的：" = "Use one already here:";
 "打开存储空间" = "Open Storage";
 "打开听写设置" = "Open Dictation Settings";
+"先用已装的：" = "Use one already here:";
 
 /* VirtualMic */
 "%@要安装虚拟麦克风，让会议里的人听到你的翻译。" = "%@ wants to install a virtual microphone so people in the meeting can hear your translation.";

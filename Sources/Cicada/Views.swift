@@ -690,7 +690,6 @@ struct MainWindowView: View {
     @State private var selection: String?
     @State private var query = ""
     @State private var view = "both"
-    @State private var titleDraft = ""
     @State private var tab = "notes"
     @State private var jumpTo: Double?
     /// A topic's time picked in the notes, for the bilingual column beside them.
@@ -815,7 +814,6 @@ struct MainWindowView: View {
         let live = s.id == store.liveID
         return Button {
             selection = s.id
-            titleDraft = ""
         } label: {
             // Titles only: the time and length are on the page (and in the tooltip). Unpicked rows
             // stay grey so the one being read stands out.
@@ -913,7 +911,6 @@ struct MainWindowView: View {
                 }
                 if s.id == store.liveID { liveNow }
             }
-            .onChange(of: s.id) { _, _ in titleDraft = "" }
         } else {
             welcome
         }
@@ -1046,18 +1043,7 @@ struct MainWindowView: View {
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary).lineLimit(1)
                     .help(([dateLine(s, live: live)] + more.compactMap { $0 }).joined(separator: " · "))
             }
-            TextField("标题", text: Binding(
-                // The date is on the line above; a notes title that starts with it shows without.
-                get: { titleDraft.isEmpty ? RecordList.listTitle(s) : titleDraft },
-                set: { titleDraft = $0 }
-            ), axis: .vertical)
-            .textFieldStyle(.plain)
-            .font(.system(size: 26, weight: .semibold))
-            .padding(.top, 8)
-            .onSubmit {
-                if !titleDraft.isEmpty { store.rename(s.id, to: titleDraft) }
-                titleDraft = ""
-            }
+            RecordTitleField(session: s, store: store).id(s.id).padding(.top, 8)
             if s.sourcePath != nil {
                 VStack(alignment: .leading, spacing: 12) {
                     if s.fromRecording, s.lines.isEmpty || s.importing == true, !working(s) {
