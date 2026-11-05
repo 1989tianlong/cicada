@@ -382,6 +382,9 @@ static class Tests
         Equal("Hello", Translator.CleanTranslation("Here is the translation:\nHello", "en"), "remark line dropped");
         Equal(null, Translator.CleanTranslation("请提供需要翻译的字幕内容", "en"), "a request for input is not a translation");
         Equal(null, Translator.CleanTranslation("Hello", "zh-CN"), "wrong script");
+        Equal(null, Translator.CleanTranslation("翻译。", "zh-CN"), "the instruction translated, not the subtitle");
+        Equal(null, Translator.CleanTranslation("Translate.", "en"), "the instruction translated, in English");
+        Equal("好的，翻译。", Translator.CleanTranslation("好的，翻译。", "zh-CN"), "a sentence about translating is kept");
         Equal("Done.", Translator.CleanTranslation("<think>x</think>Done.", "en"), "leaked reasoning");
     }
 
