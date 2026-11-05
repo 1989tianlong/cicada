@@ -923,6 +923,9 @@
 "电脑声音" = "This Mac";
 "电脑声音（线上会议、视频）" = "This Mac (online meetings, videos)";
 "会议室（用麦克风听桌边的人）" = "Room (the mic hears people at the table)";
+"电脑和会议室" = "Mac + Room";
+"电脑和会议室（线上和桌边的人都听）" = "Mac + Room (people online and at the table)";
+"电脑和会议室 · %@" = "Mac + Room · %@";
 "系统" = "System";
 "系统麦克风还是 %@" = "System mic is still %@";
 "别的软件现在听不到你说话" = "Other apps can't hear you now";

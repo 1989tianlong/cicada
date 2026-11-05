@@ -174,11 +174,16 @@ final class AppSettings: ObservableObject {
     }
 
     /// Record per-sentence timings (never text) and show the 诊断 tab. On by default in dev builds.
-    /// 听哪里: "system" (what the Mac plays) or "room" (a real microphone, for a meeting in the room).
+    /// 听哪里: "system" (what the Mac plays), "room" (a real microphone, for a meeting in the room) or
+    /// "both" (电脑和会议室: people online and in the room, each heard on its own).
     @Published var listenSource: String {
         didSet { save() }
     }
+    /// Only the room: nothing is in a call on this Mac (the translation is read out of the speakers).
     var listensToRoom: Bool { listenSource == "room" }
+    /// The room mic is open: 会议室 or 电脑和会议室.
+    var hearsRoom: Bool { listenSource != "system" }
+    var hearsBoth: Bool { listenSource == "both" }
 
     @Published var diagnostics: Bool {
         didSet { save() }
@@ -225,7 +230,7 @@ final class AppSettings: ObservableObject {
         endWithApp = defaults.object(forKey: "endWithApp") as? Bool ?? true
         silenceEnd = defaults.string(forKey: "silenceEnd") ?? "prompt"
         silenceMinutes = defaults.object(forKey: "silenceMinutes") as? Double ?? 10
-        listenSource = defaults.string(forKey: "listenSource") == "room" ? "room" : "system"
+        listenSource = ["room", "both"].contains(defaults.string(forKey: "listenSource")) ? defaults.string(forKey: "listenSource")! : "system"
         diagnostics = defaults.object(forKey: "diagnostics") as? Bool ?? DevBuild.isDev
         notesCapturable = defaults.bool(forKey: "notesCapturable")
         // Off by default while it was an experiment, and save() stores every key, so a stored false

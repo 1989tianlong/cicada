@@ -58,6 +58,8 @@ Cicada detects the spoken language on device within seconds and translates into 
 
 For a meeting around a table, set **Listen to** in the menu bar panel to **Room** and Cicada listens through the Mac's microphone, with the same subtitles, notes and records as an online meeting. Speak-back then reads the translation out of the speakers, no virtual mic needed, and the microphone stops listening while it does so the translation isn't recorded as someone else. If nothing plays on the Mac for a minute while it listens to the computer, the panel asks whether to listen to the room instead; every launch starts with the computer again.
 
+When some people are in the room and others are online, choose **Mac + Room** (macOS 26): the online side is heard from the Mac's audio and the table from the microphone, each in its own language, in one meeting record. The online voices coming out of the speakers reach the microphone too; Cicada takes them out with macOS echo cancellation, so people at the table can talk over a remote speaker and both are kept. When echo cancellation isn't available, the microphone pauses while someone online is talking. As a last check, a room line that is almost the same as what the Mac just played isn't recorded twice.
+
 ### Speak back in their language
 
 Hold the right `⌥` key and speak so the room hears your translated voice through BlackHole 2ch, a virtual microphone you can install from the app with one click and that Cicada switches to automatically while interpreting is on. With an AI service key the other side hears natural voices (Gemini through OpenRouter or ZenMux, Ming through Ling), and Ling can also clone your own voice from an 8 to 30 second sample; without a key it uses macOS system voices.

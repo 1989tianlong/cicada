@@ -15,6 +15,8 @@ struct TranscriptLine: Codable, Identifiable, Equatable {
     var dstLang: String
     /// Which of the other side's voices said it (SpeakerID.swift); nil when unknown.
     var voice: Int? = nil
+    /// 电脑和会议室: "room" when the room mic heard it; absent for the Mac's audio (or older records).
+    var via: String? = nil
 }
 
 /// A name Ling found for a voice, and the line it is based on ("00:06 “Sure, Emma…”").

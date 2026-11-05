@@ -2,10 +2,13 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 
-/// The talk key's microphone with the system's echo cancellation (VoiceProcessingIO): with speakers
-/// on, the meeting's own voices reach the mic, and Cicada would translate them and speak them back
-/// into the room. Measured with a clip on the MacBook speakers at 60 %: 38–39 of 43 words recognized
-/// from the bare mic, none through this.
+/// The microphone with the system's echo cancellation (VoiceProcessingIO): with speakers on, the
+/// online meeting's voices reach the mic. The talk key would translate them and speak them back, and
+/// 电脑和会议室 would write each remote sentence twice. Measured with a clip on the MacBook speakers
+/// at 60 %: 38–39 of 43 words recognized from the bare mic, none through this.
+///
+/// One unit in the process, or none: the room (listening the whole meeting) and the talk key (each
+/// press) share it as consumers, and it runs while anyone is attached.
 ///
 /// The raw unit, because AVAudioEngine's voice processing fails ('bfmt') when the default input is
 /// the virtual mic, which 同声传译 makes it. Making the unit takes ~1.8 s, so it is made ahead and
@@ -24,10 +27,12 @@ final class VoiceMic: @unchecked Sendable {
     private var builtFor: (input: AudioObjectID, output: AudioObjectID)?
     private var building = false
     private var running = false
-    private var onAudio: ((AVAudioPCMBuffer) -> Void)?
+    private var consumers: [String: (AVAudioPCMBuffer) -> Void] = [:]
+    private var waiting: [(Bool) -> Void] = []
     private var scratch = [Float](repeating: 0, count: 8192)
-    /// After a unit is made or let go of: any output engine already running in this process is
-    /// silent from then on (measured: playing into BlackHole stops), and must be made anew.
+    /// After a unit is made or let go of: audio already flowing in this process goes silent for good
+    /// (measured: an output engine playing into BlackHole, and the system audio tap), and must be
+    /// started anew.
     var onUnitChanged: (() -> Void)?
 
     deinit {
@@ -37,56 +42,75 @@ final class VoiceMic: @unchecked Sendable {
         }
     }
 
-    /// Makes the unit for `input` and the current output in the background, unless it already is.
-    func prepare(input: AudioObjectID) {
-        guard let output = SystemAudioTap.defaultOutputDevice() else { return }
+    /// Whether anyone is attached (then nobody may use the plain mic, which the unit starves).
+    var inUse: Bool { lock.withLock { !consumers.isEmpty } }
+
+    /// Makes the unit for `input` and the current output in the background, unless it already is;
+    /// `then` hears whether it is ready (at once when it already was).
+    func prepare(input: AudioObjectID, then: ((Bool) -> Void)? = nil) {
+        guard let output = SystemAudioTap.defaultOutputDevice() else { then?(false); return }
         lock.lock()
         let ready = builtFor.map { $0 == (input, output) } ?? false
-        if ready || building { lock.unlock(); return }
+        if ready { lock.unlock(); then?(true); return }
+        if let then { waiting.append(then) }
+        if building { lock.unlock(); return }
         building = true
         lock.unlock()
         queue.async { [self] in
             let t0 = Date()
             let made = make(input: input, output: output)
-            lock.withLock {
+            let (ok, told) = lock.withLock { () -> (Bool, [(Bool) -> Void]) in
                 if let old = unit, !running { AudioComponentInstanceDispose(old); unit = nil; builtFor = nil }
-                if let made, unit == nil { unit = made; builtFor = (input, output) } else if let made { AudioComponentInstanceDispose(made) }
+                var ok = false
+                if let made, unit == nil { unit = made; builtFor = (input, output); ok = true } else if let made { AudioComponentInstanceDispose(made) }
                 building = false
+                defer { waiting = [] }
+                return (ok, waiting)
             }
-            debugLog(String(format: "voice mic: %@ in %.1f s (input %u, output %u)", made == nil ? "failed" : "ready",
+            debugLog(String(format: "voice mic: %@ in %.1f s (input %u, output %u)", ok ? "ready" : "failed",
                             Date().timeIntervalSince(t0), input, output))
             onUnitChanged?()
+            told.forEach { $0(ok) }
         }
     }
 
-    /// Starts hearing `input` if the unit is ready for it and the current output; otherwise false,
-    /// and the caller uses the plain mic for this press, then `prepare`s for the next.
-    func start(input: AudioObjectID, onAudio: @escaping (AVAudioPCMBuffer) -> Void) -> Bool {
+    /// `key` hears `input` from now on, if the unit is ready for it and the current output (it starts
+    /// with the first consumer). Otherwise false: the caller uses the plain mic this time, after
+    /// `release` when nobody else is attached; a new unit is made later, not while the plain mic runs.
+    func attach(_ key: String, input: AudioObjectID, onAudio: @escaping (AVAudioPCMBuffer) -> Void) -> Bool {
         guard let output = SystemAudioTap.defaultOutputDevice() else { return false }
         lock.lock()
-        guard let unit, let b = builtFor, b == (input, output), !running else {
-            let busy = running
-            lock.unlock()
-            // Made again after the press (`prepare`), not during it: a new unit would starve the plain mic.
-            if !busy { release() }
-            return false
-        }
-        self.onAudio = onAudio
+        guard let unit, let b = builtFor, b == (input, output) else { lock.unlock(); return false }
+        consumers[key] = onAudio
+        let first = !running
         running = true
         lock.unlock()
+        guard first else { return true }
         let status = AudioOutputUnitStart(unit)
         if status != noErr {
             debugLog("voice mic: start failed \(status)")
-            lock.withLock { running = false; self.onAudio = nil; builtFor = nil }
+            lock.withLock { running = false; consumers = [:]; builtFor = nil }
             return false
         }
+        debugLog("voice mic: started for \(key)")
         return true
     }
 
-    /// Lets go of the unit (not while it runs), so the plain mic hears again.
+    /// `key` stops hearing; the unit stops with the last consumer.
+    func detach(_ key: String) {
+        lock.lock()
+        guard consumers.removeValue(forKey: key) != nil else { lock.unlock(); return }
+        guard consumers.isEmpty, running, let unit else { lock.unlock(); return }
+        running = false
+        lock.unlock()
+        AudioOutputUnitStop(unit)
+        debugLog("voice mic: stopped (\(key) was the last)")
+    }
+
+    /// Lets go of the unit (not while anyone is attached), so the plain mic hears again.
     func release() {
         let old: AudioUnit? = lock.withLock {
-            guard !running, let u = unit else { return nil }
+            guard !running, consumers.isEmpty, let u = unit else { return nil }
             unit = nil
             builtFor = nil
             return u
@@ -96,15 +120,6 @@ final class VoiceMic: @unchecked Sendable {
             debugLog("voice mic: released")
             onUnitChanged?()
         }
-    }
-
-    func stop() {
-        lock.lock()
-        guard running, let unit else { lock.unlock(); return }
-        running = false
-        lock.unlock()
-        AudioOutputUnitStop(unit)
-        lock.withLock { onAudio = nil }
     }
 
     private func make(input: AudioObjectID, output: AudioObjectID) -> AudioUnit? {
@@ -146,11 +161,59 @@ final class VoiceMic: @unchecked Sendable {
             var list = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 1, mDataByteSize: frames * 4, mData: p.baseAddress))
             return AudioUnitRender(unit, flags, ts, 1, frames, &list)
         }
-        guard status == noErr, let onAudio, let out = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: frames),
+        let listeners = lock.withLock { Array(consumers.values) }
+        guard status == noErr, !listeners.isEmpty, let out = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: frames),
               let dst = out.floatChannelData?[0] else { return status }
         out.frameLength = frames
         scratch.withUnsafeBufferPointer { dst.update(from: $0.baseAddress!, count: Int(frames)) }
-        onAudio(out)
+        listeners.forEach { $0(out) }
         return noErr
+    }
+}
+
+/// 会议室 heard through the echo-cancelling unit (电脑和会议室): an `AudioSource` like `RoomMic`, so the
+/// rest of listening is unchanged. The unit is made on `start` (~1.8 s, the room is heard from then);
+/// `onFailed` says it couldn't be, and the caller falls back to the plain mic. While `muted` (the
+/// Mac reading aloud, the talk key held), silence goes on in its place, as with `RoomMic`.
+final class EchoCancelledRoomMic: AudioSource, @unchecked Sendable {
+    var onAudio: ((AVAudioPCMBuffer) -> Void)?
+    var onFailed: (() -> Void)?
+    private let mic: VoiceMic
+    private let device: OutputDevice
+    private let lock = NSLock()
+    private var _muted = false
+    private var stopped = false
+    var muted: Bool {
+        get { lock.withLock { _muted } }
+        set { lock.withLock { _muted = newValue } }
+    }
+    var deviceName: String { device.name }
+
+    init(mic: VoiceMic, device: OutputDevice) {
+        self.mic = mic
+        self.device = device
+    }
+
+    func start() throws {
+        mic.prepare(input: device.id) { [weak self] ok in
+            guard let self, !self.lock.withLock({ self.stopped }) else { return }
+            let attached = ok && self.mic.attach("room", input: self.device.id) { [weak self] buf in self?.deliver(buf) }
+            if !attached {
+                debugLog("room mic: echo cancellation unavailable, plain mic instead")
+                self.onFailed?()
+            } else {
+                debugLog("room mic started with echo cancellation: \(self.device.name)")
+            }
+        }
+    }
+
+    func stop() {
+        lock.withLock { stopped = true }
+        mic.detach("room")
+    }
+
+    private func deliver(_ buf: AVAudioPCMBuffer) {
+        if muted, let d = buf.floatChannelData?[0] { d.update(repeating: 0, count: Int(buf.frameLength)) }
+        onAudio?(buf)
     }
 }

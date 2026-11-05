@@ -40,12 +40,13 @@ enum RoomMicPlan {
 struct VoiceGate {
     static let fixed: Float = 0.01
     static let lowest: Float = 0.0015
-    /// About a second of the mic's ~85 ms blocks.
+    /// The mic tap's ~85 ms blocks to a second (the default length of a block). The echo-cancelling
+    /// unit's are ~11 ms: the window is counted in seconds, not blocks.
     static let blocksPerSecond = 12
     var adaptive = false
     private var quietest: [Float] = []
     private var second: Float = .infinity
-    private var blocks = 0
+    private var elapsed = 0.0
 
     init(adaptive: Bool = false) { self.adaptive = adaptive }
 
@@ -56,16 +57,16 @@ struct VoiceGate {
         return min(Self.fixed, max(Self.lowest, floor * 2))
     }
 
-    mutating func voiced(_ rms: Float) -> Bool {
+    mutating func voiced(_ rms: Float, seconds: Double = 1.0 / Double(blocksPerSecond)) -> Bool {
         let on = rms >= threshold
         guard adaptive else { return on }
         second = min(second, rms)
-        blocks += 1
-        if blocks >= Self.blocksPerSecond {
+        elapsed += seconds
+        if elapsed >= 1 - 1e-9 {
             quietest.append(second)
             if quietest.count > 30 { quietest.removeFirst() }
             second = .infinity
-            blocks = 0
+            elapsed = 0
         }
         return on
     }
@@ -111,11 +112,31 @@ extension AudioDevices {
     }
 }
 
+/// 电脑和会议室 without echo cancellation: while the Mac plays speech, the room mic hears that speech
+/// again from the speakers. The main engine's audio queue `hold`s the gate on every loud block of the
+/// Mac's audio; the room mic hears silence until `hang` after the last one (the speakers' tail and the
+/// room's echo). Room speech over a remote speaker is lost this way: what `VoiceMic` is for.
+final class EchoGate: @unchecked Sendable {
+    static let hang = 0.4
+    private let lock = NSLock()
+    private var until: Double = 0
+
+    func hold(now: Double = CFAbsoluteTimeGetCurrent()) {
+        lock.withLock { until = max(until, now + Self.hang) }
+    }
+
+    func closed(now: Double = CFAbsoluteTimeGetCurrent()) -> Bool {
+        lock.withLock { now < until }
+    }
+}
+
 /// A microphone as an audio source. While `muted`, silence goes on in its place: the Mac reading a
 /// translation aloud, or you holding the talk key, would otherwise come back as someone in the room.
 /// Silence rather than nothing keeps the recognizer's clock and the recording in step.
 final class RoomMic: AudioSource {
     var onAudio: ((AVAudioPCMBuffer) -> Void)?
+    /// 电脑和会议室 without echo cancellation: silence while the Mac plays speech.
+    var echoGate: EchoGate?
     private var engine = AVAudioEngine()
     private let device: OutputDevice?
     private let lock = NSLock()
@@ -175,7 +196,7 @@ final class RoomMic: AudioSource {
             out.frameLength = buf.frameLength
             let n = Int(buf.frameLength)
             let channels = Int(buf.format.channelCount)
-            if self.muted || channels == 0 || buf.floatChannelData == nil {
+            if self.muted || self.echoGate?.closed() == true || channels == 0 || buf.floatChannelData == nil {
                 dst.update(repeating: 0, count: n)
             } else if let src = buf.floatChannelData {
                 dst.update(from: src[0], count: n)

@@ -17,7 +17,22 @@ final class AppModel: ObservableObject {
     let talkRight = RightOptionKey()
     let toggleKey = HotKey(id: 2, shortcut: .defaultToggle)
     lazy var listen = ListenEngine(settings: settings)
-    lazy var speak = SpeakEngine(settings: settings)
+    /// The one echo-cancelling mic unit, shared by the talk key and 电脑和会议室's room.
+    let voiceMic = VoiceMic()
+    lazy var speak = SpeakEngine(settings: settings, voiceMic: voiceMic)
+    /// 电脑和会议室: the microphone side, its own engine (language, pauses, model), as Feishu keeps the
+    /// online and the room streams apart instead of mixing them into one track.
+    lazy var roomListen = ListenEngine(settings: settings, role: .room)
+    /// Debug (`roomEcho:off`, `roomGate:off`): the room without echo cancellation, or without the
+    /// gate, to try each defence alone. Next meeting.
+    var roomEchoCancel = true
+    var roomEchoGate = true
+    /// The Mac's lines of late (wall clock), and room lines waiting to be told apart from their echo.
+    private var recentOnline: [EchoMatch.Heard] = []
+    private var heldRoom: [(id: Int, seg: Segment, duration: Double, heard: EchoMatch.Heard)] = []
+    /// What each engine shows as the line in progress, and when it last changed.
+    private var liveMain = (src: "", dst: "", at: Date.distantPast)
+    private var liveRoom = (src: "", dst: "", at: Date.distantPast)
     lazy var speakTester = SpeakTester(speak: speak, ling: ling, settings: settings)
     /// Key released → the room heard the first sound, from the latest real press or sound test.
     @Published var lastSpeakLatency: Double? = UserDefaults.standard.object(forKey: "lastSpeakLatency") as? Double {
@@ -149,22 +164,24 @@ final class AppModel: ObservableObject {
         // A meeting or speaking holds the update notification until it ends (see stop()).
         updates.busy = { [weak self] in guard let self else { return false }; return self.running || self.speak.phase != .idle }
         listen.onSubtitle = { [weak self] src, dst in
+            guard let self else { return }
             // Someone is speaking either way; only the wrong model's words aren't shown.
-            let visible = self?.listen.hidesSource == true ? "" : src
-            self?.liveSource = visible
-            self?.liveTranslation = dst
-            if !src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self?.heardSpeech(); self?.heardWords() }
-            guard let self, self.settings.displayMode == "bar" else { return }
-            self.overlay.clearStatus()
-            let shown = self.displayed(visible, dst)
-            self.overlay.setSubtitle(source: shown.source, translation: shown.translation)
+            self.liveMain = (self.listen.hidesSource ? "" : src, dst, Date())
+            self.showLive(spoke: src)
+        }
+        roomListen.onSubtitle = { [weak self] src, dst in
+            guard let self else { return }
+            self.liveRoom = (self.roomListen.hidesSource ? "" : src, dst, Date())
+            self.showLive(spoke: src)
         }
         listen.onStatus = { [weak self] text in
             self?.status = text
             self?.overlay.setStatus(text)
         }
         listen.onStateChange = { [weak self] in self?.refresh() }
-        listen.onFinal = { [weak self] seg, duration in self?.recordHeard(seg, duration: duration) }
+        listen.onFinal = { [weak self] seg, duration in self?.heardOnline(seg, duration: duration) }
+        roomListen.onFinal = { [weak self] seg, duration in self?.heardInRoom(seg, duration: duration) }
+        roomListen.onStatus = { debugLog("room engine: \($0)") }
         speakers.onVoice = { [weak self] line, voice in
             guard let self else { return }
             self.store.setVoice(lineID: line, voice)
@@ -173,13 +190,10 @@ final class AppModel: ObservableObject {
         speakerSetting = settings.$speakerVoices.sink { [weak self] on in
             TranscriptExport.voices = on
             self?.listen.router.setVoiceCapture(on)
+            self?.roomListen.router.setVoiceCapture(on)
         }
-        listen.onTranslated = { [weak self] segID, text in
-            guard let self else { return }
-            if self.heldJoin?.seg.id == segID { self.heldJoin?.translation = text }
-            guard let line = self.lineForSegment[segID] else { return }
-            self.store.setTranslation(lineID: line, text)
-        }
+        listen.onTranslated = { [weak self] segID, text in self?.translated(segID, text) }
+        roomListen.onTranslated = { [weak self] segID, text in self?.translated(segID, text) }
 
         diagnostics.enabled = { [weak self] in self?.settings.diagnostics ?? false }
         diagnostics.folder = { [weak self] in
@@ -187,6 +201,7 @@ final class AppModel: ObservableObject {
             return self.store.folder(id)
         }
         listen.onTiming = { [weak self] in self?.diagnostics.record($0) }
+        roomListen.onTiming = { [weak self] in self?.diagnostics.record($0) }
         speak.onTiming = { [weak self] in self?.diagnostics.record($0) }
         speak.onLatency = { [weak self] in self?.lastSpeakLatency = $0 }
         speakTester.onLatency = { [weak self] in self?.lastSpeakLatency = $0 }
@@ -200,12 +215,27 @@ final class AppModel: ObservableObject {
 
         ling.config = { [weak self] in self?.settings.aiConfig ?? AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash") }
         listen.translator = translator
+        roomListen.translator = translator
+        roomListen.voiceMic = voiceMic
+        listen.voiceMic = voiceMic   // 会议室 alone: lets go of a leftover unit before the plain mic
+        // Making or letting go of the echo-cancelling unit silences, for good, audio already flowing in
+        // this process: the voice output (the room would hear nothing) and the Mac's audio tap (the
+        // meeting would go unheard; measured: no line after it). Each is started anew.
+        voiceMic.onUnitChanged = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.speak.newOutputEngine()
+                if self.listen.isRunning { self.listen.reconnectAudio() }
+                if self.roomListen.isRunning, !self.roomListen.hearsEchoCancelled { self.roomListen.reconnectAudio() }
+            }
+        }
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
         importer.onFinished = { [weak self] id in self?.importFinished(id) }
         notes.language = { [weak self] id in
             TranslationService.englishName(self?.notesLanguageCode(id) ?? "zh-CN")
         }
         listen.translationOff = { [weak self] in self?.subtitles == "original" }
+        roomListen.translationOff = { [weak self] in self?.subtitles == "original" }
         applyAIService()
 
         installer.speakThrough = { [weak self] text, lang, device in
@@ -222,6 +252,7 @@ final class AppModel: ObservableObject {
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
         speak.inputDevice = { [weak self] in self?.systemMic.recordingDevice }
         listen.roomDevice = { AudioDevices.roomMic }
+        roomListen.roomDevice = { AudioDevices.roomMic }
         applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
@@ -309,7 +340,7 @@ final class AppModel: ObservableObject {
         refresh()
         // Listening starts by itself at launch: never with the microphone open. 会议室 is chosen
         // for the meeting at hand, not kept for the next login.
-        if settings.listensToRoom { settings.listenSource = "system" }
+        if settings.hearsRoom { settings.listenSource = "system" }
         start()
         if settings.speakEnabled { enableSpeaking(true) }
     }
@@ -318,7 +349,8 @@ final class AppModel: ObservableObject {
         running = listen.isRunning
         // Once the tap has run, the permission is there: pausing doesn't take it away.
         systemAudioOK = systemAudioOK || (listen.isRunning && !settings.listensToRoom)
-        summary = settings.listensToRoom ? L("会议室 · \(listen.languageSummary())") : listen.languageSummary()
+        summary = settings.listensToRoom ? L("会议室 · \(listen.languageSummary())")
+            : settings.hearsBoth ? L("电脑和会议室 · \(listen.languageSummary())") : listen.languageSummary()
         candidates = listen.candidates
         installed = listen.installedLocales
         let ask = listen.asksLanguage ? listen.askChoices : []
@@ -505,6 +537,10 @@ final class AppModel: ObservableObject {
         lineForSegment = [:]
         lastHeard = nil
         heldJoin = nil
+        recentOnline = []
+        heldRoom = []
+        liveMain = ("", "", .distantPast)
+        liveRoom = ("", "", .distantPast)
         speechHeard = false
         roomPromptDismissed = false
         meetingSubtitles = nil
@@ -516,7 +552,8 @@ final class AppModel: ObservableObject {
             speak.setRecording(store.micAudioURL(session.id))
         }
         listen.start()
-        if settings.listensToRoom { store.markLiveInRoom() }
+        if listen.isRunning, settings.hearsBoth { startRoomSide() }
+        if settings.hearsRoom { store.markLiveInRoom() }
         notes.begin(session.id)
         if listen.isRunning {
             showDisplay(force: byUser)
@@ -532,6 +569,7 @@ final class AppModel: ObservableObject {
         endWatch = nil
         setEnding(nil)
         diagnostics.end()
+        stopRoomSide()
         listen.stop()
         listen.router.setRecording(nil)
         speak.setRecording(nil)
@@ -709,15 +747,20 @@ final class AppModel: ObservableObject {
 
     // MARK: Settings actions
 
-    /// 听哪里 in the panel: "system" or "room".
+    /// 听哪里 in the panel: "system", "room" or "both".
     var listenSourceSelection: String {
         get { settings.listenSource }
         set {
             guard newValue != settings.listenSource else { return }
-            settings.listenSource = newValue == "room" ? "room" : "system"
+            let wasRoomOnly = settings.listensToRoom
+            settings.listenSource = ["room", "both"].contains(newValue) ? newValue : "system"
             roomPromptDismissed = true
-            if listen.isRunning && settings.listensToRoom { store.markLiveInRoom() }
-            listen.listenSourceChanged()
+            if listen.isRunning && settings.hearsRoom { store.markLiveInRoom() }
+            // The main engine changes only between the Mac and the room alone; "both" adds the room side.
+            if wasRoomOnly != settings.listensToRoom { listen.listenSourceChanged() }
+            if listen.isRunning {
+                if settings.hearsBoth { startRoomSide() } else { stopRoomSide() }
+            }
             applySystemMic()
             refreshMicUsers()
             refresh()
@@ -737,12 +780,14 @@ final class AppModel: ObservableObject {
     private func muteRoomWhileSpeaking(_ phase: SpeakEngine.Phase) {
         if phase != .idle {
             listen.setRoomMuted(true)
+            roomListen.setRoomMuted(true)
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.speak.phase == .idle else { return }
                 self.listen.setRoomMuted(false)
+                self.roomListen.setRoomMuted(false)
             }
         }
     }
@@ -1130,6 +1175,96 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: 电脑和会议室
+
+    private func startRoomSide() {
+        // macOS 14/15: two live recognizers interrupt each other (docs/macos-legacy-plan.md 2, 10).
+        guard !roomListen.isRunning, !Recognition.legacy else { return }
+        roomListen.echoCancelled = roomEchoCancel
+        // A, the gate: only the plain room mic heeds it (echo cancellation keeps talk over a remote speaker).
+        listen.router.setOnLoud(roomEchoGate ? { [gate = roomListen.echoGate] in gate.hold() } : nil)
+        roomListen.start()
+        debugLog("hybrid: room side started (echo cancellation \(roomEchoCancel ? "on" : "off"), gate \(roomEchoGate ? "on" : "off"))")
+    }
+
+    private func stopRoomSide() {
+        listen.router.setOnLoud(nil)
+        guard roomListen.isRunning else { return }
+        roomListen.stop()
+        // Room lines still waiting for their echo check are what was said: kept.
+        let held = heldRoom
+        heldRoom = []
+        for h in held { recordRoom(h) }
+        liveRoom = ("", "", .distantPast)
+        debugLog("hybrid: room side stopped")
+    }
+
+    /// A sentence from the Mac's audio: recorded, and remembered to tell the room's copy of it.
+    private func heardOnline(_ seg: Segment, duration: Double) {
+        if roomListen.isRunning {
+            let now = CFAbsoluteTimeGetCurrent()
+            recentOnline.append(.init(text: seg.text, start: now - duration, end: now))
+            recentOnline.removeAll { $0.end < now - 20 }
+            heldRoom.removeAll { h in
+                guard EchoMatch.isEcho(h.heard, online: recentOnline) else { return false }
+                debugLog("hybrid: room line dropped as an echo (\(h.seg.text.count) chars)")
+                return true
+            }
+        }
+        recordHeard(seg, duration: duration)
+    }
+
+    /// A sentence from the room mic: an echo of the Mac's audio is dropped; the rest waits a moment
+    /// for the Mac's line it may echo (`EchoMatch.hold`), then is recorded where it was said.
+    private func heardInRoom(_ seg: Segment, duration: Double) {
+        let now = CFAbsoluteTimeGetCurrent()
+        let heard = EchoMatch.Heard(text: seg.text, start: now - duration, end: now)
+        if EchoMatch.isEcho(heard, online: recentOnline) {
+            debugLog("hybrid: room line dropped as an echo (\(seg.text.count) chars)")
+            return
+        }
+        // The Mac has played nothing for a while: there is nothing for this to echo, no need to wait.
+        if listen.router.stats().silenceRun >= EchoMatch.window {
+            recordRoom((seg.id, seg, duration, heard))
+            return
+        }
+        heldRoom.append((seg.id, seg, duration, heard))
+        DispatchQueue.main.asyncAfter(deadline: .now() + EchoMatch.hold) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let i = self.heldRoom.firstIndex(where: { $0.id == seg.id }) else { return }
+                let h = self.heldRoom.remove(at: i)
+                self.recordRoom(h)
+            }
+        }
+    }
+
+    private func recordRoom(_ h: (id: Int, seg: Segment, duration: Double, heard: EchoMatch.Heard)) {
+        let waited = CFAbsoluteTimeGetCurrent() - h.heard.end
+        debugLog("hybrid: room line kept (\(h.seg.text.count) chars)")
+        recordHeard(h.seg, duration: h.duration + waited)
+    }
+
+    private func translated(_ segID: Int, _ text: String) {
+        if heldJoin?.seg.id == segID { heldJoin?.translation = text }
+        if let i = heldRoom.firstIndex(where: { $0.id == segID }) { heldRoom[i].seg.translation = text }
+        guard let line = lineForSegment[segID] else { return }
+        store.setTranslation(lineID: line, text)
+    }
+
+    /// The line in progress: the engine that changed it last and still has words, so the room and the
+    /// Mac take turns on the one caption.
+    private func showLive(spoke src: String) {
+        let room = !liveRoom.src.isEmpty && (liveMain.src.isEmpty || liveRoom.at > liveMain.at)
+        let (visible, dst) = room ? (liveRoom.src, liveRoom.dst) : (liveMain.src, liveMain.dst)
+        liveSource = visible
+        liveTranslation = dst
+        if !src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { heardSpeech(); heardWords() }
+        guard settings.displayMode == "bar" else { return }
+        overlay.clearStatus()
+        let shown = displayed(visible, dst)
+        overlay.setSubtitle(source: shown.source, translation: shown.translation)
+    }
+
     private func recordHeard(_ seg: Segment, duration: Double) {
         guard let start = store.liveStart else { return }
         let t = max(0, Date().timeIntervalSince(start) - duration)
@@ -1192,7 +1327,8 @@ final class AppModel: ObservableObject {
         let id = "h\(lineCounter)-\(seg.id)"
         lineForSegment[seg.id] = id
         store.append(TranscriptLine(id: id, t: t, speaker: "them", src: seg.text, dst: translation ?? seg.translation,
-                                    srcLang: seg.sourceCode, dstLang: listen.resolvedTarget))
+                                    srcLang: seg.sourceCode, dstLang: listen.resolvedTarget,
+                                    via: seg.id >= ListenEngine.roomIDs ? "room" : nil))
         var kept = seg
         kept.voiceSamples = nil
         lastHeard = (kept, id)
@@ -1629,6 +1765,20 @@ final class AppModel: ObservableObject {
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
         case "speakFile": speak.speakFile(URL(fileURLWithPath: arg))
         case "speakVP": speak.echoCancel = arg != "off"
+        case "voiceMicRun":
+            // voiceMicRun:<on|off> runs the echo-cancelling unit with nobody listening (what it does to the rest).
+            if arg == "off" { voiceMic.detach("debug") } else if let d = AudioDevices.roomMic {
+                voiceMic.prepare(input: d.id) { [voiceMic] ok in
+                    debugLog("voiceMicRun: \(ok && voiceMic.attach("debug", input: d.id) { _ in } ? "running" : "failed")")
+                }
+            }
+        case "roomEcho": roomEchoCancel = arg != "off"
+        case "roomGate": roomEchoGate = arg != "off"
+        case "hybridState":
+            debugLog("hybrid state source=\(settings.listenSource) main=\(listen.isRunning) room=\(roomListen.isRunning) "
+                     + "echoCancelled=\(roomListen.hearsEchoCancelled) roomLang=\(roomListen.activeLang?.locale ?? "-") "
+                     + "mainLang=\(listen.activeLang?.locale ?? "-") held=\(heldRoom.count) voiceMic=\(voiceMic.inUse) "
+                     + String(format: "roomVoiced=%.1fs mainVoiced=%.1fs", roomListen.router.stats().voicedTotal, listen.router.stats().voicedTotal))
         case "speakTest":
             // speakTest:<sample|voice>: open settings › 同声传译 with the 试一句 sheet and run it.
             settingsSection = .speak

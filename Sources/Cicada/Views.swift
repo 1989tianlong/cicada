@@ -193,8 +193,10 @@ struct MenuPanelView: View {
             UpdateBanner(updates: model.updates, model: model)
 
             VStack(spacing: 6) {
-                ChoiceRow(label: L("听哪里"), value: settings.listensToRoom ? L("会议室") : L("电脑声音"),
-                          compact: true, options: [("system", L("电脑声音（线上会议、视频）")), ("room", L("会议室（用麦克风听桌边的人）"))]) {
+                ChoiceRow(label: L("听哪里"), value: settings.listensToRoom ? L("会议室") : settings.hearsBoth ? L("电脑和会议室") : L("电脑声音"),
+                          compact: true, options: [("system", L("电脑声音（线上会议、视频）")), ("room", L("会议室（用麦克风听桌边的人）"))]
+                            // Two recognizers at once: macOS 26 only (14/15's interrupt each other).
+                            + (Recognition.legacy ? [] : [("both", L("电脑和会议室（线上和桌边的人都听）"))])) {
                     model.listenSourceSelection = $0
                 }
                 ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, compact: true, sections: sourceSections) {

@@ -18,8 +18,15 @@ struct Segment {
 
 /// System audio → language detection → on-device transcription → translation.
 /// UI-free: it reports through the callbacks below.
+/// 电脑和会议室 runs two: the main one on the Mac's audio, a `.room` one on the microphone, each
+/// with its own language, pauses and model, as Feishu keeps online and room streams apart.
 @MainActor
 final class ListenEngine {
+    enum Role { case main, room }
+    /// Segment ids from here up are the room engine's.
+    static let roomIDs = 1_000_000
+    /// `.room`: the microphone side of 电脑和会议室 (no prompts, offers or remembered language).
+    let role: Role
     // Outputs
     var onSubtitle: ((_ source: String, _ translation: String) -> Void)?
     var onStatus: ((String) -> Void)?
@@ -111,7 +118,9 @@ final class ListenEngine {
     private(set) var macSilent = false
     private var recognizer: RecognitionStream?
     private var resultsTask: Task<Void, Never>?
-    private var generation = 0
+    /// The room engine's clocks and segment ids start far above the main one's, so lines from the two
+    /// never look like one recognizer's (joins, translations).
+    private var generation: Int
     private var pendingSwitch: Lang?
     private var needsDetection = true
     private var nextPeriodicDetection = 30.0
@@ -150,7 +159,7 @@ final class ListenEngine {
     private var failureStreak = 0
 
     private var segments: [Segment] = []
-    private var nextSegmentID = 0
+    private var nextSegmentID: Int
     /// Segments joined onto the line before: a retry of theirs would translate half a sentence.
     private var joinedAway: Set<Int> = []
     private var volatileText = ""
@@ -172,8 +181,11 @@ final class ListenEngine {
     /// Final transcript time and how long after the last word it came, per segment, until its translation lands.
     private var finalTiming: [Int: (at: Date, recognize: Double?)] = [:]
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, role: Role = .main) {
         self.settings = settings
+        self.role = role
+        generation = role == .room ? Self.roomIDs : 0
+        nextSegmentID = role == .room ? Self.roomIDs : 0
         // A download that failed for want of a network resumes when there is one again.
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let up = path.status == .satisfied
@@ -386,8 +398,12 @@ final class ListenEngine {
 
     @discardableResult
     private func startTap() -> Bool {
-        router.setRoomGate(settings.listensToRoom)
-        if settings.listensToRoom { return startRoomMic() }
+        // Two restarts close together (the echo-cancelling unit made, then let go of) must not leave two sources.
+        audioTap?.stop()
+        audioTap = nil
+        let room = role == .room || settings.listensToRoom
+        router.setRoomGate(room)
+        if room { return startRoomMic() }
         if SystemAudioPermission.status() == .denied {
             debugLog("audio tap: system audio recording was refused")
             isRunning = false
@@ -419,7 +435,7 @@ final class ListenEngine {
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        guard let self, self.isRunning, self.settings.listensToRoom, self.audioTap == nil else { return }
+                        guard let self, self.isRunning, self.role == .room || self.settings.listensToRoom, self.audioTap == nil else { return }
                         if granted { if self.startRoomMic() { self.setStatus(L("正在听")) } } else { self.roomMicDenied() }
                     }
                 }
@@ -429,8 +445,26 @@ final class ListenEngine {
             roomMicDenied()
             return false
         }
+        // 电脑和会议室: the remote voices from the speakers are taken out of the mic (`VoiceMic`).
+        if role == .room, echoCancelled, let voiceMic, let device = roomDevice?() {
+            let mic = EchoCancelledRoomMic(mic: voiceMic, device: device)
+            mic.muted = roomMuted
+            let router = self.router
+            mic.onAudio = { pcm in router.push(pcm) }
+            mic.onFailed = { [weak self] in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.echoCancellationFailed(mic) }
+                }
+            }
+            try? mic.start()
+            audioTap = mic
+            return true
+        }
+        // A unit left over from echo cancellation would starve the plain mic (one unit or none).
+        if let voiceMic, !voiceMic.inUse { voiceMic.release() }
         let mic = RoomMic(device: roomDevice?())
         mic.muted = roomMuted
+        if role == .room { mic.echoGate = echoGate }
         let router = self.router
         mic.onAudio = { pcm in router.push(pcm) }
         do {
@@ -452,6 +486,27 @@ final class ListenEngine {
         }
     }
 
+    /// 电脑和会议室: take the online voices out of the room mic with the echo-cancelling unit. Off,
+    /// or when the unit can't be had, the plain mic is gated while the Mac plays speech (`gateEcho`).
+    var echoCancelled = true
+    var voiceMic: VoiceMic?
+    /// Whether the room is heard through the echo-cancelling unit right now.
+    var hearsEchoCancelled: Bool { audioTap is EchoCancelledRoomMic }
+
+    private func echoCancellationFailed(_ mic: EchoCancelledRoomMic) {
+        guard isRunning, audioTap === mic else { return }
+        mic.stop()
+        audioTap = nil
+        // Nobody else may hold the unit while the plain mic is used: it would starve it.
+        if voiceMic?.inUse == false { voiceMic?.release() }
+        echoCancelled = false
+        if !startRoomMic() { debugLog("room mic: plain mic failed too") }
+    }
+
+    /// Closed by the main engine while the Mac plays speech: the plain room mic then hears silence,
+    /// since what it hears is the speakers (unused through the echo-cancelling unit).
+    let echoGate = EchoGate()
+
     private func roomMicDenied() {
         debugLog("room mic: microphone not allowed")
         if isRunning { stop() }
@@ -463,7 +518,8 @@ final class ListenEngine {
         guard on != roomMuted else { return }
         roomMuted = on
         (audioTap as? RoomMic)?.muted = on
-        if settings.listensToRoom { debugLog("room mic \(on ? "muted" : "open")") }
+        (audioTap as? EchoCancelledRoomMic)?.muted = on
+        if role == .room || settings.listensToRoom { debugLog("room mic \(on ? "muted" : "open")") }
     }
 
     /// 听哪里 changed: while listening, the new source takes over in the same meeting.
@@ -851,7 +907,7 @@ final class ListenEngine {
             updateHold()
             flushUnconfirmed()
             pendingSwitch = nil
-            UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected")
+            if role == .main { UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected") }
             renderSubtitles()
             return
         }
@@ -864,7 +920,7 @@ final class ListenEngine {
             languageConfirmed = true
             unconfirmed = []
             pendingSwitch = nil
-            UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected")
+            if role == .main { UserDefaults.standard.set(best.lang.locale, forKey: "lastDetected") }
             Task { await switchTranscriber(to: best.lang, replaySeconds: replay) }
         } else {
             pendingSwitch = best.lang
@@ -973,7 +1029,7 @@ final class ListenEngine {
         unsureStreak = 0
         sureStreak = 0
         modelProblem = nil
-        UserDefaults.standard.set(lang.locale, forKey: "lastDetected")
+        if role == .main { UserDefaults.standard.set(lang.locale, forKey: "lastDetected") }
         if lang == activeLang, recognizer != nil {
             updateHold()
             flushUnconfirmed()
@@ -1102,7 +1158,7 @@ final class ListenEngine {
         cloudLang = lang
         if settings.sourceMode == .auto, activeLang != lang {
             activeLang = lang
-            UserDefaults.standard.set(lang.locale, forKey: "lastDetected")
+            if role == .main { UserDefaults.standard.set(lang.locale, forKey: "lastDetected") }
         }
     }
 
@@ -1142,7 +1198,7 @@ final class ListenEngine {
                 guard self.ticks % 4 == 0 else { return }
                 self.translateVolatile()
                 self.maybeDetectLanguage()
-                let silent = RoomPrompt.asks(room: self.settings.listensToRoom,
+                let silent = self.role == .main && RoomPrompt.asks(room: self.settings.hearsRoom,
                                              listened: Date().timeIntervalSince(self.startedAt),
                                              voiced: self.router.stats().voicedTotal)
                 if silent != self.macSilent {

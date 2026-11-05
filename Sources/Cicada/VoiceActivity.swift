@@ -66,7 +66,7 @@ struct VoiceActivity {
         // The room's line already sits at twice its noise: half of it is the fan, and speech would never end.
         let hold = gate.adaptive ? 1 : tuning.hold
         let line = gate.threshold
-        let loud = gate.voiced(rms) || (speaking && rms >= line * hold)
+        let loud = gate.voiced(rms, seconds: seconds) || (speaking && rms >= line * hold)
         if !loud {
             speaking = false
             silenceRun += pending + seconds

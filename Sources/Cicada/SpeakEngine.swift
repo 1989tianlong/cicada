@@ -103,12 +103,13 @@ final class SpeakEngine {
     private(set) var phase: Phase = .idle
 
     private let mic = AVAudioEngine()
-    /// The mic with echo cancellation, tried first when `echoCancel` is on (`VoiceMic`).
-    private let voiceMic = VoiceMic()
+    /// The mic with echo cancellation, shared with 电脑和会议室's room (`VoiceMic`): used when
+    /// `echoCancel` is on, or whenever the room already has it running.
+    private let voiceMic: VoiceMic
     /// Debug (`speakVP:on`) until a person has checked it with a real voice; off: the plain mic.
     var echoCancel = false {
         didSet {
-            if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel { voiceMic.release() }
+            if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel, !voiceMic.inUse { voiceMic.release() }
         }
     }
     /// The real mic to cancel the echo for; nil when it is unknown or virtual (nothing to cancel there).
@@ -144,12 +145,10 @@ final class SpeakEngine {
     /// Debug: also write synthesized speech here.
     var debugOutputURL: URL?
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, voiceMic: VoiceMic) {
         self.settings = settings
+        self.voiceMic = voiceMic
         wireOutput()
-        voiceMic.onUnitChanged = { [weak self] in
-            Task { @MainActor in self?.newOutputEngine() }
-        }
     }
 
     private func wireOutput() {
@@ -164,7 +163,7 @@ final class SpeakEngine {
     /// Making or letting go of the echo-cancelling unit leaves an output engine that was already
     /// there silent for good (still running, no notification; a restart doesn't help), so the room
     /// would hear nothing: a new engine plays again. Not in the middle of a sentence.
-    private func newOutputEngine() {
+    func newOutputEngine() {
         // `player.isPlaying` stays true after the last buffer: the phase says whether a sentence is going out.
         if phase == .speaking {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -347,11 +346,11 @@ final class SpeakEngine {
     }
 
     private func startMic(format: AVAudioFormat, input cont: RecognitionStream) {
-        if echoCancel, let device = echoInput {
+        if echoCancel || voiceMic.inUse, let device = echoInput {
             let conv = converter
             let queue = micQueue
             feeding = true
-            let started = voiceMic.start(input: device) { [weak self] buf in
+            let started = voiceMic.attach("press", input: device) { [weak self] buf in
                 queue.async {
                     guard let self, self.feeding, let c = conv.convert(buf, to: format) else { return }
                     cont.append(c)
@@ -362,7 +361,9 @@ final class SpeakEngine {
             debugLog("speak: mic \(started ? "with echo cancellation" : "plain, echo cancellation not ready")")
             if started { return }
         }
-        voiceMic.release()   // a unit left over (toggled off mid-press, a virtual mic) would starve the plain mic
+        // A unit left over (toggled off mid-press, a virtual mic) would starve the plain mic; one the
+        // room is using stays (the talk key is then on another mic).
+        if !voiceMic.inUse { voiceMic.release() }
         let inputNode = mic.inputNode
         AudioDevices.pinInput(mic, to: inputDevice?())
         let inFormat = inputNode.outputFormat(forBus: 0)
@@ -428,12 +429,12 @@ final class SpeakEngine {
 
     private func stopMic() {
         micQueue.sync { feeding = false }
-        voiceMic.stop()
+        voiceMic.detach("press")
         if mic.isRunning {
             mic.inputNode.removeTap(onBus: 0)
             mic.stop()
         }
-        if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel { voiceMic.release() }
+        if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel, !voiceMic.inUse { voiceMic.release() }
     }
 
     private func finishUtterance() {

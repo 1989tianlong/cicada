@@ -72,6 +72,10 @@ final class AudioRouter: @unchecked Sendable {
         }
     }
 
+    /// On this queue, for each block at the speech line (电脑和会议室 gates the room mic with it).
+    private var onLoud: (() -> Void)?
+    func setOnLoud(_ f: (() -> Void)?) { queue.async { [self] in onLoud = f } }
+
     private var recordURL: URL?
     private var recorder: AVAudioFile?
 
@@ -102,6 +106,8 @@ final class AudioRouter: @unchecked Sendable {
         let rms = (sum / Float(n)).squareRoot()
         peak = max(peak, rms)
         let seconds = Double(n) / mono.format.sampleRate
+        // Before the onset is confirmed: the first 30 ms of a remote sentence are already echo in the room.
+        if let onLoud, rms >= activity.gate.threshold { onLoud() }
         let voiced = activity.feed(UnsafeBufferPointer(start: data[0], count: n), rate: mono.format.sampleRate,
                                    clock: fed, pauses: sink != nil)
 
