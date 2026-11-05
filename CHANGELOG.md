@@ -5,6 +5,63 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes. Since 1.1.2 every release ships
 every platform (one with nothing new says No changes); earlier ones shipped only those listed. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
+## 1.2.0 — 2026-11-05
+
+### Mac
+
+#### New
+
+- When the AI service fails, Settings shows which step broke and how to fix it ([21a0f7a](https://github.com/wquguru/cicada/commit/21a0f7aad9f4538e58c462f6454c0dab3cc9acc2))
+
+#### Fixed
+
+- Subtitles no longer show a lone "Translate" when Ling translates its own instruction instead of the line ([0984b75](https://github.com/wquguru/cicada/commit/0984b750fab63a13688dc6be4ce7fcb62d7dfe97))
+- Keep trying for about a minute when the AI service is busy as a meeting's final notes are written ([7707626](https://github.com/wquguru/cicada/commit/7707626623de366ab04d342a5d11faab03c35f2c))
+
+### Windows
+
+#### New
+
+- Use OpenRouter, ZenMux or any OpenAI-compatible service when Ling isn't an option ([222f8f9](https://github.com/wquguru/cicada/commit/222f8f9e87bdea2239c3a690e6d71e4260ca5143))
+- When the AI service fails, Settings shows which step broke and how to fix it ([1664a74](https://github.com/wquguru/cicada/commit/1664a7409aeb8014e1b995dbcd31cd1598561205))
+
+#### Fixed
+
+- Subtitles no longer show a lone "Translate" when Ling translates its own instruction instead of the line ([224b2ed](https://github.com/wquguru/cicada/commit/224b2ede72fd1a7ede7252f228e8cfa59617e389))
+- A fan, hum or hiss no longer turns into a made-up English sentence ([ca9d86a](https://github.com/wquguru/cicada/commit/ca9d86a777503a6cd69843a794c56779aab6fc51))
+- Windows downloads are named like the other platforms' (Cicada-<version>-Windows-x64.exe / -ARM64.exe), with no zips ([61ff770](https://github.com/wquguru/cicada/commit/61ff770075360d274cb365326b6372f3b4662909))
+
+### Android
+
+#### New
+
+- The floating window has a button that goes back to the listening screen in Cicada ([0af03b8](https://github.com/wquguru/cicada/commit/0af03b8e29d8169959132abf47b99ccb25819ce6))
+- Use OpenRouter, ZenMux or any OpenAI-compatible service when Ling isn't an option ([b8a49fa](https://github.com/wquguru/cicada/commit/b8a49fa8e6482021a0bf065abe78762a12ab0758))
+- When the AI service fails, Settings shows which step broke and how to fix it ([3d80833](https://github.com/wquguru/cicada/commit/3d808339d39ba673eec90c67e31f41b589fe74b8))
+
+#### Fixed
+
+- Subtitles no longer show a lone "Translate" when Ling translates its own instruction instead of the line ([de9c06c](https://github.com/wquguru/cicada/commit/de9c06c1b2509a4265f222507f4a013a14c14775))
+- A fan, hum or hiss no longer turns into a made-up English sentence ([ba91e37](https://github.com/wquguru/cicada/commit/ba91e37d3a023c2fa1a7cc70bdd8ec478f771605))
+
+### Linux
+
+#### New
+
+- Use OpenRouter, ZenMux or any OpenAI-compatible service when Ling isn't an option ([a1ba49e](https://github.com/wquguru/cicada/commit/a1ba49e703da2da01e149c12dd502d8a83c33139))
+- When the AI service fails, Settings shows which step broke and how to fix it ([c3f2a69](https://github.com/wquguru/cicada/commit/c3f2a699a2979bf2ceb1f679d8b8d5bd2a7e997e))
+
+#### Fixed
+
+- Subtitles no longer show a lone "Translate" when Ling translates its own instruction instead of the line ([4208271](https://github.com/wquguru/cicada/commit/4208271d3de8140138eaf430cc73a1a8ae30e2dd))
+- A fan, hum or hiss no longer turns into a made-up English sentence ([a432905](https://github.com/wquguru/cicada/commit/a432905a90e84d02081778843f1fd62b406ee2f4))
+
+### Website
+
+- The setup page offers OpenRouter beside Ling for the Mac, and says what to do when Ling isn't an option ([a3044cc](https://github.com/wquguru/cicada/commit/a3044cc82fc32485a655894c9f69ab73a8cc55b0))
+- The Windows download buttons no longer squeeze their x64 / ARM64 hints onto two lines ([cc80cb6](https://github.com/wquguru/cicada/commit/cc80cb619ad83c7414557ade23d60b786d6baf7a))
+- The share cards name Mac, Windows, Linux and Android instead of macOS alone ([0b67482](https://github.com/wquguru/cicada/commit/0b674821709f42b9457740f6293a2d577e087922))
+
 ## 1.1.1 — 2026-11-04
 
 ### Android
