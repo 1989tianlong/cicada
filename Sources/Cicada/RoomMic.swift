@@ -108,6 +108,16 @@ enum HybridNote {
     }
 }
 
+/// 外接麦克风断开了: the microphone hearing the room went away mid-meeting. Another takes over
+/// (`RoomMicPlan` among what's left); with none left, 电脑和会议室 goes on with the Mac alone and
+/// 会议室 pauses.
+enum RoomMicLoss {
+    static func detail(next: String?, builtIn: Bool, both: Bool) -> String {
+        guard let next else { return both ? L("只听电脑了") : L("没有别的麦克风，已暂停") }
+        return builtIn ? L("已改用 Mac 自带的麦克风") : L("已改用 \(next)")
+    }
+}
+
 extension AudioDevices {
     static func transport(_ device: AudioObjectID) -> UInt32 {
         var value: UInt32 = 0
@@ -119,13 +129,17 @@ extension AudioDevices {
     }
 
     /// The microphone `RoomMicPlan` picks among the Mac's inputs right now.
-    static var roomMic: OutputDevice? {
-        let all = inputs()
+    static var roomMic: OutputDevice? { roomMic(excluding: []) }
+
+    /// `excluding`: inputs to treat as gone (the debug command's pretend unplug).
+    static func roomMic(excluding: Set<String>) -> OutputDevice? {
+        let all = inputs().filter { !excluding.contains($0.uid) }
         let plan = all.map { d -> RoomMicPlan.Input in
             let t = transport(d.id)
             return .init(uid: d.uid, builtIn: t == kAudioDeviceTransportTypeBuiltIn,
                          bluetooth: t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE,
-                         virtual: d.isVirtualMic)
+                         // The aggregate macOS makes for echo cancellation is no microphone of its own.
+                         virtual: d.isVirtualMic || d.uid.hasPrefix("CADefaultDeviceAggregate"))
         }
         let uid = RoomMicPlan.pick(defaultUID: defaultInput?.uid, inputs: plan)
         return all.first { $0.uid == uid }
@@ -198,6 +212,7 @@ final class RoomMic: AudioSource {
     }
 
     var deviceName: String { device?.name ?? AudioDevices.inputDevice(of: engine) }
+    var deviceUID: String? { device?.uid }
 
     func start() throws {
         startedAt = Date()

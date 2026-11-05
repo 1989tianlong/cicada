@@ -492,6 +492,8 @@ final class ListenEngine {
     var voiceMic: VoiceMic?
     /// Whether the room is heard through the echo-cancelling unit right now.
     var hearsEchoCancelled: Bool { audioTap is EchoCancelledRoomMic }
+    /// The microphone hearing the room right now, to notice it going away (nil: the default input).
+    var roomMicUID: String? { (audioTap as? RoomMic)?.deviceUID ?? (audioTap as? EchoCancelledRoomMic)?.deviceUID }
 
     private func echoCancellationFailed(_ mic: EchoCancelledRoomMic) {
         guard isRunning, audioTap === mic else { return }

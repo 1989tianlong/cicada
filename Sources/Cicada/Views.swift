@@ -190,6 +190,7 @@ struct MenuPanelView: View {
             if model.roomPrompt { roomPromptStrip }
             if let app = model.onlinePrompt { onlinePromptStrip(app) }
             if model.hybridMicDenied { hybridMicStrip }
+            if let next = model.roomMicLost { roomMicLostStrip(next) }
             AIServiceStrip(model: model, ling: model.ling)
             // Right under the header: below the settings it was easy to miss.
             UpdateBanner(updates: model.updates, model: model)
@@ -328,6 +329,18 @@ extension MenuPanelView {
             }
             Spacer(minLength: 0)
             SoftButton(L("去设置"), dark: true) { model.openMicrophoneSettings() }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Palette.accentPale))
+    }
+}
+
+extension MenuPanelView {
+    /// 外接麦克风断开了: what Cicada did instead. Goes away by itself.
+    func roomMicLostStrip(_ next: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("外接麦克风断开了").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+            Text(next).font(.system(size: 11)).foregroundStyle(Palette.secondary)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 11).fill(Palette.accentPale))

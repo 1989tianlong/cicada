@@ -188,6 +188,7 @@ final class EchoCancelledRoomMic: AudioSource, @unchecked Sendable {
         set { lock.withLock { _muted = newValue } }
     }
     var deviceName: String { device.name }
+    var deviceUID: String { device.uid }
 
     init(mic: VoiceMic, device: OutputDevice) {
         self.mic = mic

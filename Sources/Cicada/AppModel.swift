@@ -90,6 +90,10 @@ final class AppModel: ObservableObject {
     /// HybridNote under 听哪里.
     @Published var hybridNote: String?
     private var headsetCheck: (at: Date, on: Bool) = (.distantPast, false)
+    /// 外接麦克风断开了: what happened instead (RoomMicLoss), for a few seconds.
+    @Published var roomMicLost: String?
+    /// The debug command's pretend unplug: these inputs count as gone.
+    private var fakeGoneMics: Set<String> = []
     /// Answered (or 听哪里 changed) in this meeting: not asked again until the next one.
     var roomPromptDismissed = false
     /// 线上也有人？ answered this meeting. Its own flag: picking 会议室 by hand answers the question
@@ -263,8 +267,11 @@ final class AppModel: ObservableObject {
         }
         speak.roomLanguage = { [weak self] in self?.listen.activeLang?.code }
         speak.inputDevice = { [weak self] in self?.systemMic.recordingDevice }
-        listen.roomDevice = { AudioDevices.roomMic }
-        roomListen.roomDevice = { AudioDevices.roomMic }
+        let roomMic = { [weak self] () -> OutputDevice? in
+            MainActor.assumeIsolated { AudioDevices.roomMic(excluding: self?.fakeGoneMics ?? []) }
+        }
+        listen.roomDevice = roomMic
+        roomListen.roomDevice = roomMic
         applyVoice()
         speak.onStatus = { [weak self] text in self?.status = text }
         speak.onLive = { [weak self] phase, src, dst in
@@ -322,6 +329,7 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated {
                 self?.watchEnd()
                 self?.updateOnlinePrompt()
+                self?.watchRoomMic()
             }
         }
         endTimer = watch
@@ -343,6 +351,25 @@ final class AppModel: ObservableObject {
         let ask = RoomPrompt.asksOnline(roomOnly: roomOnly, bothAvailable: !Recognition.legacy,
                                         answered: onlinePromptDismissed, inCall: call != nil) ? call : nil
         if ask != onlinePrompt { onlinePrompt = ask }
+    }
+
+    /// The room's microphone unplugged: Core Audio moves the engine to the system default without a
+    /// word, which may be a headset or the virtual mic. Pick again the way the meeting started, and say so.
+    private func watchRoomMic() {
+        let both = settings.hearsBoth && roomListen.isRunning
+        guard let engine = both ? roomListen : settings.listensToRoom && listen.isRunning ? listen : nil,
+              let uid = engine.roomMicUID,
+              fakeGoneMics.contains(uid) || !AudioDevices.inputs().contains(where: { $0.uid == uid }) else { return }
+        let next = AudioDevices.roomMic(excluding: fakeGoneMics)
+        debugLog("room mic gone: \(uid) → \(next?.name ?? "none")")
+        if next != nil { engine.reconnectAudio() } else if both { stopRoomSide() } else { stop() }
+        let note = RoomMicLoss.detail(next: next?.name, builtIn: next.map { AudioDevices.transport($0.id) == kAudioDeviceTransportTypeBuiltIn } ?? false,
+                                      both: both)
+        roomMicLost = note
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            if self?.roomMicLost == note { self?.roomMicLost = nil }
+        }
+        refresh()
     }
 
     func pickLanguage(_ lang: Lang) { listen.pickLanguage(lang) }
@@ -588,6 +615,7 @@ final class AppModel: ObservableObject {
         speechHeard = false
         roomPromptDismissed = false
         onlinePromptDismissed = false
+        fakeGoneMics = []
         meetingSubtitles = nil
         autoEnded = false
         endWatch = MeetingEndWatch(config: endConfig, start: Date())
@@ -1555,6 +1583,11 @@ final class AppModel: ObservableObject {
         case "source": sourceSelection = arg
         case "listenSource": listenSourceSelection = arg
         case "roomPrompt": answerRoomPrompt(arg == "room")
+        case "roomMicGone":
+            // roomMicGone[:none]: pretend the room's microphone (or every one) was unplugged.
+            let uid = (settings.hearsBoth ? roomListen : listen).roomMicUID
+            fakeGoneMics = arg == "none" ? Set(AudioDevices.inputs().map(\.uid)) : Set([uid].compactMap { $0 })
+            watchRoomMic()
         case "onlinePrompt":
             if arg == "state" { debugLog("online prompt: \(onlinePrompt ?? "hidden")") } else { answerOnlinePrompt(arg == "both") }
         case "open": openMainWindow?()

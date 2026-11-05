@@ -29,6 +29,13 @@ import Testing
         #expect(!RoomPrompt.asksOnline(roomOnly: false, bothAvailable: true, answered: false, inCall: true))
     }
 
+    @Test func anUnpluggedMicSaysWhatTookOver() {
+        #expect(RoomMicLoss.detail(next: "MacBook Pro Microphone", builtIn: true, both: true) == L("已改用 Mac 自带的麦克风"))
+        #expect(RoomMicLoss.detail(next: "Jabra Speak 510", builtIn: false, both: false) == L("已改用 Jabra Speak 510"))
+        #expect(RoomMicLoss.detail(next: nil, builtIn: false, both: true) == L("只听电脑了"))
+        #expect(RoomMicLoss.detail(next: nil, builtIn: false, both: false) == L("没有别的麦克风，已暂停"))
+    }
+
     @Test func noteSaysHowTheRoomIsHeard() {
         #expect(HybridNote.line(roomRunning: true, echoCancelled: true, headsetDefault: false) == nil)
         #expect(HybridNote.line(roomRunning: false, echoCancelled: false, headsetDefault: true) == nil)
