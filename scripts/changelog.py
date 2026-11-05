@@ -6,8 +6,8 @@ scripts/changelog.py 1.0.1 --print    # only prints the section
 
 Release notes are the commit subjects, grouped by platform (one version covers them all): the scope
 picks it, (windows) (android) (linux) or (site) for the website, (ios) none yet, anything else Mac; feat: goes under
-New and fix: under Fixed; chore/docs/build/test/refactor stay out. A platform with no feat or fix
-gets no group, and its update check then finds nothing new. `fix(windows,linux):` lands in both.
+New and fix: under Fixed; chore/docs/build/test/refactor stay out. Every release ships every
+platform, so one with no feat or fix still gets a group saying so. `fix(windows,linux):` lands in both.
 Each line links its commit. Lines written by hand under "## Unreleased" stay on top, as the
 release's one-line summary.
 """
@@ -65,6 +65,10 @@ def section(version, summary, entries=None):
         lines += [summary, ""]
     for name, kinds in groups.items():
         if not any(kinds.values()):
+            # Every release ships every platform (one version for all), so an app with nothing new
+            # still gets its group: scripts/release_platforms.sh and the site read the groups.
+            if name != "Website":
+                lines += [f"### {name}", "", "No changes; released to keep every platform on the same version.", ""]
             continue
         lines += [f"### {name}", ""]
         if name == "Website":  # the site has no new/fixed split, as before

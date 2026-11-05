@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prints the platforms one version ships, one per line (mac, windows, android, linux): those with a
-# group in its CHANGELOG.md section (scripts/changelog.py). Every platform shares the version, but
-# one with no feat or fix is left out of the release, so its update check finds nothing new.
+# group in its CHANGELOG.md section (scripts/changelog.py). Since 1.1.2 every section has all four
+# (every release ships every platform); 1.0.0 to 1.1.1 shipped only the ones that changed.
 # A section written by hand without platform groups (1.0.0's "### Highlights") ships the Mac app.
 # scripts/release_platforms.sh 1.1.0
 set -euo pipefail

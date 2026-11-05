@@ -9,9 +9,8 @@ header.html and footer.html are shared. site/changelog.json is the Chinese chang
 "date": null = not released yet) and only exists in Chinese: the other languages link to GitHub Releases.
 Also writes changelog/index.html, feed.xml (Atom), sitemap.xml and robots.txt.
 
-Download links go to each platform's own newest release: a release ships only the platforms that
-changed (scripts/release_platforms.sh), so releases/latest may have nothing for Windows, Linux or
-Android. A version counts once changelog.json gives it a date; a platform with none yet shows 即将发布.
+Download links go to each platform's own newest release (scripts/release_platforms.sh): since 1.1.2
+every release ships every platform, but 1.0.0 to 1.1.1 shipped only the ones that changed. A version counts once changelog.json gives it a date; a platform with none yet shows 即将发布.
 
     python3 scripts/site.py                 # → build/site
     python3 -m http.server -d build/site    # preview at http://localhost:8000/
