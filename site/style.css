@@ -622,9 +622,10 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .dlcard .yours { padding: 3px 10px; border-radius: 999px; background: var(--orange-soft); color: var(--orange-text); font-size: 12px; font-weight: 700; }
 .dlcard .sys { margin: 0; font-size: 14px; color: var(--ink2); }
 .dlcard .btn { width: 100%; }
-.dlcard .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.dlcard .pair .btn { flex-direction: column; gap: 0; line-height: 1.2; }
-.dlcard .pair small { font-size: 12px; font-weight: 500; opacity: .75; }
+/* Two buttons side by side only while each has room for its one-line hint; else they stack. */
+.dlcard .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.dlcard .pair .btn { flex-direction: column; gap: 4px; min-height: 64px; padding: 10px 12px; line-height: 1.15; }
+.dlcard .pair small { font-size: 12px; font-weight: 500; opacity: .75; white-space: nowrap; }
 .dlcard .alt { font-size: 13px; color: var(--grey); }
 .dlcard .note { margin: 0; font-size: 13px; line-height: 1.6; color: var(--grey2); }
 .dlcard .dlver { margin-top: auto; font-size: 12px; color: var(--grey2); }
