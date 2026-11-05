@@ -189,6 +189,7 @@ struct MenuPanelView: View {
             if model.running { LanguageNotice(model: model) }
             if model.roomPrompt { roomPromptStrip }
             if let app = model.onlinePrompt { onlinePromptStrip(app) }
+            if model.hybridMicDenied { hybridMicStrip }
             AIServiceStrip(model: model, ling: model.ling)
             // Right under the header: below the settings it was easy to miss.
             UpdateBanner(updates: model.updates, model: model)
@@ -199,6 +200,10 @@ struct MenuPanelView: View {
                             // Two recognizers at once: macOS 26 only (14/15's interrupt each other).
                             + (Recognition.legacy ? [] : [("both", L("电脑和会议室（线上和桌边的人都听）"))])) {
                     model.listenSourceSelection = $0
+                }
+                if let note = model.hybridNote {
+                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12)
                 }
                 ChoiceRow(label: L("听到"), value: heardValue.0, badge: heardValue.1, compact: true, sections: sourceSections) {
                     model.sourceSelection = $0
@@ -307,6 +312,22 @@ extension MenuPanelView {
                 SoftButton(L("不是")) { model.answerRoomPrompt(false) }
                 Spacer(minLength: 0)
             }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Palette.accentPale))
+    }
+}
+
+extension MenuPanelView {
+    /// 电脑和会议室 without the microphone: the Mac's side is still recorded.
+    var hybridMicStrip: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("听会议室要先允许麦克风").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text("电脑声音照常在记").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+            }
+            Spacer(minLength: 0)
+            SoftButton(L("去设置"), dark: true) { model.openMicrophoneSettings() }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 11).fill(Palette.accentPale))

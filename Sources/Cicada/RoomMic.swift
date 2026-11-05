@@ -96,6 +96,18 @@ enum RoomPrompt {
     }
 }
 
+/// The grey line under 听哪里 while listening to the Mac and the room: how the room is being heard
+/// when that isn't the plain case. Echo cancellation off comes first: it changes what gets recorded.
+enum HybridNote {
+    static func line(roomRunning: Bool, echoCancelled: Bool, headsetDefault: Bool) -> String? {
+        guard roomRunning else { return nil }
+        if !echoCancelled { return L("线上有人说话时，先不听会议室") }
+        // A Bluetooth headset is the default input: the room is heard by the Mac's own mic (RoomMicPlan).
+        if headsetDefault { return L("用 Mac 麦克风听会议室") }
+        return nil
+    }
+}
+
 extension AudioDevices {
     static func transport(_ device: AudioObjectID) -> UInt32 {
         var value: UInt32 = 0

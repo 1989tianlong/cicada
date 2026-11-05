@@ -85,6 +85,11 @@ final class AppModel: ObservableObject {
     /// alone; its name for the grey line.
     @Published var onlinePrompt: String?
     private var callCheck: (at: Date, name: String?) = (.distantPast, nil)
+    /// 电脑和会议室 with the microphone not allowed: the Mac's side goes on, the room's can't start.
+    @Published var hybridMicDenied = false
+    /// HybridNote under 听哪里.
+    @Published var hybridNote: String?
+    private var headsetCheck: (at: Date, on: Bool) = (.distantPast, false)
     /// Answered (or 听哪里 changed) in this meeting: not asked again until the next one.
     var roomPromptDismissed = false
     /// 线上也有人？ answered this meeting. Its own flag: picking 会议室 by hand answers the question
@@ -393,6 +398,17 @@ final class AppModel: ObservableObject {
                                                            inCall: listen.macSilent && !(fakeCalls ?? MicUsers.currentCalls()).isEmpty)
         if roomAsk != roomPrompt { roomPrompt = roomAsk }
         updateOnlinePrompt()
+        let both = listen.isRunning && settings.hearsBoth && !Recognition.legacy
+        let denied = both && [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio))
+        if denied != hybridMicDenied { hybridMicDenied = denied }
+        if both, Date().timeIntervalSince(headsetCheck.at) >= 2 {
+            let def = AudioDevices.defaultInput
+            let t = def.map { AudioDevices.transport($0.id) }
+            headsetCheck = (Date(), t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE)
+        }
+        let note = both ? HybridNote.line(roomRunning: roomListen.isRunning, echoCancelled: roomListen.hearsEchoCancelled,
+                                          headsetDefault: headsetCheck.on) : nil
+        if note != hybridNote { hybridNote = note }
         if listen.modelProblem != modelProblem { modelProblem = listen.modelProblem }
         if listen.blockedByModel != modelBlocked { modelBlocked = listen.blockedByModel }
         let notInstalled = !ask.isEmpty && listen.mismatch && ask.allSatisfy { !listen.candidates.contains($0) }

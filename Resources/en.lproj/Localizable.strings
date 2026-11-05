@@ -648,6 +648,8 @@
 "标题" = "Title";
 
 /* RoomMic */
+"线上有人说话时，先不听会议室" = "The room pauses while someone online speaks";
+"用 Mac 麦克风听会议室" = "Hearing the room with the Mac's mic";
 "没有可用的麦克风" = "No microphone available";
 
 /* SessionStore */
@@ -949,6 +951,9 @@
 "电脑里 1 分钟没放出声音" = "Nothing has played on this Mac for a minute";
 "改听会议室" = "Listen to the room";
 "不是" = "No";
+"去设置" = "Open Settings";
+"听会议室要先允许麦克风" = "Allow the microphone to hear the room";
+"电脑声音照常在记" = "The Mac's audio is still being recorded";
 "线上也有人？" = "Anyone online too?";
 "%@ 正在通话" = "%@ is in a call";
 "也听电脑" = "Hear the Mac too";
