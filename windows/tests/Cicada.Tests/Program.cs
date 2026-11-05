@@ -443,6 +443,7 @@ static class Tests
         Equal(0, Cut(Tone(3, 0.002)).Count, "below the gate is silence");
         Equal(0, Cut(Tone(3, 0.02, syllables: false), Silence(1)).Count, "a steady hum over the gate is not speech");
         Equal(1, Cut(Tone(3), Silence(1)).Count, "speech, which rises and falls, is");
+        Equal(1, Cut(Tone(3, 0.03), Silence(1)).Count, "quiet speech, whose dips fall below the gate, is too");
     }
 
     public static void WavRoundTrip()

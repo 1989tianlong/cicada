@@ -17,7 +17,7 @@ public sealed class Segmenter
     const int Frame = 480;                       // 30 ms
     public static double Threshold = 0.01;       // the Mac AudioRouter's gate (about -40 dBFS)
     public static double Pause = 0.6, MaxLength = 8.0, MinSpeech = 0.25;
-    public static double Steady = 2.0;           // loud frames' 90th / 10th percentile below this: not speech
+    public static double Steady = 2.0;           // frames' 90th / 10th percentile below this: not speech
     const double PreRoll = 0.15, Tail = 0.15, CutWindow = 2.0;
 
     readonly List<short> pending = [];           // samples not yet a whole frame
@@ -94,15 +94,19 @@ public sealed class Segmenter
         }
     }
 
-    /// Steady sound just over the gate (a fan, hum, hiss) isn't speech: its loud frames barely vary
+    /// Steady sound just over the gate (a fan, hum, hiss) isn't speech: its frames barely vary
     /// (90th / 10th percentile about 1.1; speech, even over such a floor, 3 and up). Given one, Ming
     /// writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
-    /// Speech buried under steady noise goes too; system audio rarely carries it.
+    /// Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
+    /// the first loud one to the last counts, the quiet ones held at the gate: counting only the
+    /// loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate.
     internal static bool IsSteady(IEnumerable<double> frameLevels)
     {
-        var loud = frameLevels.Where(l => l >= Threshold).Order().ToList();
-        if (loud.Count < 2) return false;
-        return loud[(int)(0.9 * (loud.Count - 1))] < Steady * loud[(int)(0.1 * (loud.Count - 1))];
+        var all = frameLevels.ToList();
+        int first = all.FindIndex(l => l >= Threshold), last = all.FindLastIndex(l => l >= Threshold);
+        if (first < 0 || last <= first) return false;
+        var body = all.GetRange(first, last - first + 1).Select(l => Math.Max(l, Threshold)).Order().ToList();
+        return body[(int)(0.9 * (body.Count - 1))] < Steady * body[(int)(0.1 * (body.Count - 1))];
     }
 
     /// Emits `current[..end]` and keeps what follows as the start of the next segment.
