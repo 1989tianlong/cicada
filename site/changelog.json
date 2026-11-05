@@ -506,6 +506,30 @@
         ],
         "title": "Windows 上托盘面板、引导、纪要窗口、会议记录和设置界面重新设计，与 Mac 保持一致。",
         "text": ""
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "mac"
+        ],
+        "title": "有新版本时，菜单栏面板顶部直接显示，菜单栏图标的红点更醒目，并会发一条系统通知（开会或说话时会等结束后再提醒），点通知即可安装。",
+        "text": ""
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 上有新版本时托盘图标显示红点并弹出一条通知；点“安装”后由知了自己下载并校验安装包，不再经过浏览器和 SmartScreen 拦截。",
+        "text": ""
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 上有新版本时顶栏图标显示红点并发一条桌面通知，点通知即可安装（开会时会等会议结束）。",
+        "text": ""
       }
     ]
   },
