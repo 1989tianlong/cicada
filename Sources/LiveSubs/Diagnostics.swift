@@ -5,12 +5,12 @@ import SwiftUI
 
 /// One provider tried for one translation, and why it fell through.
 struct TranslateAttempt: Codable {
-    let provider: String   // ling / google / apple
+    let provider: String   // the AI service (ling, zenmux…) / ming / google / apple
     let seconds: Double
     let failure: String?   // nil = this one answered
 }
 
-/// Filled in by `TranslationService` as it walks Ling → Google → Apple.
+/// Filled in by `TranslationService` as it walks the AI service → Google → Apple.
 @MainActor
 final class TranslateTrace {
     var attempts: [TranslateAttempt] = []
@@ -38,18 +38,30 @@ struct SentenceTiming: Codable, Identifiable {
     let failed: Double
     let via: String
     let fallbacks: [String]
+    /// me: translation → the first sound in the room (what the other side waits for).
+    var firstAudio: Double? = nil
     var total: Double { (recognize ?? 0) + translate }
 }
 
-/// One Ling request.
-struct LingCall: Codable {
+/// One request to the AI service (any provider, any model), written as `"type":"call"`.
+struct AICall: Codable {
     let at: Date
+    /// `AIProvider.ID` raw value: ling / openrouter / zenmux / openai / custom.
+    let provider: String
+    let model: String
+    /// What it was for: translate / notes / voice / heard-me / speakers / test.
+    let role: String
+    /// The gate's lane (speak / translate / notes), not the use: speak-back translation is "translate".
     let priority: String
     let queue: Double
     let seconds: Double
     let outcome: String    // ok / rateLimited / hijacked / timeout / …
     let promptTokens: Int
     let completionTokens: Int
+    /// voice: characters spoken.
+    var chars = 0
+    /// voice: request start → first audio chunk.
+    var firstAudio: Double?
 }
 
 // MARK: - Recorder
@@ -59,7 +71,9 @@ struct LingCall: Codable {
 @MainActor
 final class Diagnostics: ObservableObject {
     @Published private(set) var sentences: [SentenceTiming] = []
-    @Published private(set) var calls: [LingCall] = []
+    @Published private(set) var calls: [AICall] = []
+    /// Partial translations, refreshed about every second while someone talks: counted, not listed.
+    @Published private(set) var drafts = Drafts()
     @Published private(set) var startedAt: Date?
     /// When the meeting stopped: the header stops counting minutes.
     @Published private(set) var endedAt: Date?
@@ -71,6 +85,7 @@ final class Diagnostics: ObservableObject {
     func begin() {
         sentences = []
         calls = []
+        drafts = Drafts()
         startedAt = Date()
         endedAt = nil
     }
@@ -87,11 +102,29 @@ final class Diagnostics: ObservableObject {
                         s.fallbacks.isEmpty ? "" : " fallbacks=" + s.fallbacks.joined(separator: ",")))
     }
 
-    func record(_ c: LingCall) {
+    func record(_ c: AICall) {
         guard enabled() else { return }
         calls.append(c)
         if calls.count > 1000 { calls.removeFirst(calls.count - 1000) }
-        write("ling", c)
+        write("call", c)
+    }
+
+    struct Drafts: Equatable {
+        var n = 0
+        var failed = 0
+        var seconds: [Double] = []
+    }
+
+    /// Memory only: a line per refresh would bury the sentences in metrics.jsonl.
+    func recordDraft(seconds: Double, ok: Bool) {
+        guard enabled() else { return }
+        drafts.n += 1
+        if ok {
+            drafts.seconds.append(seconds)
+            if drafts.seconds.count > 2000 { drafts.seconds.removeFirst(drafts.seconds.count - 2000) }
+        } else {
+            drafts.failed += 1
+        }
     }
 
     private func write<T: Encodable>(_ type: String, _ value: T) {
@@ -130,7 +163,60 @@ final class Diagnostics: ObservableObject {
     var recognize: Stat? { Self.stat(heard.compactMap(\.recognize)) }
     var translate: Stat? { Self.stat(heard.map(\.translate)) }
     var speakBack: Stat? { Self.stat(said.map { ($0.recognize ?? 0) + $0.translate }) }
-    var notesRounds: Stat? { Self.stat(calls.filter { $0.priority == "notes" && $0.outcome == "ok" }.map(\.seconds)) }
+    var notesRounds: Stat? { Self.stat(calls.filter { $0.role == "notes" && $0.outcome == "ok" }.map(\.seconds)) }
+    /// Key released → the first sound in the room.
+    var toRoom: Stat? { Self.stat(said.compactMap { s in s.firstAudio.map { (s.recognize ?? 0) + s.translate + $0 } }) }
+    /// What I said, recognized on this Mac (Ming hears it on the service instead: that's a call).
+    var recognizeMine: Stat? { Self.stat(said.filter { $0.via != "ming" }.compactMap(\.recognize)) }
+    var draftStat: Stat? { Self.stat(drafts.seconds) }
+
+    /// One row of the diagnostics list: a use with the service and model it went to.
+    struct Use: Identifiable {
+        let role: String
+        let provider: String
+        let model: String
+        var id: String { "\(role)|\(provider)|\(model)" }
+        let n: Int
+        let failed: Int
+        /// ok requests; voice: to the first audio, not the whole clip.
+        let latency: Stat?
+        let tokens: Int
+        let chars: Int
+        /// Why the failed ones failed, most first.
+        let reasons: [(String, Int)]
+    }
+
+    /// The uses shown, in this order; test scores and file imports only count in the totals.
+    static let roles = ["translate", "heard-me", "voice", "notes", "speakers"]
+
+    var uses: [Use] {
+        Dictionary(grouping: calls.filter { Self.roles.contains($0.role) }) { "\($0.role)|\($0.provider)|\($0.model)" }
+            .values.compactMap { xs -> Use? in
+                guard let c = xs.first else { return nil }
+                let ok = xs.filter { $0.outcome == "ok" }
+                // A voice cut short on purpose (stop, a new press) isn't a failure.
+                let failed = xs.filter { $0.outcome != "ok" && $0.outcome != "cancelled" }
+                var reasons: [String: Int] = [:]
+                for f in failed { reasons[f.outcome, default: 0] += 1 }
+                return Use(role: c.role, provider: c.provider, model: c.model, n: xs.count, failed: failed.count,
+                           latency: Self.stat(c.role == "voice" ? ok.compactMap(\.firstAudio) : ok.map(\.seconds)),
+                           tokens: xs.reduce(0) { $0 + $1.promptTokens + $1.completionTokens },
+                           chars: xs.reduce(0) { $0 + $1.chars },
+                           reasons: reasons.sorted { $0.value > $1.value }.map { ($0.key, $0.value) })
+            }
+            .sorted { a, b in
+                let (i, j) = (Self.roles.firstIndex(of: a.role) ?? 99, Self.roles.firstIndex(of: b.role) ?? 99)
+                return i != j ? i < j : a.n > b.n
+            }
+    }
+
+    /// Sentences the AI service gave up on, by who answered instead (google / apple / none), most first.
+    var retreats: [(String, Int)] {
+        let services = Set(AIProvider.all.map(\.id.rawValue))
+        let xs = sentences.filter { s in s.fallbacks.contains { services.contains(String($0.split(separator: ":").first ?? "")) } }
+        return Dictionary(grouping: xs, by: \.via).map { ($0.key, $0.value.count) }.sorted { $0.1 > $1.1 }
+    }
+    var voiceChars: Int { calls.filter { $0.role == "voice" }.reduce(0) { $0 + $1.chars } }
 
     /// How many sentences each provider answered, most first.
     var viaCounts: [(String, Int, Double)] {
@@ -139,15 +225,15 @@ final class Diagnostics: ObservableObject {
         }.sorted { $0.1 > $1.1 }
     }
 
-    /// Why Ling (or Google) was passed over: hijacked, rateLimited, timeout…
+    /// Why the AI service (or Google) was passed over: hijacked, rateLimited, timeout…
     var fallbackCounts: [(String, Int)] {
         var counts: [String: Int] = [:]
         for s in sentences { for f in s.fallbacks { counts[f, default: 0] += 1 } }
-        for c in calls where c.outcome == "rateLimited" && c.priority == "notes" { counts["notes:rateLimited", default: 0] += 1 }
+        for c in calls where c.outcome == "rateLimited" && c.role == "notes" { counts["notes:rateLimited", default: 0] += 1 }
         return counts.sorted { $0.value > $1.value }.map { ($0.key, $0.value) }
     }
 
-    /// Ling requests started in the last 10 s, per second (the account allows about 2).
+    /// Requests started in the last 10 s, per second (a Ling account allows about 2).
     var lingRate: Double {
         let since = Date().addingTimeInterval(-10)
         return Double(calls.filter { $0.at > since }.count) / 10
@@ -155,20 +241,29 @@ final class Diagnostics: ObservableObject {
     var maxQueue: Double { calls.map(\.queue).max() ?? 0 }
     var tokens: (Int, Int) { calls.reduce((0, 0)) { ($0.0 + $1.promptTokens, $0.1 + $1.completionTokens) } }
 
-    /// Plain text for "复制诊断信息": numbers only, safe to paste anywhere.
-    func report(version: String, model: String) -> String {
+    /// Plain text for "复制诊断信息": numbers only, safe to paste anywhere. Full model names live
+    /// here, the page shortens them.
+    func report(version: String, service: AIConfig) -> String {
         func f(_ s: Stat?) -> String { s.map { String(format: "p50 %.2fs p95 %.2fs n=%d", $0.p50, $0.p95, $0.n) } ?? "-" }
-        var lines = [L("\(appDisplayName) \(version) 诊断  \(Date())"), L("模型 \(model)")]
+        var lines = [L("\(appDisplayName) \(version) 诊断  \(Date())"),
+                     "AI: \(service.provider.id.rawValue) · \(service.textModel)" + (service.voiceModel.map { " · " + $0 } ?? "")]
         if let startedAt { lines.append(String(format: L("本场 %.0f 分钟"), (endedAt ?? Date()).timeIntervalSince(startedAt) / 60)) }
         lines.append(L("说完到出字幕 ") + f(endToEnd))
         lines.append(L("识别定稿 ") + f(recognize))
         lines.append(L("翻译 ") + f(translate))
-        lines.append(L("同声传译（松开到译好）") + f(speakBack))
-        lines.append(L("单轮纪要耗时 ") + f(notesRounds))
+        lines.append(L("同声传译（松开到对方听到）") + f(toRoom))
+        for u in uses {
+            var line = "\(u.role) \(u.provider) \(u.model) \(f(u.latency)) calls=\(u.n) failed=\(u.failed)"
+            if !u.reasons.isEmpty { line += " (" + u.reasons.map { "\($0.0) \($0.1)" }.joined(separator: ", ") + ")" }
+            if u.tokens > 0 { line += " tokens=\(u.tokens)" }
+            if u.chars > 0 { line += " chars=\(u.chars)" }
+            lines.append(line)
+        }
+        if drafts.n > 0 { lines.append("draft google \(f(draftStat)) calls=\(drafts.n) failed=\(drafts.failed)") }
         lines.append(L("翻译来源 ") + viaCounts.map { String(format: "%@ %d (p50 %.2fs)", $0.0, $0.1, $0.2) }.joined(separator: " · "))
         lines.append(L("换后备 ") + (fallbackCounts.isEmpty ? L("无") : fallbackCounts.map { "\($0.0) \($0.1)" }.joined(separator: " · ")))
         let t = tokens
-        lines.append(String(format: L("Ling 请求 %d 次 · 排队最久 %.2fs · token %d/%d"), calls.count, maxQueue, t.0, t.1))
+        lines.append(String(format: L("AI 请求 %d 次 · 排队最久 %.2fs · token %d/%d"), calls.count, maxQueue, t.0, t.1))
         return lines.joined(separator: "\n")
     }
 }
@@ -177,7 +272,8 @@ final class Diagnostics: ObservableObject {
 
 struct DiagnosticsView: View {
     @ObservedObject var diagnostics: Diagnostics
-    var model: String = ""
+    /// The service in settings: names the group, and the empty page before any request.
+    var service: AIConfig
     @State private var copied = false
     @State private var tick = Date()
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
@@ -192,14 +288,13 @@ struct DiagnosticsView: View {
                 emptyChannels
                 emptyRecent
             } else {
+                // What people feel; each step's time is in the list below.
                 HStack(spacing: 8) {
-                    tile(L("说完到上屏"), diagnostics.endToEnd, dark: true)
-                    tile(L("识别定稿"), diagnostics.recognize)
-                    tile(L("翻译"), diagnostics.translate)
-                    tile(L("纪要一轮"), diagnostics.notesRounds)
+                    tile(L("对方说完 → 你看到字幕"), diagnostics.endToEnd, dark: true)
+                    tile(L("你说完 → 对方听到"), diagnostics.toRoom)
                 }
-                providers
-                lingCard
+                uses
+                totals
                 recent
             }
             HStack(spacing: 8) {
@@ -283,17 +378,11 @@ struct DiagnosticsView: View {
 
     private var emptyChannels: some View {
         SettingsCard {
-            SettingsRow(title: L("翻译通道")) {
-                HStack(spacing: 12) {
-                    ForEach(["ling", "google", "apple"], id: \.self) { v in
-                        HStack(spacing: 5) {
-                            RoundedRectangle(cornerRadius: 2).fill(Self.color(v)).frame(width: 8, height: 8)
-                            Text(Self.name(v)).font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                        }
-                    }
-                }
+            SettingsRow(title: L("AI 服务"), detail: service.provider.id == .ling ? L("账号上限约每秒 2 次") : nil) {
+                Text("\(service.provider.name) · \(Self.short(service.textModel))").font(.system(size: 12))
+                    .foregroundStyle(Palette.secondary).lineLimit(1)
             }
-            SettingsRow(title: L("Ling 用量"), detail: L("账号上限约每秒 2 次"), divider: false) {
+            SettingsRow(title: L("本场用量"), divider: false) {
                 Text("本场还没调用").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
             }
         }
@@ -333,28 +422,29 @@ struct DiagnosticsView: View {
         }
     }
 
+    /// The service's own ids (ling, zenmux…), as recorded in `via` and the fallbacks.
+    private static func serviceName(_ id: String) -> String? { AIProvider.all.first { $0.id.rawValue == id }?.name }
+
     private static func color(_ via: String) -> Color {
         switch via {
-        case "ling": Palette.ink
         case "google": Palette.accent
         case "ming": Palette.accentInk
-        default: Color(red: 0.72, green: 0.74, blue: 0.78)
+        default: serviceName(via) != nil ? Palette.ink : Color(red: 0.72, green: 0.74, blue: 0.78)
         }
     }
 
     private static func name(_ via: String) -> String {
         switch via {
-        case "ling": "Ling"
         case "google": "Google"
         case "apple": L("本机")
         case "ming": L("Ming 语音")
-        default: L("没译出")
+        default: serviceName(via) ?? L("没译出")
         }
     }
 
     private static func reason(_ key: String) -> String {
         let parts = key.split(separator: ":").map(String.init)
-        let who = parts.first.map { $0 == "ling" ? "Ling" : $0 == "google" ? "Google" : $0 == "notes" ? L("纪要") : $0 == "ming" ? L("Ming 语音") : L("本机") } ?? ""
+        let who = parts.count < 2 ? "" : parts.first.map { $0 == "google" ? "Google" : $0 == "notes" ? L("纪要") : $0 == "ming" ? L("Ming 语音") : serviceName($0) ?? L("本机") } ?? ""
         let why: String
         switch parts.last ?? "" {
         case "hijacked": why = L("被搜索劫持")
@@ -365,67 +455,137 @@ struct DiagnosticsView: View {
         case "unavailable": why = L("未安装语言包")
         default: why = parts.last ?? ""
         }
-        return "\(who) \(why)"
+        return who.isEmpty ? why : "\(who) \(why)"
     }
 
-    private var providers: some View {
-        let counts = diagnostics.viaCounts
-        let total = max(1, counts.reduce(0) { $0 + $1.1 })
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("翻译通道分布").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-                Spacer()
-                Text("共 \(diagnostics.sentences.count) 句").font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+    /// "inclusionai/ling-3.0-flash" → "ling-3.0-flash": the vendor is in the group name already.
+    static func short(_ model: String) -> String { model.split(separator: "/").last.map(String.init) ?? model }
+
+    private static func seconds(_ x: Double) -> String { String(format: "%.1fs", x) }
+
+    private static func count(_ n: Int) -> String { n >= 1000 ? String(format: "%.1fk", Double(n) / 1000) : "\(n)" }
+
+    private static func title(_ role: String) -> String {
+        switch role {
+        case "translate": L("整句翻译")
+        case "heard-me": L("听懂你说的")
+        case "voice": L("同传声音")
+        case "notes": L("实时纪要")
+        case "speakers": L("认出说话人")
+        default: role
+        }
+    }
+
+    /// 1A: one row per use, a single big number (p50) with p95 under it. Uses that follow the AI
+    /// service come first; the ones fixed on this Mac or Google come after, so switching service
+    /// visibly changes only the first group.
+    private var uses: some View {
+        let uses = diagnostics.uses
+        let retreats = diagnostics.retreats
+        let current = service.provider.id.rawValue
+        return VStack(alignment: .leading, spacing: 0) {
+            group(L("跟着 AI 服务走 · \(service.provider.name)"))
+            if uses.isEmpty {
+                Text("本场还没调用").font(.system(size: 12)).foregroundStyle(Palette.tertiary).padding(.vertical, 9)
             }
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(counts, id: \.0) { c in
-                        Rectangle().fill(Self.color(c.0)).frame(width: max(2, geo.size.width * CGFloat(c.1) / CGFloat(total) - 2))
-                    }
-                    if counts.isEmpty { Rectangle().fill(Palette.fill) }
+            ForEach(Array(uses.enumerated()), id: \.element.id) { i, u in
+                let model = (u.provider == current ? "" : (Self.serviceName(u.provider) ?? u.provider) + " · ") + Self.short(u.model)
+                var foot = [L("\(u.n) 次")]
+                if u.tokens > 0 { foot.append("\(Self.count(u.tokens)) token") }
+                if u.chars > 0 { foot.append(L("\(u.chars) 字")) }
+                var pill: String?
+                let why = u.reasons.prefix(2).map { "\(Self.reason($0.0)) \($0.1)" }.joined(separator: "、")
+                if u.role == "translate", let top = retreats.first {
+                    let n = retreats.reduce(0) { $0 + $1.1 }
+                    pill = L("\(n) 句退回 \(Self.name(top.0))") + (why.isEmpty ? "" : " · " + why)
+                } else if u.failed > 0 {
+                    pill = L("失败 \(u.failed)") + (why.isEmpty ? "" : " · " + why)
+                } else {
+                    foot.append(L("没有失败"))
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                return useRow(Self.title(u.role), u.role == "voice" ? model + " · " + L("到开始出声") : model,
+                              u.latency, foot: foot, pill: pill, divider: i > 0)
             }
-            .frame(height: 10)
-            HStack(spacing: 14) {
-                ForEach(counts, id: \.0) { c in
-                    HStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 2).fill(Self.color(c.0)).frame(width: 8, height: 8)
-                        Text(String(format: "%@ %d · %.1fs", Self.name(c.0), c.1, c.2)).font(.system(size: 12).monospacedDigit())
-                            .foregroundStyle(Palette.secondary)
-                    }
-                }
-            }
-            if !diagnostics.fallbackCounts.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(diagnostics.fallbackCounts.prefix(4), id: \.0) { f in
-                        Text("\(Self.reason(f.0)) \(f.1)").font(.system(size: 12))
-                            .foregroundStyle(f.0.hasSuffix("hijacked") ? Palette.accentInk : Palette.secondary)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(f.0.hasSuffix("hijacked") ? Palette.accentPale : Palette.fill))
-                    }
+            let fixed = fixedRows
+            if !fixed.isEmpty {
+                group(L("不受换服务影响")).padding(.top, 12)
+                ForEach(Array(fixed.enumerated()), id: \.offset) { i, r in
+                    useRow(r.title, r.detail, r.stat, foot: r.foot, dim: true, divider: i > 0)
                 }
             }
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line, lineWidth: 1))
     }
 
-    private var lingCard: some View {
+    private var fixedRows: [(title: String, detail: String, stat: Diagnostics.Stat?, foot: [String])] {
+        var rows: [(title: String, detail: String, stat: Diagnostics.Stat?, foot: [String])] = []
+        if let r = diagnostics.recognize { rows.append((L("识别对方"), L("本机识别"), r, [L("\(r.n) 句")])) }
+        if let r = diagnostics.recognizeMine { rows.append((L("识别你说的"), L("本机识别"), r, [L("\(r.n) 句")])) }
+        let d = diagnostics.drafts
+        if d.n > 0 {
+            rows.append((L("半句翻译"), "Google", diagnostics.draftStat,
+                         [L("\(d.n) 次"), d.failed > 0 ? L("失败 \(d.failed)") : L("没有失败")]))
+        }
+        return rows
+    }
+
+    private func group(_ title: String) -> some View {
+        Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.tertiary).padding(.bottom, 2)
+    }
+
+    private func useRow(_ title: String, _ detail: String, _ s: Diagnostics.Stat?, foot: [String] = [], pill: String? = nil,
+                        dim: Bool = false, divider: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13, weight: dim ? .medium : .semibold)).foregroundStyle(Palette.ink)
+                    Text(detail).font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(s.map { Self.seconds($0.p50) } ?? "—")
+                        .font(.system(size: dim ? 15 : 18, weight: .bold).monospacedDigit()).foregroundStyle(Palette.ink)
+                    if let s { Text("p95 " + Self.seconds(s.p95)).font(.system(size: 10).monospacedDigit()).foregroundStyle(Palette.tertiary) }
+                }
+            }
+            if pill != nil || !foot.isEmpty {
+                HStack(spacing: 6) {
+                    if let pill {
+                        Text(pill).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(Palette.accentInk).lineLimit(1)
+                            .padding(.horizontal, 7).padding(.vertical, 1.5)
+                            .background(Capsule().fill(Palette.accentPale))
+                    }
+                    Text(foot.joined(separator: " · ")).font(.system(size: 11).monospacedDigit()).foregroundStyle(Palette.tertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) { if divider { Rectangle().fill(Palette.line).frame(height: 1) } }
+    }
+
+    private var totals: some View {
         let _ = tick
         let t = diagnostics.tokens
+        let n = diagnostics.calls.count
+        let chars = diagnostics.voiceChars
         return SettingsCard {
-            SettingsRow(title: L("Ling 请求速度"), detail: L("账号上限约每秒 2 次")) {
-                Text(String(format: L("%.1f / 2 次每秒"), diagnostics.lingRate)).font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(Palette.secondary)
+            if service.provider.id == .ling {
+                SettingsRow(title: L("Ling 请求速度"), detail: L("账号上限约每秒 2 次")) {
+                    Text(String(format: L("%.1f / 2 次每秒"), diagnostics.lingRate)).font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Palette.secondary)
+                }
             }
-            SettingsRow(title: L("排队最久")) {
+            SettingsRow(title: L("排队最久"), detail: L("请求太密时，纪要让翻译先走")) {
                 Text(String(format: "%.1fs", diagnostics.maxQueue)).font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary)
             }
-            SettingsRow(title: L("本场用量"), divider: false) {
-                Text("\(diagnostics.calls.count) 次 · \(t.0 + t.1) token").font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(Palette.secondary)
+            SettingsRow(title: L("本场用量"), detail: L("服务返回的数，以服务的账单为准"), divider: false) {
+                Text(chars > 0 ? L("\(n) 次 · \(t.0 + t.1) token · \(chars) 字语音") : L("\(n) 次 · \(t.0 + t.1) token"))
+                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.secondary)
             }
         }
     }
@@ -448,7 +608,7 @@ struct DiagnosticsView: View {
                     .frame(width: 150, alignment: .leading)
                     bar(s)
                     Spacer(minLength: 0)
-                    Text(String(format: "%.1fs", s.total + (s.voice ?? 0))).font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    Text(String(format: "%.1fs", s.total + (s.firstAudio ?? s.voice ?? 0))).font(.system(size: 12, weight: .semibold).monospacedDigit())
                 }
                 .frame(height: 34)
             }
@@ -466,7 +626,8 @@ struct DiagnosticsView: View {
             if s.queue > 0.05 { seg(s.queue, Color(red: 0.96, green: 0.78, blue: 0.71), scale) }
             if fallback > 0.05 { seg(fallback, Palette.accent, scale) }
             seg(max(0.02, s.translate - s.queue - fallback), Palette.ink, scale)
-            if let v = s.voice { seg(v, Color(red: 0.60, green: 0.63, blue: 0.67), scale) }
+            // Speak-back counts to the first sound, not the whole clip: that's what the other side waits for.
+            if let v = s.firstAudio ?? s.voice { seg(v, Color(red: 0.60, green: 0.63, blue: 0.67), scale) }
         }
         .frame(width: 200, alignment: .leading).clipped()
     }
@@ -483,7 +644,7 @@ struct DiagnosticsView: View {
 
     private func copy() {
         let text = diagnostics.report(version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-                                      model: model)
+                                      service: service)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         copied = true

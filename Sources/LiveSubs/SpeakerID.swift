@@ -445,7 +445,7 @@ final class SpeakerNamer: ObservableObject {
             defer { busy.remove(id) }
             do {
                 let reply = try await ling.chat(content: content, instruction: SpeakerNameGuess.instruction,
-                                                priority: .notes, json: true, maxTokens: 300)
+                                                priority: .notes, json: true, maxTokens: 300, role: "speakers")
                 let (found, read) = SpeakerNameGuess.read(reply, s)
                 var refuted = read
                 for (key, g) in s.voiceGuesses ?? [:] {

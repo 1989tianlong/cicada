@@ -279,7 +279,7 @@ final class LingClient: ObservableObject {
     /// instruction, for Ming's audio model (Ling only: `hearsAudio`).
     func chat(content: String, instruction: String, priority: Priority, json: Bool = false,
               maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil, audio: Data? = nil,
-              onQueued: ((Double) -> Void)? = nil) async throws -> String {
+              role: String? = nil, onQueued: ((Double) -> Void)? = nil) async throws -> String {
         guard let key else { throw Failure.noKey }
         guard keyState != .invalid else { throw Failure.invalidKey }
         if let simulate {
@@ -287,8 +287,10 @@ final class LingClient: ObservableObject {
             throw simulate
         }
         let c = config()
+        let call = CallLabel(provider: c.provider.id.rawValue, model: model ?? c.textModel,
+                             role: role ?? (priority == .notes ? "notes" : "translate"))
         var body: [String: Any] = [
-            "model": model ?? c.textModel,
+            "model": call.model,
             "messages": [
                 ["role": "system", "content": content],
                 ["role": "user", "content": audio.map { wav -> Any in
@@ -322,12 +324,12 @@ final class LingClient: ObservableObject {
                 let ms = Int(Date().timeIntervalSince(started) * 1000)
                 let usage = root["usage"] as? [String: Any]
                 debugLog("ling: \(priority) ok \(ms) ms tokens=\(usage?["prompt_tokens"] ?? "?")/\(usage?["completion_tokens"] ?? "?")")
-                report(priority, at: started, queued: queued, outcome: "ok",
+                report(call, priority, at: started, queued: queued, outcome: "ok",
                        tokens: (usage?["prompt_tokens"] as? Int ?? 0, usage?["completion_tokens"] as? Int ?? 0))
                 if rateLimitedAt != nil { rateLimitedAt = nil }
                 return trimmed
             } catch let failure as Failure {
-                report(priority, at: started, queued: queued, outcome: Self.name(failure))
+                report(call, priority, at: started, queued: queued, outcome: Self.name(failure))
                 guard failure == .rateLimited else { throw failure }
                 guard attempt < attempts else {
                     rateLimitedAt = Date()
@@ -343,11 +345,16 @@ final class LingClient: ObservableObject {
     }
 
     /// Every request, for diagnostics (timings and token counts only).
-    var onCall: ((LingCall) -> Void)?
+    var onCall: ((AICall) -> Void)?
 
-    private func report(_ priority: Priority, at started: Date, queued: Double, outcome: String, tokens: (Int, Int) = (0, 0)) {
-        onCall?(LingCall(at: started, priority: "\(priority)", queue: queued, seconds: Date().timeIntervalSince(started),
-                         outcome: outcome, promptTokens: tokens.0, completionTokens: tokens.1))
+    /// Which service, model and use a request is for: the diagnostics page groups by these.
+    struct CallLabel { let provider, model, role: String }
+
+    private func report(_ call: CallLabel, _ priority: Priority, at started: Date, queued: Double, outcome: String,
+                        tokens: (Int, Int) = (0, 0), chars: Int = 0, firstAudio: Double? = nil) {
+        onCall?(AICall(at: started, provider: call.provider, model: call.model, role: call.role, priority: "\(priority)",
+                       queue: queued, seconds: Date().timeIntervalSince(started), outcome: outcome,
+                       promptTokens: tokens.0, completionTokens: tokens.1, chars: chars, firstAudio: firstAudio))
     }
 
     static func name(_ failure: Failure) -> String {
@@ -373,7 +380,16 @@ final class LingClient: ObservableObject {
                 guard let self, let key = self.key else { cont.finish(throwing: Failure.noKey); return }
                 let c = self.config()
                 guard let base = c.voiceBase, let voiceModel = c.voiceModel else { cont.finish(throwing: Failure.noKey); return }
+                let asked = Date()
                 await self.acquire(.speak)
+                let queued = Date().timeIntervalSince(asked)
+                let started = Date()
+                var firstAudio: Double?
+                let call = CallLabel(provider: c.provider.id.rawValue, model: voiceModel, role: "voice")
+                func yield(_ pcm: Data) {
+                    if firstAudio == nil { firstAudio = Date().timeIntervalSince(started) }
+                    cont.yield(pcm)
+                }
                 var req = URLRequest(url: base.appendingPathComponent("audio/speech"))
                 req.httpMethod = "POST"
                 req.timeoutInterval = 20
@@ -415,26 +431,30 @@ final class LingClient: ObservableObject {
                                   let obj = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(5).utf8)) as? [String: Any]
                             else { continue }
                             if obj["type"] as? String == "speech.audio.done" { break }
-                            if let b64 = obj["audio"] as? String, let pcm = Data(base64Encoded: b64) { cont.yield(pcm) }
+                            if let b64 = obj["audio"] as? String, let pcm = Data(base64Encoded: b64) { yield(pcm) }
                         }
                     } else if type.contains("json") {
                         var data = Data()
                         for try await b in bytes { data.append(b) }
                         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                               let b64 = obj["audio"] as? String, let wav = Data(base64Encoded: b64) else { throw Failure.parse }
-                        cont.yield(Self.pcm(fromWAV: wav))
+                        yield(Self.pcm(fromWAV: wav))
                     } else {
                         // Raw PCM: hand it on in 0.1 s pieces so playback starts early.
                         var chunk = Data()
                         chunk.reserveCapacity(4800)
                         for try await b in bytes {
                             chunk.append(b)
-                            if chunk.count >= 4800 { cont.yield(chunk); chunk.removeAll(keepingCapacity: true) }
+                            if chunk.count >= 4800 { yield(chunk); chunk.removeAll(keepingCapacity: true) }
                         }
-                        if !chunk.isEmpty { cont.yield(chunk) }
+                        if !chunk.isEmpty { yield(chunk) }
                     }
+                    self.report(call, .speak, at: started, queued: queued, outcome: "ok", chars: text.count, firstAudio: firstAudio)
                     cont.finish()
                 } catch {
+                    // Cancelled: the voice was cut short on purpose (stop, a new press), not a failure.
+                    let outcome = Task.isCancelled ? "cancelled" : (error as? Failure).map(Self.name) ?? "network"
+                    self.report(call, .speak, at: started, queued: queued, outcome: outcome, chars: text.count, firstAudio: firstAudio)
                     cont.finish(throwing: error)
                 }
             }

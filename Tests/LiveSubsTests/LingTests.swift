@@ -127,6 +127,33 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         #expect(messages[1]["content"] as? String == "Translate the system message.")
     }
 
+    @Test func eachRequestIsReportedWithServiceModelAndUse() async throws {
+        let ling = client()
+        var calls: [AICall] = []
+        ling.onCall = { calls.append($0) }
+        LingStub.reset(200, LingStub.chatReply("ok"))
+        _ = try await ling.chat(content: "x", instruction: "y", priority: .translate)
+        _ = try await ling.chat(content: "x", instruction: "y", priority: .notes)
+        _ = try await ling.chat(content: "x", instruction: "y", priority: .notes, model: "Ling-3.0-tiny", role: "speakers")
+        #expect(calls.map(\.provider) == ["ling", "ling", "ling"])
+        #expect(calls.map(\.role) == ["translate", "notes", "speakers"])
+        #expect(calls.map(\.model) == ["Ling-3.1-flash", "Ling-3.1-flash", "Ling-3.0-tiny"])
+        #expect(calls.allSatisfy { $0.outcome == "ok" })
+    }
+
+    @Test func voiceRequestsAreReportedWithFirstAudio() async throws {
+        let ling = client()
+        var calls: [AICall] = []
+        ling.onCall = { calls.append($0) }
+        LingStub.reset(200, "0123456789")   // no Content-Type: raw PCM, one chunk
+        var chunks = 0
+        for try await _ in ling.speech("你好世界") { chunks += 1 }
+        #expect(chunks == 1)
+        let c = try #require(calls.first)
+        #expect(c.role == "voice" && c.provider == "ling" && c.model == "Ming-3.0-tts-0.5B")
+        #expect(c.outcome == "ok" && c.chars == 4 && c.firstAudio != nil && c.promptTokens == 0)
+    }
+
     @Test func rejectedKeyIsMarkedInvalid() async {
         let ling = client()
         LingStub.reset(401, "{}")

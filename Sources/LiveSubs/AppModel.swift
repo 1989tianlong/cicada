@@ -183,6 +183,7 @@ final class AppModel: ObservableObject {
             await self?.listen.translate(text, source: from, target: to, kind: .speak, trace: TranslateTrace())
         }
         ling.onCall = { [weak self] in self?.diagnostics.record($0) }
+        translator.onDraft = { [weak self] in self?.diagnostics.recordDraft(seconds: $0, ok: $1) }
 
         ling.config = { [weak self] in self?.settings.aiConfig ?? AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash") }
         listen.translator = translator
@@ -1340,7 +1341,7 @@ final class AppModel: ObservableObject {
             setDiagnostics(arg != "off")
             debugLog("diagnostics \(settings.diagnostics ? "on" : "off")")
         case "diagReport":
-            debugLog("diag report:\n" + diagnostics.report(version: "", model: settings.textModel))
+            debugLog("diag report:\n" + diagnostics.report(version: "", service: settings.aiConfig))
         case "micTest": installer.runTest()
         case "micNext": installer.next()
         case "sysMic":

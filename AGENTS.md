@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Cicada (知了, formerly Live Subs) turns what a computer plays into live translated subtitles and meeting notes, keeps each meeting as a bilingual record, and speaks what you say back into the room in their language. The Mac app (menu bar) is the main one; `windows/`, `android/` and `linux/` are ports that only listen, each with its own AGENTS.md. This file covers the whole repo and the Mac app.
+Cicada (知了, formerly Live Subs) turns what a computer plays into live translated subtitles and meeting notes, keeps each meeting as a bilingual record, and speaks what you say back into the room in their language. The Mac app (menu bar) is the main one; `windows/`, `android/` and `linux/` are ports with their own AGENTS.md. This file covers the whole repo and the Mac app.
 
 ## Scope
 
@@ -13,6 +13,7 @@ Cicada (知了, formerly Live Subs) turns what a computer plays into live transl
 - AI keys live only in 0600 files (`AIKey`): never UserDefaults, logs or exports.
 - Every AI call goes through `LingClient` (rate gate, priorities, `thinking: disabled`, content in the system message). Partial text is translated by Google, never Ling.
 - Never speak untranslated text into the room. Never bundle the GPL BlackHole driver; download it and check its pinned SHA-256.
+- Only the Mac app recognizes on the device: don't claim 声音不出本机 for the ports (Ming, Ling key required).
 - The notes window is a non-activating panel with `sharingType = .none`: it must never take focus, and stays out of screen captures unless the user turns on 共享屏幕时让对方看到 (then it shows a badge).
 - Mac: UI and engine state are `@MainActor`; audio callbacks hand buffers to `AudioRouter`'s queue.
 - Don't change the release bundle id `com.wquguru.cicada` or the ad-hoc designated requirement: permissions are tied to them.
@@ -53,6 +54,7 @@ scripts/deploy-site.sh                 # build and deploy the site (cicada.indal
 
 - Match the existing naming and comment density; comments say why.
 - Commits are English Conventional Commits (`feat:` `fix:` `docs:` `build:` `refactor:` `test:` `chore:`). `feat:` and `fix:` subjects are the release notes (`scripts/changelog.py`), one line each linked to the commit: say what the user gets in one plain sentence, one change per commit. The scope picks the platform: `(windows)` `(android)` `(linux)` `(site)`, anything else is Mac.
+- Release notes have no Chinese but the brand: name UI in English (Listen to › Room).
 - Every user-visible change also gets a Chinese item in `site/changelog.json`, the website's changelog; keep `README.md` (Chinese, the default) and `README.en.md` in step.
 - One semver version for every platform, in `VERSION`; every build reads it. Patch for fixes only, minor for features, major only when users of any platform must grant permissions again. A release ships only the platforms with a feat or fix.
 - This file stays under 6 KB with these sections; `scripts/check-agents.py` enforces it in `scripts/test.sh`, CI and the pre-commit hook. Implementation detail belongs in code comments, not here.

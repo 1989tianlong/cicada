@@ -431,10 +431,11 @@ final class SpeakEngine {
             probe?.via = result == nil ? "none" : trace.via
             probe?.from = from
             probe?.to = to
-            @MainActor func timing(voice: Double?) -> SentenceTiming {
+            @MainActor func timing(voice: Double?, firstAudio: Double? = nil) -> SentenceTiming {
                 SentenceTiming(at: textAt, side: "me", chars: text.count, recognize: textAt.timeIntervalSince(released),
                                queue: trace.lingQueue, translate: translatedAt.timeIntervalSince(textAt), voice: voice,
-                               failed: trace.failedSeconds, via: result == nil ? "none" : trace.via, fallbacks: trace.fallbacks)
+                               failed: trace.failedSeconds, via: result == nil ? "none" : trace.via, fallbacks: trace.fallbacks,
+                               firstAudio: firstAudio)
             }
             guard let translated = result else {
                 debugLog("speak: translation failed, nothing sent")
@@ -456,7 +457,8 @@ final class SpeakEngine {
                 probe.device = lastDevice
                 probe.finish()
             } else {
-                onTiming?(timing(voice: Date().timeIntervalSince(translatedAt)))
+                onTiming?(timing(voice: Date().timeIntervalSince(translatedAt),
+                                 firstAudio: firstAudioAt.map { $0.timeIntervalSince(translatedAt) }))
                 if let first = firstAudioAt { onLatency?(first.timeIntervalSince(released)) }
             }
             if phase == .speaking { phase = .idle }

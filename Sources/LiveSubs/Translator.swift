@@ -69,19 +69,34 @@ final class TranslationService {
     /// Debug (`translateFail:<n>`): the next n sentences fail on every provider, to test the retry.
     var failNext = 0
 
+    /// Partial text (`.draft`) has no trace: each one reports here instead (seconds, answered), so
+    /// diagnostics can count them without a line per refresh.
+    var onDraft: ((Double, Bool) -> Void)?
+
     func translate(_ text: String, source: String, target: String, kind: Kind, trace: TranslateTrace? = nil) async -> String? {
         if source == target { return text }
+        if kind == .draft, let onDraft {
+            let started = Date()
+            let out = await chain(text, source: source, target: target, kind: kind, trace: trace)
+            onDraft(Date().timeIntervalSince(started), out != nil)
+            return out
+        }
+        return await chain(text, source: source, target: target, kind: kind, trace: trace)
+    }
+
+    private func chain(_ text: String, source: String, target: String, kind: Kind, trace: TranslateTrace?) async -> String? {
         if kind == .sentence, failNext > 0 {
             failNext -= 1
-            trace?.attempts.append(.init(provider: "ling", seconds: 0, failure: "simulated"))
+            trace?.attempts.append(.init(provider: ling.provider.id.rawValue, seconds: 0, failure: "simulated"))
             return nil
         }
         if kind != .draft, ling.usable {
             let started = Date()
             let (out, failure) = await viaLing(text, source: source, target: target, kind: kind, trace: trace)
-            trace?.attempts.append(.init(provider: "ling", seconds: Date().timeIntervalSince(started), failure: out == nil ? failure : nil))
+            trace?.attempts.append(.init(provider: ling.provider.id.rawValue, seconds: Date().timeIntervalSince(started),
+                                         failure: out == nil ? failure : nil))
             if let out {
-                debugLog("translate via=ling kind=\(kind)")
+                debugLog("translate via=\(ling.provider.id.rawValue) kind=\(kind)")
                 return out
             }
         }
@@ -127,6 +142,7 @@ final class TranslationService {
             let priority: LingClient.Priority = kind == .speak ? .speak : kind == .file ? .notes : .translate
             let out = try await ling.chat(content: prompt, instruction: "Translate.", priority: priority,
                                           maxTokens: 400, timeout: kind == .speak ? 10 : kind == .file ? 20 : 6,
+                                          role: kind == .file ? "file" : "translate",
                                           onQueued: { [weak trace] in trace?.lingQueue += $0 })
             if out.isEmpty { return (nil, "empty") }
             guard let clean = Self.cleanTranslation(out, target: target) else {
@@ -160,7 +176,7 @@ final class TranslationService {
         do {
             // A 30 s press is ~1 MB of audio: a little more time than a text translation (10 s).
             let reply = try await ling.chat(content: prompt, instruction: instruction, priority: .speak, maxTokens: 800,
-                                            timeout: 12, model: "Ming-3.0-audio-flash", audio: wav,
+                                            timeout: 12, model: "Ming-3.0-audio-flash", audio: wav, role: "heard-me",
                                             onQueued: { [weak trace] in trace?.lingQueue += $0 })
             if let parsed = Self.parseInterpretation(reply, target: target) {
                 trace.attempts.append(.init(provider: "ming", seconds: Date().timeIntervalSince(started), failure: nil))

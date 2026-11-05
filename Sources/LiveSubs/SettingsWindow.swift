@@ -442,7 +442,7 @@ struct SettingsView: View {
             case .language: LanguageSettings(model: model, settings: settings)
             case .records: records
             case .ai: AISettingsView(model: model, ling: model.ling, settings: settings)
-            case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, model: settings.textModel)
+            case .diagnostics: DiagnosticsView(diagnostics: model.diagnostics, service: settings.aiConfig)
             }
         }
         .padding(.leading, 12).padding(.trailing, 28).padding(.top, 40).padding(.bottom, 28)

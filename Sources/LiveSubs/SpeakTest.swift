@@ -456,7 +456,7 @@ final class SpeakTester: ObservableObject {
             let instruction = "Score from 0 to 100 how faithfully what the listener heard conveys the original's meaning. "
                 + "Reply as JSON: {\"score\": <0-100>, \"issue\": \"<the main problem in at most 12 words of \(TranslationService.englishName(from)), or empty>\"}"
             if let reply = try? await ling.chat(content: content, instruction: instruction, priority: .translate, json: true,
-                                                maxTokens: 120, timeout: 10),
+                                                maxTokens: 120, timeout: 10, role: "test"),
                let v = SpeakScore.parseJudge(reply) {
                 return .score(v.score, v.issue)
             }
