@@ -21,6 +21,7 @@ tools/*
 !tools/*.swift
 !tools/README.md
 !tools/macos-vm/
+!tools/audio-probe/
 
 # Windows: build output, spike results and clips (windows/spike/make-clips.sh, ming_asr.py)
 windows/**/bin/
