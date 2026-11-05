@@ -12,8 +12,9 @@ In rough order, and subject to change. Tell us what you need in Issues.
 
 **Later**
 - **Live voice changing.** No translation: your voice goes into the meeting as a different voice, changed as you speak, without holding the talk key. Setting "I speak" and "They hear" to the same language already swaps the voice today, but it goes through text, so the room hears it only after you let go and your tone is lost.
-- **Windows.** Per-process audio capture is available on Windows 10 2004+, so the recognition, translation and notes pipeline carries over with a Windows virtual audio driver. This will be a separate codebase sharing the same notes and meeting-record formats.
-- **Android.** Can listen to videos and livestreams (capturing audio from other apps works on Android 10+), but Android blocks capturing phone and meeting call audio, and translated speech cannot be injected into calls. We plan to start with an in-person microphone mode and a viewer for meeting records.
-- **iPhone / iPad.** iOS does not allow capturing audio from other apps; not planned.
+- **Android in the app stores.** Since 1.1.0 the Android app installs from an APK on the website; app store listings will spare people allowing unknown apps.
+- **iPhone / iPad.** iOS does not allow capturing audio from other apps, so the app starts with listening to the room through the microphone, face-to-face interpreting and meeting records.
+
+The Windows, Linux and Android apps shipped in 1.1.0; see the README in each one's folder.
 
 Back to the [README](../README.en.md).

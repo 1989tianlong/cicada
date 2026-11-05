@@ -6,29 +6,41 @@
 
 <p align="center">
   Every call. Every stream. No language barrier.<br>
-  Live meeting notes, bilingual transcripts, subtitles and interpreting for anything your Mac plays.
+  Live meeting notes, bilingual transcripts, subtitles and interpreting on Mac, Windows, Linux and Android.
 </p>
 
 <p align="center">
   <a href="https://cicada.indaloop.app"><img src="https://img.shields.io/badge/Website-cicada.indaloop.app-E8552B?style=for-the-badge" alt="Website: cicada.indaloop.app" height="36"></a>
   &nbsp;
-  <a href="https://github.com/wquguru/cicada/releases/latest"><img src="https://img.shields.io/badge/Download-macOS-15171C?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" height="36"></a>
+  <a href="https://cicada.indaloop.app/en/download/"><img src="https://img.shields.io/badge/Download-Mac%20·%20Windows%20·%20Linux%20·%20Android-15171C?style=for-the-badge" alt="Download for Mac, Windows, Linux and Android" height="36"></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
-  <img src="https://img.shields.io/badge/Apple%20silicon-only-black" alt="Apple silicon">
-  <img src="https://img.shields.io/badge/Swift-5-orange" alt="Swift 5">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B%20·%20Apple%20silicon-black" alt="macOS 14.4+, Apple silicon">
+  <img src="https://img.shields.io/badge/Windows-10%202004%2B-black" alt="Windows 10 2004+">
+  <img src="https://img.shields.io/badge/Ubuntu-22.04%2B-black" alt="Ubuntu 22.04+">
+  <img src="https://img.shields.io/badge/Android-10%2B-black" alt="Android 10+">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
 </p>
 
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a></p>
 
-Cicada works with whatever is playing on your Mac, from Zoom, Teams, and Feishu calls to X Spaces, Discord stages, and YouTube livestreams. By listening directly to system audio, it gives you live bilingual subtitles and structured meeting notes without sending bots into the call or asking anyone else to install a thing. And when you need to jump in, just hold the right `⌥` key to speak and broadcast your translated voice straight into the meeting.
+Cicada works with whatever is playing on your computer, from Zoom, Teams, and Feishu calls to X Spaces, Discord stages, and YouTube livestreams. By listening directly to system audio, it gives you live bilingual subtitles and structured meeting notes without sending bots into the call or asking anyone else to install a thing. And when you need to jump in, just hold the talk key (right `⌥` on the Mac, right `Ctrl` on Windows) to speak and broadcast your translated voice straight into the meeting. On the Mac, speech is recognized on your computer, so audio never leaves it.
 
 <p align="center">
   <img src="docs/demo.gif" width="800" alt="A Bloomberg English livestream on YouTube with Cicada's live Chinese notes, topics, and fishbone diagram on the right and bilingual subtitles at the bottom">
 </p>
+
+## Platforms
+
+| Platform | Requirements | Notes |
+|---|---|---|
+| Mac | macOS 14.4+, Apple silicon | The full feature set; recognizes speech on your Mac, works without a key |
+| Windows | Windows 10 2004+, x64 / ARM64 | Needs a Ling key, speech recognized by Ming; see [windows/](windows/README.md) |
+| Linux | Ubuntu 22.04 / 24.04 desktop | Needs a Ling key; the notes window shows in screen sharing; see [linux/](linux/README.md) |
+| Android | Android 10+ | Needs a Ling key; subtitles for videos and streams, face-to-face interpreting; see [android/](android/README.md) |
+
+All four share one version number and one meeting record format; downloads are on [the website](https://cicada.indaloop.app/en/download/) and [Releases](https://github.com/wquguru/cicada/releases). The features below describe the Mac app.
 
 ## Features
 
@@ -62,9 +74,11 @@ Every session saves its bilingual transcript, notes, and audio recording on your
 
 ## Privacy & Permissions
 
-Audio capture, language detection, speech recognition (Apple SpeechAnalyzer; on macOS 14.4–15, SFSpeechRecognizer in on-device mode), and meeting recordings all stay on your Mac. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google, with Apple on-device fallback on macOS 26), meeting records, and push-to-talk interpreting all work. Live meeting notes, one-step voice translation, and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing. Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
+On the Mac, audio capture, language detection, speech recognition (Apple SpeechAnalyzer; on macOS 14.4–15, SFSpeechRecognizer in on-device mode), and meeting recordings all stay on your computer. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google, with Apple on-device fallback on macOS 26), meeting records, and push-to-talk interpreting all work. Live meeting notes, one-step voice translation, and voice cloning use your own Ling API key (Ant Group's model service, see [below](#ling-api-key)), and an hour of live notes costs roughly ¥0.15 to ¥1 at current Ling pricing. Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
 
-Cicada asks for a permission only when you use the feature that needs it, and everything else keeps working if you decline.
+The Windows, Linux and Android apps recognize speech with Ming: what is said goes to Ling in short pieces, recognized and translated in one step, so they need a Ling key. Recordings and meeting records stay on the device there too.
+
+The rest of this section is about the Mac app. Cicada asks for a permission only when you use the feature that needs it, and everything else keeps working if you decline.
 
 | Permission | What it's for | When it's asked | Without it |
 |---|---|---|---|
@@ -105,6 +119,8 @@ If you can't sign up for Ling, switch to OpenRouter, ZenMux or OpenAI from the m
 
 ## Requirements & Installation
 
+### Mac
+
 Requires **macOS 14.4 or later** on **Apple silicon**. macOS 26 uses the newer on-device speech recognizer, which is more accurate; on 14.4–15 Cicada uses the system's earlier recognizer, which needs **Dictation** turned on in **System Settings › Keyboard**, with each language you want heard added to its languages. The UI is available in English, Chinese, Japanese, and Korean, following your macOS language or set per app in **System Settings › General › Language & Region**.
 
 Download `Cicada-<version>-macOS-AppleSilicon.dmg` from [Releases](https://github.com/wquguru/cicada/releases/latest) or [the website](https://cicada.indaloop.app), open it, and drag **Cicada** into **Applications**. Builds are ad-hoc signed and not notarized yet (see [roadmap](#roadmap)), so if macOS blocks the first launch, open **System Settings › Privacy & Security** and click **Open Anyway**. Each release includes `checksums.txt`, which you can verify with `shasum -a 256 Cicada-*.dmg`. For questions, reach out to the author [@wquguru](https://x.com/wquguru) on X.
@@ -115,15 +131,30 @@ The first-launch guide asks for one permission, plays a short two-person sample 
   <img src="docs/onboarding.png" width="640" alt="Onboarding step 2 playing a two-person sample meeting with live bilingual subtitles">
 </p>
 
+### Windows
+
+Requires **Windows 10 2004** or later. Download `Cicada-Setup.exe` (`Cicada-Setup-arm64.exe` for Snapdragon laptops) and double-click it: it installs with no admin rights. The installer isn't code-signed yet, so if SmartScreen stops it, click **More info › Run anyway**. Cicada opens to a main window that lists the steps left: connect your Ling key, play a test sound, watch the sample meeting. Interpreting needs the free VB-Cable virtual microphone, which the guide helps you install. New versions are announced in the app and install in one click.
+
+### Linux
+
+Requires the **Ubuntu 22.04 or 24.04 desktop** (x86_64 or arm64). Download `Cicada-<version>-Linux.tar.gz` and run `tar xzf Cicada-<version>-Linux.tar.gz && cicada-linux/install.sh` in a terminal; Cicada appears in the app menu. Interpreting makes its own "Cicada Microphone", with no driver to install. Linux can't keep a window out of screen sharing, so the notes window always says it is visible when you share.
+
+### Android
+
+Requires **Android 10** or later. Download `Cicada-<version>-Android.apk` on your phone, open it and allow installing unknown apps when asked; on Android 15 and later, the first time you turn on floating subtitles you also allow restricted settings in App info. Calls and meeting apps don't let other apps record their sound: put the call on speaker and switch to **In person**.
+
+Every platform's files can be checked against `checksums.txt` on the Releases page.
+
 ## Roadmap
 
 In rough order; tell us what you need in Issues.
 
 - **Recording what you say**, listening to your microphone during meetings with echo cancellation so your own proposals and to-dos are included in the transcript and notes.
-- **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain.
+- **Developer ID signing and notarization**, removing the "Open Anyway" prompt on first launch and storing the AI key in the macOS Keychain; code signing for the Windows installer too.
 - **Speaker recognition**, building on today's speaker identification to remember frequent meeting participants by voice on your Mac, so they're named in the next meeting too.
 - **Local notes without an API key** using Apple's on-device model on supported Macs.
-- **Windows and Android**, sharing the same notes and meeting-record formats (iPhone and iPad are not planned due to iOS audio capture restrictions).
+- **Android in the app stores**, so the APK no longer has to come from a browser.
+- **iPhone and iPad**: iOS doesn't let apps capture other apps' audio, so they start with listening to the room, face-to-face interpreting and meeting records.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for details and trade-offs on each item.
 
@@ -137,7 +168,7 @@ defaults delete com.wquguru.cicada
 
 ## Development
 
-Building from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has no third-party dependencies and builds directly against macOS system frameworks.
+Building the Mac app from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has no third-party dependencies and builds directly against macOS system frameworks. For Windows, Linux and Android, see [windows/README.md](windows/README.md), [linux/README.md](linux/README.md) and [android/README.md](android/README.md).
 
 ```bash
 scripts/build.sh            # dev build → build/Cicada.app ("Cicada Dev", runs beside the installed app)
