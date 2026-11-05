@@ -181,4 +181,15 @@ static class WinProxy
         }
         catch (Exception e) { Log.Debug($"proxy: unreadable ({e.GetType().Name})"); return false; }
     }
+
+    /// The settings that decide where requests go, as one string to compare (WatchProxy).
+    public static string Snapshot()
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(Key);
+            return $"{k?.GetValue("ProxyEnable")}|{k?.GetValue("ProxyServer")}|{k?.GetValue("AutoConfigURL")}|{k?.GetValue("ProxyOverride")}";
+        }
+        catch { return ""; }
+    }
 }

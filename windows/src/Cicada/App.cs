@@ -180,6 +180,7 @@ sealed class Controller
 
     void Changed() => Dispatch.BeginInvoke(() =>
     {
+        WatchProxy();
         notesWindow?.Refresh();
         mainWindow?.Refresh();
         if (flyout?.IsVisible == true) flyout.Refresh();
@@ -893,6 +894,35 @@ sealed class Controller
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) => Changed();
         System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, e) => { if (e.IsAvailable) Changed(); };
     }
+
+    /// Turning the system proxy on or off (or pointing it elsewhere) changes no address, so the
+    /// watch above misses it. While the service is unreachable the proxy settings are read every
+    /// 3 s (three registry values; HttpClient follows them by itself) and a change is checked like
+    /// a network change. Not polled otherwise.
+    void WatchProxy()
+    {
+        var unreachable = Ling.HasKey && Ling.Health.Failure?.Why == AICheck.Reason.Unreachable;
+        if (!unreachable) { proxyPoll?.Stop(); return; }
+        if (proxyPoll is null)
+        {
+            proxyPoll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            proxyPoll.Tick += (_, _) =>
+            {
+                var now = WinProxy.Snapshot();
+                // A check under way may have started on the old settings: the change waits for it.
+                if (now == proxySeen || Ling.Health.IsRunning) return;
+                Log.Debug("proxy: system proxy settings changed");
+                proxySeen = now;
+                Ling.NetworkChanged();
+            };
+        }
+        if (proxyPoll.IsEnabled) return;
+        proxySeen = WinProxy.Snapshot();
+        proxyPoll.Start();
+    }
+
+    DispatcherTimer? proxyPoll;
+    string? proxySeen;
 
     /// The service, its address, models or key changed: forget the old check and check again.
     public void AIChanged()
