@@ -34,6 +34,18 @@ class ListenEngine(
     private var candidate: String? = null
     private var candidateVotes = 0
     private val listeners = mutableListOf<() -> Unit>()
+    /// One thread records delivered lines, so lines (and their voices) go in strictly in segment order.
+    private val deliverLock = Any()
+
+    /// 说话人识别 (Speakers.kt), set by the app; null or unavailable leaves every line 对方.
+    @Volatile var speakers: SpeakerTagger? = null
+    /// A line got a voice (the meeting's id): the app asks Ling for names.
+    @Volatile var onVoice: ((String) -> Unit)? = null
+    /// Voiceprints one at a time beside Ming (each already uses up to four cores).
+    private val voicePool = Executors.newSingleThreadExecutor { r -> Thread(r, "Voiceprints").apply { isDaemon = true } }
+    private val voiceprints = HashMap<Int, Future<FloatArray?>>()
+    private var voicesWaiting = 0
+    private val voicesOn: Boolean get() = settings.speakerVoices && speakers?.available == true
 
     @Volatile var listening = false; private set
     @Volatile var sessionId: String? = null; private set
@@ -144,13 +156,14 @@ class ListenEngine(
         sessionId = session.id
         sourceKind = kind
         synchronized(gate) {
-            done.clear(); segments.clear(); inFlight.clear()
+            done.clear(); segments.clear(); inFlight.clear(); voiceprints.clear()
             nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0.0
             hint = null; candidate = null; candidateVotes = 0; problem = null; problemKind = null; serverErrors = 0
         }
         holding = false; saying = false; muted = false; sayProblem = null; saidCount = 0
         heardSeconds = 0.0; peak = 0.0
         notes.begin(session.id)
+        speakers?.reset()
         val segmenter = Segmenter()
         segmenter.onSegment = ::send
         val queue = LinkedBlockingQueue<ShortArray>()
@@ -274,6 +287,23 @@ class ListenEngine(
     }
 
     private fun send(seg: Segment) {
+        if (voicesOn) {
+            // Subtitles wait for a line's voice, so on a phone too slow to keep up a line goes
+            // unlabelled (对方) rather than every subtitle falling further behind.
+            val behind = synchronized(gate) { (voicesWaiting >= 2).also { if (!it) voicesWaiting++ } }
+            if (behind) Log.d("speakers: voiceprints behind, segment ${seg.index} left unlabelled")
+            else {
+                val f = voicePool.submit<FloatArray?> {
+                    val started = System.currentTimeMillis()
+                    try {
+                        speakers?.embed(seg.samples).also {
+                            Log.d("speakers: segment ${seg.index} ${"%.1f".format(seg.seconds)}s voiceprint in ${System.currentTimeMillis() - started} ms")
+                        }
+                    } finally { synchronized(gate) { voicesWaiting-- } }
+                }
+                synchronized(gate) { voiceprints[seg.index] = f }
+            }
+        }
         val lang = synchronized(gate) { segments[seg.index] = seg; hint }
         // Timing only (never text): where the segment sits in the audio, to measure delay.
         Log.d("listen: segment ${seg.index} sent at ${"%.2f".format(seg.start)}+${"%.2f".format(seg.seconds)}")
@@ -316,18 +346,33 @@ class ListenEngine(
     /// Hands finished segments on in order: one slow reply holds back those after it.
     private fun deliver() {
         val ready = mutableListOf<Pair<Segment, Heard?>>()
-        synchronized(gate) {
-            while (done.containsKey(nextToDeliver)) {
-                val heard = done.remove(nextToDeliver)
-                ready.add(segments.remove(nextToDeliver)!! to heard)
-                nextToDeliver++
+        synchronized(deliverLock) {
+            synchronized(gate) {
+                while (done.containsKey(nextToDeliver)) {
+                    val heard = done.remove(nextToDeliver)
+                    ready.add(segments.remove(nextToDeliver)!! to heard)
+                    nextToDeliver++
+                }
+            }
+            for ((seg, heard) in ready) {
+                val print = synchronized(gate) { voiceprints.remove(seg.index) }
+                if (heard != null) record(seg, heard, voice(print, seg, heard))
             }
         }
-        for ((seg, heard) in ready) if (heard != null) record(seg, heard)
         if (ready.isNotEmpty()) changed()
     }
 
-    private fun record(seg: Segment, heard: Heard) {
+    /// The segment's voice, or null when unsure. A line with hardly a letter ("." from a breath or
+    /// a click) gets no voiceprint; like the Mac, every labelled segment counts towards its voice.
+    private fun voice(print: Future<FloatArray?>?, seg: Segment, heard: Heard): Int? {
+        if (print == null || heard.original.count { it.isLetter() } < 2) return null
+        val vector = try { print.get(20, TimeUnit.SECONDS) } catch (e: Exception) {
+            Log.d("speakers: voiceprint failed ${e.javaClass.simpleName}"); return null
+        }
+        return speakers?.label(vector, seg.seconds)
+    }
+
+    private fun record(seg: Segment, heard: Heard, voice: Int?) {
         val id = sessionId ?: return
         val target = settings.targetFor(heard.lang)
         // The meeting's language moves only after two segments agree, so one misheard stretch
@@ -345,14 +390,15 @@ class ListenEngine(
         var joined = false
         synchronized(gate) {
             val prev = last
-            if (prev != null && continues(prev, seg.start - lastEnd, heard)) {
+            // Two voices never share a line: a half sentence joins only the same voice (or an unknown one).
+            if (prev != null && continues(prev, seg.start - lastEnd, heard) && (voice == null || prev.voice == null || voice == prev.voice)) {
                 prev.src = join(prev.src, heard.original, heard.lang)
                 prev.dst = if (prev.dst == null || heard.translation == null) null else join(prev.dst!!, heard.translation, target)
                 line = prev
                 joined = true
             } else {
                 line = TranscriptLine(id = "h${++lineCount}-${seg.index}", t = seg.start, speaker = "them",
-                                      src = heard.original, dst = heard.translation, srcLang = heard.lang, dstLang = target)
+                                      src = heard.original, dst = heard.translation, srcLang = heard.lang, dstLang = target, voice = voice)
                 last = line
             }
             lastEnd = seg.start + seg.seconds
@@ -361,6 +407,7 @@ class ListenEngine(
         // A line the hear model translated itself: finished sentences are being translated again.
         if (!joined && heard.translation != null) translator.sentencesUntranslated = false
         if (joined) store.replace(id, copy) else store.append(id, copy)
+        if (voice != null) onVoice?.invoke(id)
         onWords?.invoke()
 
         // A joined sentence is translated again as a whole; a line Ming didn't translate gets text translation.

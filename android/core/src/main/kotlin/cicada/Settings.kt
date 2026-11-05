@@ -39,7 +39,7 @@ class AppSettings(
     var silenceEnd: String = "prompt",
     /// 多久算没人说话, in minutes: 5, 10, 15 or 30.
     var silenceMinutes: Double = 10.0,
-    /// 说话人识别: number the other side's voices in records and exports (the Mac's speakerVoices).
+    /// 说话人识别: tell the other side's voices apart and number them (the Mac's speakerVoices).
     var speakerVoices: Boolean = true,
     /// 保存会议录音: keep what was heard as system.m4a beside the record (the Mac's recordAudio).
     var recordAudio: Boolean = true,

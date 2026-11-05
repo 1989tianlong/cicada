@@ -26,7 +26,7 @@ class TranscriptLine(
     var dst: String? = null,
     var srcLang: String = "",
     var dstLang: String = "",
-    /// Experimental voice id on the Mac; Android doesn't tell voices apart yet.
+    /// The other side's voice, as SpeakerTagger grouped it (null: not told apart).
     var voice: Int? = null,
     /// "room": heard by the Mac's room microphone in a 电脑和会议室 meeting; kept so a Mac record
     /// opened here keeps its 现场 / 线上.

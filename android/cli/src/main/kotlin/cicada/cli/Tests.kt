@@ -83,6 +83,12 @@ object Tests {
             "lingGateSpacesStartsAndServesPriorityFirst" to ::lingGate,
             "listenEngineEndToEndWithAFakeMing" to ::listenEndToEnd,
             "listenSaysServerErrorsInARowAndClearsThem" to ::listenServerErrors,
+            "clustererMatchesTheMac" to ::clustererMatchesTheMac,
+            "numbersWaitForTwoVoicesWithFiveLines" to ::numbersWaitForTwoVoices,
+            "lingNamesNeedEvidenceNearTheVoice" to ::lingNamesNeedEvidence,
+            "notesPromptNamesTheVoices" to ::notesPromptNamesTheVoices,
+            "aHalfSentenceJoinsOnlyTheSameVoice" to ::aHalfSentenceJoinsOnlyTheSameVoice,
+            "slowVoiceprintsNeverHoldSubtitlesBack" to ::slowVoiceprintsNeverHoldSubtitlesBack,
         ) + ProviderTests.tests + AICheckTests.tests
         var passed = 0; var failed = 0
         for ((name, test) in tests) {
@@ -1084,6 +1090,149 @@ object Tests {
             engine.stop()
         } finally { LingClient.spacing = old }
         check(PressSpeech.filler("嗯嗯。") && PressSpeech.filler("Um, uh...") && !PressSpeech.filler("嗯，好的。") && !PressSpeech.filler("OK."), "fillers")
+    }
+
+    // MARK: 说话人识别 (linux/tests/test_core.py › Speakers)
+
+    private fun unit(seed: Long, dims: Int = 256): FloatArray {
+        val r = java.util.Random(seed)
+        val v = FloatArray(dims) { r.nextGaussian().toFloat() }
+        val n = kotlin.math.sqrt(v.sumOf { (it * it).toDouble() }).toFloat()
+        return FloatArray(dims) { v[it] / n }
+    }
+
+    private fun near(v: FloatArray, seed: Long, mix: Float = 0.3f): FloatArray {
+        val w = unit(seed)
+        val out = FloatArray(v.size) { v[it] + mix * w[it] }
+        val n = kotlin.math.sqrt(out.sumOf { (it * it).toDouble() }).toFloat()
+        return FloatArray(out.size) { out[it] / n }
+    }
+
+    private fun them(i: Int, voice: Int?, text: String = "we should ship this on Friday", t: Double = i.toDouble()) =
+        TranscriptLine(id = "h$i-$i", t = t, src = text, srcLang = "en", dstLang = "zh-CN", voice = voice)
+
+    fun clustererMatchesTheMac() {
+        val c = VoiceClusterer()
+        val a = unit(1); val b = unit(2)
+        equal(null, c.label(a, 1.5), "too short to start a voice")
+        equal(0, c.label(a, 3.0), "first voice")
+        equal(1, c.label(b, 3.0), "second voice")
+        equal(0, c.label(near(a, 7), 1.0), "joins the closest voice even when short")
+        equal(1, c.label(near(b, 8), 3.0), "the second again")
+        c.merge(1, 0)
+        equal(0, c.label(near(b, 9), 3.0), "after a merge, either voice goes to the one kept")
+    }
+
+    fun numbersWaitForTwoVoices() {
+        val old = SpeakerLabels.voices
+        SpeakerLabels.voices = true
+        try {
+            val lines = (0 until 5).map { them(it, 0) }.toMutableList()
+            equal(emptyMap<Int, Int>(), SpeakerLabels.voiceNumbers(lines), "one voice: still 对方")
+            lines += (0 until 4).map { them(10 + it, 1) } + them(20, 1, "ok")
+            equal(emptyMap<Int, Int>(), SpeakerLabels.voiceNumbers(lines), "a short line doesn't count")
+            lines += them(21, 1)
+            equal(mapOf(0 to 1, 1 to 2), SpeakerLabels.voiceNumbers(lines), "two voices with five lines")
+        } finally { SpeakerLabels.voices = old }
+    }
+
+    fun lingNamesNeedEvidence() {
+        val lines = mutableListOf<TranscriptLine>()
+        for (i in 0 until 5) { lines += them(2 * i, 0, t = 2.0 * i); lines += them(2 * i + 1, 1, t = 2.0 * i + 1) }
+        lines += them(40, 1, "Thanks so much, George, that was clear", t = 40.0)
+        val (found, refuted) = SpeakerNamer.read("{\"speakers\": [{\"speaker\": 2, \"name\": \"George\", \"evidence\": \"L11\"}," +
+            "{\"speaker\": 1, \"name\": \"Christina\", \"evidence\": \"L99\"}]}", lines)
+        equal("George", found[1]?.name, "named on the voice's own line")
+        check(found[1]!!.evidence.startsWith("00:40 “Thanks"), "evidence is the line: ${found[1]!!.evidence}")
+        equal(mapOf(0 to "Christina"), refuted.toMap(), "no evidence near the voice")
+        equal(0, SpeakerNamer.read("not json", lines).first.size, "not JSON")
+        check(SpeakerNamer.content(lines)!!.contains("说话人1"), "Ling sees the numbers")
+        check(SpeakerNamer.holds(found[1]!!, 1, lines), "the guess stands while its line does")
+
+        val store = SessionStore()
+        val s = store.begin()
+        lines.forEach { store.append(s.id, it) }
+        store.setVoiceGuesses(s.id, found, refuted)
+        equal(mapOf(2 to "George"), SpeakerLabels.names(store.get(s.id)!!), "the guess names speaker 2")
+        store.setVoiceGuesses(s.id, emptyMap(), mapOf(1 to "George"))
+        equal(null, store.get(s.id)!!.voiceGuesses, "a refuted guess goes")
+    }
+
+    fun notesPromptNamesTheVoices() {
+        val lines = (0 until 10).map { them(it, it % 2) } + them(20, null)
+        val p = NotesEngine.prompt(MeetingNotes(), lines, 0, "Chinese", false, numbers = SpeakerLabels.numbers(lines), names = mapOf(2 to "George"))
+        check(p.contains(" 说话人1] "), "a number")
+        check(p.contains("George] "), "a name")
+        check(p.contains("未识别] "), "a voice not on show")
+        check(NotesEngine.prompt(MeetingNotes(), lines, 0, "Chinese", false).contains("对方] "), "no voices: 对方")
+    }
+
+    /// Ming cuts "so we will ship" | "on Friday then." mid-sentence; `voices` says whose each half is.
+    private fun halves(voices: List<Int>): Pair<List<Pair<Int?, String>>, Int> {
+        val fake = Fake { body ->
+            if (body.contains("Ming-3.0-audio-flash")) {
+                val url = content(body, 1).arr()[0].obj()!!["audio_url"].obj()!!["url"] as String
+                reply(if (url.length < 60_000) "LANG: en\nORIGINAL: so we will ship\nTRANSLATION: 所以我们会发布"
+                      else "LANG: en\nORIGINAL: on Friday then.\nTRANSLATION: 那就周五。")
+            } else reply("{}")
+        }
+        val order = voices.iterator()
+        val old = LingClient.spacing
+        LingClient.spacing = 0.05
+        try {
+            val ling = client(fake)
+            val store = SessionStore()
+            val engine = ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target = "zh-CN"))
+            // Each "voiceprint" is the voice to give: one dimension, and a clusterer stand-in below.
+            engine.speakers = object : SpeakerTagger(object : Voiceprinter {
+                override fun embed(samples: ShortArray) = synchronized(order) { floatArrayOf(order.next().toFloat()) }
+            }) { override fun label(vector: FloatArray?, seconds: Double) = vector?.get(0)?.toInt() }
+            val heard = AtomicInteger()
+            engine.onVoice = { heard.incrementAndGet() }
+            val src = PcmAudioSource({ concat(tone(1.0), silence(0.8), tone(1.4), silence(1.0)) }, speed = 0.0)
+            val ended = CountDownLatch(1)
+            src.onEnded = { ended.countDown() }
+            engine.start(src, "file")
+            ended.await()
+            Thread.sleep(200)
+            engine.stop()
+            return store.get(engine.sessionId!!)!!.lines.map { it.voice to it.src } to heard.get()
+        } finally { LingClient.spacing = old }
+    }
+
+    fun aHalfSentenceJoinsOnlyTheSameVoice() {
+        val (lines, heard) = halves(listOf(1, 2))
+        equal(listOf(1 to "so we will ship", 2 to "on Friday then."), lines, "two voices, two lines")
+        equal(2, heard, "each voiced line asks for names")
+        equal(listOf(1 to "so we will ship on Friday then."), halves(listOf(1, 1)).first, "the same voice: one sentence")
+    }
+
+    fun slowVoiceprintsNeverHoldSubtitlesBack() {
+        val fake = Fake { body ->
+            if (body.contains("Ming-3.0-audio-flash")) reply("LANG: en\nORIGINAL: We should ship it on Friday.\nTRANSLATION: 我们周五发布。")
+            else reply("{}")
+        }
+        val old = LingClient.spacing
+        LingClient.spacing = 0.01
+        try {
+            val ling = client(fake)
+            val store = SessionStore()
+            val engine = ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target = "zh-CN"))
+            engine.speakers = object : SpeakerTagger(object : Voiceprinter {
+                override fun embed(samples: ShortArray): FloatArray { Thread.sleep(600); return floatArrayOf(1f) } // a phone that can't keep up
+            }) { override fun label(vector: FloatArray?, seconds: Double) = if (vector == null) null else 0 }
+            val src = PcmAudioSource({ concat(*Array(5) { concat(tone(1.0), silence(1.0)) }) }, speed = 0.0)
+            val ended = CountDownLatch(1)
+            src.onEnded = { ended.countDown() }
+            engine.start(src, "file")
+            ended.await()
+            Thread.sleep(2500)
+            engine.stop()
+            val voices = store.get(engine.sessionId!!)!!.lines.map { it.voice }
+            equal(5, voices.size, "every line")
+            check(null in voices, "some lines went unlabelled rather than waiting: $voices")
+            check(0 in voices, "the others have their voice: $voices")
+        } finally { LingClient.spacing = old }
     }
 
     // MARK: Meeting end (MeetingEndTests.swift, the same cases)

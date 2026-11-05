@@ -118,9 +118,12 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
             // the meeting until, about an hour in, it was cut off at max_tokens or fell into a loop and
             // the notes stopped updating. The final pass still rewrites everything once.
             val frozen = if (final) 0 else maxOf(0, base.topics.size - EDITABLE_TOPICS)
-            val prompt = prompt(base, lines, from, lang, final, frozen = frozen)
+            // Voices told apart go as 说话人N, or the name they've been given (notes then say "George").
+            val numbers = SpeakerLabels.numbers(lines)
+            val names = SpeakerLabels.names(session)
+            val prompt = prompt(base, lines, from, lang, final, frozen = frozen, numbers = numbers, names = names)
             val startedAt = lines.firstOrNull()?.t ?: 0.0
-            var next: MeetingNotes? = if (final) longFinal(lines, lang, startedAt) else null
+            var next: MeetingNotes? = if (final) longFinal(lines, numbers, names, lang, startedAt) else null
             for (attempt in 1..(if (final) 2 else 1)) {
                 if (next != null) break
                 val raw = ling.chat(prompt, "Update the notes. Write them in $lang.", Priority.Notes, json = true, maxTokens = 6000, timeout = 90.0, patient = final)
@@ -163,7 +166,8 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
 
     /// A long meeting's final pass: each part noted on its own, all at once, then merged into one.
     /// null when a step fails: the caller then makes one pass over the whole transcript, as before.
-    private fun longFinal(lines: List<TranscriptLine>, lang: String, startedAt: Double): MeetingNotes? {
+    private fun longFinal(lines: List<TranscriptLine>, numbers: Map<String, Int>, names: Map<Int, String>,
+                          lang: String, startedAt: Double): MeetingNotes? {
         val parts = parts(lines)
         if (parts.size <= 1) return null
         val started = System.currentTimeMillis()
@@ -173,7 +177,8 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
         val pool = Executors.newFixedThreadPool(parts.size) { r -> Thread(r, "NotesPart").apply { isDaemon = true } }
         val replies = try {
             pool.invokeAll(parts.mapIndexed { i, range ->
-                val prompt = prompt(MeetingNotes(), lines.subList(0, range.last + 1), range.first, lang, final = true, part = i + 1 to parts.size)
+                val prompt = prompt(MeetingNotes(), lines.subList(0, range.last + 1), range.first, lang, final = true,
+                                    numbers = numbers, names = names, part = i + 1 to parts.size)
                 Callable {
                     try {
                         ling.chat(prompt, "Write the notes for this part. Write them in $lang.", Priority.Notes, json = true, maxTokens = 6000, timeout = 90.0)
@@ -307,11 +312,13 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
 
         /// `frozen`: how many first topics a live update leaves alone (sent as a list, not returned).
         /// `part`: in a long meeting's final pass, which part `from until lines.size` is (1-based, of).
+        /// `numbers` / `names`: voices told apart (line id → 说话人N) and the names given to them.
         fun prompt(notes: MeetingNotes, lines: List<TranscriptLine>, from: Int, language: String, final: Boolean,
-                   frozen: Int = 0, part: Pair<Int, Int>? = null): String {
-            fun line(i: Int): String {
+                   frozen: Int = 0, part: Pair<Int, Int>? = null,
+                   numbers: Map<String, Int> = emptyMap(), names: Map<Int, String> = emptyMap()): String {            fun line(i: Int): String {
                 val l = lines[i]
-                val who = if (l.speaker == "me") "你" else "对方"
+                val n = numbers[l.id]
+                val who = if (l.speaker == "me") "你" else if (n != null) names[n] ?: "说话人$n" else if (numbers.isEmpty()) "对方" else "未识别"
                 return "[L${i + 1} ${Languages.clock(l.t)} $who] ${l.src}"
             }
             val current = if (notes.isEmpty) "{}" else compactJson(notes, frozen)

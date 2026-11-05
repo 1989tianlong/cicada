@@ -160,6 +160,7 @@
 "只改这场会议，前面的字幕和纪要一起改" = "This meeting only. Earlier subtitles and notes change too.";
 "播放原声" = "Play recording";
 "配回原视频用" = "To put back on the video";
+"按声音标出说话人 1、2…，只在这台手机上处理" = "Labels lines Speaker 1, 2… by voice, on this phone only";
 "显示 Mac 和 Windows 上分出的说话人；这台手机还不能按声音分人" = "Shows speakers told apart on Mac and Windows. This phone can't tell voices apart yet.";
 "只存在这台手机上，会议记录里能回放原声" = "Kept on this phone only. Play it back in the record.";
 "我说 · 面对面" = "Me · In person";

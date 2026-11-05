@@ -199,6 +199,9 @@ jobs:
           gradle --console=plain -q :cli:installDist
           JAVA_OPTS="-Dcicada.resources=$PWD/../Resources -Dcicada.androidStrings=$PWD/app/src/main/strings" cli/build/install/cicada-cli/bin/cicada-cli test
           python3 scripts/strings.py
+      # 说话人识别's voiceprint library: the NDK app/build.gradle.kts pins (sdkmanager checks it).
+      - name: NDK
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" > /dev/null
       - name: Build and sign
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

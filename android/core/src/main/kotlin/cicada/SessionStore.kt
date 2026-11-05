@@ -100,6 +100,18 @@ class SessionStore(loadNow: Boolean = true) {
         s.voiceNames = names
     }
 
+    /// Ling's latest guesses (SpeakerNamer); earlier ones stay for voices it no longer mentions,
+    /// unless it now named them without evidence (refuted, voice → name): then that earlier name goes too.
+    fun setVoiceGuesses(id: String, guesses: Map<Int, VoiceGuess>, refuted: Map<Int, String> = emptyMap()) {
+        if (guesses.isEmpty() && refuted.isEmpty()) return
+        mutate(id) { s ->
+            val all = (s.voiceGuesses ?: emptyMap()).toMutableMap()
+            for ((v, name) in refuted) if (v !in guesses && all[v.toString()]?.name == name) all.remove(v.toString())
+            for ((v, g) in guesses) all[v.toString()] = g
+            s.voiceGuesses = all.ifEmpty { null }
+        }
+    }
+
     /// Fields set once around a meeting (its recording, an imported file's name and progress).
     fun update(id: String, change: (Session) -> Unit) = mutate(id, change)
 

@@ -65,12 +65,14 @@ class SettingsActivity : Activity() {
                 s.uiLanguage = it; app.saveSettings(); app.loadStrings(); shown = null; recreate()
             })))
 
-        // 听对方: the Mac's listening switches. Android doesn't tell voices apart itself yet (no
-        // voiceprint runtime in the framework), so 说话人识别 numbers the voices of records made
-        // on the Mac or Windows; the helper says so.
+        // 听对方: the Mac's listening switches. 说话人识别 tells voices apart on the phone
+        // (NativeVoiceprints); should the library not load, it still numbers the voices of
+        // records made elsewhere, and the helper says so.
         page.addView(ui.sectionLabel(L("听对方")))
+        val voicesHere = app.listen.speakers?.available == true
         page.addView(ui.group(listOf(
-            ui.switchRow(L("说话人识别"), L("显示 Mac 和 Windows 上分出的说话人；这台手机还不能按声音分人"), s.speakerVoices) { s.speakerVoices = it; app.saveSettings() },
+            ui.switchRow(L("说话人识别"), if (voicesHere) L("按声音标出说话人 1、2…，只在这台手机上处理") else L("显示 Mac 和 Windows 上分出的说话人；这台手机还不能按声音分人"),
+                      s.speakerVoices) { s.speakerVoices = it; app.saveSettings() },
             ui.switchRow(L("保存会议录音"), L("只存在这台手机上，会议记录里能回放原声"), s.recordAudio) { s.recordAudio = it; app.saveSettings() })))
 
         page.addView(ui.sectionLabel(L("我说 · 面对面")))

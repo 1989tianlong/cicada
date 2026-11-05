@@ -7,7 +7,8 @@ Cicada 的 Android 版：把手机里播放的声音（或面对面时麦克风�
 - 悬浮窗：纪要或字幕条，`FLAG_NOT_FOCUSABLE` 不抢输入，`FLAG_SECURE` 默认不出现在截图和录屏里；打开“共享屏幕时让对方看到”后显示“对方可见”。
 - 纪要、记录格式（逐字节和 Mac 一致）、提示词、文案都和 Mac 版一致；英日韩翻译直接用 `Resources/*.lproj/Localizable.strings`，Android 独有的在 `app/src/main/strings/`。
 - 检查更新：每天在后台查一次 GitHub Releases，有新版本时在首页、设置和通知里提示，点“更新”用浏览器下载 APK，由系统安装器覆盖安装（签名一致才行），不需要安装权限。
-- 只用 Kotlin 标准库和 Android 框架，不用 AndroidX、Compose 或其他库。
+- 说话人识别（默认打开，和 Mac 一样）：每句话的声音在手机上算一个声纹，按 Mac 的阈值分组，标出说话人 1、2…，Ling 从对话里认出名字。声纹模型和 Mac 是同一个（WeSpeaker ResNet34-LM，VoxCeleb，CC BY 4.0）；推理用 Linux 版自己写的 C（`linux/native/voiceprint.c`），由 NDK 编成 `libcicada-voice.so`（arm64-v8a、armeabi-v7a、x86_64），权重是 `linux/models/voiceprint.bin`（13 MB），构建时拷进 assets。库加载不了时只显示别处分好的说话人，听照常。
+- 只用 Kotlin 标准库和 Android 框架，不用 AndroidX、Compose 或其他库；唯一的原生库是上面自己写的 C。
 
 ## 目录
 
@@ -21,7 +22,7 @@ Cicada 的 Android 版：把手机里播放的声音（或面对面时麦克风�
 ## 命令（在 Mac 上）
 
 ```bash
-scripts/install-sdk.sh        # 一次：JDK、Gradle、Android SDK、模拟器装到 ~/.cicada-android，不用 sudo；版本固定，下载都校验哈希；--old 再装一个 Android 10 模拟器
+scripts/install-sdk.sh        # 一次：JDK、Gradle、Android SDK、NDK、模拟器装到 ~/.cicada-android，不用 sudo；版本固定，下载都校验哈希；--old 再装一个 Android 10 模拟器
 scripts/test.sh               # 单元测试
 scripts/build.sh              # 开发版 build/Cicada-dev.apk（com.wquguru.cicada.dev）；RELEASE=1 出签名的 build/Cicada-<版本>-Android.apk
 scripts/keystore.sh           # 一次：生成发布签名密钥（~/.cicada-android/release.jks，密码在钥匙串）；--github 顺便存进 Actions secrets。文件和密码都要备份，丢了就没法给已装的人升级

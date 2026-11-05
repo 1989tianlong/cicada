@@ -21,6 +21,8 @@ import cicada.PcmAudioSource
 import cicada.Providers
 import cicada.SessionStore
 import cicada.SpeakerLabels
+import cicada.SpeakerNamer
+import cicada.SpeakerTagger
 import cicada.Strings
 import cicada.Translator
 import cicada.Wav
@@ -39,6 +41,7 @@ class CicadaApp : Application() {
     lateinit var notes: NotesEngine
     lateinit var translator: Translator
     lateinit var listen: ListenEngine
+    lateinit var namer: SpeakerNamer
     lateinit var overlay: Overlay
     lateinit var voice: Voice
     lateinit var updates: AppUpdates
@@ -91,6 +94,10 @@ class CicadaApp : Application() {
         translator = Translator(ling)
         translator.googleOff = settings.customOnly
         listen = ListenEngine(ling, translator, store, notes, settings)
+        // 说话人识别: voiceprints on the phone, names from Ling once two voices are on show.
+        listen.speakers = SpeakerTagger(NativeVoiceprints.create(this))
+        namer = SpeakerNamer(ling, store)
+        listen.onVoice = { namer.guess(it) }
         listen.encoder = { pcm ->
             val t = System.currentTimeMillis()
             AacEncoder.encode(pcm)?.also { Log.d("listen: ${pcm.size * 2 / 1024} KB PCM → ${it.bytes.size / 1024} KB ${it.type} in ${System.currentTimeMillis() - t} ms") }
@@ -337,6 +344,8 @@ class CicadaApp : Application() {
         val imported = importing; importing = null
         background.execute {
             listen.stop(endedAt)
+            // The whole meeting read once more for names.
+            recId?.let { namer.guess(it, force = true) }
             if (imported != null && recId != null) store.update(recId) { it.importing = null }
             rec?.finish { ok -> if (ok && recId != null && store.get(recId) != null) store.update(recId) { it.hasAudio = true } }
             main.post {

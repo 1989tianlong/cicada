@@ -10,8 +10,7 @@ import java.util.zip.ZipOutputStream
 /// What the transcript shows for the other side's lines (the Mac's SpeakerLabels, SpeakerID.swift).
 /// A voice gets a number only once it has `SHOWN_AFTER` substantive lines, and only when at least
 /// two voices have, so a one-to-one call stays 对方. Numbers follow the order voices got there.
-/// Android doesn't tell voices apart itself yet (no voiceprint runtime in the framework): the
-/// voices come from records made on the Mac or Windows, and the names the user gives here.
+/// The voices come from SpeakerTagger (Speakers.kt) or records made on another platform.
 object SpeakerLabels {
     const val SHOWN_AFTER = 5
 
