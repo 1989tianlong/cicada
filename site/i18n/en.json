@@ -97,7 +97,7 @@
   "how_label": "What it does",
   "v1_small": "01 · Live subtitles",
   "v1_h": "Understand",
-  "v1_p": "What others say turns into subtitles in your language as they speak. It works out which language they’re speaking. On the Mac, speech recognition runs entirely on your computer, and Cicada can also listen to an in-person meeting room.",
+  "v1_p": "What others say turns into subtitles in your language as they speak. It works out which language they’re speaking. On the Mac, speech recognition runs entirely on your computer. On the Mac, Windows and Linux, Cicada can also listen to the meeting room, or to the room and the call together (macOS 26 on the Mac), marking each line In room or Online.",
   "v2_small": "02 · Interpreting",
   "v2_h": "Speak up",
   "v2_p": "Hold right ⌥ (right Ctrl on Windows) and talk. When you let go, it’s translated into their language and spoken through a virtual microphone. Works in any app you can speak in.",
@@ -134,7 +134,7 @@
   "rec_q3_src": "我来，这周修好。",
   "rec_q3_dst": "I’ll take it, it’ll be done this week.",
   "rec_hint": "Point at anything on the left to see the line it came from",
-  "fine": "Subtitles work everywhere; interpreting needs a place where you can speak, like a call or a Space. On the Mac, AI notes use a key from an AI service—Ling, OpenRouter, ZenMux, OpenAI or any compatible service; the Windows, Linux and Android apps rely on Ling to recognize speech and need a Ling key. Ling gives ¥10 of free credit every month.",
+  "fine": "Subtitles work everywhere; interpreting needs a place where you can speak, like a call or a Space. On the Mac, AI notes use a key from an AI service—Ling, OpenRouter, ZenMux, OpenAI or any compatible service; the Windows, Linux and Android apps also hand listening to that service, so they need one. Your own models work too: translation, voice and recognition can each use a different machine, and LAN addresses need no key. Ling gives ¥10 of free credit every month.",
   "latest_h": "Latest updates",
   "latest_all": "Full changelog →",
   "upcoming": "Coming soon",
@@ -221,7 +221,7 @@
   "privacy_url": "https://github.com/wquguru/cicada/blob/main/README.en.md#privacy--permissions",
   "p1_small": "On your Mac",
   "p1_h": "On the Mac, audio becomes text on your computer",
-  "p1_p": "Recordings and meeting records stay on your own device. On the Mac, the only things sent out are the recognized text (for translation and notes) and, when you use interpreting, the few sentences you speak while holding the key. The Windows, Linux and Android apps recognize speech with Ming, so what is said is sent to Ling in short pieces.",
+  "p1_p": "Recordings and meeting records stay on your own device. On the Mac, the only things sent out are the recognized text (for translation and notes) and, when you use interpreting, the few sentences you speak while holding the key; if you hand speech recognition to your own server, the meeting audio goes to that machine. The Windows, Linux and Android apps send what is said in short pieces to the AI service you chose.",
   "p2_small": "Permissions",
   "p2_h": "Asked only when needed, optional where possible",
   "p2_p": "On the Mac, system audio is for subtitles; the microphone records only while you hold the talk key or when “Listen to › Room” is selected; Input Monitoring only watches the right ⌥ (not needed with a key combination). On Mac, Windows and Android the notes window stays hidden when you share your screen.",
@@ -277,11 +277,11 @@
     ],
     [
       "What about Windows, Linux and phones?",
-      "Windows 10 (2004) or later, the Ubuntu 22.04 / 24.04 desktop and Android 10 or later are all supported, with the same meeting records as the Mac. These apps recognize speech with Ming, so they need a Ling key. On Linux the notes window shows up in screen sharing; on Android, interpreting is face to face through the speaker. The iPhone app is on its way."
+      "Windows 10 (2004) or later, the Ubuntu 22.04 / 24.04 desktop and Android 10 or later are all supported, with the same meeting records as the Mac. These apps also hand listening to the AI service, so they need Ling, OpenRouter, ZenMux or your own server; Windows and Linux can listen to the room too. On Linux the notes window shows up in screen sharing; on Android, interpreting is face to face through the speaker. The iPhone app is on its way."
     ],
     [
       "Does it cost anything?",
-      "Cicada is free and open source. On the Mac, live subtitles, translation and meeting records work without a key; AI notes and natural voices use your own Ling key, about ¥0.15–1 per hour of meeting. The Windows, Linux and Android apps need a key. Ling gives ¥10 of credit every month."
+      "Cicada is free and open source. On the Mac, live subtitles, translation and meeting records work without a key; AI notes and natural voices use your own Ling key, about ¥0.15–1 per hour of meeting. The Windows, Linux and Android apps need an AI service. Ling gives ¥10 of credit every month."
     ],
     [
       "Will the other side know?",
@@ -289,11 +289,11 @@
     ],
     [
       "Is meeting audio uploaded?",
-      "On the Mac, audio turns into text on your computer; only the recognized text leaves it, plus the few sentences you say while holding the talk key for interpreting. The Windows, Linux and Android apps recognize speech with Ming, so what is said is sent to Ling in short pieces. Recordings stay on your own device."
+      "On the Mac, audio turns into text on your computer; only the recognized text leaves it, plus the few sentences you say while holding the talk key for interpreting. If you set Settings › AI Service › Speech recognition to Your service, the meeting audio goes to that machine. The Windows, Linux and Android apps send what is said in short pieces to the AI service you chose. Recordings stay on your own device."
     ],
     [
       "Which languages does it support?",
-      "On the Mac, any language its on-device speech recognition supports is detected; on the other platforms Ming recognizes it. Translations go into your system language by default. Natural interpreting voices cover English, Chinese, Japanese, Korean, German, French and Spanish."
+      "On the Mac, any language its on-device speech recognition supports is detected; on the other platforms the AI service you chose recognizes it. Translations go into your system language by default. Natural interpreting voices cover English, Chinese, Japanese, Korean, German, French and Spanish."
     ],
     [
       "Is what I say out loud recorded?",
@@ -315,7 +315,7 @@
   "dl_linux": "Download for Linux",
   "dl_android": "Download for Android",
   "apk_head": "Runs on this phone",
-  "apk_text": "Translated subtitles for videos and streams, live notes, face-to-face interpreting, and importing recordings or videos. Needs Android 10 or later and a Ling key.",
+  "apk_text": "Translated subtitles for videos and streams, live notes, face-to-face interpreting, and importing recordings or videos. Needs Android 10 or later and an AI service such as Ling or OpenRouter.",
   "reqs": [
     [
       "Mac",
@@ -348,24 +348,24 @@
   "dlp_windows_sys": "Windows 10 (2004) or later",
   "dlp_win_x64": "Most PCs",
   "dlp_win_arm": "Snapdragon laptops",
-  "dlp_windows_note": "Double-click the installer and it’s installed, no admin rights; later versions update in one click. Needs a Ling key.",
+  "dlp_windows_note": "Double-click the installer and it’s installed, no admin rights; later versions update in one click. Needs Ling or another AI service.",
   "dlp_linux_sys": "Ubuntu 22.04 / 24.04 desktop · x86_64 / arm64",
   "dlp_linux_btn": "Download .tar.gz",
-  "dlp_linux_note": "Needs a Ling key. The notes window shows up in screen sharing.",
+  "dlp_linux_note": "Needs Ling or another AI service. The notes window shows up in screen sharing.",
   "dlp_android_sys": "Android 10 or later",
   "dlp_android_btn": "Download .apk",
-  "dlp_android_note": "Needs a Ling key. Subtitles for videos, face-to-face interpreting. App store versions are on the way.",
+  "dlp_android_note": "Needs Ling or another AI service. Subtitles for videos, face-to-face interpreting. App store versions are on the way.",
   "cmp_h": "What each app does",
   "cmp_rows": [
     [
       "Speech recognition",
       "On the Mac, audio never leaves it (Intel: Ming)",
-      "Ming (cloud)",
-      "Ming (cloud)",
-      "Ming (cloud)"
+      "The AI service you chose",
+      "The AI service you chose",
+      "The AI service you chose"
     ],
     [
-      "Without a Ling key",
+      "Without a key",
       "Subtitles, translation and records (not on Intel)",
       "Doesn’t work",
       "Doesn’t work",
@@ -377,6 +377,13 @@
       "✓",
       "✓",
       "✓"
+    ],
+    [
+      "Listening to the room",
+      "✓ Mac + Room needs macOS 26",
+      "✓ also with the PC",
+      "✓ also with the computer",
+      "✓ In person"
     ],
     [
       "Interpreting into the call",
@@ -411,7 +418,7 @@
   "start_tabs_label": "Pick your platform",
   "s2_badge_req": "Required · about 1 minute",
   "s2_req_h": "Required on this platform",
-  "s2_req_note": "Recognition, translation and notes all run on it; without a key the app can’t work. The key stays on this device and only goes to Ling.",
+  "s2_req_note": "Recognition, translation and notes all run on it; without a key the app can’t work. The key stays on this device and only goes to that service.",
   "w_key_note": "Offer as stated by Ling.",
   "l_key_note": "Offer as stated by Ling.",
   "a_key_note": "Offer as stated by Ling. You can sign up on your phone.",

@@ -97,7 +97,7 @@
   "how_label": "能做什么",
   "v1_small": "01 · 实时字幕",
   "v1_h": "听得懂",
-  "v1_p": "别人说话实时出中文字幕，支持多门主流语言，不用提前指定也能自动听出来。在 Mac 上，语音转文字全在本机完成，还能直接听线下会议室。",
+  "v1_p": "别人说话实时出中文字幕，支持多门主流语言，不用提前指定也能自动听出来。在 Mac 上，语音转文字全在本机完成。Mac、Windows、Linux 还能听线下会议室，或线上线下一起听（Mac 上要 macOS 26），每句标出现场还是线上。",
   "v2_small": "02 · 同声传译",
   "v2_h": "说得出",
   "v2_p": "按住右 ⌥（Windows 上是右 Ctrl）说中文，松手自动译成外语，经虚拟麦克风替你说进会议。能连麦的软件都能用。",
@@ -134,7 +134,7 @@
   "rec_q3_src": "I’ll take it, it’ll be done this week.",
   "rec_q3_dst": "我来跟，这周修好。",
   "rec_hint": "鼠标移到左边，看看每条结论出自哪句原话",
-  "fine": "字幕在任何有声音的地方都能用。同声传译需要你能开麦说话的场合，比如线上会议或 X Space 连麦。Mac 上 AI 纪要要填一个 AI 服务的 key，Ling、OpenRouter、ZenMux、OpenAI 或其他兼容服务都行；Windows、Linux、Android 版靠 Ling 识别，必须填 Ling key。Ling 每月赠送 ¥10 额度。",
+  "fine": "字幕在任何有声音的地方都能用。同声传译需要你能开麦说话的场合，比如线上会议或 X Space 连麦。Mac 上 AI 纪要要填一个 AI 服务的 key，Ling、OpenRouter、ZenMux、OpenAI 或其他兼容服务都行；Windows、Linux、Android 版连听对方也交给这个 AI 服务，必须接上一个。自己部署的模型也能接，翻译、同传声音、识别可以各接一台机器，局域网地址不用 key。Ling 每月赠送 ¥10 额度。",
   "latest_h": "最近更新",
   "latest_all": "全部更新日志 →",
   "upcoming": "即将发布",
@@ -221,7 +221,7 @@
   "privacy_url": "https://github.com/wquguru/cicada/blob/main/README.md#隐私与权限",
   "p1_small": "本机",
   "p1_h": "Mac 上，声音在本机转成文字",
-  "p1_p": "录音和会议记录只存在你自己的设备里。Mac 上需要联网发送的，只有转出来的文字（用来翻译和写纪要），以及同声传译时你按住按键说的那几句话。Windows、Linux、Android 版用 Ming 识别，说话的声音会分段发给 Ling。",
+  "p1_p": "录音和会议记录只存在你自己的设备里。Mac 上需要联网发送的，只有转出来的文字（用来翻译和写纪要），以及同声传译时你按住按键说的那几句话；把语音识别交给自建服务时，会议声音会发到那台机器。Windows、Linux、Android 版说话的声音会分段发给你选的 AI 服务识别。",
   "p2_small": "权限",
   "p2_h": "用到才问，不给也能用",
   "p2_p": "Mac 上，系统声音权限用来出字幕，麦克风只在按住说话键或选了“听哪里 › 会议室”时才录，输入监控只看右 ⌥ 有没有按下（换成组合键就不用这个权限）。Mac、Windows 和 Android 上共享屏幕时别人看不到纪要窗口。",
@@ -277,11 +277,11 @@
     ],
     [
       "Windows、Linux、手机能用吗？",
-      "Windows 10（2004）以上、Ubuntu 22.04 / 24.04 桌面版和 Android 10 以上都能用，会议记录和 Mac 通用。这几个版本用 Ming 识别，必须填 Ling key；Linux 上纪要窗会被屏幕共享看到，Android 只能面对面外放译文。iPhone 版准备中。"
+      "Windows 10（2004）以上、Ubuntu 22.04 / 24.04 桌面版和 Android 10 以上都能用，会议记录和 Mac 通用。这几个版本听对方也交给 AI 服务，要接上 Ling、OpenRouter、ZenMux 或自建服务；Windows 和 Linux 也能听会议室。Linux 上纪要窗会被屏幕共享看到，Android 只能面对面外放译文。iPhone 版准备中。"
     ],
     [
       "要花钱吗？",
-      "知了免费开源。Mac 上实时字幕、翻译和会议记录不填 key 也能用；AI 纪要和自然人声用你自己的 Ling key，开一小时会大约 0.15 到 1 元。Windows、Linux、Android 版必须填 key。Ling 每月赠送 ¥10 额度。"
+      "知了免费开源。Mac 上实时字幕、翻译和会议记录不填 key 也能用；AI 纪要和自然人声用你自己的 Ling key，开一小时会大约 0.15 到 1 元。Windows、Linux、Android 版必须接上一个 AI 服务。Ling 每月赠送 ¥10 额度。"
     ],
     [
       "对方会知道我在用吗？",
@@ -289,11 +289,11 @@
     ],
     [
       "会议声音会上传吗？",
-      "Mac 上声音在本机转成文字，发出去的只有识别出来的文字，以及同声传译时你按住按键说的那几句。Windows、Linux、Android 版用 Ming 识别，说话的声音会分段发给 Ling。录音都只存在你自己的设备里。"
+      "Mac 上声音在本机转成文字，发出去的只有识别出来的文字，以及同声传译时你按住按键说的那几句；在设置 › AI 服务里把语音识别交给自建服务时，会议声音会发到那台机器。Windows、Linux、Android 版说话的声音会分段发给你选的 AI 服务识别。录音都只存在你自己的设备里。"
     ],
     [
       "支持哪些语言？",
-      "Mac 上，本机语音识别支持的语言都能自动听出来；其他平台由 Ming 识别。译文默认跟随你的系统语言。同声传译的自然人声支持中、英、日、韩、德、法、西语。"
+      "Mac 上，本机语音识别支持的语言都能自动听出来；其他平台由你选的 AI 服务识别。译文默认跟随你的系统语言。同声传译的自然人声支持中、英、日、韩、德、法、西语。"
     ],
     [
       "我在会上直接说的话会记下来吗？",
@@ -315,7 +315,7 @@
   "dl_linux": "下载 Linux 版",
   "dl_android": "下载 Android 版",
   "apk_head": "这台手机就能用",
-  "apk_text": "视频和直播的翻译字幕、实时纪要、面对面互译，也能导入录音或视频。需要 Android 10 以上和一个 Ling key。",
+  "apk_text": "视频和直播的翻译字幕、实时纪要、面对面互译，也能导入录音或视频。需要 Android 10 以上，并接上一个 AI 服务（Ling、OpenRouter 等）。",
   "reqs": [
     [
       "Mac",
@@ -348,24 +348,24 @@
   "dlp_windows_sys": "Windows 10（2004）及以上",
   "dlp_win_x64": "大多数电脑",
   "dlp_win_arm": "骁龙笔记本",
-  "dlp_windows_note": "双击下载的安装包就装好，不用管理员；以后在知了里一键升级。需要 Ling key。",
+  "dlp_windows_note": "双击下载的安装包就装好，不用管理员；以后在知了里一键升级。需要接上 Ling 或其他 AI 服务。",
   "dlp_linux_sys": "Ubuntu 22.04 / 24.04 桌面版 · x86_64 / arm64",
   "dlp_linux_btn": "下载 tar.gz",
-  "dlp_linux_note": "需要 Ling key。纪要窗会被屏幕共享看到。",
+  "dlp_linux_note": "需要接上 Ling 或其他 AI 服务。纪要窗会被屏幕共享看到。",
   "dlp_android_sys": "Android 10 及以上",
   "dlp_android_btn": "下载 APK",
-  "dlp_android_note": "需要 Ling key。可看视频字幕、面对面互译。应用商店版准备中。",
+  "dlp_android_note": "需要接上 Ling 或其他 AI 服务。可看视频字幕、面对面互译。应用商店版准备中。",
   "cmp_h": "各平台有什么",
   "cmp_rows": [
     [
       "语音识别",
       "本机，声音不出电脑（Intel 用 Ming）",
-      "Ming（云端）",
-      "Ming（云端）",
-      "Ming（云端）"
+      "你选的 AI 服务",
+      "你选的 AI 服务",
+      "你选的 AI 服务"
     ],
     [
-      "不填 Ling key",
+      "不填 key",
       "字幕、翻译、记录都能用（Intel 不能用）",
       "不能用",
       "不能用",
@@ -377,6 +377,13 @@
       "✓",
       "✓",
       "✓"
+    ],
+    [
+      "听会议室",
+      "✓ 和电脑一起听要 macOS 26",
+      "✓ 也能和电脑一起听",
+      "✓ 也能和电脑一起听",
+      "✓ 面对面"
     ],
     [
       "同声传译进会议",
@@ -411,7 +418,7 @@
   "start_tabs_label": "选择平台",
   "s2_badge_req": "必需 · 约 1 分钟",
   "s2_req_h": "在这个平台上必需",
-  "s2_req_note": "识别、翻译和纪要都靠它，没有 key 用不了。key 只存在这台设备上，只发给 Ling。",
+  "s2_req_note": "识别、翻译和纪要都靠它，没有 key 用不了。key 只存在这台设备上，只发给这家服务。",
   "w_key_note": "赠送以 Ling 官网为准。",
   "l_key_note": "赠送以 Ling 官网为准。",
   "a_key_note": "赠送以 Ling 官网为准，手机上就能注册。",
