@@ -358,6 +358,12 @@ final class LingClient: ObservableObject {
             debugLog("ai \(c.provider.id.rawValue): an older check finished late, dropped")
             return
         }
+        // Cancelled because a setting changed (the next check is on its way): its requests failed
+        // as "unreachable", which would show a service that can't be reached until that check lands.
+        guard !Task.isCancelled else {
+            debugLog("ai \(c.provider.id.rawValue): a cancelled check dropped")
+            return
+        }
         if let simulateBalance { r.balance = simulateBalance }
         r.at = Date()
         aiCheck = r
