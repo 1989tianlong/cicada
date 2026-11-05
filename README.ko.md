@@ -64,7 +64,7 @@ Zoom, Teams, Feishu 회의부터 X Spaces, Discord 스테이지, YouTube 라이�
 
 ### 상대방 언어로 말하기
 
-오른쪽 `⌥` 키를 누른 채 말하면 번역된 음성이 가상 마이크인 BlackHole 2ch를 통해 회의 앱으로 전달됩니다. BlackHole 2ch는 앱에서 클릭 한 번으로 설치할 수 있으며, 동시통역을 켜면 Cicada가 자동으로 마이크를 전환합니다. AI 서비스 키를 설정하면 자연스러운 음성(OpenRouter나 ZenMux의 Gemini, Ling의 Ming)을 쓸 수 있고, Ling에서는 8~30초 분량의 녹음으로 내 목소리를 복제할 수도 있습니다. 키가 없어도 macOS 기본 음성을 사용할 수 있습니다.
+오른쪽 `⌥` 키를 누른 채 말하면 번역된 음성이 가상 마이크인 BlackHole 2ch를 통해 회의 앱으로 전달됩니다. BlackHole 2ch는 앱에서 클릭 한 번으로 설치할 수 있으며, 동시통역을 켜면 Cicada가 자동으로 마이크를 전환합니다. 실제 마이크와 가상 마이크의 샘플레이트가 달라도 수동으로 맞출 필요가 없습니다. AI 서비스 키를 설정하면 자연스러운 음성(OpenRouter나 ZenMux의 Gemini, Ling의 Ming)을 쓸 수 있고, Ling에서는 8~30초 분량의 녹음으로 내 목소리를 복제할 수도 있습니다. 키가 없어도 macOS 기본 음성을 사용할 수 있습니다.
 
 <p align="center">
   <img src="docs/interpreting.png" width="640" alt="오른쪽 Option 말하기 키, 대상 언어, Ming 음성 미리 듣기, macOS 음성이 표시된 동시통역 설정 화면">

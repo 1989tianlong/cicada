@@ -36,6 +36,7 @@
 
 ## 测试技巧
 
+- 麦克风切换回归：Mac 内置麦克风与 BlackHole 采样率不同、系统输入已选 BlackHole 时，运行 `CICADA_TEST_MIC=1 scripts/test.sh --filter SpeakMicTests`。测试只打开 Mac 内置麦克风，连续采集并取消三次；仅统计帧数，不识别、保存或上传音频，不改变系统输入。需要运行测试的程序已有麦克风权限，普通单元测试和 CI 默认跳过。
 - 英文界面：`defaults write com.wquguru.cicada.dev AppleLanguages -array en` 后重启，测完 `defaults delete com.wquguru.cicada.dev AppleLanguages`；或启动时加 `--args -AppleLanguages "(en)"`。
 - 纪要窗口不出现在截屏里：先发 `notesCapturable` 再 `screencapture -l`，或直接 `notesRender:`。
 - 合成的按键会发给所有 App：别的 App 的启动器可能抢走 ⌥ Space。模拟鼠标和按键需要终端有“辅助功能”权限。

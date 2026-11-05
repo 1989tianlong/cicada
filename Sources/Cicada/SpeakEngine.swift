@@ -366,8 +366,10 @@ final class SpeakEngine {
         if !voiceMic.inUse { voiceMic.release() }
         let inputNode = mic.inputNode
         AudioDevices.pinInput(mic, to: inputDevice?())
-        let inFormat = inputNode.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0 else {
+        // Pinning can leave the client format at BlackHole's rate/channels. A tap must use
+        // the real hardware format or AVAudioEngine raises an Objective-C exception.
+        let inFormat = inputNode.inputFormat(forBus: 0)
+        guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
             onStatus?(L("没有可用的麦克风"))
             phase = .idle
             return
