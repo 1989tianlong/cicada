@@ -20,6 +20,7 @@ class Segmenter {
         @Volatile var pause = 0.6
         @Volatile var maxLength = 8.0
         @Volatile var minSpeech = 0.25
+        @Volatile var steady = 2.0 // loud frames' 90th / 10th percentile below this: not speech
         private const val PRE_ROLL = 0.15
         private const val TAIL = 0.15
         private const val CUT_WINDOW = 2.0
@@ -83,6 +84,16 @@ class Segmenter {
         }
     }
 
+    /// Steady sound just over the gate (a fan, hum, hiss) isn't speech: its loud frames barely vary
+    /// (90th / 10th percentile about 1.1; speech, even over such a floor, 3 and up). Given one, Ming
+    /// writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
+    /// Speech buried under steady noise goes too; system audio rarely carries it.
+    internal fun isSteady(frameLevels: List<Double>): Boolean {
+        val loud = frameLevels.filter { it >= threshold }.sorted()
+        if (loud.size < 2) return false
+        return loud[(0.9 * (loud.size - 1)).toInt()] < steady * loud[(0.1 * (loud.size - 1)).toInt()]
+    }
+
     /// Emits `current[0 until end]` and keeps what follows as the start of the next segment.
     private fun close(endAt: Int) {
         val end = endAt.coerceIn(0, current.size)
@@ -90,7 +101,7 @@ class Segmenter {
         val rest = current.slice(end, current.size)
         val restLevels = ArrayList(levels.subList(minOf(levels.size, end / FRAME), levels.size))
         val start = currentStart
-        val speech = loudFrames * FRAME >= minSpeech * RATE
+        val speech = loudFrames * FRAME >= minSpeech * RATE && !isSteady(levels.subList(0, minOf(levels.size, end / FRAME)))
         current.clear(); levels.clear()
         quietFrames = 0; loudFrames = 0
         if (speech) onSegment?.invoke(Segment(++index, Math.round(start * 1000) / 1000.0, samples))

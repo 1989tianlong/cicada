@@ -401,7 +401,10 @@ object Tests {
 
     // MARK: Segmenter
 
-    private fun tone(seconds: Double, amp: Double = 0.3) = ShortArray((seconds * 16000).toInt()) { (sin(2 * PI * 300 * it / 16000) * amp * 32767).toInt().toShort() }
+    /// A 300 Hz tone that swells and fades four times a second like syllables; steady when not.
+    private fun tone(seconds: Double, amp: Double = 0.3, syllables: Boolean = true) = ShortArray((seconds * 16000).toInt()) {
+        (sin(2 * PI * 300 * it / 16000) * (if (syllables) 0.55 + 0.45 * sin(2 * PI * 4 * it / 16000) else 1.0) * amp * 32767).toInt().toShort()
+    }
     private fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
     private fun concat(vararg parts: ShortArray): ShortArray = parts.fold(ShortArray(0)) { a, b -> a + b }
 
@@ -434,6 +437,8 @@ object Tests {
     fun ignoresClicks() {
         equal(0, cut(silence(1.0), tone(0.1), silence(1.0)).size, "under 0.25 s of sound is not speech")
         equal(0, cut(tone(3.0, 0.002)).size, "below the gate is silence")
+        equal(0, cut(tone(3.0, 0.02, syllables = false), silence(1.0)).size, "a steady hum over the gate is not speech")
+        equal(1, cut(tone(3.0), silence(1.0)).size, "speech, which rises and falls, is")
     }
 
     fun wavRoundTrip() {
