@@ -454,6 +454,9 @@ final class NotesEngine: ObservableObject {
             // A point keeps the time it was first heard: a later mention never moves it later.
             let times = t.points.enumerated().map { i, p in [t.pointTime(i), known[p]].compactMap { $0 }.min() }
             new.topics[ti].pointTimes = times.contains { $0 != nil } ? times : nil
+            // The reply dates a topic from the lines it cites now, often only the latest: it starts no
+            // later than its first point, or its range runs minutes past what was said in it.
+            if let first = times.compactMap({ $0 }).min(), first < t.start { new.topics[ti].start = first }
         }
         let items = Dictionary((old.conclusions + old.todos).compactMap { i in i.t.map { (i.text, $0) } }, uniquingKeysWith: { a, _ in a })
         func earliest(_ a: Double?, _ b: Double?) -> Double? { [a, b].compactMap { $0 }.min() }

@@ -12,6 +12,18 @@ import Testing
         (0..<n).map { TranscriptLine(id: "l\($0)", t: Double($0 * 10), speaker: "them", src: "line \($0)", dst: nil, srcLang: "zh-CN", dstLang: "en") }
     }
 
+    /// A rewritten topic cites only its newest lines; its points keep when they were first said,
+    /// and the topic starts no later than they do (a 35-minute replay showed 17:20 for points at 12:50).
+    @Test func topicStartsNoLaterThanItsFirstPoint() {
+        var old = MeetingNotes()
+        old.topics = [topic(770, "油价", ["A", "B"], [678, 700])]
+        var next = MeetingNotes()
+        next.topics = [topic(1040, "油价", ["A", "B", "C"], [nil, nil, 1040])]
+        NotesEngine.carryTimes(from: old, into: &next)
+        #expect(next.topics[0].pointTimes == [678, 700, 1040])
+        #expect(next.topics[0].start == 678)
+    }
+
     @Test func keepsFrozenTopicsAndTakesTheReplysTail() {
         let old = (0..<5).map { topic(Double($0 * 100), "t\($0)") }
         // The model echoed everything, renamed the current topic and added one.
