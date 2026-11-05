@@ -1182,3 +1182,7 @@
 "在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
 "打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
 "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";
+"%@（需要处理）" = "%@ (needs attention)";
+"听不到会议室 · 麦克风没允许" = "Can't hear the room · microphone not allowed";
+"听不到会议室" = "Can't hear the room";
+"麦克风没允许，现在只在记电脑声音。点按去设置" = "The microphone isn't allowed, so only the Mac's audio is being recorded. Click to open Settings";

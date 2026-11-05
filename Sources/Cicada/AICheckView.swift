@@ -152,13 +152,21 @@ struct AIServiceStrip: View {
         guard let f = c.failure else {
             return c.balanceLine(service: name).map { ($0, L("用完后纪要会停下")) }
         }
+        if f.reason == .unreachable { return (L("连不上 \(name)"), stopped) }
+        return Self.blocking(ling, textModel: model.settings.textModel).map { ($0, stopped) }
+    }
+
+    /// What stops the notes until you change something (not the network, not a busy service):
+    /// also the menu bar's dot, beyond the panel.
+    static func blocking(_ ling: LingClient, textModel: String) -> String? {
+        guard ling.hasKey, let f = ling.aiCheck.failure else { return nil }
+        let name = ling.serviceName
         switch f.reason {
-        case .unreachable: return (L("连不上 \(name)"), stopped)
-        case .invalidKey, .mgmtKey: return (L("\(name) 的 key 用不了"), stopped)
-        case .noCredit: return (L("\(name) 账户余额不足。"), stopped)
-        case .noModel: return (L("\(name) 上找不到 \(model.settings.textModel) 这个模型。"), stopped)
-        case .badAddress, .noJSON: return (L("AI 服务的设置要改一下"), stopped)
-        case .busy, .serverError: return nil
+        case .invalidKey, .mgmtKey: return L("\(name) 的 key 用不了")
+        case .noCredit: return L("\(name) 账户余额不足。")
+        case .noModel: return L("\(name) 上找不到 \(textModel) 这个模型。")
+        case .badAddress, .noJSON: return L("AI 服务的设置要改一下")
+        case .unreachable, .busy, .serverError: return nil
         }
     }
 }

@@ -104,6 +104,19 @@ final class OverlayController {
         expand()
     }
 
+    /// Something only you can fix (the microphone refused), kept above the subtitles until it is
+    /// fixed: a status line would give way to the next subtitle. The bar is click-through, so it
+    /// only says it; the menu bar's dot and the panel have the button.
+    func setAlert(_ text: String?) {
+        guard text != view.alert else { return }
+        view.alert = text
+        if text != nil {
+            lastContentAt = Date()
+            expand()
+        }
+        layout()
+    }
+
     func setSpeaking(_ s: Speaking?) {
         speakClearWork?.cancel()
         if s != nil {
@@ -446,6 +459,7 @@ final class OverlayView: NSView {
     var translation = ""
     var isStatus = false
     var speaking: OverlayController.Speaking?
+    var alert: String?
     var fontSize: CGFloat = 28
     var hover = false
     var snapped = false
@@ -466,11 +480,14 @@ final class OverlayView: NSView {
     private func srcFont(_ fs: CGFloat) -> NSFont { .systemFont(ofSize: max(12, fs * 0.58), weight: .medium) }
     private func transFont(_ fs: CGFloat) -> NSFont { .systemFont(ofSize: fs, weight: .semibold) }
     private func speakFont(_ fs: CGFloat) -> NSFont { .systemFont(ofSize: max(14, fs * 0.78), weight: .semibold) }
+    private func alertFont(_ fs: CGFloat) -> NSFont { .systemFont(ofSize: max(11, fs * 0.46), weight: .semibold) }
+    private func alertHeight(_ fs: CGFloat) -> CGFloat { ceil(line(alertFont(fs)) + 6 * k(fs)) }
     private func line(_ f: NSFont) -> CGFloat { ceil(f.ascender - f.descender + f.leading) * 1.18 }
 
     func barHeight(fontSize fs: CGFloat) -> CGFloat {
         let pad = 14 * k(fs)
         var h = pad * 2 + line(srcFont(fs)) + 6 * k(fs) + line(transFont(fs)) * CGFloat(transLines)
+        if alert != nil { h += alertHeight(fs) + 8 * k(fs) }
         if speaking != nil {
             h += 12 * k(fs) + line(srcFont(fs)) + line(speakFont(fs)) * 2
         }
@@ -486,6 +503,19 @@ final class OverlayView: NSView {
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        if collapsed, let alert {
+            // Tucked away with something to fix: the pill says it instead of the dots.
+            let fs = fontSize
+            let attrs: [NSAttributedString.Key: Any] = [.font: alertFont(fs), .foregroundColor: NSColor.white]
+            let size = (alert as NSString).size(withAttributes: attrs)
+            let h = alertHeight(fs)
+            let w = min(barRect.width, ceil(size.width) + 2 * 12 * k(fs))
+            let pill = NSRect(x: barRect.midX - w / 2, y: barRect.minY, width: w, height: h)
+            accent.setFill()
+            NSBezierPath(roundedRect: pill, xRadius: h / 2, yRadius: h / 2).fill()
+            (alert as NSString).draw(at: NSPoint(x: pill.midX - size.width / 2, y: pill.midY - size.height / 2), withAttributes: attrs)
+            return
+        }
         if collapsed {
             // Tucked away: a small pill at the bottom centre — still listening.
             let pill = NSRect(x: barRect.midX - 23, y: barRect.minY, width: 46, height: 18)
@@ -528,6 +558,20 @@ final class OverlayView: NSView {
             let rect = NSRect(x: inner.minX, y: y - maxH, width: inner.width, height: h)
             (fitted as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs)
             y -= maxH
+        }
+
+        if let alert {
+            // An orange pill, centred over the subtitles.
+            let font = alertFont(fs)
+            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+            let size = (alert as NSString).size(withAttributes: attrs)
+            let h = alertHeight(fs)
+            let w = min(inner.width, ceil(size.width) + 2 * 12 * k(fs))
+            let pill = NSRect(x: inner.midX - w / 2, y: y - h, width: w, height: h)
+            accent.setFill()
+            NSBezierPath(roundedRect: pill, xRadius: h / 2, yRadius: h / 2).fill()
+            (alert as NSString).draw(at: NSPoint(x: pill.midX - size.width / 2, y: pill.midY - size.height / 2), withAttributes: attrs)
+            y -= h + 8 * k(fs)
         }
 
         let srcText = isStatus ? "" : source

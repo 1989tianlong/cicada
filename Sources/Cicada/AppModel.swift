@@ -87,6 +87,14 @@ final class AppModel: ObservableObject {
     private var callCheck: (at: Date, name: String?) = (.distantPast, nil)
     /// 电脑和会议室 with the microphone not allowed: the Mac's side goes on, the room's can't start.
     @Published var hybridMicDenied = false
+    /// Debug (`micDeniedSim`): 电脑和会议室 acts as if the microphone were refused.
+    private var fakeMicDenied = false
+    /// Something only you can fix, said beyond the panel (shut while you meet): the menu bar's dot
+    /// and its tooltip. The microphone also goes to the notes window, the subtitle bar and, once a
+    /// meeting, a notification.
+    @Published private(set) var problem: String?
+    private var micDeniedSince: Date?
+    private var micDeniedNotified = false
     /// HybridNote under 听哪里.
     @Published var hybridNote: String?
     private var headsetCheck: (at: Date, on: Bool) = (.distantPast, false)
@@ -440,8 +448,7 @@ final class AppModel: ObservableObject {
         if roomAsk != roomPrompt { roomPrompt = roomAsk }
         updateOnlinePrompt()
         let both = listen.isRunning && settings.hearsBoth && !Recognition.legacy
-        let denied = both && [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio))
-        if denied != hybridMicDenied { hybridMicDenied = denied }
+        checkProblem()
         if both, Date().timeIntervalSince(headsetCheck.at) >= 2 {
             let def = AudioDevices.defaultInput
             let t = def.map { AudioDevices.transport($0.id) }
@@ -468,6 +475,7 @@ final class AppModel: ObservableObject {
     func refreshPermissions() {
         let mic = AVCaptureDevice.authorizationStatus(for: .audio)
         if mic != micStatus { micStatus = mic }
+        checkProblem()
         let devices = AudioDevices.outputs()
         if devices.map(\.uid) != outputs.map(\.uid) { outputs = devices }
         if listen.isRunning && !settings.listensToRoom && !systemAudioOK { systemAudioOK = true }
@@ -557,6 +565,42 @@ final class AppModel: ObservableObject {
 
     func openMicrophoneSettings() { openSettingsPane("Privacy_Microphone") }
 
+    /// On each change and every second: the menu bar's dot, the subtitle bar's notice and the
+    /// notification. Never a dialog: it would take the focus from the meeting app, and show in a
+    /// shared screen.
+    func checkProblem() {
+        let both = listen.isRunning && settings.hearsBoth && !Recognition.legacy
+        let denied = both && (fakeMicDenied || [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio)))
+        if denied != hybridMicDenied {
+            hybridMicDenied = denied
+            micDeniedSince = denied ? Date() : nil
+            overlay.setAlert(denied ? L("听不到会议室 · 麦克风没允许") : nil)
+        }
+        let p = denied ? L("听会议室要先允许麦克风") : AIServiceStrip.blocking(ling, textModel: settings.textModel)
+        if p != problem { problem = p }
+        // With the notes window up its banner says so; put away, a notification after 10 s
+        // (long enough for a quick fix in the panel), once a meeting.
+        if denied, !micDeniedNotified, !notesShown, let since = micDeniedSince, Date().timeIntervalSince(since) >= 10 {
+            micDeniedNotified = true
+            notifyMicDenied()
+        }
+    }
+
+    private func notifyMicDenied() {
+        let title = L("听不到会议室"), body = L("麦克风没允许，现在只在记电脑声音。点按去设置")
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, _ in
+            guard granted else { debugLog("problem: notifications not allowed"); return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.userInfo = ["problem": "mic"]
+            let request = UNNotificationRequest(identifier: "problem-mic", content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                debugLog(error.map { "problem: notification not shown: \($0)" } ?? "problem: notified mic denied")
+            }
+        }
+    }
+
     /// Quits and opens Cicada again: a permission turned on after it was refused takes only then.
     func relaunch() {
         // Quitting closes the guide, which would count as finishing it: it carries on after the reopen.
@@ -630,6 +674,7 @@ final class AppModel: ObservableObject {
         roomPromptDismissed = false
         onlinePromptDismissed = false
         fakeGoneMics = []
+        micDeniedNotified = false
         meetingSubtitles = nil
         autoEnded = false
         endWatch = MeetingEndWatch(config: endConfig, start: Date())
@@ -1704,6 +1749,11 @@ final class AppModel: ObservableObject {
             let kv = arg.split(separator: "=", maxSplits: 1).map(String.init)
             if kv.count == 2 { previewVoice(kv[1], language: kv[0]) }
         case "notesNow": notes.updateNow()
+        case "micDeniedSim":
+            // micDeniedSim:on|off: 电脑和会议室 as if the microphone were refused (the dot, banner, notification).
+            fakeMicDenied = arg != "off"
+            checkProblem()
+            debugLog("problem: mic denied sim \(fakeMicDenied) denied=\(hybridMicDenied) problem=\(problem ?? "-") notesShown=\(notesShown)")
         case "endSim":
             // endSim:<app name>[,<app name>] pretends those meeting apps are in a call; endSim: none; endSim:off real.
             fakeCalls = arg == "off" ? nil : Dictionary(arg.split(separator: ",").map { ("sim.\($0)", String($0)) }) { a, _ in a }
@@ -1979,9 +2029,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         model.showPanel = { [weak self] in self?.togglePopover() }
         model.openPanel = { [weak self] in if self?.popover.isShown == false { self?.togglePopover() } }
         model.openOnboarding = { [weak self] in self?.showOnboarding() }
-        runningObserver = model.$running.combineLatest(model.updates.$update).sink { [weak self] live, update in
-            self?.statusItem.button?.image = BrandImage.menuBar(live: live, badge: update != nil)
-            self?.statusItem.button?.toolTip = update.map { L("有新版本 \($0.version)") }
+        runningObserver = model.$running.combineLatest(model.updates.$update, model.$problem).sink { [weak self] live, update, problem in
+            let badge: BrandImage.Badge = problem != nil ? .problem : update != nil ? .update : .none
+            self?.statusItem.button?.image = BrandImage.menuBar(live: live, badge: badge)
+            self?.statusItem.button?.toolTip = problem ?? update.map { L("有新版本 \($0.version)") }
+            debugLog("menu bar: badge=\(badge) tooltip=\(problem ?? "-")")
         }
         let poll = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.model.refreshPermissions() }
@@ -2017,7 +2069,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let info = response.notification.request.content.userInfo
         let id = info["session"] as? String
         let update = info["update"] as? String
+        let problem = info["problem"] as? String
         await MainActor.run {
+            // "听不到会议室": straight to System Settings, without bringing Cicada forward.
+            if problem == "mic" {
+                model.openMicrophoneSettings()
+                return
+            }
             // "有新版本": the panel shows the download, and install asks first if a meeting is on.
             if update != nil {
                 if !popover.isShown { togglePopover() }

@@ -131,7 +131,11 @@ enum BrandImage {
     }()
 
     /// Menu bar template glyph: the logo in one colour. Paused draws it at 40%.
-    static func menuBar(live: Bool, badge: Bool = false) -> NSImage {
+    /// What the dot on the menu bar glyph says: something to fix (orange, the colour that asks
+    /// for a look) wins over a new version (grey, it can wait).
+    enum Badge { case none, update, problem }
+
+    static func menuBar(live: Bool, badge: Badge = .none) -> NSImage {
         let img = NSImage(size: NSSize(width: 18, height: 16), flipped: true) { _ in
             guard let c = NSGraphicsContext.current?.cgContext else { return false }
             // Design units 8…92 across and 16…94 down fill the 16 pt height.
@@ -141,13 +145,13 @@ enum BrandImage {
         }
         img.isTemplate = true
         img.accessibilityDescription = appDisplayName
-        return badge ? withBadge(img) : img
+        return badge == .none ? img : withBadge(img, badge)
     }
 
-    /// The glyph with an orange dot top right, while an update is available. A coloured dot
+    /// The glyph with a dot top right. A coloured dot
     /// can't be part of a template image, so the glyph is filled with the label colour instead.
     /// The dot is cut out of the glyph with a clear ring, so it reads as a badge, not part of the logo.
-    private static func withBadge(_ glyph: NSImage) -> NSImage {
+    private static func withBadge(_ glyph: NSImage, _ badge: Badge) -> NSImage {
         let image = NSImage(size: glyph.size, flipped: false) { rect in
             glyph.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             NSColor.labelColor.setFill()
@@ -156,11 +160,12 @@ enum BrandImage {
             NSGraphicsContext.current?.compositingOperation = .clear
             NSBezierPath(ovalIn: dot.insetBy(dx: -1.5, dy: -1.5)).fill()
             NSGraphicsContext.current?.compositingOperation = .sourceOver
-            NSColor(red: 0xE8 / 255, green: 0x55 / 255, blue: 0x2B / 255, alpha: 1).setFill()
+            (badge == .problem ? NSColor(red: 0xE8 / 255, green: 0x55 / 255, blue: 0x2B / 255, alpha: 1)
+                               : NSColor.secondaryLabelColor).setFill()
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
-        image.accessibilityDescription = L("\(appDisplayName)（有新版本）")
+        image.accessibilityDescription = badge == .problem ? L("\(appDisplayName)（需要处理）") : L("\(appDisplayName)（有新版本）")
         return image
     }
 }

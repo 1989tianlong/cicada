@@ -266,6 +266,7 @@ struct NotesWindowView: View {
                         header(wide: geo.size.width >= 760)
                         meetingBar.padding(.horizontal, 24).padding(.bottom, 4)
                         banner.padding(.horizontal, 24).padding(.bottom, 4)
+                        if live { liveAsks.padding(.horizontal, 24).padding(.bottom, 4) }
                         if live { LanguageNotice(model: model).padding(.horizontal, 24).padding(.bottom, 8) }
                         // Where the scrolling starts: a hairline, and each column fades in under it (`topFade`).
                         Rectangle().fill(MainWindowView.hairline).frame(height: 1)
@@ -684,6 +685,42 @@ struct NotesWindowView: View {
         default:
             EmptyView()
         }
+    }
+
+    /// What the menu bar panel asks while you meet, here too: the panel is shut during a meeting,
+    /// this window is what you look at.
+    @ViewBuilder
+    private var liveAsks: some View {
+        if model.hybridMicDenied {
+            ask(L("听会议室要先允许麦克风"), L("电脑声音照常在记")) {
+                SoftButton(L("去设置"), dark: true) { model.openMicrophoneSettings() }
+            }
+        }
+        if model.roomPrompt {
+            ask(L("在会议室里开会？"), L("电脑里 1 分钟没放出声音")) {
+                SoftButton(L("改听会议室"), dark: true) { model.answerRoomPrompt(true) }
+                SoftButton(L("不是")) { model.answerRoomPrompt(false) }
+            }
+        }
+        if let app = model.onlinePrompt {
+            ask(L("线上也有人？"), L("\(app) 正在通话")) {
+                SoftButton(L("也听电脑"), dark: true) { model.answerOnlinePrompt(true) }
+                SoftButton(L("不用")) { model.answerOnlinePrompt(false) }
+            }
+        }
+    }
+
+    private func ask<Buttons: View>(_ title: String, _ detail: String, @ViewBuilder buttons: () -> Buttons) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text(detail).font(.system(size: 11)).foregroundStyle(Palette.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            buttons()
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
     }
 
     /// Lines the notes don't cover yet, once they are two minutes behind the meeting (between
