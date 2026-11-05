@@ -187,7 +187,9 @@ static class Ui
         var b = new Button
         {
             Content = Icon(icon, iconSize, color ?? Palette.Body, fill), Width = size, Height = size, Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = name,
+            // No padding: the Fluent theme's 11 a side leaves a 34-wide button 12 for a 16 icon, and
+            // the Viewbox clips its right edge.
+            BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = name, Padding = new Thickness(0),
         };
         b.Template = Template(plain: true, onDark: onDark, radius: 10);
         b.Click += (_, _) => onClick();
