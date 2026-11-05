@@ -361,7 +361,9 @@ public sealed class ListenEngine
                 {
                     Id = $"h{++lineCount}-{(RoomSide ? RoomIDs : 0) + seg.Index}", T = Math.Round(offset + seg.Start, 3), Speaker = "them",
                     Src = heard.Original, Dst = heard.Translation, SrcLang = heard.Lang, DstLang = target, Voice = voice,
-                    Via = RoomSide ? "room" : null,
+                    // 会议室 alone too: a meeting switched to it from 电脑和会议室 would otherwise
+                    // mark its later room lines 线上 (as on the Mac).
+                    Via = RoomSide || settings.ListensToRoom ? "room" : null,
                 };
                 last = line;
             }
