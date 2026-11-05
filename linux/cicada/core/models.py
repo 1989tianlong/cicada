@@ -41,19 +41,21 @@ class TranscriptLine:
     srcLang: str = ""
     dstLang: str = ""
     voice: int | None = None  # experimental voice id on the Mac; Linux doesn't tell voices apart
+    via: str | None = None  # 电脑和会议室: "room" when the room mic heard it; absent for the computer's audio
 
     def copy(self) -> "TranscriptLine":
-        return TranscriptLine(self.id, self.t, self.speaker, self.src, self.dst, self.srcLang, self.dstLang, self.voice)
+        return TranscriptLine(self.id, self.t, self.speaker, self.src, self.dst, self.srcLang, self.dstLang, self.voice, self.via)
 
     def to_json(self) -> dict:
         return {"id": self.id, "t": self.t, "speaker": self.speaker, "src": self.src, "dst": self.dst,
-                "srcLang": self.srcLang, "dstLang": self.dstLang, "voice": self.voice}
+                "srcLang": self.srcLang, "dstLang": self.dstLang, "voice": self.voice, "via": self.via}
 
     @staticmethod
     def from_json(o: dict) -> "TranscriptLine":
         return TranscriptLine(id=string(o.get("id")) or "", t=_num(o.get("t"), 0.0), speaker=string(o.get("speaker")) or "them",
                               src=string(o.get("src")) or "", dst=string(o.get("dst")), srcLang=string(o.get("srcLang")) or "",
-                              dstLang=string(o.get("dstLang")) or "", voice=integer(o.get("voice")))
+                              dstLang=string(o.get("dstLang")) or "", voice=integer(o.get("voice")),
+                              via=string(o.get("via")))
 
 
 def _num(v, fallback):

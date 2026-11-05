@@ -202,6 +202,15 @@ class Records(Base):
         self.assertIsNone(s.notes.topics[0].point_time(1))
         self.assertEqual(MAC, s.write())
 
+    def test_keeps_where_a_line_was_heard(self):
+        # 电脑和会议室 on the Mac: a room line says "via" : "room"; written back unchanged.
+        text = MAC.replace('      "t" : 2.5,\n      "voice" : 1\n', '      "t" : 2.5,\n      "via" : "room",\n      "voice" : 1\n')
+        self.assertNotEqual(MAC, text)
+        s = Session.read(text)
+        self.assertEqual("room", s.lines[0].via)
+        self.assertEqual("room", s.lines[0].copy().via)
+        self.assertEqual(text, s.write())
+
     def test_json_edge_cases(self):
         self.assertEqual("3", jsonfmt.number(3.0))
         self.assertEqual("0.0001", jsonfmt.number(0.0001))
