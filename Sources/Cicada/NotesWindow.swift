@@ -562,7 +562,7 @@ struct NotesWindowView: View {
                             model.openMainWindow?()
                         }
                     }
-                    SoftButton(session == nil ? L("开始记录") : L("开始新会议"), dark: true) { model.start() }
+                    SoftButton(session == nil ? L("开始记录") : L("开始新会议"), dark: true) { model.start(byUser: true) }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

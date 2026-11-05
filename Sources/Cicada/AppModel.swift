@@ -480,7 +480,9 @@ final class AppModel: ObservableObject {
 
     // MARK: Start / stop
 
-    func start() {
+    /// `byUser`: started by a click or ⌘R, so the notes window shows at once as the sign that
+    /// listening began. Starting by itself (launch, a meeting app's call) waits for the first words.
+    func start(byUser: Bool = false) {
         guard !listen.isRunning else { return }
         let session = store.begin()
         diagnostics.begin()
@@ -502,7 +504,7 @@ final class AppModel: ObservableObject {
         if settings.listensToRoom { store.markLiveInRoom() }
         notes.begin(session.id)
         if listen.isRunning {
-            showDisplay()
+            showDisplay(force: byUser)
         } else {
             store.end()
         }
@@ -532,7 +534,7 @@ final class AppModel: ObservableObject {
         updates.notifyIfDue()  // held while the meeting was on
     }
 
-    func setRunning(_ on: Bool) { on ? start() : requestStop() }
+    func setRunning(_ on: Bool) { on ? start(byUser: true) : requestStop() }
 
     /// The menu (⌘R) and the panel switch: a meeting with lines is ended only after asking, with
     /// "继续记录" as the default so a stray Return keeps it going. An empty one just stops.
@@ -645,7 +647,7 @@ final class AppModel: ObservableObject {
         if settings.displayMode == "notes" { notesWindow.show() }
     }
 
-    /// `force`: the user asked for this mode, show it even before anyone speaks.
+    /// `force`: the user asked for this mode or started listening, show it even before anyone speaks.
     private func showDisplay(force: Bool = false) {
         switch settings.displayMode {
         case "bar":
@@ -1299,7 +1301,8 @@ final class AppModel: ObservableObject {
         let parts = cmd.split(separator: ":", maxSplits: 1).map(String.init)
         let arg = parts.count > 1 ? parts[1] : ""
         switch parts.first ?? "" {
-        case "start": start()
+        // start:user is a click on 开始听; plain start is listening starting by itself.
+        case "start": start(byUser: arg == "user")
         case "models":
             // models:<installed,…>/<system languages,…> pretends the Mac has only these speech models
             // and languages, to test the fetch of a second model and 听不出; models:off ends it.
