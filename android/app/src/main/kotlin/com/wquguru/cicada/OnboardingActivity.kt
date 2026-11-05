@@ -342,7 +342,7 @@ class OnboardingActivity : Activity() {
         val sources = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(source(R.drawable.i_speaker, L("手机里的声音"), L("视频、直播、网课")), LinearLayout.LayoutParams(0, -1, 1f))
-            addView(source(R.drawable.i_mic, L("面对面"), L("线下开会、会议 app 开外放")), LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = ui.dp(10) })
+            addView(source(R.drawable.i_mic, L("面对面"), L("线下开会；有人在线上就把会议 app 开外放")), LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = ui.dp(10) })
         }
         val limit = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
