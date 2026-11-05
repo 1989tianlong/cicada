@@ -452,11 +452,20 @@ class RecordsWindow(Gtk.Window):
         heads = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=40)
         heads.set_homogeneous(True)
         heads.pack_start(self._section_title(L("纪要")), True, True, 0)
-        heads.pack_start(self._section_title("%s %d" % (L("文字记录"), len(s.lines))), True, True, 0)
+        # The transcript's side as its own head has it: 双语 / 只看译文 stays a click away (the Mac's
+        # bar keeps the transcript's language choice too).
+        trans = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        trans.pack_start(self._section_title("%s %d" % (L("文字记录"), len(s.lines))), True, True, 0)
+        if any(l.dst and l.dst != l.src for l in s.lines):
+            def mode(v):
+                self.mode = v
+                self.show_detail()
+            trans.pack_end(ui.segmented([("both", L("双语")), ("dst", L("只看译文"))], self.mode, mode), False, False, 0)
+        heads.pack_start(trans, True, True, 0)
         heads.set_no_show_all(True)
         heads.set_visible(self.columns is None or self.columns.get_orientation() == Gtk.Orientation.HORIZONTAL)
         for c in heads.get_children():
-            c.show()
+            c.show_all()
         self.pinned_heads = heads
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         box.pack_start(row, False, False, 0)
