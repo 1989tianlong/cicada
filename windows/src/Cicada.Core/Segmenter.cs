@@ -17,6 +17,7 @@ public sealed class Segmenter
     const int Frame = 480;                       // 30 ms
     public static double Threshold = 0.01;       // the Mac AudioRouter's gate (about -40 dBFS)
     public static double Pause = 0.6, MaxLength = 8.0, MinSpeech = 0.25;
+    public static double Steady = 2.0;           // loud frames' 90th / 10th percentile below this: not speech
     const double PreRoll = 0.15, Tail = 0.15, CutWindow = 2.0;
 
     readonly List<short> pending = [];           // samples not yet a whole frame
@@ -93,6 +94,17 @@ public sealed class Segmenter
         }
     }
 
+    /// Steady sound just over the gate (a fan, hum, hiss) isn't speech: its loud frames barely vary
+    /// (90th / 10th percentile about 1.1; speech, even over such a floor, 3 and up). Given one, Ming
+    /// writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
+    /// Speech buried under steady noise goes too; system audio rarely carries it.
+    internal static bool IsSteady(IEnumerable<double> frameLevels)
+    {
+        var loud = frameLevels.Where(l => l >= Threshold).Order().ToList();
+        if (loud.Count < 2) return false;
+        return loud[(int)(0.9 * (loud.Count - 1))] < Steady * loud[(int)(0.1 * (loud.Count - 1))];
+    }
+
     /// Emits `current[..end]` and keeps what follows as the start of the next segment.
     void Close(int end)
     {
@@ -101,7 +113,7 @@ public sealed class Segmenter
         var rest = current.GetRange(end, current.Count - end);
         var restLevels = levels.GetRange(end / Frame, levels.Count - end / Frame);
         double start = currentStart;
-        bool speech = loudFrames * Frame >= MinSpeech * Rate;
+        bool speech = loudFrames * Frame >= MinSpeech * Rate && !IsSteady(levels.GetRange(0, Math.Min(levels.Count, end / Frame)));
         current.Clear(); levels.Clear();
         quietFrames = 0; loudFrames = 0;
         if (speech) Emitted?.Invoke(new Segment(++index, Math.Round(start, 3), samples));
