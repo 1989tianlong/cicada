@@ -415,6 +415,10 @@ object Tests {
         (sin(2 * PI * 300 * it / 16000) * env * amp * 32767).toInt().toShort()
     }
     private fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
+    /// A sine at `freq` that swells and fades four times a second like syllables.
+    private fun hz(freq: Double, seconds: Double, amp: Double) = ShortArray((seconds * 16000).toInt()) {
+        (sin(2 * PI * freq * it / 16000) * (0.55 + 0.45 * sin(2 * PI * 4 * it / 16000)) * amp * 32767).toInt().toShort()
+    }
     /// One word on its own ("Thanks."): a 300 Hz tone that swells from nothing and fades back.
     private fun word(seconds: Double, amp: Double): ShortArray {
         val n = (seconds * 16000).toInt()
@@ -460,6 +464,8 @@ object Tests {
         equal(1, cut(silence(1.0), word(1.2, 0.022), silence(1.0)).size, "one smooth run of voice on its own, no dips inside")
         equal(0, cut(silence(1.0), tone(1.0, 0.03, syllables = false), silence(1.0)).size, "a short hum in silence doesn't swell and fade")
         equal(0, cut(silence(1.0), word(0.15, 0.3), silence(1.0)).size, "nor is a knock a word")
+        equal(0, cut(silence(1.0), hz(12.0, 3.0, 0.1), silence(1.0)).size, "rumble far under 100 Hz is no voice however it swells")
+        equal(1, cut(silence(1.0), hz(100.0, 3.0, 0.3), silence(1.0)).size, "a voice as low as 100 Hz stays")
     }
 
     fun wavRoundTrip() {

@@ -28,12 +28,18 @@ class Segmenter {
         private const val PRE_ROLL = 0.15
         private const val TAIL = 0.15
         private const val CUT_WINDOW = 2.0
+        @Volatile var above = 0.25 // under this share of its loud frames' energy over 100 Hz: rumble, not speech
+        // A first-order high-pass at 100 Hz, for how much of a sound is above it (isRumble).
+        private val HIGH_PASS = 1.0 / (1.0 + 2.0 * Math.PI * 100.0 / RATE)
     }
 
     private val pending = ShortList()            // samples not yet a whole frame
     private val current = ShortList()            // the open segment
     private val levels = ArrayList<Double>()     // per frame of `current`
-    private val before = ArrayDeque<Pair<ShortArray, Double>>() // recent quiet frames and their levels, for the pre-roll
+    private val highs = ArrayList<Double>()      // per frame of `current`: its level over 100 Hz
+    private var hx = 0.0                         // the high-pass's last input and output, carried from frame to frame
+    private var hy = 0.0
+    private val before = ArrayDeque<Triple<ShortArray, Double, Double>>() // recent quiet frames and their levels, for the pre-roll
     private val idle = ArrayDeque<Double>()      // levels of the last 0.6 s of quiet frames
     private var lead: Double? = null             // the quietest of those when the open segment began
     private var consumed = 0L                    // samples seen, for timestamps
@@ -59,6 +65,7 @@ class Segmenter {
 
     private fun step(frame: ShortArray) {
         val level = Wav.rms(frame)
+        val high = high(frame)
         val loud = level >= threshold
         val now = consumed / RATE.toDouble()
         consumed += frame.size
@@ -67,20 +74,21 @@ class Segmenter {
             if (!loud) {
                 idle.addLast(level)
                 while (idle.size > (pause * RATE / FRAME).toInt()) idle.removeFirst()
-                before.addLast(frame to level)
+                before.addLast(Triple(frame, level, high))
                 while (before.size > PRE_ROLL * RATE / FRAME) before.removeFirst()
                 return
             }
             currentStart = now - before.size * FRAME / RATE.toDouble()
             lead = idle.minOrNull()
             idle.clear()
-            for ((f, l) in before) { current.addAll(f, 0, f.size); levels.add(l) }
+            for ((f, l, h) in before) { current.addAll(f, 0, f.size); levels.add(l); highs.add(h) }
             before.clear()
             quietFrames = 0; loudFrames = 0
         }
 
         current.addAll(frame, 0, frame.size)
         levels.add(level)
+        highs.add(high)
         if (loud) { quietFrames = 0; loudFrames++ } else quietFrames++
 
         if (quietFrames * FRAME >= pause * RATE) {
@@ -141,19 +149,51 @@ class Segmenter {
         return body[(0.9 * (body.size - 1)).toInt()] >= swell * body[(0.1 * (body.size - 1)).toInt()]
     }
 
+    /// The frame's level over 100 Hz (RMS after the high-pass), the filter running on across frames.
+    private fun high(frame: ShortArray): Double {
+        val a = HIGH_PASS
+        var x0 = hx; var y = hy; var total = 0.0
+        for (s in frame) {
+            val x = s.toDouble()
+            y = a * (y + x - x0)
+            x0 = x
+            total += y * y
+        }
+        hx = x0; hy = y
+        return if (frame.isEmpty()) 0.0 else Math.sqrt(total / frame.size) / 32768
+    }
+
+    /// Rumble, not speech: under a quarter of the loud frames' energy is over 100 Hz. Speech keeps
+    /// nearly all of it there (-0.3 to -1 dB in testing, the low male voices included); brown noise
+    /// with almost nothing over 20 Hz keeps -20 to -28 dB, and Ming made a sentence of 15 of 17 such
+    /// segments ("I'm going to go ahead and start the meeting."), which the loudness rules can't
+    /// tell from a voice. Brown noise up to about 12 Hz keeps -10 dB and goes too; a 50 Hz hum or a
+    /// fan keeps about -5 dB and is left to the steady test.
+    internal fun isRumble(frameLevels: List<Double>, frameHighs: List<Double>): Boolean {
+        var full = 0.0; var above = 0.0
+        for (i in 0 until minOf(frameLevels.size, frameHighs.size)) {
+            if (frameLevels[i] < threshold) continue
+            full += frameLevels[i] * frameLevels[i]
+            above += frameHighs[i] * frameHighs[i]
+        }
+        return above < Segmenter.above * full
+    }
+
     /// Emits `current[0 until end]` and keeps what follows as the start of the next segment.
     private fun close(endAt: Int) {
         val end = endAt.coerceIn(0, current.size)
         val samples = current.slice(0, end)
         val rest = current.slice(end, current.size)
         val restLevels = ArrayList(levels.subList(minOf(levels.size, end / FRAME), levels.size))
+        val restHighs = ArrayList(highs.subList(minOf(highs.size, end / FRAME), highs.size))
         val start = currentStart
         val sent = ArrayList(levels.subList(0, minOf(levels.size, end / FRAME)))
         val speech = if (isWord(levels)) sent.count { it >= threshold / 4 } * FRAME >= minWord * RATE
             else loudFrames * FRAME >= minSpeech * RATE && !isSteady(sent)
-        current.clear(); levels.clear()
+        val heard = speech && !isRumble(sent, ArrayList(highs.subList(0, sent.size)))
+        current.clear(); levels.clear(); highs.clear()
         quietFrames = 0; loudFrames = 0
-        if (speech) onSegment?.invoke(Segment(++index, Math.round(start * 1000) / 1000.0, samples))
+        if (heard) onSegment?.invoke(Segment(++index, Math.round(start * 1000) / 1000.0, samples))
 
         // A forced cut carries on with the remainder; after a pause the remainder is silence.
         if (restLevels.any { it >= threshold }) {
@@ -161,6 +201,7 @@ class Segmenter {
             lead = null
             current.addAll(rest, 0, rest.size)
             levels.addAll(restLevels)
+            highs.addAll(restHighs)
             var trailing = 0
             for (i in levels.indices.reversed()) { if (levels[i] >= threshold) break; trailing++ }
             quietFrames = trailing
