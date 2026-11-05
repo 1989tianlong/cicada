@@ -133,6 +133,10 @@ final class ListenEngine {
     private var recordable: Bool {
         settings.sourceMode != .auto || languageConfirmed || (ambiguousDetections >= 2 && !mismatch)
             || legacySingleLanguage || cloudListening
+            // The room side's 听不出 never reaches the panel (it reads the main engine): held lines would
+            // stay held all meeting. Measured: a show from a phone across the table scored 0.56–0.71 for
+            // Chinese, never confirmed, and not one room line was written in 40 s.
+            || role == .room
     }
     /// macOS 14/15 with one Dictation language: nothing to compare it with and none Cicada could
     /// fetch, and every check takes the recognizer from the meeting. It is taken as heard.
@@ -348,7 +352,9 @@ final class ListenEngine {
             let last = UserDefaults.standard.string(forKey: "lastDetected")
             let likely = likelySourceLanguages(last: last, systemLanguages: systemLanguages)
             // No model at all: start with the likeliest; the second follows in the background.
-            initial = candidates.first(where: { $0.locale == last }) ?? candidates.first ?? likely.first ?? sourceLanguages[0]
+            // The people at the table most likely speak yours (同声传译's 我说), not the last online meeting's.
+            let mine = role == .room || settings.listensToRoom ? candidates.first(where: { $0.locale == settings.speakFromLang.locale }) : nil
+            initial = mine ?? candidates.first(where: { $0.locale == last }) ?? candidates.first ?? likely.first ?? sourceLanguages[0]
         }
         // 会议室 the first time: nothing is heard until macOS's microphone question is answered.
         setStatus(audioTap == nil ? L("等你允许使用麦克风") : L("正在听"))
