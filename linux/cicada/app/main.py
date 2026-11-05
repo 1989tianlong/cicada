@@ -25,7 +25,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from ..core import strings  # noqa: E402
 from ..core.audio import PcmAudioSource  # noqa: E402
-from ..core import meeting_end  # noqa: E402
+from ..core import meeting_end, roommic  # noqa: E402
 from ..core.ling import AIKey, LingClient  # noqa: E402
 from ..core.listen import ListenEngine  # noqa: E402
 from ..core.notes import NotesEngine  # noqa: E402
@@ -35,6 +35,7 @@ from ..core.strings import L, LF  # noqa: E402
 from ..core.support import Log, Paths, clock, english_name  # noqa: E402
 from ..core.translator import Translator  # noqa: E402
 from . import debug, tray, ui  # noqa: E402
+from . import capture  # noqa: E402
 from .capture import SystemAudio  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # linux/ or the installed tree
@@ -171,6 +172,8 @@ class Controller:
 
         def run():
             self._queued = False
+            # 会议室 while 同声传译 hears me through the same microphone: what it hears is me.
+            self.listen.set_muted(self.speak.active)
             if self.notes_window is not None:
                 self.notes_window.refresh()
             if self.records_window is not None:
@@ -377,7 +380,60 @@ class Controller:
         if self.listen.listening:
             self.stop_listening()
         else:
-            self.start_listening(SystemAudio(), "system")
+            self.start_listening(*self.heard_source())
+
+    # 听哪里
+
+    def room_mic(self) -> str:
+        """The microphone that hears the room now (roommic.pick). 知了 麦克风 as the default input
+        (同声传译 on) stands for the real microphone it took the place of."""
+        inputs = roommic.parse_sources(capture.sources_text())
+        default = capture.default_source()
+        if default == "cicada_mic":
+            default = self.room.real_mic
+        picked = roommic.pick(default, inputs, self.settings.roomMic)
+        if picked is None and not inputs:  # no pactl to list them: the default, if it's a real one
+            picked = default or "@DEFAULT_SOURCE@"
+        Log.d("room mic: %s (default %s, %d inputs)" % (picked, default, len(inputs)))
+        return picked
+
+    def heard_source(self):
+        """(source, kind) for 听哪里: the computer's audio, or the room through a microphone."""
+        if self.settings.listenSource == "room":
+            mic = self.room_mic()
+            if mic is not None:
+                return SystemAudio(mic, L("知了 · 会议室")), "room"
+            Log.d("room mic: none, listening to the computer instead")
+        return SystemAudio(), "system"
+
+    def set_listen_source(self, value: str) -> None:
+        """听哪里 changed, from the tray, the notes window or 设置; mid-meeting the same meeting goes on
+        from the new source."""
+        if value not in AppSettings.SOURCES or value == self.settings.listenSource:
+            return
+        self.settings.listenSource = value
+        self.settings.save()
+        Log.d("listenSource=%s" % value)
+        if self.listen.listening and self.listen.source_kind in ("system", "room"):
+            source, kind = self.heard_source()
+            source.on_ended = self._source_ended(kind)
+            self.listen.source_kind = kind
+            self.listen.attach(source, mic=kind == "room")
+        self.changed()
+
+    def _source_ended(self, kind: str):
+        def ended(reason):
+            # A file that finished stops a little later, so its last sentence's pause is heard;
+            # a capture that failed stops now.
+            if reason is None:
+                GLib.timeout_add(1500, lambda: self.stop_listening() and False)
+                return
+            Log.d("listen: source ended %s" % reason)
+            # Said where the subtitles would be (start() clears it), not silently stopped.
+            self.listen.problem = L("没有可用的麦克风") if kind == "room" else L("系统声音中断")
+            self.listen.problem_kind = "source"
+            GLib.idle_add(lambda: self.stop_listening() and False)
+        return ended
 
     def recorded(self):
         """(elapsed seconds, lines) of the live meeting, or None when nothing has been said yet."""
@@ -444,22 +500,11 @@ class Controller:
         if r.reason in ("deaf", "unreachable") and not self._may_start(source, kind):
             return
 
-        def ended(reason):
-            # A file that finished stops a little later, so its last sentence's pause is heard;
-            # a capture that failed stops now.
-            if reason is None:
-                GLib.timeout_add(1500, lambda: self.stop_listening() and False)
-                return
-            Log.d("listen: source ended %s" % reason)
-            # Said where the subtitles would be (start() clears it), not silently stopped.
-            self.listen.problem = L("系统声音中断")
-            self.listen.problem_kind = "source"
-            GLib.idle_add(lambda: self.stop_listening() and False)
-        source.on_ended = ended
+        source.on_ended = self._source_ended(kind)
         self.auto_ended = False
         self.ending = None
         self.end_watch = meeting_end.MeetingEndWatch(self.end_config(), time.time())
-        self.listen.start(source, kind)
+        self.listen.start(source, kind, mic=kind == "room")
         self.show_notes()
         self.changed()
 
@@ -558,7 +603,7 @@ class Controller:
                 self._auto_end(reason, w)
         elif not self.listen.listening and self.auto_ended and self.settings.endWithApp and calls:
             Log.d("meeting end: a meeting app started a call, starting a new meeting")
-            self.start_listening(SystemAudio(), "system")
+            self.start_listening(*self.heard_source())
 
     def _words(self, sid: str) -> None:
         """Words recognised in the live meeting (theirs or mine): the silence countdown stops now,

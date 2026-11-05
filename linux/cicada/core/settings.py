@@ -39,12 +39,18 @@ class AppSettings:
         "speakTo": "room",           # what the room hears; "room" = the language they have been speaking
         "speakVoices": {},           # Ming voice per language key ("en": "US_Emma")
         "speakHeadphones": False,    # 戴着耳机: skip the echo guard, talking over them is fine
+        # 听哪里 (the Mac's listenSource): "system" (what the computer plays) or "room" (a real
+        # microphone, for a meeting in the room); roomMic: the source chosen for it, "" = 自动.
+        "listenSource": "system",
+        "roomMic": "",
         # 结束会议 (meeting_end.py), the Mac's keys: end when the meeting app hangs up; when nobody
         # speaks, "prompt" (count down, then end), "end" or "off", after silenceMinutes.
         "endWithApp": True,
         "silenceEnd": "prompt",
         "silenceMinutes": 10,
     }
+
+    SOURCES = ("system", "room")
 
     def __init__(self, **kw):
         for k, v in self.FIELDS.items():
@@ -70,6 +76,11 @@ class AppSettings:
         """The notes' language for a 纪要语言 choice (this one's when None): the meeting's own language
         (`meeting`, the one it was heard in) for "source", else mine (the Mac's notesLanguageCode)."""
         return meeting if (choice or self.notesLanguage) == "source" and meeting else self.target_code
+
+    @property
+    def hears_room(self) -> bool:
+        """The room microphone is open: 会议室."""
+        return self.listenSource != "system"
 
     @property
     def speak_from_code(self) -> str:
@@ -101,6 +112,8 @@ class AppSettings:
                     # 纪要语言 was "system" or a language code before it took the Mac's two choices.
                     if kw.get("notesLanguage") not in (None, "mine", "source"):
                         kw["notesLanguage"] = "mine"
+                    if kw.get("listenSource") not in (None,) + AppSettings.SOURCES:
+                        kw["listenSource"] = "system"
                     return AppSettings(**kw)
         except OSError as e:
             Log.d("settings: unreadable, defaults used (%s)" % type(e).__name__)

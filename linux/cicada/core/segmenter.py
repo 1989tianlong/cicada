@@ -30,7 +30,9 @@ class Segment:
 
 
 class Segmenter:
-    threshold = 0.01  # the Mac AudioRouter's gate (about -40 dBFS)
+    # The Mac AudioRouter's gate (about -40 dBFS). A room microphone's segmenter has it set by
+    # roommic.VoiceGate as the room's noise is learnt.
+    threshold = 0.01
     pause = 0.6
     max_length = 8.0
     min_speech = 0.25
@@ -95,19 +97,18 @@ class Segmenter:
                     cut = i
             self._close(cut * FRAME)
 
-    @classmethod
-    def _steady(cls, levels) -> bool:
+    def _steady(self, levels) -> bool:
         """Steady sound just over the gate (a fan, hum, hiss) isn't speech: its loud frames barely vary
         (90th / 10th percentile about 1.1; speech, even over such a floor, 3 and up). Given one, Ming
         writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
         Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
         the first loud one to the last counts, the quiet ones held at the gate: counting only the
         loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate."""
-        loud = [i for i, l in enumerate(levels) if l >= cls.threshold]
+        loud = [i for i, l in enumerate(levels) if l >= self.threshold]
         if len(loud) < 2:
             return False
-        body = sorted(max(l, cls.threshold) for l in levels[loud[0]:loud[-1] + 1])
-        return body[int(0.9 * (len(body) - 1))] < cls.steady * body[int(0.1 * (len(body) - 1))]
+        body = sorted(max(l, self.threshold) for l in levels[loud[0]:loud[-1] + 1])
+        return body[int(0.9 * (len(body) - 1))] < self.steady * body[int(0.1 * (len(body) - 1))]
 
     def _close(self, end_at: int) -> None:
         """Emits current[:end] and keeps what follows as the start of the next segment."""

@@ -157,6 +157,11 @@ class NotesWindow(Gtk.Window):
         self.header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         ui.pad(self.header, 8, 8, 4, 16)
         outer.pack_start(self.header, False, False, 0)
+        # 听哪里 while listening (正在听 · 会议室 换 ⌄): changed here, the same meeting goes on.
+        self.source_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.source_row.set_no_show_all(True)
+        if not self.subtitles:
+            outer.pack_start(ui.pad(self.source_row, 0, 16, 4, 16), False, False, 0)
         self.live = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.body = None
         self.footer_time = None
@@ -301,6 +306,35 @@ class NotesWindow(Gtk.Window):
             note = ui.text(self.app.ending_title(p) + " · " + LF("%lld 秒后结束", self.app.ending_left(p)), 12, "accent", wrap=False)
             h.pack_start(note, False, False, 8)
         h.show_all()
+        self._fill_source()
+
+    def _fill_source(self) -> None:
+        row = self.source_row
+        ui.clear(row)
+        listen = self.app.listen
+        if not listen.listening or listen.source_kind == "file" or self.subtitles:
+            row.hide()
+            return
+        from .tray import sources
+        names = dict(sources())
+        row.pack_start(ui.text(names.get(self.app.settings.listenSource, ""), 12, "secondary", wrap=False), False, False, 0)
+        change = ui.link(L("换") + " ⌄", lambda: self._source_menu(change))
+        change.set_can_focus(False)
+        row.pack_start(change, False, False, 0)
+        row.show_all()
+
+    def _source_menu(self, widget) -> None:
+        from .tray import sources
+        menu = Gtk.Menu()
+        for value, label in sources():
+            mark = "✓ " if value == self.app.settings.listenSource else "    "
+            i = Gtk.MenuItem(label=mark + label)
+            i.connect("activate", lambda *_, v=value: self.app.set_listen_source(v))
+            menu.append(i)
+        menu.show_all()
+        menu.attach_to_widget(widget, None)
+        menu.popup_at_widget(widget, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+        self._menu = menu  # kept while open
 
     # 纪要 / 文字记录, side by side
 
@@ -691,7 +725,8 @@ class NotesWindow(Gtk.Window):
         if kind == "source":
             # Saved only if something was heard before the audio service went away.
             body = L("音频服务已断开，本次会议记录已保存") if session is not None and session.lines else L("没能开始听")
-            self._state_card(box, "audio-volume-muted-symbolic", "warn", L("系统声音中断"), body, L("开始听"), self.app.toggle_listening)
+            self._state_card(box, "audio-volume-muted-symbolic", "warn", listen.problem or L("系统声音中断"), body, L("开始听"),
+                             self.app.toggle_listening)
         elif kind == "network" and (line is None or listen.listening):
             service = self.app.ling.provider.name
             self._state_card(box, "network-offline-symbolic", "warn", L("连不上 Ling") if service == "Ling" else LF("连不上 %@", service),
@@ -703,9 +738,11 @@ class NotesWindow(Gtk.Window):
         elif line is None:
             if listen.listening:
                 hearing = listen.pending > 0 or listen.level >= 0.01
-                self._state_card(box, "audio-speakers-symbolic", "grey",
+                room = listen.source_kind == "room"
+                self._state_card(box, "audio-input-microphone-symbolic" if room else "audio-speakers-symbolic", "grey",
                                  L("正在识别…") if hearing else L("等有人说话"),
-                                 L("正在听电脑播放的声音，有声音后约 3 秒出字幕"))
+                                 L("正在用麦克风听会议室，有人说话后约 3 秒出字幕") if room
+                                 else L("正在听电脑播放的声音，有声音后约 3 秒出字幕"))
             else:
                 self._state_card(box, "audio-speakers-symbolic", "grey", None,
                                  L("点“开始听”，将电脑播放的声音转为双语字幕和纪要"))

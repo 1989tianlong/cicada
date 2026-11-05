@@ -203,6 +203,9 @@ class SettingsWindow(Gtk.Window):
             self._shortcut_row(),
             warn_row])), False, False, 0)
 
+        room_group, room_combos = self._room_group()
+        page.pack_start(room_group, False, False, 0)
+        combos += room_combos
         page.pack_start(self._speak_group(combos), False, False, 0)
         page.pack_start(self._end_group(), False, False, 0)
 
@@ -434,6 +437,31 @@ class SettingsWindow(Gtk.Window):
         self.speak_status = ui.text("", 11, "warn", width_chars=60)
         self.speak_status.set_no_show_all(True)
         return ui.vbox(6, self._group(L("同声传译"), ui.boxed(rows)), ui.pad(self.speak_status, 0, 4, 0, 4))
+
+    def _room_group(self):
+        """会议室: 听哪里, and the microphone that hears the room (自动 picks as roommic.pick does)."""
+        from ..core import roommic
+        from . import capture
+        from .tray import sources
+        app = self.app
+        s = app.settings
+        where = choice(sources(), s.listenSource, app.set_listen_source)
+        inputs = [i for i in roommic.parse_sources(capture.sources_text()) if not i.virtual]
+        default = capture.default_source()
+        if default == "cicada_mic":
+            default = app.room.real_mic
+        auto = roommic.pick(default, inputs)
+        auto_name = next((i.description for i in inputs if i.name == auto), None)
+
+        def set_mic(v):
+            s.roomMic = v
+            s.save()
+        options = [("", LF("自动（%@）", auto_name) if auto_name else L("自动"))] + [(i.name, i.description) for i in inputs]
+        if s.roomMic and all(v != s.roomMic for v, _ in options):
+            options.append((s.roomMic, s.roomMic))  # chosen before, not plugged in now
+        mic = choice(options, s.roomMic, set_mic)
+        rows = [ui.prow(L("听哪里"), where), ui.prow(L("麦克风"), mic, L("戴着蓝牙耳机时，自动用电脑自带的麦克风"))]
+        return self._group(L("会议室"), ui.boxed(rows)), [where, mic]
 
     def _group(self, title, body, footer=None) -> Gtk.Widget:
         box = ui.vbox(6, ui.pad(ui.text(title, 12, "group-title", bold=True, wrap=False), 0, 0, 0, 2), body)

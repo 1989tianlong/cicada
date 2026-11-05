@@ -629,8 +629,9 @@ class RecordsWindow(Gtk.Window):
         if s.lines:
             src, dst = s.lines[0].srcLang, s.lines[0].dstLang
             langs = " · " + (lang_name(src) if src == dst else lang_name(src) + " → " + lang_name(dst))
-        return "%s · %s · %d %s%s" % (session_store._local_date(s.startedAt, L("M月d日 HH:mm")), L("正在听") if live else clock(s.duration),
-                                      len(s.lines), L("句"), langs)
+        place = " · " + L("会议室") if s.room else ""  # heard through a microphone in the room, as on the Mac
+        return "%s · %s · %d %s%s%s" % (session_store._local_date(s.startedAt, L("M月d日 HH:mm")), L("正在听") if live else clock(s.duration),
+                                        len(s.lines), L("句"), langs, place)
 
     def _notes_state(self, s, live):
         return (id(s.notes), s.notes.updatedAt if s.notes else None, self.app.notes.working_id == s.id, live)

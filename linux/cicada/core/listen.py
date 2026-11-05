@@ -10,17 +10,45 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from array import array
 from concurrent.futures import ThreadPoolExecutor, wait
 
 from . import strings
 from .audio import RATE, Wav
 from .ling import LingError
 from .models import TranscriptLine
+from .roommic import VoiceGate
 from .segmenter import Segmenter
 from .support import Log, english_name, is_cjk_language
 from .translator import Translator
 
 _END = object()
+
+
+class _Lane:
+    """One audio source's way through listening: its segments, their replies put back in order, its
+    last line and the language it hears. 电脑和会议室 runs two, as the Mac runs a main and a room
+    engine; each keeps its own language and pauses."""
+
+    def __init__(self, via: str | None = None, first: int = 0):
+        self.via = via  # "room" on the lines of 电脑和会议室's room side
+        self.first = first  # segment numbers start above this
+        self.source = None
+        self.audio = None
+        self.worker = None
+        self.done: dict = {}
+        self.segments: dict = {}
+        self.next = first + 1
+        self.last = None
+        self.last_end = 0.0
+        self.hint = None
+        self.candidate = None
+        self.votes = 0
+        self.level = 0.0
+        self.peak = 0.0
+        self.heard_seconds = 0.0
+        self.gate = None  # a microphone's VoiceGate (the room's noise, learnt)
+        self.muted = False  # silence in place of the microphone (同声传译 is hearing me)
 
 
 class ListenEngine:
@@ -32,29 +60,16 @@ class ListenEngine:
         self.settings = settings
         self._gate = threading.RLock()
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="Listen")
-        self._source = None
-        self._audio = None
-        self._worker = None
-        self._done: dict = {}
-        self._segments: dict = {}
+        self._main = _Lane()
         self._in_flight: list = []
-        self._next = 1
         self._line_count = 0
-        self._last = None
-        self._last_end = 0.0
-        self._hint = None
-        self._candidate = None
-        self._votes = 0
         self._listeners = []
         self.listening = False
         self.session_id = None
-        self.source_kind = None  # what this meeting is heard from ("system", "file")
+        self.source_kind = None  # what this meeting is heard from ("system", "room", "file")
         self.problem = None  # the last error worth showing, cleared by the next good reply
         # What kind of problem, for a state the UI can draw: "key", "busy", "network", "source".
         self.problem_kind = None
-        self.level = 0.0
-        self.heard_seconds = 0.0  # the capture is alive while this grows
-        self.peak = 0.0  # 0 for a while means the source is silent
         self.loudness = None  # SpeakEngine's LoudnessLog: when the system audio was loud (the echo check)
         # 说话人识别: a voiceprint per segment on its own thread while Ming hears it, labelled in order.
         self.speakers = None  # speakers.Tagger, set by the app
@@ -66,6 +81,24 @@ class ListenEngine:
         self.notes_for: dict = {}
         notes.language = lambda sid: english_name(self.notes_code(sid))
         translator.glossary = notes.glossary
+
+    # The main source's: level and peak (0 for a while means it is silent); the capture is alive while
+    # heard_seconds grows.
+    @property
+    def level(self) -> float:
+        return self._main.level
+
+    @property
+    def peak(self) -> float:
+        return self._main.peak
+
+    @property
+    def heard_seconds(self) -> float:
+        return self._main.heard_seconds
+
+    @property
+    def _hint(self):
+        return self._main.hint
 
     def on_change(self, listener) -> None:
         self._listeners.append(listener)
@@ -121,30 +154,40 @@ class ListenEngine:
     def pending(self) -> int:
         """Segments sent and not yet back: the UI shows "…" while this is above zero."""
         with self._gate:
-            return len(self._segments)
+            return sum(len(l.segments) for l in self._lanes())
 
-    def start(self, source, kind: str) -> None:
+    def _lanes(self) -> list:
+        return [self._main]
+
+    def start(self, source, kind: str, mic: bool = False) -> None:
+        """Listens to `source`; `mic` when it is a microphone in the room (会议室): speech is told
+        from the room's own noise, and the record says it was heard in the room."""
         if self.listening:
             return
         session = self.store.begin()
         self.session_id = session.id
         self.source_kind = kind
         with self._gate:
-            self._done.clear()
-            self._segments.clear()
+            self._main = _Lane()
             self._in_flight.clear()
-            self._next, self._line_count, self._last, self._last_end = 1, 0, None, 0.0
-            self._hint, self._candidate, self._votes, self.problem = None, None, 0, None
-            self.problem_kind = None
-        self.heard_seconds = 0.0
-        self.peak = 0.0
+            self._line_count = 0
+            self.problem = self.problem_kind = None
         self.notes.begin(session.id)
         if self.speakers is not None:
             self.speakers.reset()
+        # Listening before the source starts: a source that fails at once calls on_ended → stop(),
+        # which must see this meeting as running to end it.
+        self.listening = True
+        self._run(self._main)
+        self.attach(source, mic)
+        Log.d("listen: started %s source=%s target=%s" % (session.id, kind, self.target))
+        self._changed()
+
+    def _run(self, lane) -> None:
         segmenter = Segmenter()
-        segmenter.on_segment = self._send
+        segmenter.on_segment = lambda seg: self._send(lane, seg)
         q: queue.Queue = queue.Queue()
-        self._audio = q
+        lane.audio = q
 
         def work():
             # One worker owns the segmenter: audio callbacks only queue buffers.
@@ -152,23 +195,49 @@ class ListenEngine:
                 buf = q.get()
                 if buf is _END:
                     break
+                seconds = len(buf) / RATE
+                if lane.muted:
+                    # Silence rather than nothing keeps the segmenter's clock in step.
+                    buf = array("h", bytes(len(buf) * 2))
+                level = Wav.rms(buf)
+                gate = lane.gate
+                if gate is not None:
+                    gate.voiced(level, seconds)
+                    segmenter.threshold = gate.threshold
+                elif segmenter.threshold != Segmenter.threshold:
+                    del segmenter.threshold  # back on the computer's audio: the fixed gate
                 segmenter.feed(buf)
-                self.level = Wav.rms(buf)
-                self.peak = max(self.peak * 0.995, self.level)
-                if self.loudness is not None:
-                    self.loudness.add(self.level >= Segmenter.threshold)
-                self.heard_seconds += len(buf) / RATE
+                lane.level = level
+                lane.peak = max(lane.peak * 0.995, level)
+                if lane is self._main and self.loudness is not None and gate is None:
+                    self.loudness.add(level >= Segmenter.threshold)
+                lane.heard_seconds += seconds
             segmenter.flush()
-        self._worker = threading.Thread(target=work, name="ListenWorker", daemon=True)
-        self._worker.start()
-        self._source = source
-        source.on_samples = q.put
-        # Listening before the source starts: a source that fails at once calls on_ended → stop(),
-        # which must see this meeting as running to end it.
-        self.listening = True
+        lane.worker = threading.Thread(target=work, name="ListenWorker", daemon=True)
+        lane.worker.start()
+
+    def attach(self, source, mic: bool = False) -> None:
+        """The meeting's source, now or in place of the one before (听哪里 changed mid-meeting): the
+        same segments and lines go on from the new one."""
+        lane = self._main
+        old = lane.source
+        if old is not None:
+            old.on_samples = None
+            old.stop()
+        lane.gate = VoiceGate(adaptive=True) if mic else None
+        if mic and self.session_id:
+            self.store.mark_room(self.session_id)
+        lane.source = source
+        source.on_samples = lane.audio.put
         source.start()
-        Log.d("listen: started %s source=%s target=%s" % (session.id, kind, self.target))
-        self._changed()
+        if old is not None:
+            Log.d("listen: source changed to %s" % ("a microphone" if mic else "the computer's audio"))
+
+    def set_muted(self, on: bool) -> None:
+        """会议室 while 同声传译 hears me through the same microphone: my words aren't the room's."""
+        if self._main.gate is not None and self._main.muted != on:
+            self._main.muted = on
+            Log.d("listen: room mic %s" % ("muted" if on else "open"))
 
     def stop(self, ended_at=None) -> None:
         """Stops listening, waits (briefly) for segments still at Ming, ends the record (at `ended_at`
@@ -177,13 +246,8 @@ class ListenEngine:
         if not self.listening:
             return
         self.listening = False
-        if self._source is not None:
-            self._source.on_samples = None
-            self._source.stop()
-        if self._audio is not None:
-            self._audio.put(_END)
-        if self._worker is not None:
-            self._worker.join(5)
+        for lane in self._lanes():
+            self._end_lane(lane)
         with self._gate:
             waiting = list(self._in_flight)
         wait(waiting, timeout=15)
@@ -195,11 +259,22 @@ class ListenEngine:
         self._changed()
         self._pool.submit(self.notes.finish)
 
+    @staticmethod
+    def _end_lane(lane) -> None:
+        if lane.source is not None:
+            lane.source.on_samples = None
+            lane.source.stop()
+        if lane.audio is not None:
+            lane.audio.put(_END)
+        if lane.worker is not None:
+            lane.worker.join(5)
+
     @property
     def voices_on(self) -> bool:
         return bool(self.speakers is not None and getattr(self.settings, "speakerVoices", False) and self.speakers.available)
 
-    def _send(self, seg) -> None:
+    def _send(self, lane, seg) -> None:
+        seg.index += lane.first
         wav = Wav.bytes(seg.samples)
         seg.voiceprint = None
         if self.voices_on:
@@ -220,8 +295,8 @@ class ListenEngine:
                             self._voices_waiting -= 1
                 seg.voiceprint = self._voice_pool.submit(embed)
         with self._gate:
-            self._segments[seg.index] = seg
-            lang = self._hint
+            lane.segments[seg.index] = seg
+            lang = lane.hint
         # Asked for what the meeting's language translates into; _record checks it against the
         # language Ming actually heard ("follow system" turns my own language into the next one).
         seg.asked = self.settings.resolved_target(lang)
@@ -241,26 +316,26 @@ class ListenEngine:
             Log.d("listen: segment %d %.1fs -> %s in %d ms" % (seg.index, seg.seconds, heard.lang if heard else "nothing",
                                                               (time.monotonic() - started) * 1000))
             with self._gate:
-                self._done[seg.index] = heard
-            self._deliver()
+                lane.done[seg.index] = heard
+            self._deliver(lane)
         f = self._pool.submit(job)
         with self._gate:
             self._in_flight.append(f)
             self._in_flight = [x for x in self._in_flight if not x.done()]
 
-    def _deliver(self) -> None:
+    def _deliver(self, lane) -> None:
         """Hands finished segments on in order: one slow reply holds back those after it. One thread
         at a time, so lines (and their voices) are recorded strictly in segment order."""
         with self._deliver_lock:
             ready = []
             with self._gate:
-                while self._next in self._done:
-                    heard = self._done.pop(self._next)
-                    ready.append((self._segments.pop(self._next), heard))
-                    self._next += 1
+                while lane.next in lane.done:
+                    heard = lane.done.pop(lane.next)
+                    ready.append((lane.segments.pop(lane.next), heard))
+                    lane.next += 1
             for seg, heard in ready:
                 if heard is not None:
-                    self._record(seg, heard)
+                    self._record(lane, seg, heard)
         if ready:
             self._changed()
 
@@ -277,7 +352,7 @@ class ListenEngine:
             return None
         return self.speakers.label(vector, seg.seconds)
 
-    def _record(self, seg, heard) -> None:
+    def _record(self, lane, seg, heard) -> None:
         sid = self.session_id
         if sid is None:
             return
@@ -289,22 +364,22 @@ class ListenEngine:
         # The meeting's language moves only after two segments agree, so one misheard stretch doesn't
         # flip the hint (the Mac waits for confidence the same way).
         with self._gate:
-            h = self._hint
+            h = lane.hint
             if h is None:
-                self._hint = heard.lang
+                lane.hint = heard.lang
             elif heard.lang != h:
-                if self._candidate == heard.lang:
-                    self._votes += 1
+                if lane.candidate == heard.lang:
+                    lane.votes += 1
                 else:
-                    self._candidate, self._votes = heard.lang, 1
-                if self._votes >= 2:
-                    self._hint, self._candidate, self._votes = self._candidate, None, 0
+                    lane.candidate, lane.votes = heard.lang, 1
+                if lane.votes >= 2:
+                    lane.hint, lane.candidate, lane.votes = lane.candidate, None, 0
             else:
-                self._candidate, self._votes = None, 0
-            prev = self._last
+                lane.candidate, lane.votes = None, 0
+            prev = lane.last
             joined = False
             # Two voices never share a line: a half sentence joins only the same voice (or an unknown one).
-            if prev is not None and continues(prev, seg.start - self._last_end, heard) and (
+            if prev is not None and continues(prev, seg.start - lane.last_end, heard) and (
                     voice is None or prev.voice is None or voice == prev.voice):
                 prev.src = join(prev.src, heard.original, heard.lang)
                 prev.dst = None if prev.dst is None or translation is None else join(prev.dst, translation, target)
@@ -314,9 +389,9 @@ class ListenEngine:
                 self._line_count += 1
                 line = TranscriptLine(id="h%d-%d" % (self._line_count, seg.index), t=seg.start, speaker="them",
                                       src=heard.original, dst=translation, srcLang=heard.lang, dstLang=target,
-                                      voice=voice)
-                self._last = line
-            self._last_end = seg.start + seg.seconds
+                                      voice=voice, via=lane.via)
+                lane.last = line
+            lane.last_end = seg.start + seg.seconds
             copy = line.copy()
         if joined:
             self.store.replace(sid, copy)

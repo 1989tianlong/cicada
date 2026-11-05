@@ -186,6 +186,14 @@ class SessionStore:
                 s.voiceGuesses = vg or None
         self._mutate(sid, change)
 
+    def mark_room(self, sid: str) -> None:
+        """The meeting is (now) heard in the room: its record says 会议室 (the Mac's markLiveInRoom)."""
+        with self._gate:
+            s = self._sessions.get(sid)
+            if s is None or s.room:
+                return
+        self._mutate(sid, lambda s: setattr(s, "room", True))
+
     def set_notes(self, sid: str, notes) -> None:
         self._mutate(sid, lambda s: setattr(s, "notes", notes))
 

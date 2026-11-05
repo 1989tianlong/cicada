@@ -179,3 +179,7 @@
 "%lld 天前开会时用过" = "used in a meeting %lld days ago";
 "文字 %@ 秒" = "text %@ s";
 "听 %@ 秒" = "hearing %@ s";
+"知了 · 会议室" = "Cicada · Room";
+"换" = "Change";
+"正在用麦克风听会议室，有人说话后约 3 秒出字幕" = "Listening to the room through the microphone. Subtitles appear about 3 s after someone speaks";
+"戴着蓝牙耳机时，自动用电脑自带的麦克风" = "With a Bluetooth headset on, Auto uses the computer's own mic";
