@@ -499,7 +499,9 @@ class SettingsWindow(Gtk.Window):
         self.get_key.get_child().show_all()
         # Shown and hidden by show_key_state; show_all() must leave them alone.
         self.entry_row.set_no_show_all(True)
-        entry_row.show_all()
+        # Everything inside it (the hint stays out on its own): show_all() on the window stops at
+        # entry_row, so a wrapper left hidden here kept the field from ever appearing.
+        self.entry_row.get_child().show_all()
         self.key_group = ui.boxed([key_row, self.entry_row, self.get_key])
         title = ui.hbox(8, ui.pad(ui.text(L("AI 服务"), 12, "group-title", bold=True, wrap=False), 0, 0, 0, 2))
         title.pack_end(self.provider_menu, False, False, 0)
