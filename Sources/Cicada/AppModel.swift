@@ -1628,6 +1628,7 @@ final class AppModel: ObservableObject {
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
         case "speakFile": speak.speakFile(URL(fileURLWithPath: arg))
+        case "speakVP": speak.echoCancel = arg != "off"
         case "speakTest":
             // speakTest:<sample|voice>: open settings › 同声传译 with the 试一句 sheet and run it.
             settingsSection = .speak

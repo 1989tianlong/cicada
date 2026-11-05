@@ -103,6 +103,19 @@ final class SpeakEngine {
     private(set) var phase: Phase = .idle
 
     private let mic = AVAudioEngine()
+    /// The mic with echo cancellation, tried first when `echoCancel` is on (`VoiceMic`).
+    private let voiceMic = VoiceMic()
+    /// Debug (`speakVP:on`) until a person has checked it with a real voice; off: the plain mic.
+    var echoCancel = false {
+        didSet {
+            if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel { voiceMic.release() }
+        }
+    }
+    /// The real mic to cancel the echo for; nil when it is unknown or virtual (nothing to cancel there).
+    private var echoInput: AudioObjectID? {
+        guard let d = inputDevice?(), !d.isVirtualMic else { return nil }
+        return d.id
+    }
     private let micQueue = DispatchQueue(label: "com.wquguru.cicada.mic", qos: .userInitiated)
     private let converter = PCMConverter()
     private var analyzerFormat: AVAudioFormat?
@@ -121,8 +134,9 @@ final class SpeakEngine {
     private nonisolated static let pressLimit = 16_000 * 60
 
     private let synth = AVSpeechSynthesizer()
-    private let out = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private var out = AVAudioEngine()
+    private var player = AVAudioPlayerNode()
+    private var outObserver: NSObjectProtocol?
     private var outFormat: AVAudioFormat?
     private var outDeviceUID: String?
     /// The device the latest `speak` call played to.
@@ -132,12 +146,41 @@ final class SpeakEngine {
 
     init(settings: AppSettings) {
         self.settings = settings
+        wireOutput()
+        voiceMic.onUnitChanged = { [weak self] in
+            Task { @MainActor in self?.newOutputEngine() }
+        }
+    }
+
+    private func wireOutput() {
         out.attach(player)
         // Pointing the output at a device (the first sentence, BlackHole installed, headphones
         // plugged in) stops the engine, and the player stays silent until it is wired up again.
-        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: out, queue: .main) { [weak self] _ in
+        outObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: out, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.outputChanged() }
         }
+    }
+
+    /// Making or letting go of the echo-cancelling unit leaves an output engine that was already
+    /// there silent for good (still running, no notification; a restart doesn't help), so the room
+    /// would hear nothing: a new engine plays again. Not in the middle of a sentence.
+    private func newOutputEngine() {
+        // `player.isPlaying` stays true after the last buffer: the phase says whether a sentence is going out.
+        if phase == .speaking {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                MainActor.assumeIsolated { self?.newOutputEngine() }
+            }
+            return
+        }
+        if let outObserver { NotificationCenter.default.removeObserver(outObserver) }
+        player.stop()
+        out.stop()
+        out = AVAudioEngine()
+        player = AVAudioPlayerNode()
+        outFormat = nil
+        outDeviceUID = nil
+        wireOutput()
+        debugLog("voice output: new engine after the voice mic changed")
     }
 
     var targetCode: String {
@@ -168,6 +211,7 @@ final class SpeakEngine {
             analyzerFormat = await Recognition.format(lang.locale, drafts: true)
             analyzerLocale = lang.locale
             debugLog("speak transcriber ready locale=\(lang.locale)")
+            if echoCancel, let d = echoInput { voiceMic.prepare(input: d) }
         } catch {
             debugLog("speak transcriber failed: \(error)")
             onStatus?(L("无法准备语音识别：\(error.localizedDescription)"))
@@ -303,6 +347,22 @@ final class SpeakEngine {
     }
 
     private func startMic(format: AVAudioFormat, input cont: RecognitionStream) {
+        if echoCancel, let device = echoInput {
+            let conv = converter
+            let queue = micQueue
+            feeding = true
+            let started = voiceMic.start(input: device) { [weak self] buf in
+                queue.async {
+                    guard let self, self.feeding, let c = conv.convert(buf, to: format) else { return }
+                    cont.append(c)
+                    self.recordMic(c)
+                    self.keepForMing(c)
+                }
+            }
+            debugLog("speak: mic \(started ? "with echo cancellation" : "plain, echo cancellation not ready")")
+            if started { return }
+        }
+        voiceMic.release()   // a unit left over (toggled off mid-press, a virtual mic) would starve the plain mic
         let inputNode = mic.inputNode
         AudioDevices.pinInput(mic, to: inputDevice?())
         let inFormat = inputNode.outputFormat(forBus: 0)
@@ -368,10 +428,12 @@ final class SpeakEngine {
 
     private func stopMic() {
         micQueue.sync { feeding = false }
+        voiceMic.stop()
         if mic.isRunning {
             mic.inputNode.removeTap(onBus: 0)
             mic.stop()
         }
+        if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel { voiceMic.release() }
     }
 
     private func finishUtterance() {
