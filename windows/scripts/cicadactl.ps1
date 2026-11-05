@@ -1,5 +1,5 @@
 # Sends one debug command to a running dev build (Cicada.exe --dev) and prints its JSON state.
-#   .\cicadactl.ps1 state | start | stop | end | notesproblem failed | sample | feed C:\clip.wav | view subtitles | capture on | show records | quit
+#   .\cicadactl.ps1 state | start | stop | end | notesproblem failed | sample | feed C:\clip.wav | view subtitles | capture on | show records | hide notes | quit
 #   AI 服务: provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> | show settings ai models
 #   AI 服务检查: ai-check | ai-check-sim <unreachable|invalidKey|noCredit|mgmtKey|noModel|noJSON|deaf|busy|serverError|lowBalance|off> (state › ai.check: every step)
 #   结束会议: calls zoom.exe=Zoom|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep

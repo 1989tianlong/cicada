@@ -1736,6 +1736,22 @@ static class Tests
         Equal("ZenMux 现在很忙，key 没问题。开会时会自动重试。", c.Message("ZenMux", "zenmux.ai", "m", "h"), "busy words");
     }
 
+    public static void OnlyWhatTheUserMustFixShowsBeyondThePanel()
+    {
+        var blocking = new[] { AICheck.Reason.InvalidKey, AICheck.Reason.MgmtKey, AICheck.Reason.NoCredit, AICheck.Reason.NoModel, AICheck.Reason.BadAddress, AICheck.Reason.NoJSON, AICheck.Reason.Deaf };
+        foreach (var why in Enum.GetValues<AICheck.Reason>())
+            Equal(blocking.Contains(why), AICheck.Blocks(why), $"{why}");
+        var key = new AICheck();
+        key.Fail(AICheck.StepId.Key, AICheck.Reason.InvalidKey);
+        Check(key.Blocking, "a bad key");
+        var away = new AICheck();
+        away.Fail(AICheck.StepId.Reach, AICheck.Reason.Unreachable);
+        Check(!away.Blocking && away.NeedsUser, "unreachable: the panel says so, no dot");
+        var low = new AICheck { Balance = 0.3 };
+        Check(!low.Blocking && low.NeedsUser, "a low balance still works: no dot");
+        Check(!new AICheck().Blocking, "nothing known");
+    }
+
     public static void KeyPrefixesTellWhoseKeyItIs()
     {
         Equal(("openrouter", false), AICheck.Owner("sk-or-v1-abc"), "OpenRouter");

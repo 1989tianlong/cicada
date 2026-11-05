@@ -76,7 +76,11 @@ sealed class Controller
     /// Dev builds: a WAV that stands in for the microphone (the VM has none).
     string? fakeMic;
     readonly Forms.NotifyIcon tray = new();
-    System.Drawing.Icon? idleIcon, liveIcon;
+    System.Drawing.Icon? idleIcon, liveIcon, updateIcon;
+    /// Something only the user can fix (AICheck.Blocking), said beyond the panel: the tray's orange
+    /// dot and tooltip, and once a meeting a notification while the notes panel is put away.
+    public string? Problem { get; private set; }
+    bool problemNotified;
     /// The installer's download progress (0…1) while an update is being fetched, and why the last one failed.
     public double? UpdateProgress { get; private set; }
     public string? UpdateFailure { get; private set; }
@@ -207,7 +211,8 @@ sealed class Controller
     void SetUpTray()
     {
         idleIcon = LoadIcon();
-        liveIcon = WithDot(idleIcon);
+        liveIcon = WithDot(idleIcon, System.Drawing.Color.FromArgb(0xE8, 0x55, 0x2B));
+        updateIcon = WithDot(idleIcon, System.Drawing.Color.FromArgb(0x6B, 0x70, 0x80));
         tray.Icon = idleIcon;
         tray.Text = L("知了");
         tray.Visible = true;
@@ -232,8 +237,9 @@ sealed class Controller
         catch { return System.Drawing.SystemIcons.Application; }
     }
 
-    /// The tray icon while listening: the logo with the live dot on its corner.
-    static System.Drawing.Icon WithDot(System.Drawing.Icon icon)
+    /// The logo with a dot on its corner: orange while listening or something needs fixing, grey
+    /// for a new version (it can wait).
+    static System.Drawing.Icon WithDot(System.Drawing.Icon icon, System.Drawing.Color colour)
     {
         using var bmp = new System.Drawing.Bitmap(32, 32);
         using (var g = System.Drawing.Graphics.FromImage(bmp))
@@ -241,7 +247,7 @@ sealed class Controller
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.DrawIcon(icon, new System.Drawing.Rectangle(0, 0, 32, 32));
             using var ring = new System.Drawing.SolidBrush(System.Drawing.Color.White);
-            using var dot = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0xE8, 0x55, 0x2B));
+            using var dot = new System.Drawing.SolidBrush(colour);
             g.FillEllipse(ring, 16, 16, 16, 16);
             g.FillEllipse(dot, 19, 19, 10, 10);
         }
@@ -250,10 +256,32 @@ sealed class Controller
 
     void UpdateTray()
     {
-        // The same orange dot says 正在听 or 有新版本 (the Mac's badge); listening wins.
-        tray.Icon = Listen.Listening || Updates.Available is not null ? liveIcon : idleIcon;
-        tray.Text = Listen.Listening ? L("知了") + " · " + L("正在听")
+        CheckProblem();
+        // Orange says 正在听 or something to fix (the Mac's problem badge), grey a new version;
+        // the tooltip names the problem first.
+        tray.Icon = Listen.Listening || Problem is not null ? liveIcon : Updates.Available is not null ? updateIcon : idleIcon;
+        var text = Problem is { } p ? L("知了") + " · " + p
+            : Listen.Listening ? L("知了") + " · " + L("正在听")
             : Updates.Available is { } u ? L("知了") + " · " + LF("有新版本 %@", u.Version) : L("知了");
+        // NotifyIcon.Text throws past 127 characters (a long model id in the title).
+        tray.Text = text.Length > 127 ? text[..126] + "…" : text;
+    }
+
+    /// On every change: the tray's problem, and its one notification a meeting. Only while
+    /// listening, and only when the notes panel isn't up (its banner says so; the subtitle bar has
+    /// none). Never a dialog: it would take the focus from the meeting app.
+    void CheckProblem()
+    {
+        var p = Ling.HasKey && Ling.Health.Blocking ? AIProblem()?.Title : null;
+        if (p != Problem)
+        {
+            Problem = p;
+            Log.Debug($"tray: problem {(p is null ? "-" : Ling.Health.Failure?.Why.ToString())}");
+        }
+        if (p is null || problemNotified || !Listen.Listening || (NotesVisible && Settings.View == "notes")) return;
+        problemNotified = true;
+        Toast(p, LF("%@。点按去设置", AIProblem()?.Detail ?? ""), ShowAISettings);
+        Log.Debug($"tray: notified problem {Ling.Health.Failure?.Why}");
     }
 
     public void ShowFlyout()
@@ -546,6 +574,7 @@ sealed class Controller
         Watch(source);
         AutoEnded = false;
         Ending = null;
+        problemNotified = false;
         endWatch = new MeetingEndWatch(EndConfig(), DateTimeOffset.Now);
         Listen.Start(source, room: source is GatedSource);
         onlinePromptAnswered = false;
@@ -753,6 +782,11 @@ sealed class Controller
     // MARK: Windows
 
     /// The tray icon while listening: the notes window comes and goes.
+    public void HideNotes()
+    {
+        if (NotesVisible) ToggleNotes();
+    }
+
     public void ToggleNotes()
     {
         if (NotesVisible) notesWindow!.Hide(); else ShowNotes();
@@ -965,6 +999,9 @@ sealed class Controller
             ["problem"] = Ling.Health.Message(Ling.ServiceName, Ling.ServiceHost, Ling.Config.TextModel, Ling.HearName),
             ["proxy"] = Ling.Health.ProxyLine(Ling.ServiceName, Ling.ServiceHost),
             ["tray"] = AIProblem()?.Title,
+            ["dot"] = Problem is not null ? "problem" : Listen.Listening ? "live" : Updates.Available is not null ? "update" : null,
+            ["blocking"] = Problem,
+            ["notified"] = problemNotified,
             ["simulated"] = Ling.SimulateCheck?.ToString() ?? (Ling.SimulateBalance is null ? null : "lowBalance"),
             ["catalog"] = new JsonArray(Ling.TextCatalog.Count, Ling.HearCatalog.Count), ["keyFile"] = Path.GetFileName(Key.File_),
         };
@@ -1188,6 +1225,7 @@ static class DebugServer
                 else if (arg.StartsWith("onboarding")) app.ShowOnboarding(int.TryParse(arg[10..].Trim(), out var n) ? n : null);
                 else app.ShowNotes();
                 break;
+            case "hide": if (arg == "notes") app.HideNotes(); break;
             case "toast": app.Toast(L("纪要整理好了"), LF("%@ · 点这里打开", "Test"), () => app.ShowRecords()); break;
             case "problem": app.Listen.SimulateProblem(arg); break;
             case "speak":

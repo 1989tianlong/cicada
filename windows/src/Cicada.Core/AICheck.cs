@@ -95,6 +95,15 @@ public sealed class AICheck
     /// Something only the user can fix (a busy service or a server error fixes itself).
     public bool NeedsUser => Failure is { } f ? f.Why is not (Reason.Busy or Reason.ServerError) : IsLowBalance;
 
+    /// What stops listening or the notes until the user changes something (the Mac's
+    /// AIServiceStrip.blocking): the tray's dot and the one notification a meeting, beyond the panel.
+    /// Not the network, a busy service or a server error (they pass by themselves), nor a low balance
+    /// (it still works). Deaf is the ports' own: the hear model is the user's choice to change.
+    public static bool Blocks(Reason why) => why is Reason.InvalidKey or Reason.MgmtKey or Reason.NoCredit
+        or Reason.NoModel or Reason.BadAddress or Reason.NoJSON or Reason.Deaf;
+
+    public bool Blocking => Failure is { } f && Blocks(f.Why);
+
     /// Whether a request to `later` must have got past `step`: the hear model's request proves the
     /// address and the key, not the text model, and the text model's says nothing about hearing.
     static bool Needs(StepId later, StepId step) => later == StepId.Hear ? step is StepId.Reach or StepId.Key : step < later;
