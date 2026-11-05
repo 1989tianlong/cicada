@@ -66,24 +66,45 @@ object Providers {
 
     fun named(raw: String?): Provider = ALL.firstOrNull { it.id == raw } ?: LING
 
-    fun isLocal(hostOrUrl: String): Boolean {
-        val u = if ("://" in hostOrUrl) hostOrUrl else "http://$hostOrUrl"
-        val host = try { URI(u).host } catch (_: Exception) { null } ?: hostOrUrl
-        return host in listOf("localhost", "127.0.0.1", "::1", "[::1]")
+    /// This phone itself: a model running in Termux, say.
+    fun isLocal(hostOrUrl: String): Boolean = host(hostOrUrl) in listOf("localhost", "127.0.0.1", "::1")
+
+    /// This phone or the local network (AIProvider.isNearby on the Mac): plain http is allowed and
+    /// a key isn't needed. Private IPv4 (10/8, 172.16/12, 192.168/16), link-local, Tailscale's
+    /// 100.64/10, IPv6 unique and link-local addresses, and `.local` names. On a phone "localhost"
+    /// is the phone, so a GPU box at home or work is the usual case.
+    fun isNearby(hostOrUrl: String): Boolean {
+        val h = host(hostOrUrl).lowercase()
+        if (isLocal(h) || h.endsWith(".local")) return true
+        val labels = h.split('.')
+        val parts = labels.mapNotNull { it.toIntOrNull() }
+        if (labels.size == 4 && parts.size == 4 && parts.all { it in 0..255 }) {
+            val (a, b) = parts
+            return a == 10 || (a == 192 && b == 168) || (a == 169 && b == 254) || (a == 172 && b in 16..31) || (a == 100 && b in 64..127)
+        }
+        if (':' in h) return h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")
+        return false
     }
 
-    /// The address as typed, normalized: https, or http only on this device; ends in "/". On a
-    /// phone "localhost" is the phone itself (a model running in Termux, say).
+    private fun host(hostOrUrl: String): String {
+        val s = hostOrUrl.trim()
+        val u = if ("://" in s) s else "http://$s"
+        val host = try { URI(u).host } catch (_: Exception) { null } ?: s
+        return host.trim('[', ']')
+    }
+
+    /// The address as typed, normalized: https, or http only on this phone or the local network;
+    /// ends in "/".
     fun customBase(raw: String?): String? {
         var s = raw?.trim() ?: return null
         if (s.isEmpty()) return null
-        if ("://" !in s) s = (if (isLocal(s)) "http://" else "https://") + s
+        if ("://" !in s) s = (if (isNearby(s)) "http://" else "https://") + s
         if (!s.endsWith("/")) s += "/"
         val uri = try { URI(s) } catch (_: Exception) { return null }
         val host = uri.host ?: return null
         return when (uri.scheme) {
             "https" -> s
-            "http" -> if (isLocal(host)) s else null
+            "http" -> if (isNearby(host)) s else null
             else -> null
         }
     }
@@ -100,8 +121,10 @@ object Providers {
             val voice = s.aiVoiceModels["custom"]?.trim().orEmpty()
             val voiceBase = if (s.aiCustomVoiceBase.isNotBlank()) customBase(s.aiCustomVoiceBase) else base
             val name = s.aiCustomVoice.trim()
+            // The hear model may run on its own server (an omni model beside a text one): empty is the same address.
+            val hearBase = if (s.aiCustomHearBase.isNotBlank()) customBase(s.aiCustomHearBase) else base
             return AIConfig(p, base, s.aiModels["custom"]?.trim().orEmpty(), s.aiHearModels["custom"]?.trim().orEmpty(),
-                            voice.ifEmpty { null }, if (voice.isNotEmpty()) voiceBase else null, name.ifEmpty { null })
+                            voice.ifEmpty { null }, if (voice.isNotEmpty()) voiceBase else null, name.ifEmpty { null }, hearBase)
         }
         return AIConfig(p, p.base, s.aiModels[p.id]?.ifBlank { null } ?: p.textModels[0].id,
                         s.aiHearModels[p.id]?.ifBlank { null } ?: p.hearModels[0].id,
@@ -144,6 +167,8 @@ class AIConfig(
     val voiceModel: String? = null,
     val voiceBase: String? = null,
     val customVoice: String? = null,
+    /** Where the hear model is asked (a custom service may name its own; null: not a valid address). */
+    val hearBase: String? = base,
 ) {
     val isLing get() = provider.id == "ling"
     val hasVoices get() = voiceModel != null && voiceBase != null
@@ -155,12 +180,31 @@ class AIConfig(
         else -> provider.voices
     }
 
-    /// Each service turns thinking off its own way (AIConfig.shape on the Mac).
-    fun shape(body: MutableMap<String, Any?>, maxTokens: Int) {
+    /// The hear model is on another server than the text model.
+    val hearsElsewhere get() = hearBase != base
+
+    /// Each service turns thinking off its own way (AIConfig.shape on the Mac). A custom service
+    /// gets `chat_template_kwargs` (vLLM, SGLang and llama.cpp pass it to the chat template, which
+    /// is how Qwen3 turns thinking off); `templateKwargs` false leaves it out for a server that refused it.
+    fun shape(body: MutableMap<String, Any?>, maxTokens: Int, templateKwargs: Boolean = true) {
         body["max_tokens"] = maxTokens
         body["temperature"] = 0.2
         if (isLing) body["thinking"] = mapOf("type" to "disabled")
         else if (provider.id == "openrouter" || provider.id == "zenmux") body["reasoning"] = mapOf("enabled" to false)
+        else if (provider.id == "custom" && templateKwargs) body["chat_template_kwargs"] = mapOf("enable_thinking" to false)
+    }
+
+    companion object {
+        /// The model thought before answering, which makes every translation slow: a
+        /// `reasoning_content` (or `reasoning`) field, reasoning tokens in the usage, or a `<think>`
+        /// block in the answer.
+        fun thought(root: Map<String, Any?>): Boolean {
+            val message = root["choices"].arr().firstOrNull().obj()?.get("message").obj()
+            for (k in listOf("reasoning_content", "reasoning")) if (!message?.get(k).str().isNullOrBlank()) return true
+            val n = root["usage"].obj()?.get("completion_tokens_details").obj()?.get("reasoning_tokens").num()
+            if (n != null && n > 0) return true
+            return message?.get("content").str()?.contains("<think>") == true
+        }
     }
 
     /// One clip in a user message: Ming takes a data URL (of any type: the app sends AAC); the

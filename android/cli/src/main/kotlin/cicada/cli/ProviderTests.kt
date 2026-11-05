@@ -27,6 +27,14 @@ object ProviderTests {
         "aiProblemsNameTheService" to ::problemsNameTheService,
         "aiAClockIsNotSpeech" to ::clockIsNotSpeech,
         "aiFinalNotesKeepRetryingForAboutAMinute" to ::finalNotesRetry,
+        "aiTheLocalNetworkMayUsePlainHTTP" to ::localNetwork,
+        "aiCustomTurnsThinkingOffThroughTheChatTemplate" to ::templateKwargs,
+        "aiAThinkingModelIsSeenFromItsReply" to ::thought,
+        "aiASlowSentenceIsFlagged" to ::slowSentence,
+        "aiAServerThatRefusesTemplateKwargsIsAskedWithout" to ::kwargsRefused,
+        "aiCustomCheckTimesARealSentence" to ::customCheckTimes,
+        "aiTheHearModelMayHaveItsOwnAddress" to ::hearBase,
+        "aiAHearServerThatCantBeReachedFailsHearing" to ::hearServerDown,
     )
 
     private fun check(ok: Boolean, what: String) { if (!ok) throw AssertionError(what) }
@@ -95,6 +103,149 @@ object ProviderTests {
         equal(null, Providers.customBase(" "), "empty")
     }
 
+    fun localNetwork() {
+        for (ok in listOf("http://192.168.1.20:8000/v1", "10.0.0.5:8000/v1", "http://172.20.1.1/v1", "http://100.101.102.103:8000/v1",
+                          "http://169.254.3.4/v1", "http://gpu.local:30000/v1", "http://[fd12:3456::1]:8000/v1", "http://[fe80::1]/v1",
+                          "http://[::1]:8000/v1", "http://localhost:8000/v1"))
+            equal("http", Providers.customBase(ok)?.substringBefore("://"), ok)
+        for (no in listOf("http://172.32.0.1/v1", "http://172.15.0.1/v1", "http://100.128.0.1/v1", "http://100.63.0.1/v1", "http://8.8.8.8/v1",
+                          "http://192.169.1.1/v1", "http://gpu.example.com/v1", "http://10.0.0.5.evil.com/v1", "http://10.0.0.256/v1",
+                          "http://[2001:db8::1]/v1"))
+            equal(null, Providers.customBase(no), no)
+        equal("http://192.168.1.20:8000/v1/", Providers.customBase("192.168.1.20:8000/v1"), "http added for a nearby host")
+        equal("https://10.0.0.5.evil.com/v1/", Providers.customBase("10.0.0.5.evil.com/v1"), "https added for a lookalike")
+        check(Providers.isNearby("http://192.168.1.20:8000/v1/") && !Providers.isLocal("http://192.168.1.20:8000/v1/"), "nearby, not local")
+        // A service on the local network needs no key either.
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "qwen3:14b"))
+        equal("", client(Fake({ _, _ -> reply("ok") }), s, key = null).currentKey(), "no key on the LAN")
+    }
+
+    fun templateKwargs() {
+        val custom = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1").aiConfig()
+        val b = mutableMapOf<String, Any?>()
+        custom.shape(b, 50)
+        equal(mapOf("enable_thinking" to false), b["chat_template_kwargs"], "Qwen3 on vLLM / SGLang / llama.cpp: thinking off")
+        val plain = mutableMapOf<String, Any?>()
+        custom.shape(plain, 50, templateKwargs = false)
+        check("chat_template_kwargs" !in plain, "left out for a server that refused it")
+        for (id in listOf("ling", "zenmux", "openrouter")) {
+            val o = mutableMapOf<String, Any?>()
+            AppSettings(aiProvider = id).aiConfig().shape(o, 50)
+            check("chat_template_kwargs" !in o, "$id never gets it")
+        }
+    }
+
+    fun thought() {
+        fun r(message: Map<String, Any?>, usage: Map<String, Any?>? = null): Map<String, Any?> =
+            mapOf("choices" to listOf(mapOf("message" to message))) + (usage?.let { mapOf("usage" to it) } ?: emptyMap())
+        check(!AIConfig.thought(r(mapOf("content" to "周五发布。"))), "a plain answer")
+        check(AIConfig.thought(r(mapOf("content" to "周五发布。", "reasoning_content" to "The user wants…"))), "reasoning_content")
+        // A reasoning parser on the server: the answer itself sits in reasoning_content.
+        check(AIConfig.thought(r(mapOf("content" to "", "reasoning_content" to "周五发布。"))), "answer in reasoning_content")
+        check(AIConfig.thought(r(mapOf("content" to "周五发布。", "reasoning" to "hmm"))), "reasoning (OpenRouter's name)")
+        check(AIConfig.thought(r(mapOf("content" to "<think>hmm</think>周五发布。"))), "<think>")
+        check(AIConfig.thought(r(mapOf("content" to "周五发布。"), mapOf("completion_tokens_details" to mapOf("reasoning_tokens" to 212)))), "reasoning tokens")
+        check(!AIConfig.thought(r(mapOf("content" to "周五发布。", "reasoning_content" to "  "), mapOf("completion_tokens_details" to mapOf("reasoning_tokens" to 0)))), "blank and zero")
+    }
+
+    fun slowSentence() {
+        check(!AICheck.Speed(0.4, false).slow, "fast")
+        check(AICheck.Speed(0.4, true).slow, "thinks")
+        check(AICheck.Speed(6.4, false).slow, "slow")
+        val c = AICheck(at = 1).pass(AICheck.StepID.Text, 4.2).copy(translate = AICheck.Speed(4.2, true))
+        check(c.slow && c.slowLine()!!.contains("4.2"), "the slow line says how long")
+        check(AICheck(at = 1).pass(AICheck.StepID.Text, 0.5).copy(translate = AICheck.Speed(0.5, false)).slowLine() == null, "nothing to say")
+        check("translate=4.2s thinks" in c.summary, "in the summary (the settings repaint on it)")
+    }
+
+    fun kwargsRefused() {
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "m"))
+        val fake = Fake({ _, b -> if ("chat_template_kwargs" in b) Transport.Response(422, "{}") else reply("好") })
+        val ling = client(fake, s, key = null)
+        equal("好", ling.chat("c", "i", Priority.Translate), "answered without it")
+        equal(2, fake.sent.size, "asked twice")
+        check("chat_template_kwargs" in fake.sent[0].second && "chat_template_kwargs" !in fake.sent[1].second, "the retry leaves it out")
+        ling.chat("c", "i", Priority.Translate)
+        equal(3, fake.sent.size, "not sent again")
+        ling.keyChanged()
+        ling.chat("c", "i", Priority.Translate)
+        check("chat_template_kwargs" in fake.sent[3].second, "back after settings change")
+        // A second refusal is about something else: the field isn't given up.
+        val deaf = Fake({ _, _ -> Transport.Response(400, "{}") })
+        val other = client(deaf, s, key = null)
+        try { other.chat("c", "i", Priority.Translate); throw AssertionError("accepted") } catch (e: LingException) { equal(400, e.status, "the refusal") }
+        try { other.chat("c", "i", Priority.Translate) } catch (_: LingException) {}
+        equal(4, deaf.sent.size, "each call tried both ways")
+        check("chat_template_kwargs" in deaf.sent[2].second, "still sent")
+    }
+
+    fun customCheckTimes() {
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "qwen3:14b"),
+                            aiHearModels = mutableMapOf("custom" to "qwen3-omni"))
+        val thinking = Transport.Response(200, Json.write(mapOf("choices" to listOf(mapOf(
+            "message" to mapOf("content" to "我们会在周五设计评审后发布新版本。", "reasoning_content" to "Okay, the user…"), "finish_reason" to "stop"))), pretty = false))
+        val fake = Fake({ url, b -> if (url.endsWith("models")) Transport.Response(404, "") else if ("Translate the text" in b) thinking else reply("{\"ok\": true}") })
+        val ling = client(fake, s, key = null)
+        ling.check()
+        val first = body(fake.sent[0].second)
+        equal(120, first["max_tokens"].num()?.toInt(), "a real sentence's room")
+        check("ship the new version on Friday" in first["messages"].arr()[0].obj()!!["content"].str()!!, "the sentence")
+        equal("Translate.", first["messages"].arr()[1].obj()!!["content"], "the instruction")
+        val t = ling.aiCheck.translate
+        check(t != null && t.thinks, "thinking found: ${ling.aiCheck.summary}")
+        check(ling.aiCheck.slow && ling.aiCheck.failure == null, "works, but slow")
+    }
+
+    fun hearBase() {
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "m"),
+                            aiHearModels = mutableMapOf("custom" to "qwen3-omni"))
+        equal("http://192.168.1.20:8000/v1/", s.aiConfig().hearBase, "empty: the text model's address")
+        check(!s.aiConfig().hearsElsewhere, "same server")
+        s.aiCustomHearBase = "192.168.1.21:8001/v1"
+        equal("http://192.168.1.21:8001/v1/", s.aiConfig().hearBase, "its own")
+        check(s.aiConfig().hearsElsewhere, "another server")
+        s.aiCustomHearBase = "http://hear.example.com/v1"
+        equal(null, s.aiConfig().hearBase, "not a valid address")
+        equal("https://zenmux.ai/api/v1/", AppSettings(aiProvider = "zenmux").aiConfig().hearBase, "others: the service's")
+        s.aiCustomHearBase = "192.168.1.21:8001/v1"
+        val fake = Fake({ _, _ -> reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。") })
+        val ling = client(fake, s, key = null)
+        ling.chat("c", "i", Priority.Translate, model = s.aiConfig().hearModel, audio = byteArrayOf(1))
+        equal("http://192.168.1.21:8001/v1/chat/completions", fake.sent[0].first, "audio to the hear model's address")
+        ling.chat("c", "i", Priority.Translate)
+        equal("http://192.168.1.20:8000/v1/chat/completions", fake.sent[1].first, "text to the text model's")
+        try {
+            s.aiCustomHearBase = "http://192.168.1.21:8001/v1"
+            s.save()
+            equal("http://192.168.1.21:8001/v1", AppSettings.load().aiCustomHearBase, "kept across a restart")
+        } finally { Paths.settings.delete() }
+    }
+
+    fun hearServerDown() {
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "m"),
+                            aiHearModels = mutableMapOf("custom" to "qwen3-omni"), aiCustomHearBase = "http://192.168.1.21:8001/v1")
+        val fake = Fake({ url, _ ->
+            when {
+                url.endsWith("models") -> Transport.Response(404, "")
+                "192.168.1.21" in url -> throw java.io.IOException("down")
+                else -> reply("{\"ok\": true}")
+            }
+        })
+        val ling = client(fake, s, key = null)
+        ling.proxyHint = { AICheck.ProxyHint.None }
+        ling.check()
+        val f = ling.aiCheck.failure
+        equal(AICheck.StepID.Hear to AICheck.Reason.Unreachable, f?.step to f?.reason, "the hear step: ${ling.aiCheck.summary}")
+        check(ling.checkMessage()!!.contains("192.168.1.21"), "names the hear server: ${ling.checkMessage()}")
+        equal(null, ling.aiCheck.proxy, "no proxy hint for a server on the local network")
+        // A bad hear address stops at hearing, not at the text model's.
+        s.aiCustomHearBase = "http://hear.example.com/v1"
+        ling.keyChanged()
+        ling.check()
+        equal(AICheck.StepID.Hear to AICheck.Reason.BadAddress, ling.aiCheck.failure?.step to ling.aiCheck.failure?.reason, "bad hear address")
+        check(!ling.canHear, "listening can't start without a hear address")
+    }
+
     fun settingsRoundTrip() {
         try {
             AppSettings(aiProvider = "zenmux", aiHearModels = mutableMapOf("zenmux" to "bytedance/doubao-seed-2.0-mini")).save()
@@ -117,6 +268,7 @@ object ProviderTests {
         val b = mutableMapOf<String, Any?>()
         AppSettings(aiProvider = "custom", aiCustomBase = "https://x.example/v1").aiConfig().shape(b, 5)
         check("reasoning" !in b && "thinking" !in b, "a custom service gets neither")
+        check("chat_template_kwargs" in b, "but the chat template's switch")
     }
 
     fun audioPart() {

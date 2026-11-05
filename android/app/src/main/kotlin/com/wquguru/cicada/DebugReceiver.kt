@@ -141,7 +141,7 @@ class DebugReceiver : BroadcastReceiver() {
         fun ai(app: CicadaApp): Map<String, Any?> {
             val l = app.ling
             val c = l.config()
-            return mapOf("provider" to c.provider.id, "base" to c.base, "text" to c.textModel, "hear" to c.hearModel, "voice" to c.voiceModel,
+            return mapOf("provider" to c.provider.id, "base" to c.base, "text" to c.textModel, "hear" to c.hearModel, "hearBase" to c.hearBase, "voice" to c.voiceModel,
                          "state" to l.keyState.name, "hears" to l.hears, "speaks" to l.speaks, "check" to l.aiCheck.summary,
                          "voice" to l.lastVoice?.first, "sim" to l.simulateCheck?.name,
                          "catalog" to listOf(l.textCatalog.size, l.hearCatalog.size), "keyFile" to app.key.path.name)

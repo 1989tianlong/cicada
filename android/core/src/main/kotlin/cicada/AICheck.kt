@@ -22,7 +22,16 @@ data class AICheck(
     val proxy: ProxyHint? = null,
     /** OpenRouter only: dollars left (the smaller of the key's limit and the account's credits). */
     val balance: Double? = null,
+    /** A custom service: how long one real sentence took, and whether the model thought first. */
+    val translate: Speed? = null,
 ) {
+    data class Speed(val seconds: Double, val thinks: Boolean) {
+        /// A sentence that takes this long often misses the 6 s a translation is given
+        /// (Translator.translate) and falls back to Google.
+        val slow get() = thinks || seconds >= SLOW_AFTER
+        companion object { const val SLOW_AFTER = 3.0 }
+    }
+
     enum class StepID { Reach, Key, Text, Hear }
 
     enum class Reason { Unreachable, BadAddress, InvalidKey, MgmtKey, NoCredit, NoModel, NoJSON, Deaf, Busy, ServerError }
@@ -61,6 +70,10 @@ data class AICheck(
     /** Every step passed (busy counts; a step nothing has tested yet does not block). */
     val passed get() = at != null && failure == null && !running
     val lowBalance get() = (balance ?: Double.POSITIVE_INFINITY) < LOW_BALANCE
+    /** Text works but every sentence is slow (a thinking model): translations will fall back. */
+    val slow get() = textFailure == null && translate?.slow == true
+    /** The failure, unless it is only the hear model's (a custom service's rows show that apart). */
+    val textFailure get() = failure?.takeIf { it.step != StepID.Hear }
 
     /** Something only the user can fix (a busy service fixes itself). */
     val needsUser: Boolean get() {
@@ -111,7 +124,7 @@ data class AICheck(
         val f = failure ?: return if (busy) LF("%@ 现在很忙，key 没问题。开会时会自动重试。", service) else null
         return when (f.reason) {
             Reason.Unreachable -> LF("这台手机访问不到 %@。", host)
-            Reason.BadAddress -> L("地址要用 https，只有 localhost 可以用 http。")
+            Reason.BadAddress -> L("地址要用 https；这台手机和局域网里的服务可以用 http。")
             Reason.InvalidKey -> LF("%@ 说这个 key 无效，可能没复制全，或已删除。", service)
             Reason.MgmtKey -> L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。")
             Reason.NoCredit -> LF("%@ 账户余额不足。", service)
@@ -140,6 +153,14 @@ data class AICheck(
             Reason.NoJSON -> L("AI 服务的设置要改一下") to notesStop
             Reason.Unreachable, Reason.Busy, Reason.ServerError -> null
         }
+    }
+
+    /// Why translations are slow, and what to do (a custom service).
+    fun slowLine(): String? {
+        val t = translate?.takeIf { slow } ?: return null
+        val secs = String.format(Strings.locale, "%.1f", t.seconds)
+        return if (t.thinks) LF("这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒会改用 Google。在服务端关掉思考，或换一个不思考的模型。", secs)
+        else LF("翻一句要 %@ 秒，超过 6 秒会改用 Google。换一个更小的模型会快一些。", secs)
     }
 
     /// The proxy line under "can't reach": what this phone's proxy looks like, and what to do.
@@ -172,7 +193,8 @@ data class AICheck(
             "${lower(s.id.name)}=$v"
         }
         return parts + (proxy?.let { " proxy=${lower(it.name)}" } ?: "") +
-            (balance?.let { " balance=${String.format(java.util.Locale.US, "%.2f", it)}" } ?: "") + if (passive) " passive" else ""
+            (balance?.let { " balance=${String.format(java.util.Locale.US, "%.2f", it)}" } ?: "") + (if (passive) " passive" else "") +
+            (translate?.let { " translate=${String.format(java.util.Locale.US, "%.1f", it.seconds)}s${if (it.thinks) " thinks" else ""}" } ?: "")
     }
 
     companion object {

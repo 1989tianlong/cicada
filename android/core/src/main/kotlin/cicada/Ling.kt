@@ -234,6 +234,8 @@ class LingClient(
     /// Debug control only: report this OpenRouter balance instead of the real one.
     @Volatile var simulateBalance: Double? = null
     private val checkLock = Any()
+    /// The custom service refused `chat_template_kwargs` once: leave it out until settings change.
+    @Volatile private var noTemplateKwargs = false
     private val listeners = mutableListOf<() -> Unit>()
 
     fun onChange(listener: () -> Unit) { synchronized(listeners) { listeners.add(listener) } }
@@ -241,11 +243,11 @@ class LingClient(
 
     val provider: Provider get() = config().provider
 
-    /// The key for the service in use. A custom service on this phone may need none: "".
+    /// The key for the service in use. A custom service on this phone or the local network may need none: "".
     fun currentKey(): String? {
         val c = config()
         val k = key.read()
-        if (k == null && c.provider.id == "custom" && c.base != null && Providers.isLocal(c.base)) return ""
+        if (k == null && c.provider.id == "custom" && c.base != null && Providers.isNearby(c.base)) return ""
         return k
     }
 
@@ -263,14 +265,38 @@ class LingClient(
     /// How long the last good check's newest request took, in seconds.
     val seconds: Double? get() = aiCheck.steps.mapNotNull { (it.state as? AICheck.State.Ok)?.seconds }.lastOrNull()
     /// Listening and 我说 can work: the hear model wasn't found to refuse audio.
-    val canHear get() = usable && hears != false && config().hearModel.isNotEmpty()
+    val canHear get() = usable && hears != false && config().let { it.hearModel.isNotEmpty() && it.hearBase != null }
 
     /// The service's name for messages ("这个服务" for a custom address, localized) and its host.
     val serviceName: String get() = provider.let { if (it.id == "custom") Strings.L("这个服务") else it.name }
-    val serviceHost: String get() = (config().base ?: provider.base)?.let { try { java.net.URI(it).host } catch (_: Exception) { null } } ?: ""
+    val serviceHost: String get() = host(config().base ?: provider.base)
+    /// Where the hear model is asked: the service's host unless a custom service names its own.
+    val hearHost: String get() = config().let { c -> if (c.hearsElsewhere) host(c.hearBase) else serviceHost }
 
-    /// The failed (or busy) step's sentence, for the screens.
-    fun checkMessage(): String? = config().let { aiCheck.message(serviceName, serviceHost, it.textModel, it.hearModel) }
+    private fun host(base: String?) = base?.let { try { java.net.URI(it).host } catch (_: Exception) { null } } ?: ""
+
+    /// The failed (or busy) step's sentence, for the screens; a hear model on its own server that
+    /// can't be reached names that server.
+    fun checkMessage(): String? = config().let {
+        val host = if (aiCheck.failure?.step == AICheck.StepID.Hear) hearHost else serviceHost
+        aiCheck.message(serviceName, host, it.textModel, it.hearModel)
+    }
+
+    /// The server that can't be reached is on this phone or the local network: a proxy has nothing
+    /// to do with it, so there's no proxy hint.
+    fun unreachableNearby(r: AICheck = aiCheck): Boolean {
+        val c = config()
+        val base = if (r.failure?.step == AICheck.StepID.Hear) c.hearBase else c.base
+        return r.failure?.reason == AICheck.Reason.Unreachable && base != null && Providers.isNearby(base)
+    }
+
+    /// AICheck.classify, except that a hear model on its own server that can't be reached fails
+    /// the hear step: the text model's address is fine.
+    private fun classify(e: LingException, step: AICheck.StepID, c: AIConfig): AICheck.Failure? {
+        val f = AICheck.classify(e, step) ?: return null
+        return if (step == AICheck.StepID.Hear && c.hearsElsewhere && f.reason == AICheck.Reason.Unreachable)
+            AICheck.Failure(AICheck.StepID.Hear, AICheck.Reason.Unreachable, null) else f
+    }
 
     /// Something only the user can fix, in one line ("Ling 的 key 用不了 · 修好之前听不了"): the
     /// listening notification and the live screens. Null without a key (onboarding asks for it).
@@ -283,6 +309,7 @@ class LingClient(
     /// The key, the service or its models changed: forget what the last check found.
     fun keyChanged() {
         key.reload()
+        noTemplateKwargs = false
         keyState = if (currentKey() == null) KeyState.None else KeyState.Unchecked
         synchronized(checkLock) { aiCheck = AICheck() }
         lastVoice = null
@@ -292,7 +319,8 @@ class LingClient(
 
     /// The cheapest requests that prove each step: Ling's tiny model, else one token from the text
     /// model (OpenRouter also reads its key info and credits, for the balance). A custom service
-    /// must also return JSON (the notes need it). Another service's hear model must take audio
+    /// translates one real sentence instead, timed, to catch a model that thinks before every
+    /// answer, and must also return JSON (the notes need it). Another service's hear model must take audio
     /// (half a second of silence), and the model list then tells whether both models still exist.
     fun check(): KeyState {
         // One at a time (a service change and a key import come close together), and the probes'
@@ -329,12 +357,22 @@ class LingClient(
                 r = r.pass(AICheck.StepID.Text, (System.nanoTime() - started) / 1e9).pass(AICheck.StepID.Hear, null)
             } else {
                 if (c.textModel.isEmpty()) throw LingException(LingException.Kind.Http, 404)
-                chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens = 5, timeout = 20.0)
-                r = r.pass(AICheck.StepID.Text, (System.nanoTime() - started) / 1e9)
+                if (c.provider.id == "custom") {
+                    // A real sentence, the way a meeting translates: one token says nothing about a
+                    // model that thinks for six seconds before every answer.
+                    var thinks = false
+                    chat("Translate the text into Simplified Chinese. Reply with the translation only.\n\nWe will ship the new version on Friday after the design review.",
+                         "Translate.", Priority.Speak, maxTokens = 120, timeout = 30.0) { thinks = AIConfig.thought(it) }
+                    val seconds = (System.nanoTime() - started) / 1e9
+                    r = r.pass(AICheck.StepID.Text, seconds).copy(translate = AICheck.Speed(seconds, thinks))
+                } else {
+                    chat("Reply with OK.", "Reply.", Priority.Speak, maxTokens = 5, timeout = 20.0)
+                    r = r.pass(AICheck.StepID.Text, (System.nanoTime() - started) / 1e9)
+                }
                 if (c.provider.id == "openrouter") r = r.copy(balance = openRouterBalance(c, k))
                 if (c.provider.id == "custom") {
                     try {
-                        chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json = true, maxTokens = 20, timeout = 20.0)
+                        chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json = true, maxTokens = 20, timeout = 30.0)
                     } catch (e: LingException) {
                         if (e.kind == LingException.Kind.Http) r = r.fail(AICheck.StepID.Text, AICheck.Reason.NoJSON, e.status) else throw e
                     }
@@ -343,6 +381,7 @@ class LingClient(
                     step = AICheck.StepID.Hear
                     started = System.nanoTime()
                     if (c.hearModel.isEmpty()) throw LingException(LingException.Kind.Http, 404)
+                    if (c.hearBase == null) return finishCheck(r.fail(AICheck.StepID.Hear, AICheck.Reason.BadAddress, reached = false), c)
                     try {
                         chat("Transcribe the audio.", "Reply with what is said, or NONE.", Priority.Speak, maxTokens = 10, timeout = 20.0,
                              model = c.hearModel, audio = silenceWav())
@@ -354,7 +393,7 @@ class LingClient(
                 }
             }
         } catch (e: LingException) {
-            val f = AICheck.classify(e, step)
+            val f = classify(e, step, c)
             if (f != null) {
                 r = if (f.reason == AICheck.Reason.Busy) r.pass(f.step, null).with(f.step, AICheck.State.Busy) else r.fail(f.step, f.reason, f.code)
             } else if (e.kind == LingException.Kind.Hijacked || e.kind == LingException.Kind.Parse) {
@@ -368,9 +407,11 @@ class LingClient(
         }
         if (r.failure == null && !c.isLing) {
             val listed = fetchCatalog()
+            val hearOwn = hearListed
             if (listed != null) {
                 // A model the service no longer lists fails here, before a meeting finds out.
-                val hearing = listed.second
+                // A hear model on its own server isn't on this list: that server's own was read for it.
+                val hearing = if (c.hearsElsewhere) hearOwn else listed.second
                 if (c.textModel !in listed.first) r = r.fail(AICheck.StepID.Text, AICheck.Reason.NoModel)
                 else if (hearing != null && c.hearModel !in hearing) r = r.fail(AICheck.StepID.Hear, AICheck.Reason.Deaf)
             }
@@ -380,7 +421,7 @@ class LingClient(
 
     private fun finishCheck(result: AICheck, c: AIConfig): KeyState {
         var r = result
-        if (r.failure?.reason == AICheck.Reason.Unreachable && r.proxy == null) r = r.copy(proxy = proxyHint?.invoke())
+        if (r.failure?.reason == AICheck.Reason.Unreachable && r.proxy == null && !unreachableNearby(r)) r = r.copy(proxy = proxyHint?.invoke())
         simulateBalance?.let { r = r.copy(balance = it) }
         r = r.copy(at = System.currentTimeMillis())
         synchronized(checkLock) { aiCheck = r }
@@ -425,7 +466,7 @@ class LingClient(
             if (before.running || checking > 0) return
             var r = before
             if (failure != null) {
-                val f = AICheck.classify(failure, step) ?: return
+                val f = classify(failure, step, config()) ?: return
                 if (f.reason == AICheck.Reason.ServerError) return
                 r = if (f.reason == AICheck.Reason.Busy) r.pass(AICheck.StepID.Key, null).with(f.step, AICheck.State.Busy) else r.fail(f.step, f.reason, f.code)
             } else {
@@ -442,7 +483,7 @@ class LingClient(
         Log.d("ai: from a real request -> ${now.summary}")
         changed()
         val hint = proxyHint
-        if (now.failure?.reason == AICheck.Reason.Unreachable && !wasUnreachable && hint != null) {
+        if (now.failure?.reason == AICheck.Reason.Unreachable && !wasUnreachable && hint != null && !unreachableNearby(now)) {
             val p = hint()
             synchronized(checkLock) { if (aiCheck.failure?.reason == AICheck.Reason.Unreachable) aiCheck = aiCheck.copy(proxy = p) }
             changed()
@@ -458,19 +499,34 @@ class LingClient(
 
     /// The service's models, for the model pickers: those that chat, and those that hear. Quietly
     /// just the recommended ones when the service has no `/models`. Returns every listed id and,
-    /// when the reply says which take audio, those (to tell whether the chosen models exist).
+    /// when the reply says which take audio, those (to tell whether the chosen models exist). A
+    /// hear model on its own server: that server's list fills the hear picker and `hearListed`.
     fun fetchCatalog(): Pair<Set<String>, Set<String>?>? {
         val c = config()
         val k = currentKey() ?: return null
         if (c.isLing || c.base == null) return null
-        val res = try { transport.send(c.base + "models", "GET", null, headers(k), 20_000) } catch (_: Exception) { return null }
-        if (res.status != 200) return null
-        textCatalog = Providers.catalog(res.body, c.provider.textModels.map { it.id }, hears = false)
-        hearCatalog = Providers.catalog(res.body, c.provider.hearModels.map { it.id }, hears = true)
+        hearListed = null
+        val hearBody = if (c.hearsElsewhere && c.hearBase != null) models(c.hearBase, k) else null
+        if (hearBody != null) {
+            hearCatalog = Providers.catalog(hearBody, c.provider.hearModels.map { it.id }, hears = true)
+            hearListed = AICheck.listedHearing(hearBody)
+        }
+        val body = models(c.base, k) ?: return null
+        textCatalog = Providers.catalog(body, c.provider.textModels.map { it.id }, hears = false)
+        if (!c.hearsElsewhere) hearCatalog = Providers.catalog(body, c.provider.hearModels.map { it.id }, hears = true)
         Log.d("ai ${c.provider.id}: ${textCatalog.size} models, ${hearCatalog.size} hear")
         changed()
-        val listed = AICheck.listedModels(res.body) ?: return null
-        return listed to AICheck.listedHearing(res.body)
+        val listed = AICheck.listedModels(body) ?: return null
+        return listed to AICheck.listedHearing(body)
+    }
+
+    /// Which models the hear model's own server says take audio (null: it says nothing, or the
+    /// hear model shares the text model's address).
+    @Volatile private var hearListed: Set<String>? = null
+
+    private fun models(base: String, k: String): String? {
+        val res = try { transport.send(base + "models", "GET", null, headers(k), 20_000) } catch (_: Exception) { return null }
+        return if (res.status == 200) res.body else null
     }
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
@@ -478,15 +534,17 @@ class LingClient(
     /// retry 429s with backoff (retryWaits); the rest fail fast so the caller can fall back.
     /// `patient` (the final notes) keeps retrying for about a minute. A 429 holds every request
     /// start for a while (rateLimited), and a retry keeps its place in the queue, so lines stay in order.
+    /// Audio goes to the hear model's address (a custom service may name its own). `reply` sees the
+    /// whole reply (the check reads whether the model thought).
     fun chat(
         content: String, instruction: String, priority: Priority, json: Boolean = false,
         maxTokens: Int = 1024, timeout: Double = 30.0, model: String? = null, audio: ByteArray? = null,
-        audioType: String = "audio/wav", patient: Boolean = false,
+        audioType: String = "audio/wav", patient: Boolean = false, reply: ((Map<String, Any?>) -> Unit)? = null,
     ): String {
         val k = currentKey() ?: throw LingException(LingException.Kind.NoKey)
         if (keyState == KeyState.Invalid) throw LingException(LingException.Kind.InvalidKey)
         val c = config()
-        val base = c.base ?: throw LingException(LingException.Kind.NoKey)
+        val base = (if (audio != null) c.hearBase else c.base) ?: throw LingException(LingException.Kind.NoKey)
         val m = model ?: c.textModel
         val user: Any = if (audio == null) instruction else listOf(c.audioPart(audio, m, audioType), mapOf("type" to "text", "text" to instruction))
         val body = linkedMapOf<String, Any?>(
@@ -494,9 +552,8 @@ class LingClient(
             "messages" to listOf(mapOf("role" to "system", "content" to content), mapOf("role" to "user", "content" to user)),
             "stream" to false,
         )
-        c.shape(body, maxTokens)
+        c.shape(body, maxTokens, templateKwargs = !noTemplateKwargs)
         if (json) body["response_format"] = mapOf("type" to "json_object")
-        val payload = Json.write(body, pretty = false)
 
         val waits = retryWaits(priority, audio != null, patient)
         var attempt = 1
@@ -506,7 +563,8 @@ class LingClient(
             ticket = acquire(priority, c.provider.spacing, ticket, failIfPaused = waits.isEmpty())
             val started = System.nanoTime()
             try {
-                val root = post(base + "chat/completions", payload, k, timeout)
+                val root = postChat(base + "chat/completions", body, k, timeout)
+                reply?.invoke(root)
                 val choice = root["choices"].arr().firstOrNull().obj()
                 val text = choice?.get("message").obj()?.get("content").str() ?: throw LingException(LingException.Kind.Parse)
                 val finish = choice?.get("finish_reason").str()
@@ -625,6 +683,22 @@ class LingClient(
         val h = linkedMapOf("Content-Type" to "application/json", "User-Agent" to "Cicada-Android/0.1")
         if (k.isNotEmpty()) h["Authorization"] = "Bearer $k"
         return h
+    }
+
+    /// A chat completion. A custom server that refuses `chat_template_kwargs` (a strict gateway
+    /// answers 400 or 422 to fields it doesn't know) is asked again without it, and, when that
+    /// works, isn't sent it again until settings change. A second refusal was about something else
+    /// (a hear model that takes no audio): the field stays. `body` loses the field either way.
+    private fun postChat(url: String, body: MutableMap<String, Any?>, k: String, timeout: Double): Map<String, Any?> {
+        try {
+            return post(url, Json.write(body, pretty = false), k, timeout)
+        } catch (e: LingException) {
+            if (e.kind != LingException.Kind.Http || e.status !in listOf(400, 422) || body.remove("chat_template_kwargs") == null) throw e
+            val root = post(url, Json.write(body, pretty = false), k, timeout)
+            if (!noTemplateKwargs) Log.d("ai custom: chat_template_kwargs refused (HTTP ${e.status}), sent without it from now on")
+            noTemplateKwargs = true
+            return root
+        }
     }
 
     private fun post(url: String, payload: String, k: String, timeout: Double): Map<String, Any?> {

@@ -3,7 +3,7 @@
 Cicada 的 Android 版：把手机里播放的声音（或面对面时麦克风听到的话）变成双语字幕和实时纪要，存成和 Mac 版同一格式的会议记录。面对面时按住“按住说话”说一句，松开后手机用对方的语言读出来。方案和取舍见 [docs/android-plan.md](../docs/android-plan.md)。
 
 - 声音来源：手机里的声音（`AudioPlaybackCapture`，Android 10 起，排除知了自己；会议和通话 app 系统不让采集）或面对面（麦克风）。
-- 识别：分段发给 AI 服务的“听的模型”，一次请求返回语言、原文和译文。默认 Ling 的 Ming（`Ming-3.0-audio-flash`，片段压成 AAC 再传）；用不了 Ling 时可在 设置 › AI 服务 或引导里换成 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务（`core/.../Providers.kt`，推荐 Qwen 3.8 Omni Flash，比 Ming 慢 1–2 秒，片段按 WAV 传，流量大约是 AAC 的 10 倍）。纪要和翻译跟着换；“我说”在有声音模型的服务上用它的声音（OpenRouter、ZenMux 是 Gemini），其余用手机自带的声音；只有“你自己的声音”只能用 Ling。都需要一个 key，声音都会发到所选服务。和 Windows、Linux 同一套做法。
+- 识别：分段发给 AI 服务的“听的模型”，一次请求返回语言、原文和译文。默认 Ling 的 Ming（`Ming-3.0-audio-flash`，片段压成 AAC 再传）；用不了 Ling 时可在 设置 › AI 服务 或引导里换成 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务（`core/.../Providers.kt`，推荐 Qwen 3.8 Omni Flash，比 Ming 慢 1–2 秒，片段按 WAV 传，流量大约是 AAC 的 10 倍）。纪要和翻译跟着换；“我说”在有声音模型的服务上用它的声音（OpenRouter、ZenMux 是 Gemini），其余用手机自带的声音；只有“你自己的声音”只能用 Ling。都需要一个 key（自建服务在这台手机或局域网里时可不填，也可以用 http），声音都会发到所选服务（自建服务的听的模型可以另填地址）。和 Windows、Linux 同一套做法。
 - 悬浮窗：纪要或字幕条，`FLAG_NOT_FOCUSABLE` 不抢输入，`FLAG_SECURE` 默认不出现在截图和录屏里；打开“共享屏幕时让对方看到”后显示“对方可见”。
 - 纪要、记录格式（逐字节和 Mac 一致）、提示词、文案都和 Mac 版一致；英日韩翻译直接用 `Resources/*.lproj/Localizable.strings`，Android 独有的在 `app/src/main/strings/`。
 - 检查更新：每天在后台查一次 GitHub Releases，有新版本时在首页、设置和通知里提示，点“更新”用浏览器下载 APK，由系统安装器覆盖安装（签名一致才行），不需要安装权限。

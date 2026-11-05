@@ -26,6 +26,8 @@ class AiServiceActivity : Activity() {
     private lateinit var page: LinearLayout
     private var unobserve: (() -> Unit)? = null
     private var shown: String? = null
+    /// A custom service's rows that are open (翻译和纪要, 听对方, 同传声音); null until the page first decides.
+    private var open: MutableSet<String>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,22 +47,19 @@ class AiServiceActivity : Activity() {
         val c = ling.config()
         val p = c.provider
         val key = listOf(ling.keyState, ling.currentKey()?.takeLast(4), ling.aiCheck.summary, ling.aiCheck.at?.let { it / 60_000 }, ling.lastVoice?.first,
-                         ling.textCatalog.size, ling.hearCatalog.size, app.settings.toJson(), Strings.language).joinToString("|")
+                         ling.textCatalog.size, ling.hearCatalog.size, app.settings.toJson(), Strings.language, open).joinToString("|")
         if (key == shown) return
         shown = key
         page.removeAllViews()
         val name = name(p)
+        if (p.id == "custom") { customPage(app, c); return }
 
         // The service, its key (and a custom service's address).
         page.addView(ui.sectionLabel(L("服务")))
         val rows = mutableListOf<View>(choiceRow(L("服务"), Providers.ALL.map { it.id to label(it) }, p.id) { app.setAiProvider(it) })
-        if (p.id == "custom") rows.add(fieldRow(L("地址"), app.settings.aiCustomBase, "https://api.example.com/v1", null) {
-            app.settings.aiCustomBase = it; app.settings.save(); app.aiChanged()
-        })
         val k = ling.currentKey()
         val title = when {
             k == null -> if (p.id == "custom") L("还没填好") else L("还没填 API key")
-            k.isEmpty() -> L("本机服务，不用 key")
             else -> AIKey.masked(k)
         }
         val trailing = if (!k.isNullOrEmpty()) ui.text(L("更换"), 15f, Palette.link, bold = true, lines = 1) else null
@@ -97,8 +96,7 @@ class AiServiceActivity : Activity() {
 
         page.addView(ui.sectionLabel(L("自己选模型")))
         page.addView(ui.group(modelRows(app, c)))
-        val sent = if (p.id == "custom") host else name
-        val foot = (if (c.isLing) "" else L("按所选模型计费。")) + LF("听的时候，声音会发给 %@。", sent)
+        val foot = (if (c.isLing) "" else L("按所选模型计费。")) + LF("听的时候，声音会发给 %@。", name)
         page.addView(ui.helper(foot).apply { setPadding(ui.dp(16), ui.dp(12), ui.dp(16), 0) })
     }
 
@@ -153,11 +151,6 @@ class AiServiceActivity : Activity() {
         if (p.id == "ling") return listOf(
             choiceRow(L("文字模型"), p.textModels.map { it.id to it.id }, c.textModel, helper = L("3.1 更准；3.0 更快、更省")) { app.setAiModel("text", it) },
             ui.listRow(L("听的模型"), L("Ming 一次识别并翻译"), trailing = value(c.hearModel), chevron = false))
-        if (p.id == "custom") return listOf(
-            fieldRow(L("文字模型"), s.aiModels["custom"].orEmpty(), L("例如 qwen3:14b"), L("纪要和整句翻译")) { app.setAiModel("text", it) },
-            fieldRow(L("听的模型"), s.aiHearModels["custom"].orEmpty(), L("例如 qwen3-omni"), L("要能输入音频：听对方和“我说”都用它")) { app.setAiModel("hear", it) },
-            fieldRow(L("声音模型"), s.aiVoiceModels["custom"].orEmpty(), L("例如 kokoro"), L("需支持 /audio/speech；不填就用手机的声音")) { app.setAiModel("voice", it) },
-            fieldRow(L("声音"), s.aiCustomVoice, L("例如 af_heart"), null) { s.aiCustomVoice = it; s.save(); app.aiChanged(check = false) })
         val rows = mutableListOf(
             modelRow(L("听的模型"), L("听对方和“我说”都用它"), p.hearModels, app.ling.hearCatalog, c.hearModel) { app.setAiModel("hear", it) },
             modelRow(L("文字模型"), L("纪要和整句翻译"), p.textModels, app.ling.textCatalog, c.textModel) { app.setAiModel("text", it) })
@@ -165,8 +158,166 @@ class AiServiceActivity : Activity() {
         return rows
     }
 
+    // MARK: Own service
+
+    /// 其他（兼容 OpenAI）(AISettings.swift › customPage): one row per use, each at its own address if
+    /// need be (a text model, an audio model and a speech model often run as separate servers),
+    /// each opening to its fields and saying whether it works and how fast. On a phone the hear
+    /// model is what listens: there is no on-device recognition to fall back to.
+    private fun customPage(app: CicadaApp, c: AIConfig) {
+        val ling = app.ling
+        val check = ling.aiCheck
+        // A service that isn't set up yet, or doesn't work, opens where it needs filling in.
+        val opened = open ?: mutableSetOf<String>().also {
+            if (check.failure?.step == AICheck.StepID.Hear) it.add("hear") else if (!check.passed || check.slow) it.add("text")
+            open = it
+        }
+        page.addView(ui.sectionLabel(L("服务")))
+        page.addView(ui.group(listOf(choiceRow(L("服务"), Providers.ALL.map { it.id to label(it) }, c.provider.id) { app.setAiProvider(it) })))
+        page.addView(ui.helper(L("每样可以接不同的机器；这台手机和局域网里的服务可以用 http。")).apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0) })
+        page.addView(ui.sectionLabel(L("按功能指定")))
+        val rows = mutableListOf<View>()
+        textSection(app, c, opened, rows)
+        hearSection(app, c, opened, rows)
+        voiceSection(app, c, opened, rows)
+        page.addView(ui.group(rows))
+        val host = c.base?.let { Uri.parse(it).host } ?: L("你填的地址")
+        page.addView(ui.helper(LF("加密存在这台手机上，只发给 %@", host)).apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0) })
+        // Never "按所选模型计费" here: the user runs it, or their provider bills it its own way.
+        val nearby = c.base?.let(Providers::isNearby) ?: false
+        val foot = (if (nearby) L("跑在你自己的机器上，不按量计费。") else L("费用以这个服务为准。")) +
+            LF("听的时候，声音会发给 %@。", ling.hearHost.ifEmpty { host })
+        page.addView(ui.helper(foot).apply { setPadding(ui.dp(16), ui.dp(12), ui.dp(16), 0) })
+    }
+
+    /// A row that opens to its fields: a state dot, the use, what it runs on, and how it's doing.
+    private fun useRow(id: String, open: MutableSet<String>, title: String, detail: String, dot: Int, trailing: String?,
+                       trailingColor: Int = Palette.tertiary): View {
+        val row = ui.listRow(title, detail, leading = ui.dot(dot), trailing = trailing?.let { ui.text(it, 13f, trailingColor, lines = 1).apply { fontFeatureSettings = "tnum" } }) {
+            if (!open.remove(id)) open.add(id)
+            build()
+        }
+        row.getChildAt(row.childCount - 1).rotation = if (id in open) 90f else 0f
+        return row
+    }
+
+    /// The fields under an open row, indented under its title.
+    private fun panel(vararg views: View?) = ui.stack(0).apply {
+        setPadding(ui.dp(18), 0, 0, ui.dp(8))
+        views.filterNotNull().forEach { addView(it) }
+    }
+
+    private fun note(text: String, color: Int) = ui.text(text, 13f, color).apply { setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8)) }
+
+    private fun badAddress(raw: String) =
+        if (raw.isNotBlank() && Providers.customBase(raw) == null) note(L("地址要用 https；这台手机和局域网里的服务可以用 http。"), Palette.link) else null
+
+    /// An address as the row shows it: host and port ("192.168.1.20:8000").
+    private fun where(raw: String): String {
+        val u = Uri.parse(Providers.customBase(raw) ?: return raw)
+        return (u.host ?: raw) + if (u.port > 0) ":${u.port}" else ""
+    }
+
+    private val grey = android.graphics.Color.parseColor("#C4C7CE")
+
+    private fun textSection(app: CicadaApp, c: AIConfig, open: MutableSet<String>, rows: MutableList<View>) {
+        val ling = app.ling
+        val s = app.settings
+        val check = ling.aiCheck
+        val host = c.base?.let { Uri.parse(it).host }.orEmpty()
+        val detail = if (host.isEmpty() || c.textModel.isEmpty()) L("填上地址和模型") else "$host · ${short(c.textModel)}"
+        val secs = check.translate?.let { "%.1f".format(Strings.locale, it.seconds) }
+        // The hear model's own failure shows on its row: the text model may be fine.
+        val failed = check.textFailure != null
+        val trailing = when {
+            check.running -> L("正在检查…")
+            failed && ling.hasKey -> status(app)
+            else -> secs?.let { LF("翻一句 %@ 秒", it) }
+        }
+        val dot = when {
+            !ling.hasKey -> grey
+            check.running -> Palette.accent
+            failed -> Palette.link
+            check.slow || check.busy -> AiCheckViews.warn
+            check.at != null && check[AICheck.StepID.Text] is AICheck.State.Ok -> AiCheckViews.ok
+            else -> grey
+        }
+        rows.add(useRow("text", open, L("翻译和纪要"), detail, dot, trailing,
+            if (check.slow) AiCheckViews.warn else if (failed) Palette.link else Palette.tertiary))
+        if ("text" !in open) return
+        val k = ling.currentKey()
+        val keyLine = when {
+            k == null -> L("还没填 API key")
+            k.isEmpty() -> L("本机和局域网服务可不填")
+            else -> AIKey.masked(k)
+        }
+        val model = if (ling.textCatalog.isNotEmpty())
+            modelRow(L("模型"), null, emptyList(), ling.textCatalog, c.textModel) { app.setAiModel("text", it) }
+        else fieldRow(L("模型"), s.aiModels["custom"].orEmpty(), L("例如 qwen3:14b"), null) { app.setAiModel("text", it) }
+        val steps = k != null && (check.running || failed || (check.at != null && check.failure == null && !check.passed))
+        val facts = if (!steps && check.at != null && check[AICheck.StepID.Text] is AICheck.State.Ok)
+            listOfNotNull(L("能写纪要"), check.translate?.let { if (it.thinks) L("会先思考") else L("不思考") }).joinToString(" · ") else null
+        rows.add(panel(
+            fieldRow(L("地址"), s.aiCustomBase, "http://192.168.1.20:8000/v1", null, shown = ::where) { s.aiCustomBase = it; s.save(); app.aiChanged() },
+            badAddress(s.aiCustomBase),
+            model,
+            ui.listRow("key", keyLine, trailing = if (!k.isNullOrEmpty()) ui.text(L("更换"), 15f, Palette.link, bold = true, lines = 1) else null) { editKey(this, ui) },
+            ui.listRow(if (check.running) L("正在检查…") else L("重新检查"), null,
+                leading = ui.icon(R.drawable.i_restore, 22, if (check.running) Palette.tertiary else Palette.body), chevron = false,
+                onClick = if (check.running || k == null) null else ({ app.recheck() })),
+            check.slowLine()?.let { note(it, AiCheckViews.warn) },
+            if (steps) AiCheckViews.steps(this, ui, recheck = false) { editKey(this, ui) } else null,
+            facts?.let { note(it, Palette.tertiary) },
+        ))
+    }
+
+    /// 听对方: the hear model, which may run on its own server; its state is the check's hear step.
+    private fun hearSection(app: CicadaApp, c: AIConfig, open: MutableSet<String>, rows: MutableList<View>) {
+        val ling = app.ling
+        val s = app.settings
+        val st = ling.aiCheck[AICheck.StepID.Hear]
+        val detail = listOf(ling.hearHost, short(c.hearModel).ifEmpty { L("未填") }).filter { it.isNotEmpty() }.joinToString(" · ")
+        val (dot, trailing) = when {
+            !ling.hasKey -> grey to null
+            st == AICheck.State.Running -> Palette.accent to L("正在检查…")
+            st is AICheck.State.Ok -> AiCheckViews.ok to st.seconds?.let { LF("听 %@ 秒", "%.1f".format(Strings.locale, it)) }
+            st == AICheck.State.Busy -> AiCheckViews.warn to LF("%@ 现在很忙", ling.serviceName)
+            st is AICheck.State.Fail -> Palette.link to (if (st.reason == AICheck.Reason.Unreachable) L("暂时连不上") else L("模型用不了"))
+            else -> grey to null
+        }
+        rows.add(useRow("hear", open, L("听对方"), detail, dot, trailing, if (st is AICheck.State.Fail) Palette.link else Palette.tertiary))
+        if ("hear" !in open) return
+        val problem = if (ling.aiCheck.failure?.step == AICheck.StepID.Hear) ling.checkMessage() else null
+        rows.add(panel(
+            fieldRow(L("模型"), s.aiHearModels["custom"].orEmpty(), L("例如 qwen3-omni"), L("要能输入音频：听对方和“我说”都用它")) { app.setAiModel("hear", it) },
+            fieldRow(L("地址"), s.aiCustomHearBase, L("跟上面一样"), null, L("跟上面一样"), ::where) { s.aiCustomHearBase = it; s.save(); app.aiChanged() },
+            badAddress(s.aiCustomHearBase),
+            problem?.let { note(it, Palette.link) },
+        ))
+    }
+
+    /// 同传声音: the speech model that reads 我说 to the other side; empty is the phone's voice.
+    private fun voiceSection(app: CicadaApp, c: AIConfig, open: MutableSet<String>, rows: MutableList<View>) {
+        val ling = app.ling
+        val s = app.settings
+        val voiceModel = s.aiVoiceModels["custom"].orEmpty()
+        val host = c.voiceBase?.let { Uri.parse(it).host }.orEmpty()
+        val detail = if (voiceModel.isEmpty()) L("没填，用手机的声音") else listOf(host, voiceModel, s.aiCustomVoice).filter { it.isNotEmpty() }.joinToString(" · ")
+        val last = ling.lastVoice?.first
+        val dot = if (voiceModel.isEmpty() || last == null) grey else if (last) AiCheckViews.ok else Palette.link
+        val trailing = if (voiceModel.isEmpty()) null else last?.let { if (it) L("上次正常") else L("上次没出声") }
+        rows.add(useRow("voice", open, L("同传声音"), detail, dot, trailing, if (last == false) Palette.link else Palette.tertiary))
+        if ("voice" !in open) return
+        rows.add(panel(
+            fieldRow(L("模型"), voiceModel, L("例如 kokoro"), L("需支持 /audio/speech；不填就用手机的声音")) { app.setAiModel("voice", it) },
+            fieldRow(L("声音"), s.aiCustomVoice, L("例如 af_heart"), null) { s.aiCustomVoice = it; s.save(); app.aiChanged(check = false) },
+            fieldRow(L("地址"), s.aiCustomVoiceBase, L("跟上面一样"), null, L("跟上面一样"), ::where) { s.aiCustomVoiceBase = it; s.save(); app.aiChanged(check = false) },
+            badAddress(s.aiCustomVoiceBase),
+        ))
+    }
+
     /// Recommended models first, with why, then everything else the service lists.
-    private fun modelRow(label: String, helper: String, recommended: List<Model>, listed: List<String>, current: String, pick: (String) -> Unit): View {
+    private fun modelRow(label: String, helper: String?, recommended: List<Model>, listed: List<String>, current: String, pick: (String) -> Unit): View {
         val options = recommended.map { it.id to (it.id + if (it.note.isNotEmpty()) " · " + L(it.note) else "") }.toMutableList()
         for (id in listed) if (options.none { it.first == id }) options.add(id to id)
         if (current.isNotEmpty() && options.none { it.first == current }) options.add(current to current)
@@ -181,8 +332,9 @@ class AiServiceActivity : Activity() {
         }
 
     /// A typed value (a custom service's address and models): the row shows it, tapping edits it.
-    private fun fieldRow(label: String, current: String, hint: String, helper: String?, save: (String) -> Unit) =
-        ui.listRow(label, helper, trailing = value(current.ifEmpty { L("未填") }.let(::short))) {
+    private fun fieldRow(label: String, current: String, hint: String, helper: String?, empty: String = L("未填"),
+                         shown: (String) -> String = ::short, save: (String) -> Unit) =
+        ui.listRow(label, helper, trailing = value(if (current.isEmpty()) empty else shown(current))) {
             ui.input(this, label, current, helper = helper, hint = hint) { if (it != current) save(it) }
         }
 
@@ -260,6 +412,9 @@ class AiServiceActivity : Activity() {
             lateinit var dialog: android.app.Dialog
             lateinit var submit: () -> Unit
             val box = ui.keyField { submit() }
+            // A service on this phone or the local network may need none (the key is optional there).
+            val base = app.ling.config().base
+            if (p.id == "custom" && base != null && Providers.isNearby(base)) box.hint = L("本机和局域网服务可不填")
             val field = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL

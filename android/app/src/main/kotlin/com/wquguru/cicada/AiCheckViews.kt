@@ -101,7 +101,8 @@ object AiCheckViews {
         val cfg = ling.config()
         val again = if (recheck) listOf(L("重新检查") to { app.recheck() }) else emptyList()
         return when (f.reason) {
-            Reason.Unreachable -> listOf<Pair<String, () -> Unit>>(L("怎么设置代理") to { open(a, helpUrl()) }) + again
+            // A server on the local network: the proxy help has nothing to say.
+            Reason.Unreachable -> if (ling.unreachableNearby()) again else listOf<Pair<String, () -> Unit>>(L("怎么设置代理") to { open(a, helpUrl()) }) + again
             Reason.InvalidKey, Reason.MgmtKey ->
                 listOf<Pair<String, () -> Unit>>(L("更换 key") to changeKey) + (p.site?.let { listOf<Pair<String, () -> Unit>>(LF("打开 %@", p.name) to { open(a, it) }) } ?: emptyList())
             Reason.NoCredit -> listOf<Pair<String, () -> Unit>>(L("去充值") to { open(a, topUp(p)) }) + again

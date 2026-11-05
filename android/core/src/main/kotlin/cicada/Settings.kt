@@ -19,6 +19,8 @@ class AppSettings(
     var aiCustomBase: String = "",
     var aiCustomVoiceBase: String = "",
     var aiCustomVoice: String = "",
+    /// The custom service's hear model's own address (the Mac's aiCustomHearBase); empty: the text model's.
+    var aiCustomHearBase: String = "",
     /// "notes" (live notes, default) or "subtitles" (the subtitle bar), for the floating window.
     var view: String = "notes",
     /// 共享屏幕时让对方看到: let the floating window show up in screenshots and screen recording.
@@ -63,6 +65,7 @@ class AppSettings(
         "aiProvider" to aiProvider, "aiModels" to aiModels.toSortedMap(), "aiHearModels" to aiHearModels.toSortedMap(),
         "aiVoiceModels" to aiVoiceModels.toSortedMap(), "aiCustomBase" to aiCustomBase,
         "aiCustomVoiceBase" to aiCustomVoiceBase, "aiCustomVoice" to aiCustomVoice,
+        "aiCustomHearBase" to aiCustomHearBase,
         "showInCapture" to showInCapture, "onboarded" to onboarded, "uiLanguage" to uiLanguage,
         "source" to source, "overlay" to overlay, "silenceEnd" to silenceEnd, "silenceMinutes" to silenceMinutes,
         "speakerVoices" to speakerVoices, "recordAudio" to recordAudio, "speakBack" to speakBack,
@@ -94,6 +97,7 @@ class AppSettings(
                             aiModels = strings(o["aiModels"]), aiHearModels = strings(o["aiHearModels"]),
                             aiVoiceModels = strings(o["aiVoiceModels"]), aiCustomBase = o["aiCustomBase"].str() ?: "",
                             aiCustomVoiceBase = o["aiCustomVoiceBase"].str() ?: "", aiCustomVoice = o["aiCustomVoice"].str() ?: "",
+                            aiCustomHearBase = o["aiCustomHearBase"].str() ?: "",
                             showInCapture = o["showInCapture"].bool() ?: false, onboarded = o["onboarded"].bool() ?: false,
                             uiLanguage = o["uiLanguage"].str() ?: d.uiLanguage, source = o["source"].str() ?: d.source,
                             overlay = o["overlay"].bool() ?: true,

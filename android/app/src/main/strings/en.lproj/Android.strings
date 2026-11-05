@@ -175,7 +175,6 @@
 
 /* AI 服务: other services than Ling (Providers.kt, AiServiceActivity) */
 "服务" = "Service";
-"本机服务，不用 key" = "Local service, no key needed";
 "加密存在这台手机上，只发给 %@（%@）" = "Encrypted on this phone, sent only to %1$@ (%2$@)";
 "加密存在这台手机上，只发给 %@" = "Encrypted on this phone, sent only to %@";
 "按所选模型计费。" = "Billed by the models you choose. ";
@@ -219,3 +218,8 @@
 "上次同传没出声，用了手机的声音" = "Silent last time; the phone's voice spoke instead";
 "这台手机访问不到 %@。" = "This phone can't reach %@.";
 "这台手机没开代理。在国内通常要开代理才能用 %@。" = "No proxy is on. In mainland China, %@ usually needs one.";
+"每样可以接不同的机器；这台手机和局域网里的服务可以用 http。" = "Each can use a different machine; services on this phone or your local network can use http.";
+"按功能指定" = "By use";
+"地址要用 https；这台手机和局域网里的服务可以用 http。" = "The address must use https; services on this phone or your local network can use http.";
+"没填，用手机的声音" = "Not set: the phone's voice";
+"本机和局域网服务可不填" = "Optional on this phone or your local network";
