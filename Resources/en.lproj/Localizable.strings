@@ -121,7 +121,7 @@
 "例如 af_heart" = "e.g. af_heart";
 "跟上面一样" = "Same as above";
 "其他（兼容 OpenAI）" = "Other (OpenAI-compatible)";
-"（推荐）" = "(Recommended)";
+"（推荐）" = " (Recommended)";
 "模型名" = "Model name";
 "好" = "OK";
 "推荐" = "Recommended";
