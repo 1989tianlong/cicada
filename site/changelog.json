@@ -612,6 +612,17 @@
         ],
         "title": "Windows 英文、日文、韩文界面里，自建服务的 key 输入框能看全提示，也不再写成 Mac。",
         "text": "原来提示被截断成 “Optional on this Mac or y…”；现在输入框更宽，写的是这台 PC。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac",
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "长会议的实时纪要里，议题的起止时间不再比里面的要点晚好几分钟。",
+        "text": ""
       }
     ]
   },
