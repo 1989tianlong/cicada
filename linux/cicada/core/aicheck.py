@@ -105,8 +105,10 @@ class AICheck:
 
     @property
     def slow(self) -> bool:
-        """Text works but every sentence is slow (a thinking model): translations will fall back."""
-        return self.failure is None and self.translate is not None and self.translate.slow
+        """Text works but every sentence is slow (a thinking model): translations will fall back.
+        The hear model is a job of its own here: one that isn't set yet or can't hear doesn't hide it."""
+        f = self.failure
+        return (f is None or f[0] == "hear") and self.translate is not None and self.translate.slow
 
     @property
     def low_balance(self) -> bool:

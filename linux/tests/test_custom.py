@@ -105,6 +105,16 @@ class Shape(unittest.TestCase):
         r.translate = aicheck.Speed(0.5, False)
         self.assertIsNone(r.slow_line())
         self.assertIn("translate=0.5s", r.summary())
+        # The hear model is a job of its own: not filled in yet, it doesn't hide a thinking text model.
+        r = aicheck.AICheck()
+        r.pass_up_to("text", 4.2)
+        r.translate = aicheck.Speed(4.2, True)
+        r.fail("hear", aicheck.DEAF)
+        self.assertTrue(r.slow)
+        r = aicheck.AICheck()
+        r.translate = aicheck.Speed(4.2, True)
+        r.fail("text", aicheck.NO_JSON)
+        self.assertFalse(r.slow)
 
 
 class TemplateKwargs(Base):
