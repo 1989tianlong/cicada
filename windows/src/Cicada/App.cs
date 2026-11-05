@@ -80,6 +80,8 @@ sealed class Controller
     /// The installer's download progress (0…1) while an update is being fetched, and why the last one failed.
     public double? UpdateProgress { get; private set; }
     public string? UpdateFailure { get; private set; }
+    /// Whether the browser took the download over after the in-app one failed (it may not open).
+    public bool UpdatePageOpened { get; private set; }
     Action? balloonClicked;
     Hotkey? hotkey;
     TrayFlyout? flyout;
@@ -951,8 +953,8 @@ sealed class Controller
     public async void InstallUpdate()
     {
         if (Updates.Available is not { } u || UpdateProgress is not null) return;
-        if (u.Setup is null) { DownloadUpdate(); return; }
-        UpdateProgress = 0; UpdateFailure = null;
+        if (u.Setup is null) { _ = DownloadUpdate(); return; }
+        UpdateProgress = 0; UpdateFailure = null; UpdatePageOpened = false;
         UpdatesChanged();
         try
         {
@@ -967,25 +969,26 @@ sealed class Controller
             UpdateProgress = null;
             UpdateFailure = e is UpdateChecker.Failure f ? L(f.Key) : L("更新包无效");
             Log.Debug($"update: in-app install failed ({e.GetType().Name}), opening the download");
+            UpdatePageOpened = DownloadUpdate();
             UpdatesChanged();
-            DownloadUpdate();
         }
     }
 
     /// 下载: the browser fetches this PC's installer or zip (or opens the release page when there is none).
-    public void DownloadUpdate()
+    public bool DownloadUpdate()
     {
-        if (Updates.Available is not { } u) return;
-        Open(u.Download ?? u.Page);
+        if (Updates.Available is not { } u) return false;
         Log.Debug($"update: download {u.Version}");
+        return Open(u.Download ?? u.Page);
     }
 
     public void OpenReleaseNotes() { if (Updates.Available is { } u) Open(u.Page); }
 
-    public static void Open(string url)
+    /// False when no browser took it (none set, or Windows refused).
+    public static bool Open(string url)
     {
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception e) { Log.Debug($"update: open failed {e.GetType().Name}"); }
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); return true; }
+        catch (Exception e) { Log.Debug($"update: open failed {e.GetType().Name}: {e.Message}"); return false; }
     }
 
     /// 检查更新: says 正在检查… / 已是最新版本 / 连不上 GitHub for a few seconds.

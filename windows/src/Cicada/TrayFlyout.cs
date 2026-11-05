@@ -82,7 +82,7 @@ sealed class TrayFlyout : Window
         {
             var size = update.Size > 0 ? $"{update.Size / 1_048_576.0:0} MB · " : "";
             var detail = app.UpdateProgress is { } p0 ? LF("正在下载 %@：%lld%%", update.Version, (long)(p0 * 100))
-                : app.UpdateFailure is { } f ? LF("没能自动更新：%@。已打开下载页", f)
+                : app.UpdateFailure is { } f ? (app.UpdatePageOpened ? LF("没能自动更新：%@。已打开下载页", f) : LF("没能自动更新：%@", f))
                 : size + SettingsWindow.UpdateHint(update);
             var text = Ui.Stack(2, Ui.Text(LF("新版本 %@", update.Version), 13, Palette.Ink, Palette.Strong, wrap: false),
                                 Ui.Text(detail, 11, Palette.Secondary),

@@ -111,7 +111,7 @@ sealed class SettingsWindow : Window
     {
         if (app.Updates.Available is { } u)
             return app.UpdateProgress is { } p ? LF("正在下载 %@：%lld%%", u.Version, (long)(p * 100))
-                : app.UpdateFailure is { } f ? LF("没能自动更新：%@", f)
+                : app.UpdateFailure is { } f ? (app.UpdatePageOpened ? LF("没能自动更新：%@。已打开下载页", f) : LF("没能自动更新：%@", f))
                 : LF("有新版本 %@", u.Version) + " · " + UpdateHint(u);
         if (app.UpdateCheck is { } c) return c;
         if (app.Updates.LastChecked is not { } d) return null;
