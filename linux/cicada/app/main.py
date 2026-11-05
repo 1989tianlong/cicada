@@ -252,7 +252,10 @@ class Controller:
             from .settings_window import SettingsWindow
             self.settings_window = SettingsWindow(self)
             self.application.add_window(self.settings_window)
-        self.settings_window.show_all()
+        # show_all() only on the way up: on an open window it would bring back what its "show"
+        # handlers hid (the key card under a custom service's own rows).
+        if not self.settings_window.get_visible():
+            self.settings_window.show_all()
         self.settings_window.present()
         if ai:
             self.settings_window.scroll.get_vadjustment().set_value(0)
