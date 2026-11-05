@@ -14,7 +14,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import cicada.KeyState
 import cicada.MeetingNotes
+import cicada.Providers
+import cicada.Strings
 import cicada.Strings.L
+import cicada.Strings.LF
 
 /// First run, three screens, one job each, the main button pinned at the bottom: Ling key → what
 /// Cicada can hear and the permissions for it → try the sample meeting.
@@ -170,6 +173,8 @@ class OnboardingActivity : Activity() {
         submit = submit@{
             val text = box.text.toString().trim()
             if (!text.startsWith("sk-")) { showStatus(L("要粘贴 sk- 开头的 Ling key"), true); return@submit }
+            // Back on this page after choosing another service: a Ling key means Ling again.
+            app.setAiProvider("ling", check = false)
             app.key.save(text)
             app.ling.keyChanged()
             status.text = L("正在检查…"); status.setTextColor(Palette.secondary)
@@ -206,8 +211,82 @@ class OnboardingActivity : Activity() {
             ui.logo(64),
             intro(L("接上 Ling"), L("识别、翻译和纪要都靠它，大约 1 分钟")),
             ui.group(listOf(stepRow(1, L("打开 Ling 开放平台"), open), stepRow(2, L("点“创建令牌”，复制 sk- 开头的 Ling key")), stepRow(3, L("回到这里粘贴")))),
-            ui.stack(8, ui.text(L("Ling key"), 13f, Palette.body, bold = true).apply { setPadding(ui.dp(4), 0, 0, 0); labelFor = View.generateViewId().also { box.id = it } }, field, status.apply { setPadding(ui.dp(4), 0, 0, 0) }))
+            ui.stack(8, ui.text(L("Ling key"), 13f, Palette.body, bold = true).apply { setPadding(ui.dp(4), 0, 0, 0); labelFor = View.generateViewId().also { box.id = it } }, field, status.apply { setPadding(ui.dp(4), 0, 0, 0) }),
+            // A way out for people who can't use Ling: another service, in a sheet, saying what it lacks.
+            ui.textButton(L("用不了 Ling？"), Palette.link) { otherService() }.apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            })
         return frame(content, ui.button(L("继续"), "primary") { submit() })
+    }
+
+    /// 用其他服务 (OnboardingKey.swift › otherEntry): OpenRouter or ZenMux, their key, and what they
+    /// lack. The service switches only once its key checks out; a custom address is set up in
+    /// 设置 › AI 服务.
+    private fun otherService() {
+        val app = cicada
+        var chosen = app.settings.aiProvider.takeIf { it == "openrouter" || it == "zenmux" } ?: "zenmux"
+        lateinit var dialog: android.app.Dialog
+        val sheet = ui.stack(14)
+        fun render() {
+            sheet.removeAllViews()
+            val p = Providers.named(chosen)
+            val status = ui.text(LF("加密存在这台手机上，只发给 %@", p.name), 13f, Palette.secondary)
+            lateinit var check: (String) -> Unit
+            lateinit var box: android.widget.EditText
+            box = ui.keyField { check(box.text.toString().trim()) }.apply { hint = LF("粘贴 %@ 的 key", p.name) }
+            fun problem(text: String) { status.text = text; status.setTextColor(Palette.link); status.announceForAccessibility(text) }
+            check = check@{ text ->
+                if (!text.startsWith("sk-")) { problem(LF("剪贴板里没有 sk- 开头的 key，请先去 %@ 复制。", p.name)); return@check }
+                val before = app.settings.aiProvider
+                app.setAiProvider(p.id, check = false)
+                app.key.save(text)
+                app.aiChanged(check = false)
+                status.text = L("正在检查…"); status.setTextColor(Palette.secondary)
+                app.background.execute {
+                    val state = app.ling.check()
+                    app.main.post {
+                        if (state == KeyState.Ok) { dialog.dismiss(); next(); return@post }
+                        // A key that doesn't work isn't kept, and the service goes back to what it was.
+                        if (state == KeyState.Invalid) app.key.remove()
+                        app.setAiProvider(before)
+                        problem(if (state == KeyState.Invalid) L("这个 key 无效，请检查是否复制完整，或重新创建一个") else LF("连不上 %@，请检查网络或代理", p.name))
+                    }
+                }
+            }
+            val field = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = ui.dp(56)
+                background = ui.rounded(Palette.ground, 16)
+                setPadding(ui.dp(16), 0, ui.dp(6), 0)
+                addView(box, ui.weight())
+            }
+            val open = ui.listRow(LF("打开 %@", p.name), L("注册或登录后点“创建令牌”"), trailing = ui.icon(R.drawable.i_external, 18, Palette.link), chevron = false) {
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.site))) } catch (_: Exception) {}
+            }.apply { background = ui.rounded(Palette.ground, 16) }
+            val gap = if (Strings.language == "zh-Hans") "" else " "
+            val lacks = ui.text(L("少了：") + gap + L("你自己的声音") + gap + L("（只有 Ling 支持）"), 13f, Palette.secondary).apply {
+                background = ui.rounded(Palette.ground, 12)
+                setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8))
+            }
+            sheet.addView(ui.helper(L("听、纪要和翻译都能用，模型已经选好。")).apply { gravity = Gravity.CENTER })
+            sheet.addView(ui.segmented(listOf("openrouter" to "OpenRouter", "zenmux" to "ZenMux"), chosen) { chosen = it; render() })
+            sheet.addView(open)
+            sheet.addView(field)
+            sheet.addView(status.apply { setPadding(ui.dp(4), 0, ui.dp(4), 0) })
+            sheet.addView(ui.button(L("粘贴并检查"), "primary", R.drawable.i_clipboard) {
+                SettingsActivity.paste(box)
+                check(box.text.toString().trim())
+            })
+            sheet.addView(lacks)
+            sheet.addView(ui.textButton(L("‹ 还是用 Ling"), Palette.link) { dialog.dismiss() }.apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL }
+            })
+        }
+        render()
+        dialog = ui.sheet(this, L("用其他服务"), android.widget.ScrollView(this).apply { addView(sheet) })
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        dialog.show()
     }
 
     private fun hearStep(): View {

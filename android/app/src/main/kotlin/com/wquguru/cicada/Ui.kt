@@ -500,8 +500,9 @@ class Ui(val context: Context) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = dp(52)
-                setPadding(dp(16), 0, dp(12), 0)
-                addView(text(label, 16f, Palette.ink, bold = on, lines = 1), weight())
+                setPadding(dp(16), dp(6), dp(12), dp(6))
+                // Two lines: a model with why it's recommended runs long, more so in English.
+                addView(text(label, 16f, Palette.ink, bold = on, lines = 2), weight())
                 if (on) addView(icon(R.drawable.i_check, 20, Palette.ink), LinearLayout.LayoutParams(dp(20), dp(20)))
                 contentDescription = label
                 isSelected = on

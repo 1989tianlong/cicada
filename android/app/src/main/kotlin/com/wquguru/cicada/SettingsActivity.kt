@@ -46,23 +46,18 @@ class SettingsActivity : Activity() {
     private fun build() {
         val app = cicada
         val s = app.settings
-        val key = listOf(app.ling.keyState, app.key.read()?.takeLast(4), s.toJson(), app.canOverlay, Strings.language, app.updates.available?.version, app.updates.manual).joinToString("|")
+        val key = listOf(app.ling.keyState, app.ling.currentKey()?.takeLast(4), app.ling.hears, s.toJson(), app.canOverlay, Strings.language, app.updates.available?.version, app.updates.manual).joinToString("|")
         if (key == shown) return
         shown = key
         page.removeAllViews()
 
+        // AI 服务: the service and how it is doing; its key, what works with it and its models are
+        // on their own page (AiServiceActivity).
         page.addView(ui.sectionLabel(L("AI 服务")))
-        val k = app.key.read()
-        val keyStatus = when (app.ling.keyState) {
-            KeyState.None -> L("还没填 API key")
-            KeyState.Checking -> L("正在检查…")
-            KeyState.Invalid -> L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
-            KeyState.Unreachable -> L("连不上 Ling，检查一下网络")
-            KeyState.Ok -> AIKey.masked(k ?: "") + " · " + L("正常")
-            else -> AIKey.masked(k ?: "")
-        }
-        page.addView(ui.group(listOf(ui.listRow(L("Ling key"), keyStatus, leading = ui.icon(R.drawable.i_lock, 22, Palette.body)) { editKey() },
-            choiceRow(L("纪要和翻译模型"), listOf("Ling-3.1-flash" to "Ling-3.1-flash", "Ling-3.0-flash" to "Ling-3.0-flash"), s.model) { s.model = it; app.saveSettings() })))
+        page.addView(ui.group(listOf(ui.listRow(L("服务"), AiServiceActivity.summary(app), leading = ui.icon(R.drawable.i_lock, 22, Palette.body),
+                                                trailing = value(AiServiceActivity.name(app.ling.provider))) {
+            startActivity(Intent(this, AiServiceActivity::class.java))
+        })))
 
         page.addView(ui.sectionLabel(L("语言")))
         val targets = listOf("system" to L("跟随系统")) + Languages.targets.map { it.code to it.name }
@@ -84,7 +79,7 @@ class SettingsActivity : Activity() {
         page.addView(ui.sectionLabel(L("我说 · 面对面")))
         page.addView(ui.group(listOf(
             switchRow(L("把我说的翻译给对方"), L("按住说话，松开后用对方的语言读出来"), s.speakBack) { s.speakBack = it; app.saveSettings() },
-            ui.listRow(L("试一句"), L("用手机的声音读一句英语"), trailing = ui.icon(R.drawable.i_play, 20, Palette.ink), chevron = false) { tryVoice() })))
+            ui.listRow(L("试一句"), AiServiceActivity.cloudVoice(app)?.let { Strings.LF("用 %@ 的声音读一句英语", it) } ?: L("用手机的声音读一句英语"), trailing = ui.icon(R.drawable.i_play, 20, Palette.ink), chevron = false) { tryVoice() })))
 
         page.addView(ui.sectionLabel(L("在其他应用上")))
         val rows = mutableListOf<View>(
@@ -173,44 +168,17 @@ class SettingsActivity : Activity() {
 
     /// A sample of how my words will sound to them (the Mac's 试一句), in English.
     private fun tryVoice() {
+        val app = cicada
+        val sample = "Could you send the revised quote by Friday? We can sign next week."
+        if (AiServiceActivity.cloudVoice(app) != null) {
+            app.background.execute {
+                if (app.voice.speakCloud(app.ling, sample, onStart = {}, onEnd = {}) != Voice.Result.Spoken)
+                    app.main.post { android.widget.Toast.makeText(this, L("没能读出来"), android.widget.Toast.LENGTH_SHORT).show() }
+            }
+            return
+        }
         val r = cicada.voice.speak("Could you send the revised quote by Friday? We can sign next week.", "en", onStart = {}, onEnd = {})
         if (r != Voice.Result.Spoken) android.widget.Toast.makeText(this, if (r == Voice.Result.NoVoice) L("手机不会读这个语言") else L("没能读出来"), android.widget.Toast.LENGTH_SHORT).show()
-    }
-
-    /// Change or remove the key: a sheet with the field, 粘贴, and 删除 Ling key.
-    private fun editKey() {
-        val app = cicada
-        val status = ui.helper("")
-        lateinit var dialog: android.app.Dialog
-        lateinit var submit: () -> Unit
-        val box = ui.keyField { submit() }
-        val field = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = ui.rounded(Palette.ground, 16)
-            setPadding(ui.dp(16), ui.dp(4), ui.dp(4), ui.dp(4))
-            addView(box, ui.weight())
-            addView(ui.button(L("粘贴"), "white", R.drawable.i_clipboard, height = 44) { paste(box) })
-        }
-        submit = submit@{
-            val text = box.text.toString().trim()
-            if (!text.startsWith("sk-")) { status.text = L("要粘贴 sk- 开头的 Ling key"); status.setTextColor(Palette.link); return@submit }
-            if (!app.key.save(text)) { status.text = L("保存失败"); return@submit }
-            app.ling.keyChanged()
-            app.background.execute { app.ling.check() }
-            dialog.dismiss()
-        }
-        val body = ui.stack(10, field, status,
-            LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(ui.button(L("取消"), "quiet") { dialog.dismiss() }, ui.weight())
-                addView(ui.button(L("保存"), "primary") { submit() }, ui.weight().apply { leftMargin = ui.dp(10) })
-            },
-            ui.textButton(L("删除 Ling key"), Palette.link) { app.key.remove(); app.ling.keyChanged(); dialog.dismiss() })
-        dialog = ui.sheet(this, L("更换 Ling key"), body)
-        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        dialog.show()
-        box.requestFocus()
     }
 
     companion object {

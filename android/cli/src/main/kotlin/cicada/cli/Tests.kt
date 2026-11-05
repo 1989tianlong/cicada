@@ -68,7 +68,7 @@ object Tests {
             "lingMarksABadKey" to ::lingMarksABadKey,
             "lingGateSpacesStartsAndServesPriorityFirst" to ::lingGate,
             "listenEngineEndToEndWithAFakeMing" to ::listenEndToEnd,
-        )
+        ) + ProviderTests.tests
         var passed = 0; var failed = 0
         for ((name, test) in tests) {
             try { test(); passed++ } catch (e: Throwable) { failed++; println("FAIL $name: ${e.message ?: e.javaClass.simpleName}") }

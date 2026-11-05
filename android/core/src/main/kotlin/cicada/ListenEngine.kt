@@ -5,8 +5,8 @@ import java.util.concurrent.Future
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-/// Listening end to end: audio → segments → Ming (language, original, translation in one call) →
-/// lines in the record, plus live notes. UI-free; the app shows the record and listens to
+/// Listening end to end: audio → segments → the AI service's hear model (Ming on Ling: language,
+/// original, translation in one call) → lines in the record, plus live notes. UI-free; the app shows the record and listens to
 /// `onChange` (called on worker threads: post to the main thread).
 ///
 /// Ming takes ~2.2 s whatever the segment's length, so segments overlap in flight: request starts
@@ -43,8 +43,10 @@ class ListenEngine(
     val spoken: String? get() = synchronized(gate) { hint }
     /// Segments sent and not yet back: the UI shows "…" while this is above zero.
     val pending: Int get() = synchronized(gate) { segments.size }
-    /// The last error worth showing ("Ling key 无效", "连不上 Ling"), cleared by the next good reply.
+    /// The last error worth showing ("Ling key 无效", "连不上 ZenMux"), cleared by the next good reply.
     @Volatile var problem: String? = null; private set
+    /// What kind it is ("key", "busy", "network"), for the screens to pick an icon by.
+    @Volatile var problemKind: String? = null; private set
     @Volatile var level = 0.0; private set
     /// Seconds of audio heard this meeting (the capture is alive while this grows).
     @Volatile var heardSeconds = 0.0; private set
@@ -52,7 +54,9 @@ class ListenEngine(
     @Volatile var peak = 0.0; private set
 
     /// Compresses a segment before upload (the app sets AAC: WAV is ~10x larger, ~146 MB an hour
-    /// of speech on mobile data). Null or a throw falls back to WAV, which Ming always takes.
+    /// of speech on mobile data). Null or a throw falls back to WAV, which Ming always takes. Only
+    /// for Ling: the other services' `input_audio` is WAV (Qwen, Gemini and Doubao were tested
+    /// with WAV only), so they cost the bigger upload.
     @Volatile var encoder: (ShortArray) -> Clip? = { null }
 
     // The notes' language is read from 设置 when they're written, from launch on: notes generated
@@ -140,7 +144,7 @@ class ListenEngine(
         synchronized(gate) {
             done.clear(); segments.clear(); inFlight.clear()
             nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0.0
-            hint = null; candidate = null; candidateVotes = 0; problem = null
+            hint = null; candidate = null; candidateVotes = 0; problem = null; problemKind = null
         }
         holding = false; saying = false; muted = false; sayProblem = null; saidCount = 0
         heardSeconds = 0.0; peak = 0.0
@@ -238,9 +242,13 @@ class ListenEngine(
             onWords?.invoke()
             if (text != null) onSaid?.invoke(text, their) else sayProblem = Strings.L("这句已经是对方的语言")
         } catch (e: LingException) {
-            sayProblem = when (e.kind) {
-                LingException.Kind.NoKey, LingException.Kind.InvalidKey -> Strings.L("Ling key 无效")
-                LingException.Kind.Network, LingException.Kind.Timeout -> Strings.L("连不上 Ling，检查网络")
+            val name = ling.provider.name
+            sayProblem = when {
+                e.kind == LingException.Kind.Http && e.status in listOf(400, 404) && name != "Ling" -> Strings.L("这个模型听不了声音，换一个支持音频输入的")
+                e.kind == LingException.Kind.NoKey || e.kind == LingException.Kind.InvalidKey ->
+                    if (name == "Ling") Strings.L("Ling key 无效") else Strings.LF("%@ 的 key 无效", Strings.L(name))
+                e.kind == LingException.Kind.Network || e.kind == LingException.Kind.Timeout ->
+                    if (name == "Ling") Strings.L("连不上 Ling，检查网络") else Strings.LF("连不上 %@", Strings.L(name))
                 else -> Strings.L("没听清，再说一次")
             }
             Log.d("listen: saying failed ${e.message}")
@@ -254,6 +262,7 @@ class ListenEngine(
     }
 
     private fun encode(pcm: ShortArray): Clip {
+        if (!ling.config().isLing) return Clip.wav(pcm)
         val clip = try { encoder(pcm) } catch (e: Exception) { Log.d("listen: encode failed ${e.message}"); null }
         if (clip == null || clip.bytes.isEmpty()) return Clip.wav(pcm)
         return clip
@@ -275,15 +284,10 @@ class ListenEngine(
                 heard = translator.hear(clip, asked, lang, seg.seconds)?.let { h ->
                     if (settings.targetFor(h.lang) == asked) h else h.copy(translation = null)
                 }
-                problem = null
+                problem = null; problemKind = null
             } catch (e: LingException) {
-                problem = when (e.kind) {
-                    LingException.Kind.NoKey -> Strings.L("需要 Ling key 才能听")
-                    LingException.Kind.InvalidKey -> Strings.L("Ling key 无效")
-                    LingException.Kind.RateLimited -> Strings.L("Ling 太忙，稍后再试")
-                    LingException.Kind.Network, LingException.Kind.Timeout -> Strings.L("连不上 Ling，检查网络")
-                    else -> null
-                }
+                val (kind, text) = problem(e, ling.provider.name)
+                problemKind = kind; problem = text
                 Log.d("listen: segment ${seg.index} failed ${e.message}")
             } catch (e: Exception) {
                 Log.d("listen: segment ${seg.index} failed ${e.javaClass.simpleName}")
@@ -360,6 +364,29 @@ class ListenEngine(
     }
 
     companion object {
+        /// (kind, what to say) for a stretch that couldn't be heard. Ling keeps its own words; another
+        /// service is named. A hear model that refuses audio (400 / 404) is a key-like problem: 设置 fixes it.
+        fun problem(e: LingException, service: String): Pair<String?, String?> {
+            val ling = service == "Ling"
+            if (e.kind == LingException.Kind.Http && (e.status == 400 || e.status == 404) && !ling)
+                return "key" to Strings.L("这个模型听不了声音，换一个支持音频输入的")
+            val kind = when (e.kind) {
+                LingException.Kind.NoKey, LingException.Kind.InvalidKey -> "key"
+                LingException.Kind.RateLimited -> "busy"
+                LingException.Kind.Network, LingException.Kind.Timeout -> "network"
+                else -> null
+            }
+            val name = Strings.L(service)
+            val text = when (e.kind) {
+                LingException.Kind.NoKey -> if (ling) Strings.L("需要 Ling key 才能听") else Strings.LF("需要 %@ 的 key 才能听", name)
+                LingException.Kind.InvalidKey -> if (ling) Strings.L("Ling key 无效") else Strings.LF("%@ 的 key 无效", name)
+                LingException.Kind.RateLimited -> if (ling) Strings.L("Ling 太忙，稍后再试") else Strings.LF("%@ 太忙，稍后再试", name)
+                LingException.Kind.Network, LingException.Kind.Timeout -> if (ling) Strings.L("连不上 Ling，检查网络") else Strings.LF("连不上 %@", name)
+                else -> null
+            }
+            return kind to text
+        }
+
         /// What may be spoken into the room for a line: my words' translation, never my own words.
         fun speakable(line: TranscriptLine): String? {
             val dst = line.dst?.trim() ?: return null

@@ -18,6 +18,7 @@ import cicada.MeetingEndWatch
 import cicada.NotesEngine
 import cicada.Paths
 import cicada.PcmAudioSource
+import cicada.Providers
 import cicada.SessionStore
 import cicada.SpeakerLabels
 import cicada.Strings
@@ -79,8 +80,9 @@ class CicadaApp : Application() {
             (0 until list.size()).map { list[it].toLanguageTag() }
         }
         loadStrings()
-        key = AIKey(KeystoreProtector)
-        ling = LingClient(key).apply { model = settings.model }
+        // The AI service in use (设置 › AI 服务): its key file, address and models, read on every call.
+        key = AIKey(KeystoreProtector, service = { settings.aiProvider })
+        ling = LingClient(key, config = { settings.aiConfig() })
         store = SessionStore(loadNow = false)
         background.execute { val t = System.currentTimeMillis(); store.load(); Log.d("store: loaded ${store.all().size} in ${System.currentTimeMillis() - t} ms") }
         notes = NotesEngine(ling, store)
@@ -204,9 +206,23 @@ class CicadaApp : Application() {
 
     /// My words in their language, out of the phone's speaker. The mic is muted for the segmenter
     /// meanwhile (and a beat after, for the room's echo) so the phone doesn't hear itself as them.
+    /// Another AI service with a voice model reads them in its voice (Gemini on OpenRouter and
+    /// ZenMux); Ling and the rest use the phone's, and so does a cloud voice that fails.
     private fun speakAloud(text: String, lang: String) {
         listen.muted = true
         changed()
+        if (ling.speaks && !ling.config().isLing) {
+            background.execute {
+                val r = voice.speakCloud(ling, text, onStart = { changed() }, onEnd = {})
+                if (r == Voice.Result.Spoken) main.postDelayed({ if (!voice.speaking) { listen.muted = false; changed() } }, 400)
+                else speakWithPhone(text, lang)
+            }
+            return
+        }
+        speakWithPhone(text, lang)
+    }
+
+    private fun speakWithPhone(text: String, lang: String) {
         val r = voice.speak(text, lang, onStart = { changed() }, onEnd = {
             main.postDelayed({ if (!voice.speaking) { listen.muted = false; changed() } }, 400)
         })
@@ -329,7 +345,7 @@ class CicadaApp : Application() {
     /// A WAV (16 kHz or any PCM16) heard as if it were playing: the sample meeting and `feed`.
     fun listenToFile(file: File?, play: Boolean, showLive: Boolean = !play) {
         if (listen.listening) return
-        if (!ling.hasKey) { startProblem = Strings.L("需要 Ling key 才能听"); changed(); return }
+        if (!ling.hasKey) { startProblem = noKeyText(); changed(); return }
         val source = if (file != null) PcmAudioSource(file) else PcmAudioSource({ assets.open("sample.wav").use { Wav.read(it) } })
         source.onEnded = { reason ->
             // A file that finished: give the last segment's reply a moment, then end the meeting.
@@ -367,7 +383,43 @@ class CicadaApp : Application() {
         changed()
     }
 
-    fun saveSettings() { settings.save(); ling.model = settings.model; SpeakerLabels.voices = settings.speakerVoices; changed() }
+    fun saveSettings() { settings.save(); SpeakerLabels.voices = settings.speakerVoices; changed() }
+
+    // MARK: AI 服务
+
+    /// "需要 Ling key 才能听", or the service in use named.
+    fun noKeyText(): String = ling.provider.let { p ->
+        if (p.id == "ling") Strings.L("需要 Ling key 才能听") else Strings.LF("需要 %@ 的 key 才能听", Strings.L(p.name))
+    }
+
+    /// 设置 › AI 服务: another service, with its own key file and models; checked again (`check`).
+    fun setAiProvider(id: String, check: Boolean = true) {
+        if (Providers.named(id).id != id || id == settings.aiProvider) return
+        settings.aiProvider = id
+        settings.save()
+        Log.d("ai: provider $id")
+        aiChanged(check)
+    }
+
+    /// A model chosen over the recommended one ("text", "hear" or "voice"; "" goes back to it).
+    fun setAiModel(kind: String, model: String) {
+        val s = settings
+        val p = s.aiProvider
+        if (kind == "text" && p == "ling") s.model = model.ifEmpty { LingClient.DEFAULT_MODEL }
+        else {
+            val table = when (kind) { "text" -> s.aiModels; "hear" -> s.aiHearModels; "voice" -> s.aiVoiceModels; else -> return }
+            if (model.isNotEmpty()) table[p] = model else table.remove(p)
+        }
+        s.save()
+        aiChanged()
+    }
+
+    /// The service, its address, models or key changed: forget the old check and check again.
+    fun aiChanged(check: Boolean = true) {
+        ling.keyChanged()
+        if (check && ling.hasKey) background.execute { ling.check() }
+        changed()
+    }
 
     /// 保存会议录音: what is heard goes to system.m4a as it comes (the Mac keeps it the same way).
     private fun startRecording() {

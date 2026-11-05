@@ -97,7 +97,8 @@ object NotesViews {
     fun banner(ui: Ui, app: CicadaApp, onMic: (() -> Unit)?): View? {
         val problem = app.listen.problem
         val (iconRes, text) = when {
-            problem == L("连不上 Ling，检查网络") -> R.drawable.i_wifi_off to L("连不上 Ling，联网后继续出字幕")
+            app.listen.problemKind == "network" -> R.drawable.i_wifi_off to
+                (if (app.ling.provider.id == "ling") L("连不上 Ling，联网后继续出字幕") else problem ?: "")
             app.micSilenced && app.listen.listening -> R.drawable.i_mic to L("麦克风正被通话或其他 app 占用，用完后接着听")
             problem != null -> R.drawable.i_info to problem
             silent(app) -> R.drawable.i_speaker_off to L("20 秒没听到声音。通话和会议 app 的声音系统不让录")
@@ -238,8 +239,11 @@ object NotesViews {
         val body = ui.stack(0)
         if (notes.isEmpty) {
             val hint = when (status) {
-                NotesEngine.State.NoKey -> L("需要 Ling key 才能听")
-                NotesEngine.State.InvalidKey -> L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
+                NotesEngine.State.NoKey -> CicadaApp.shared.noKeyText()
+                NotesEngine.State.InvalidKey -> CicadaApp.shared.ling.provider.let { p ->
+                    if (p.id == "ling") L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
+                    else cicada.Strings.LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", L(p.name))
+                }
                 NotesEngine.State.RateLimited -> L("请求过于频繁，稍后会自动重试。")
                 NotesEngine.State.Updating -> L("正在整理纪要…")
                 else -> if (listening) L("说几句后生成纪要，之后每 45 秒更新") else ""

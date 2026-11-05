@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit
 ///   capture on|off | overlay show|hide | show main|live|records|settings|onboarding|record [id] | overlay collapse|expand | key reload
 ///   hear|say <wav in files/> (面对面: the other side / me holding 我说) | tts <lang> <text>
 ///   import <session.json in files/> | importfile <audio or video in files/> | face | onboarded on|off | target <code> | ui <lang> | clip <text>
+///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> ("" back to the recommended) | show ai
+///   key import <file in files/> (sealed as the current service's key, the plain file deleted) | voice-try (设置's 试一句)
 class DebugReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!BuildConfig.DEBUG) return
@@ -79,7 +81,26 @@ class DebugReceiver : BroadcastReceiver() {
             // Puts text on the clipboard (the shell can't), so 粘贴 can be tested.
             "clip" -> app.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("test", arg))
             "onboarded" -> { app.settings.onboarded = arg != "off"; app.saveSettings() }
-            "key" -> { app.key.reload(); app.ling.keyChanged(); app.background.execute { app.ling.check() } }
+            "key" -> if (arg.startsWith("import ")) {
+                // A key pushed in as a plain file: sealed into the current service's key file like
+                // one pasted in, and the plain copy goes at once.
+                val f = File(app.filesDir, arg.removePrefix("import ").trim())
+                val text = try { f.readText().trim() } catch (_: Exception) { "" } finally { f.delete() }
+                if (text.isEmpty() || !app.key.save(text)) return mapOf("error" to "no key in ${f.name}")
+                app.aiChanged()
+                return mapOf("ok" to true, "ai" to ai(app))
+            } else { app.key.reload(); app.ling.keyChanged(); app.background.execute { app.ling.check() } }
+            "provider" -> { app.setAiProvider(arg); return mapOf("ok" to true, "ai" to ai(app)) }
+            "ai-model" -> {
+                val kind = arg.substringBefore(' ')
+                val model = arg.substringAfter(' ', "").trim().removeSurrounding("\"")
+                app.setAiModel(kind, model)
+                return mapOf("ok" to true, "ai" to ai(app))
+            }
+            "voice-try" -> app.background.execute {
+                val r = app.voice.speakCloud(app.ling, "Could you send the revised quote by Friday? We can sign next week.", {}, {})
+                Log.d("debug: voice-try -> $r")
+            }
             // 检查更新 against a test feed: the dev build checks only once one is set.
             "updatefeed" -> { app.updates.setFeed(if (arg.isEmpty() || arg.contains("://")) arg else File(app.filesDir, arg).path); app.updates.checkIfDue(0) }
             "update" -> when (arg) {
@@ -94,6 +115,7 @@ class DebugReceiver : BroadcastReceiver() {
             }
             "show" -> when (arg.substringBefore(' ')) {
                 "settings" -> open(SettingsActivity::class.java)
+                "ai" -> open(AiServiceActivity::class.java)
                 "onboarding" -> open(OnboardingActivity::class.java)
                 "record" -> open(RecordActivity::class.java, arg.substringAfter(' ', "").ifEmpty { app.store.all().firstOrNull { it.id != app.listen.sessionId || !app.listen.listening }?.id })
                 "records" -> open(RecordsActivity::class.java)
@@ -106,6 +128,15 @@ class DebugReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        /// The AI service in use and what its last check found (never the key itself).
+        fun ai(app: CicadaApp): Map<String, Any?> {
+            val l = app.ling
+            val c = l.config()
+            return mapOf("provider" to c.provider.id, "base" to c.base, "text" to c.textModel, "hear" to c.hearModel, "voice" to c.voiceModel,
+                         "state" to l.keyState.name, "hears" to l.hears, "speaks" to l.speaks, "problem" to l.problem,
+                         "catalog" to listOf(l.textCatalog.size, l.hearCatalog.size), "keyFile" to app.key.path.name)
+        }
+
         fun state(app: CicadaApp): Map<String, Any?> {
             val listen = app.listen
             val id = listen.sessionId
@@ -127,6 +158,7 @@ class DebugReceiver : BroadcastReceiver() {
                 "notes" to app.notes.status.name,
                 "topics" to app.notes.notes.topics.size,
                 "key" to app.ling.keyState.name,
+                "ai" to ai(app),
                 "view" to app.settings.view,
                 "showInCapture" to app.settings.showInCapture,
                 "overlay" to app.overlay.describe(),

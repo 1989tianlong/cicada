@@ -8,7 +8,17 @@ class AppSettings(
     var target: String = "system",
     /// 纪要语言: the notes' language code; "system" is the same as the subtitles'.
     var notesLanguage: String = "system",
+    /// Ling's text model (the other services' are in aiModels).
     var model: String = LingClient.DEFAULT_MODEL,
+    /// AI 服务 (Settings.swift's keys): the service, and per service the models chosen over its
+    /// recommended ones. aiHearModels is the ports' own: what hears the audio (Ming on Ling).
+    var aiProvider: String = "ling",
+    var aiModels: MutableMap<String, String> = mutableMapOf(),
+    var aiHearModels: MutableMap<String, String> = mutableMapOf(),
+    var aiVoiceModels: MutableMap<String, String> = mutableMapOf(),
+    var aiCustomBase: String = "",
+    var aiCustomVoiceBase: String = "",
+    var aiCustomVoice: String = "",
     /// "notes" (live notes, default) or "subtitles" (the subtitle bar), for the floating window.
     var view: String = "notes",
     /// 共享屏幕时让对方看到: let the floating window show up in screenshots and screen recording.
@@ -45,8 +55,14 @@ class AppSettings(
     fun targetFor(source: String?): String =
         if (target == "system") Languages.followSystemTarget(source, systemLanguages()) else target
 
+    /// The AI service in use, its address and models (what LingClient calls with).
+    fun aiConfig(): AIConfig = Providers.configFrom(this)
+
     fun toJson(): Map<String, Any?> = mapOf(
         "target" to target, "notesLanguage" to notesLanguage, "model" to model, "view" to view,
+        "aiProvider" to aiProvider, "aiModels" to aiModels.toSortedMap(), "aiHearModels" to aiHearModels.toSortedMap(),
+        "aiVoiceModels" to aiVoiceModels.toSortedMap(), "aiCustomBase" to aiCustomBase,
+        "aiCustomVoiceBase" to aiCustomVoiceBase, "aiCustomVoice" to aiCustomVoice,
         "showInCapture" to showInCapture, "onboarded" to onboarded, "uiLanguage" to uiLanguage,
         "source" to source, "overlay" to overlay, "silenceEnd" to silenceEnd, "silenceMinutes" to silenceMinutes,
         "speakerVoices" to speakerVoices, "recordAudio" to recordAudio, "speakBack" to speakBack,
@@ -74,6 +90,10 @@ class AppSettings(
                         return AppSettings(
                             target = o["target"].str() ?: d.target, notesLanguage = o["notesLanguage"].str() ?: d.notesLanguage,
                             model = o["model"].str() ?: d.model, view = o["view"].str() ?: d.view,
+                            aiProvider = o["aiProvider"].str() ?: d.aiProvider,
+                            aiModels = strings(o["aiModels"]), aiHearModels = strings(o["aiHearModels"]),
+                            aiVoiceModels = strings(o["aiVoiceModels"]), aiCustomBase = o["aiCustomBase"].str() ?: "",
+                            aiCustomVoiceBase = o["aiCustomVoiceBase"].str() ?: "", aiCustomVoice = o["aiCustomVoice"].str() ?: "",
                             showInCapture = o["showInCapture"].bool() ?: false, onboarded = o["onboarded"].bool() ?: false,
                             uiLanguage = o["uiLanguage"].str() ?: d.uiLanguage, source = o["source"].str() ?: d.source,
                             overlay = o["overlay"].bool() ?: true,
@@ -88,5 +108,8 @@ class AppSettings(
             } catch (e: Exception) { Log.d("settings: unreadable, defaults used (${e.javaClass.simpleName})") }
             return AppSettings()
         }
+
+        private fun strings(v: Any?): MutableMap<String, String> =
+            v.obj()?.mapNotNull { (k, x) -> x.str()?.let { k to it } }?.toMap(mutableMapOf()) ?: mutableMapOf()
     }
 }
