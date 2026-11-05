@@ -44,6 +44,8 @@ public sealed class AppSettings
     [JsonPropertyName("silenceMinutes")] public double SilenceMinutes { get; set; } = 10;
     /// When GitHub Releases last answered an update check (UpdateChecker).
     [JsonPropertyName("updateLastChecked")] public DateTimeOffset? UpdateLastChecked { get; set; }
+    /// The version the update notification was last shown for: one per version.
+    [JsonPropertyName("updateNotified")] public string? UpdateNotified { get; set; }
 
     [JsonIgnore] public string TargetCode => Target == "system" ? Languages.FromSystem(CultureInfo.CurrentUICulture.Name) : Target;
     [JsonIgnore] public string NotesCode => NotesLanguage == "system" ? TargetCode : NotesLanguage;

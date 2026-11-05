@@ -83,7 +83,7 @@ sealed class SettingsWindow : Window
     string? shownPage;
 
     /// What to do with the download: the installer upgrades itself; an older release has only the zip.
-    public static string UpdateHint(UpdateChecker.Update u) => u.Setup is not null ? L("下载后打开，知了会自己更新") : L("下载后解压，替换旧的知了");
+    public static string UpdateHint(UpdateChecker.Update u) => u.Setup is not null ? L("安装后自动重新打开") : L("下载后解压，替换旧的知了");
 
     static FrameworkElement Credit() { var t = Ui.Helper(L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）")); t.Margin = new Thickness(6, 0, 0, 0); return t; }
 
@@ -96,7 +96,10 @@ sealed class SettingsWindow : Window
     // The Mac's AppRows version row: what the last check found, and 检查更新 or 下载.
     string? UpdateDetail()
     {
-        if (app.Updates.Available is { } u) return LF("有新版本 %@", u.Version) + " · " + UpdateHint(u);
+        if (app.Updates.Available is { } u)
+            return app.UpdateProgress is { } p ? LF("正在下载 %@：%lld%%", u.Version, (long)(p * 100))
+                : app.UpdateFailure is { } f ? LF("没能自动更新：%@", f)
+                : LF("有新版本 %@", u.Version) + " · " + UpdateHint(u);
         if (app.UpdateCheck is { } c) return c;
         if (app.Updates.LastChecked is not { } d) return null;
         var local = d.ToLocalTime();
@@ -106,7 +109,11 @@ sealed class SettingsWindow : Window
     FrameworkElement UpdateControl()
     {
         if (app.Updates.Available is not null)
-            return Ui.Row(12, Ui.LinkText(L("更新说明"), app.OpenReleaseNotes), Ui.Button(L("下载"), app.DownloadUpdate, Ui.Kind.Primary, height: 32));
+        {
+            var install = Ui.Button(app.Updates.Available.Setup is null ? L("下载") : L("安装并重新打开"), app.InstallUpdate, Ui.Kind.Primary, height: 32);
+            install.IsEnabled = app.UpdateProgress is null;
+            return Ui.Row(12, Ui.LinkText(L("更新说明"), app.OpenReleaseNotes), install);
+        }
         var check = Ui.Button(L("检查更新"), () => _ = app.CheckForUpdates(), height: 32);
         check.IsEnabled = app.UpdateCheck != L("正在检查…");
         return check;

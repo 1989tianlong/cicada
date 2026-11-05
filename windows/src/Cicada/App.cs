@@ -76,6 +76,9 @@ sealed class Controller
     string? fakeMic;
     readonly Forms.NotifyIcon tray = new();
     System.Drawing.Icon? idleIcon, liveIcon;
+    /// The installer's download progress (0…1) while an update is being fetched, and why the last one failed.
+    public double? UpdateProgress { get; private set; }
+    public string? UpdateFailure { get; private set; }
     Action? balloonClicked;
     Hotkey? hotkey;
     TrayFlyout? flyout;
@@ -136,6 +139,7 @@ sealed class Controller
         Log.Debug($"audio: speakers {Endpoints.Default(Endpoints.Flow.Render)?.Name ?? "none"}, mic {Endpoints.Microphone()?.Name ?? "none"}, cable {(Endpoints.Cable() is null ? "absent" : "present")}");
         DebugServer.Start(this);
         // A dev build isn't what a release replaces: it checks only when pointed at a test feed.
+        UpdateChecker.CleanDownloads();
         if (!Paths.Dev || Environment.GetEnvironmentVariable("CICADA_UPDATE_FEED") is { Length: > 0 }) { checksUpdates = true; Updates.Start(); }
         var watch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         watch.Tick += (_, _) => _ = WatchEnd();
@@ -174,7 +178,19 @@ sealed class Controller
     });
 
     /// Only update news re-renders settings: Changed fires on every line heard.
-    void UpdatesChanged() => Dispatch.BeginInvoke(() => { Changed(); settingsWindow?.UpdatesChanged(); });
+    void UpdatesChanged() => Dispatch.BeginInvoke(() => { Changed(); settingsWindow?.UpdatesChanged(); NotifyUpdate(); });
+
+    /// One Windows notification per version, for people who never open the tray panel; a click
+    /// installs. Held while listening or speaking: StopListening tells.
+    void NotifyUpdate()
+    {
+        if (Updates.Available is not { } u) return;
+        if (!UpdateChecker.ShouldNotify(u.Version, Settings.UpdateNotified, Listen.Listening || Speak.State is not (SpeakEngine.Phase.Idle or SpeakEngine.Phase.Failed))) return;
+        Settings.UpdateNotified = u.Version;
+        Settings.Save();
+        Toast(LF("知了有新版本 %@", u.Version), u.Setup is not null ? L("点按安装，完成后自动重新打开") : L("点按下载"), InstallUpdate);
+        Log.Debug($"update: notified {u.Version}");
+    }
 
     // MARK: Tray (the Mac's menu bar panel)
 
@@ -224,8 +240,10 @@ sealed class Controller
 
     void UpdateTray()
     {
-        tray.Icon = Listen.Listening ? liveIcon : idleIcon;
-        tray.Text = Listen.Listening ? L("知了") + " · " + L("正在听") : L("知了");
+        // The same orange dot says 正在听 or 有新版本 (the Mac's badge); listening wins.
+        tray.Icon = Listen.Listening || Updates.Available is not null ? liveIcon : idleIcon;
+        tray.Text = Listen.Listening ? L("知了") + " · " + L("正在听")
+            : Updates.Available is { } u ? L("知了") + " · " + LF("有新版本 %@", u.Version) : L("知了");
     }
 
     public void ShowFlyout()
@@ -259,7 +277,7 @@ sealed class Controller
         else menu.Items.Add(Item(L("开始听"), () => _ = ToggleListening(), Hotkey.Label.Replace('+', ' ')));
         menu.Items.Add(Settings.View == "subtitles" ? Item(L("换成纪要"), () => SetView("notes")) : Item(L("换成字幕条"), () => SetView("subtitles")));
         menu.Items.Add(new Separator());
-        if (Updates.Available is { } update) menu.Items.Add(Item(LF("有新版本 %@", update.Version), DownloadUpdate, ink: Palette.AccentText));
+        if (Updates.Available is { } update) menu.Items.Add(Item(LF("有新版本 %@", update.Version), InstallUpdate, ink: Palette.AccentText));
         menu.Items.Add(Item(L("会议记录"), () => ShowRecords()));
         menu.Items.Add(Item(L("设置"), ShowSettings));
         menu.Items.Add(new Separator());
@@ -329,6 +347,7 @@ sealed class Controller
         AutoEnded = auto;
         await Listen.Stop(endedAt);
         Changed();
+        NotifyUpdate(); // held while the meeting was on
         if (id is not null) _ = TellWhenNotesReady(id);
     }
 
@@ -611,8 +630,34 @@ sealed class Controller
 
     // MARK: Updates
 
-    /// 下载: the browser fetches this PC's zip (or opens the release page when there is none).
-    /// Replacing the app in place comes later.
+    /// 安装: Cicada downloads the installer itself and checks it against checksums.txt, then opens
+    /// it; its 更新知了 window quits this copy, replaces it and reopens (--updated). A release with
+    /// only the zip, or a failed download, falls back to the browser.
+    public async void InstallUpdate()
+    {
+        if (Updates.Available is not { } u || UpdateProgress is not null) return;
+        if (u.Setup is null) { DownloadUpdate(); return; }
+        UpdateProgress = 0; UpdateFailure = null;
+        UpdatesChanged();
+        try
+        {
+            var exe = await Updates.Download(u, p => Dispatch.BeginInvoke(() => { UpdateProgress = p; UpdatesChanged(); }));
+            UpdateProgress = null;
+            UpdatesChanged();
+            Log.Debug($"update: opening the installer for {u.Version}");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
+        }
+        catch (Exception e)
+        {
+            UpdateProgress = null;
+            UpdateFailure = e is UpdateChecker.Failure f ? L(f.Key) : L("更新包无效");
+            Log.Debug($"update: in-app install failed ({e.GetType().Name}), opening the download");
+            UpdatesChanged();
+            DownloadUpdate();
+        }
+    }
+
+    /// 下载: the browser fetches this PC's installer or zip (or opens the release page when there is none).
     public void DownloadUpdate()
     {
         if (Updates.Available is not { } u) return;
@@ -786,6 +831,7 @@ static class DebugServer
             case "endkeep": app.KeepRecording(); break;
             case "quit": _ = app.Quit(); break;
             case "updatefeed": app.Updates.Feed = arg; _ = app.CheckForUpdates(); break;
+            case "updateinstall": app.InstallUpdate(); break;
             case "checkupdate": _ = app.CheckForUpdates(); break;
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };

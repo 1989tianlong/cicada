@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,8 +13,9 @@ namespace Cicada;
 /// when opened (older releases only have the zip).
 public sealed class UpdateChecker
 {
-    /// `Setup` is this PC's Cicada-Setup exe when the release has one; `Size` is the download's.
-    public sealed record Update(string Version, string Page, string? Zip, long Size, string? Setup = null)
+    /// `Setup` is this PC's Cicada-Setup exe when the release has one; `Size` is the download's;
+    /// `Checksums` the release's checksums.txt, which the in-app download is checked against.
+    public sealed record Update(string Version, string Page, string? Zip, long Size, string? Setup = null, string? Checksums = null)
     {
         public string? Download => Setup ?? Zip;
     }
@@ -124,7 +126,8 @@ public sealed class UpdateChecker
             var zip = r.Assets.FirstOrDefault(a => IsZip(a.Name, arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => IsZip(a.Name, "x64")));
             var setup = r.Assets.FirstOrDefault(a => a.Name == SetupName(arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => a.Name == SetupName("x64")));
             if (zip is null && setup is null) continue;
-            var u = new Update(r.TagName.TrimStart('v'), r.HtmlUrl, zip?.Url, (setup ?? zip)!.Size, setup?.Url);
+            var sums = r.Assets.FirstOrDefault(a => a.Name == "checksums.txt");
+            var u = new Update(r.TagName.TrimStart('v'), r.HtmlUrl, zip?.Url, (setup ?? zip)!.Size, setup?.Url, sums?.Url);
             if (best is null || IsNewer(u.Version, best.Version)) best = u;
         }
         return best;
@@ -133,6 +136,88 @@ public sealed class UpdateChecker
 
     /// The installer's release asset: no version in the name, so the site's link never goes stale.
     public static string SetupName(string arch) => arch == "ARM64" ? "Cicada-Setup-arm64.exe" : "Cicada-Setup.exe";
+
+    /// One notification per version (the version last told is kept in settings), and none while
+    /// listening: the next stop tells. Full screen and screen sharing are Windows' Do Not Disturb.
+    public static bool ShouldNotify(string version, string? notified, bool busy) => !busy && version != notified;
+
+    /// The SHA-256 of `name` in a sha256sum listing ("<hex>  <name>", or "<hex> *<name>").
+    public static string? ChecksumFor(string text, string name)
+    {
+        foreach (var line in text.Split('\n'))
+        {
+            var parts = line.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2 && parts[1].TrimStart('*') == name) return parts[0].ToLowerInvariant();
+        }
+        return null;
+    }
+
+    /// Downloads the release's installer into a fresh temp folder and checks it against
+    /// checksums.txt; returns its path. Fetched by the app, not the browser, the file carries no
+    /// mark of the web, so SmartScreen doesn't stop the unsigned installer. Throws Failure (a
+    /// string key) when there's nothing to install or the file doesn't match.
+    public async Task<string> Download(Update u, Action<double>? progress = null)
+    {
+        if (u.Setup is null || u.Checksums is null) throw new Failure("这个版本没有可安装的文件");
+        var name = Path.GetFileName(new Uri(u.Setup).LocalPath);
+        var folder = Path.Combine(Path.GetTempPath(), $"CicadaUpdate-{u.Version}-{Guid.NewGuid():N}"[..40]);
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, name);
+        string? expected;
+        try
+        {
+            expected = ChecksumFor(await Read(u.Checksums), name);
+            await Fetch(u.Setup, file, u.Size, progress);
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or TaskCanceledException)
+        {
+            Log.Debug($"update: download failed {e.GetType().Name}");
+            throw new Failure("下载失败");
+        }
+        string got;
+        using (var f = File.OpenRead(file)) got = Convert.ToHexStringLower(await SHA256.HashDataAsync(f));
+        if (expected is null || got != expected)
+        {
+            try { Directory.Delete(folder, true); } catch { }
+            throw new Failure("下载的文件校验不通过");
+        }
+        Log.Debug($"update: downloaded {u.Version}, checksum ok");
+        return file;
+    }
+
+    /// Removes installers left from earlier updates (each ~80 MB). Called at launch: by then the
+    /// installer that ran has quit, or it's still letting go and the next launch gets it.
+    public static void CleanDownloads(string? temp = null)
+    {
+        try
+        {
+            foreach (var d in Directory.GetDirectories(temp ?? Path.GetTempPath(), "CicadaUpdate-*"))
+                try { Directory.Delete(d, true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    async Task Fetch(string url, string to, long expected, Action<double>? progress)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.IsFile) { File.Copy(uri.LocalPath, to, true); progress?.Invoke(1); return; }
+        using var r = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        r.EnsureSuccessStatusCode();
+        var total = r.Content.Headers.ContentLength ?? expected;
+        await using var src = await r.Content.ReadAsStreamAsync();
+        await using var dst = File.Create(to);
+        var buffer = new byte[81920];
+        long got = 0; int n, last = -1;
+        while ((n = await src.ReadAsync(buffer)) > 0)
+        {
+            await dst.WriteAsync(buffer.AsMemory(0, n));
+            got += n;
+            // Whole percents only: each one re-renders the flyout and settings.
+            if (total > 0 && (int)(got * 100 / total) is var pct && pct != last) { last = pct; progress?.Invoke(Math.Min(1, (double)got / total)); }
+        }
+    }
+
+    /// Why installing didn't work: a shared string key, said to the user (the browser fallback opens).
+    public sealed class Failure(string key) : Exception(key) { public string Key => Message; }
 
     /// Dotted numeric versions: "2.10.0" is newer than "2.9.1".
     public static bool IsNewer(string a, string b)

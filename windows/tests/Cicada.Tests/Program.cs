@@ -890,6 +890,38 @@ static class Tests
         Check(!UpdateChecker.IsNewer("1.3.9", "1.4.0"), "older");
     }
 
+    public static void UpdateNotifiesOncePerVersionWhenIdle()
+    {
+        Check(UpdateChecker.ShouldNotify("1.1.0", null, false), "first time");
+        Check(UpdateChecker.ShouldNotify("1.2.0", "1.1.0", false), "a newer version");
+        Check(!UpdateChecker.ShouldNotify("1.1.0", "1.1.0", false), "already told");
+        Check(!UpdateChecker.ShouldNotify("1.1.0", null, true), "held while listening");
+        Equal("ab12", UpdateChecker.ChecksumFor("ff00  Cicada-1.1.0-Windows-x64.zip\nAB12 *Cicada-Setup.exe\n", "Cicada-Setup.exe"), "sha256sum line");
+        Equal(null, UpdateChecker.ChecksumFor("ff00  Cicada-Setup-arm64.exe", "Cicada-Setup.exe"), "other file");
+    }
+
+    /// The in-app download: the installer is kept only when it matches checksums.txt.
+    public static async Task UpdateDownloadChecksTheInstaller()
+    {
+        var dir = Directory.CreateTempSubdirectory("cicada-upd-").FullName;
+        var exe = Path.Combine(dir, "Cicada-Setup.exe");
+        File.WriteAllText(exe, "installer");
+        var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(exe)));
+        File.WriteAllText(Path.Combine(dir, "checksums.txt"), $"{sha}  Cicada-Setup.exe\n");
+        File.WriteAllText(Path.Combine(dir, "bad.txt"), "0000  Cicada-Setup.exe\n");
+        var checker = new UpdateChecker(null, _ => { });
+        var u = new UpdateChecker.Update("1.1.0", "https://example.com", null, 9, new Uri(exe).AbsoluteUri, new Uri(Path.Combine(dir, "checksums.txt")).AbsoluteUri);
+        var got = await checker.Download(u);
+        Equal("installer", File.ReadAllText(got), "downloaded copy");
+        Check(got != exe && Path.GetFileName(got) == "Cicada-Setup.exe", "into its own folder, same name");
+        try { await checker.Download(u with { Checksums = new Uri(Path.Combine(dir, "bad.txt")).AbsoluteUri }); throw new Exception("bad checksum accepted"); }
+        catch (UpdateChecker.Failure f) { Equal("下载的文件校验不通过", f.Key, "bad checksum refused"); }
+        try { await checker.Download(u with { Setup = null }); throw new Exception("zip-only accepted"); }
+        catch (UpdateChecker.Failure f) { Equal("这个版本没有可安装的文件", f.Key, "nothing to install"); }
+        UpdateChecker.CleanDownloads(Path.GetDirectoryName(Path.GetDirectoryName(got)));
+        Check(!File.Exists(got), "left-over installer removed");
+    }
+
     public static void UpdateSkipsReleasesWithoutAWindowsZip()
     {
         var list = UpdateChecker.Decode($"[{Rel("v1.6.0", "Cicada-1.6.0-macOS-AppleSilicon.zip")},{Rel("v1.5.0", "Cicada-1.5.0-Windows-x64.zip", "Cicada-1.5.0-Windows-ARM64.zip")}]")!;

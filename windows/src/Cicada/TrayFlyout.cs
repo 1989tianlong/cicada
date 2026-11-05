@@ -76,14 +76,19 @@ sealed class TrayFlyout : Window
         var head = Ui.Spread(title, Ui.IconButton(Icons.Gear, L("打开设置"), () => Do(app.ShowSettings), Palette.Body, 36, 18));
         stack.Children.Add(head);
 
-        // A newer release (the Mac's UpdateBanner): the browser downloads this PC's zip.
+        // A newer release (the Mac's UpdateBanner), right under the header: Cicada downloads the
+        // installer, checks it and opens it.
         if (app.Updates.Available is { } update)
         {
             var size = update.Size > 0 ? $"{update.Size / 1_048_576.0:0} MB · " : "";
+            var detail = app.UpdateProgress is { } p0 ? LF("正在下载 %@：%lld%%", update.Version, (long)(p0 * 100))
+                : app.UpdateFailure is { } f ? LF("没能自动更新：%@。已打开下载页", f)
+                : size + SettingsWindow.UpdateHint(update);
             var text = Ui.Stack(2, Ui.Text(LF("新版本 %@", update.Version), 13, Palette.Ink, Palette.Strong, wrap: false),
-                                Ui.Text(size + SettingsWindow.UpdateHint(update), 11, Palette.Secondary),
+                                Ui.Text(detail, 11, Palette.Secondary),
                                 Ui.LinkText(L("更新说明"), () => Do(app.OpenReleaseNotes), 11));
-            var download = Ui.Button(L("下载"), () => Do(app.DownloadUpdate), Ui.Kind.Standard, height: 30);
+            var download = Ui.Button(update.Setup is null ? L("下载") : app.UpdateFailure is null ? L("安装") : L("重试"), app.InstallUpdate, Ui.Kind.Primary, height: 30);
+            download.IsEnabled = app.UpdateProgress is null;
             var dock = new DockPanel();
             DockPanel.SetDock(download, Dock.Right);
             download.VerticalAlignment = VerticalAlignment.Center; download.Margin = new Thickness(10, 0, 0, 0);
