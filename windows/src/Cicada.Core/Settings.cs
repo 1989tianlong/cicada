@@ -21,6 +21,11 @@ public sealed class AppSettings
     [JsonPropertyName("aiCustomBase")] public string AiCustomBase { get; set; } = "";
     [JsonPropertyName("aiCustomVoiceBase")] public string AiCustomVoiceBase { get; set; } = "";
     [JsonPropertyName("aiCustomVoice")] public string AiCustomVoice { get; set; } = "";
+    /// 听哪里 (the Mac's key): "system" (电脑声音), "room" (会议室) or "both" (电脑和会议室).
+    [JsonPropertyName("listenSource")] public string ListenSourceValue { get; set; } = ListenSource.System;
+    [JsonIgnore] public string Listens => ListenSource.Parse(ListenSourceValue);
+    [JsonIgnore] public bool ListensToRoom => Listens == ListenSource.Room;
+    [JsonIgnore] public bool HearsBoth => Listens == ListenSource.Both;
     /// "notes" (the notes window, default) or "subtitles" (the subtitle bar).
     [JsonPropertyName("view")] public string View { get; set; } = "notes";
     /// Whether 知了还在任务栏右下角 was shown, after the first × on a window.

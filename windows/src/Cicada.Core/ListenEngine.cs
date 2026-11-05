@@ -89,11 +89,16 @@ public sealed class ListenEngine
 
     public string Target => settings.TargetCode;
 
-    public void Start(IAudioSource from)
+    /// 会议室: what listening hears is a microphone (its speech line follows the room's noise).
+    public bool Room { get; private set; }
+
+    public void Start(IAudioSource from, bool room = false)
     {
         if (Listening) return;
         var session = store.Begin();
         SessionId = session.Id;
+        Room = room;
+        if (room) store.MarkRoom(session.Id);
         lock (gate)
         {
             done.Clear(); segments.Clear(); inFlight.Clear(); prints.Clear(); clusterer = new();
@@ -102,7 +107,7 @@ public sealed class ListenEngine
         }
         notes.Language = () => Languages.EnglishName(settings.NotesCode);
         notes.Begin(session.Id);
-        segmenter = new Segmenter();
+        segmenter = new Segmenter(room ? new VoiceGate() : null);
         segmenter.Emitted += Send;
         audio = Channel.CreateUnbounded<short[]>(new UnboundedChannelOptions { SingleReader = true });
         var reader = audio.Reader;
@@ -125,6 +130,22 @@ public sealed class ListenEngine
     }
 
     void OnSamples(short[] buf) => audio?.Writer.TryWrite(buf);
+
+    /// 听哪里 changed mid-meeting between the computer and the room: the same meeting goes on from the
+    /// other source, its clock running on.
+    public void SwitchSource(IAudioSource to, bool room)
+    {
+        if (!Listening || SessionId is not { } id) return;
+        if (source is not null) { source.Samples -= OnSamples; source.Stop(); }
+        if (room) store.MarkRoom(id);
+        Room = room;
+        if (segmenter is not null) segmenter.Gate = room ? new VoiceGate() : null;
+        source = to;
+        source.Samples += OnSamples;
+        source.Start();
+        Log.Debug($"listen: now {(room ? "the room" : "the computer")}");
+        Changed?.Invoke();
+    }
 
     static double Rms(short[] buf)
     {

@@ -312,7 +312,57 @@ sealed class Controller
     public async Task ToggleListening()
     {
         if (Listen.Listening) RequestStop();
-        else await StartChecked(() => new SystemAudioTap());
+        else await StartChecked(NewSource);
+    }
+
+    /// What 听哪里 says to listen to: the PC's audio, or the room through a microphone.
+    public IAudioSource NewSource() => Settings.ListensToRoom ? RoomSource() : new SystemAudioTap();
+
+    /// The room mic, muted while you hold the talk key. Dev: a WAV stands in (the VM has no mic).
+    GatedSource RoomSource()
+    {
+        if (fakeRoom is { } wav) return new GatedSource(new FileAudioSource(wav)) { Name = "fake" };
+        return new GatedSource(new MicSource(Endpoints.RoomMic)) { Muted = Speak.State == SpeakEngine.Phase.Recording };
+    }
+
+    /// The room mic listening hears right now, if any (muted while you speak).
+    readonly List<GatedSource> roomSources = [];
+
+    /// Dev builds: a WAV the room mic hears instead of a microphone.
+    string? fakeRoom;
+    public void SetFakeRoom(string? path) { fakeRoom = path; Log.Debug($"room: fake mic {(path is null ? "off" : "on")}"); }
+
+    /// 听哪里 changed. While listening the same meeting goes on from the new source.
+    public void SetListenSource(string value)
+    {
+        value = ListenSource.Parse(value);
+        if (value == Settings.Listens) return;
+        Settings.ListenSourceValue = value;
+        Settings.Save();
+        Log.Debug($"listen source: {value}");
+        if (Listen.Listening && Listen.Room != Settings.ListensToRoom) Listen.SwitchSource(Watch(NewSource()), Settings.ListensToRoom);
+        Changed();
+    }
+
+    /// A source about to be listened to: a room mic is remembered (the talk key mutes it), and one
+    /// that can't go on says why.
+    IAudioSource Watch(IAudioSource source)
+    {
+        if (source is GatedSource room) roomSources.Add(room);
+        source.Ended += reason =>
+        {
+            if (reason is null) return;
+            Log.Debug($"listen: source ended {reason}");
+            Dispatch.BeginInvoke(() =>
+            {
+                if (source is GatedSource && reason == "denied")
+                    Toast(L("听会议室要先允许麦克风"), L("Windows 不让知了用麦克风：设置 › 隐私和安全性 › 麦克风"), () => Open("ms-settings:privacy-microphone"));
+                else if (source is GatedSource && reason == "none")
+                    Toast(L("没有可用的麦克风"), L("插上麦克风后再开始听。"));
+                _ = StopListening();
+            });
+        };
+        return source;
     }
 
     /// The user's 开始听: blocked only by a failure the last result knows of. A hear model that
@@ -390,16 +440,11 @@ sealed class Controller
     {
         if (Listen.Listening) return;
         if (!Ling.HasKey) { ShowOnboarding(0); return; }
-        source.Ended += reason =>
-        {
-            if (reason is null) return;
-            Log.Debug($"listen: source ended {reason}");
-            Dispatch.BeginInvoke(() => _ = StopListening());
-        };
+        Watch(source);
         AutoEnded = false;
         Ending = null;
         endWatch = new MeetingEndWatch(EndConfig(), DateTimeOffset.Now);
-        Listen.Start(source);
+        Listen.Start(source, room: source is GatedSource);
         ShowNotes();
     }
 
@@ -410,6 +455,7 @@ sealed class Controller
         Ending = null;
         ConfirmingEnd = false;
         AutoEnded = auto;
+        roomSources.Clear();
         await Listen.Stop(endedAt);
         Changed();
         NotifyUpdate(); // held while the meeting was on
@@ -453,7 +499,7 @@ sealed class Controller
         else if (!Listen.Listening && AutoEnded && Settings.EndWithApp && calls.Count > 0)
         {
             Log.Debug("meeting end: a meeting app started a call, starting a new meeting");
-            StartListening(new SystemAudioTap());
+            StartListening(NewSource());
         }
     }
 
@@ -571,12 +617,15 @@ sealed class Controller
             if (mic.Error is { } err) { mic = null; Speak.Report(err == "denied" ? L("Windows 不让知了用麦克风：设置 › 隐私和安全性 › 麦克风") : L("麦克风打不开")); return; }
         }
         Speak.BeginRecording();
+        // What you say isn't someone in the room.
+        foreach (var r in roomSources) r.Muted = true;
     }
 
     void PressEnded()
     {
+        foreach (var r in roomSources) r.Muted = false;
         if (Speak.State != SpeakEngine.Phase.Recording) return;
-        var pcm = fakeMic is { } f ? Wav.Read(f) : mic?.Stop() ?? [];
+        var pcm =fakeMic is { } f ? Wav.Read(f) : mic?.Stop() ?? [];
         mic = null;
         // A tap, not a sentence.
         if (pcm.Length < Segmenter.Rate * 3 / 10) { Speak.Cancel(); return; }
@@ -917,12 +966,15 @@ sealed class Controller
         ["update"] = Updates.Available?.Version,
         ["updateChecked"] = Updates.LastChecked?.ToString("o"),
         ["inCall"] = endWatch is { } w ? string.Join(",", w.InCall.Values) : null,
+        ["listenSource"] = Settings.Listens,
+        ["room"] = Listen.Room,
     };
 }
 
 /// Debug commands over a named pipe (\\.\pipe\cicada-dev), dev builds only: the Windows
 /// counterpart of the Mac's `tools/lsctl`. One command per connection, one JSON line back.
 ///   state | start | stop | feed <wav> | sample | view notes|subtitles | capture on|off
+///   listensource system|room|both | fakeroom <wav>|off (a WAV the room mic hears; the VM has no mic)
 ///   show notes|records|settings [page]|flyout|menu | quit
 ///   updatefeed <url or file> | checkupdate
 ///   calls <program=name,…>|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
@@ -976,7 +1028,9 @@ static class DebugServer
                 "quit" => Quitting(app),
                 _ => Opened(app),
             };
-            case "start": _ = app.StartChecked(() => new SystemAudioTap()); break;
+            case "start": _ = app.StartChecked(app.NewSource); break;
+            case "listensource": app.SetListenSource(arg); break;
+            case "fakeroom": app.SetFakeRoom(arg is "" or "off" ? null : arg); break;
             case "stop": _ = app.StopListening(); break;
             case "end": app.RequestStop(); break;  // the user's 结束: asks first when anything was said
             case "notesproblem": app.Notes.SimulateStatus(arg); break;

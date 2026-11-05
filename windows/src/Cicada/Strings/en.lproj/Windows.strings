@@ -299,3 +299,8 @@
 "%lld 小时前" = "%lld hr ago";
 "%lld 天前" = "%lld days ago";
 "这段时间的话没能识别。网络恢复后自动继续。" = "Some audio couldn't be transcribed. It picks up again when the network is back.";
+
+/* 听哪里 › 会议室: the Mac's words name the Mac. */
+"插上麦克风后再开始听。" = "Plug in a microphone, then start again.";
+"电脑声音" = "This PC";
+"电脑声音（线上会议、视频）" = "This PC (online meetings, videos)";

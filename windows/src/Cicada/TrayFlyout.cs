@@ -154,6 +154,9 @@ sealed class TrayFlyout : Window
         var spoken = Languages.Targets.FirstOrDefault(t => t.Code == Languages.FromSystem(System.Globalization.CultureInfo.CurrentUICulture.Name))?.Code;
         var target = s.Target == "system" ? spoken ?? "zh-Hans" : s.Target;
         stack.Children.Add(Gap(ChoiceRow(L("翻译成"), Ui.TargetName(target), s.Target == "system" ? L("跟随系统") : null, Ui.TargetOptions(), s.Target, app.SetTarget), 12));
+        // 听哪里 (the Mac panel's row): changing it mid-meeting carries the same meeting on.
+        var sources = new[] { (ListenSource.System, L("电脑声音（线上会议、视频）")), (ListenSource.Room, L("会议室（用麦克风听桌边的人）")) };
+        stack.Children.Add(Gap(ChoiceRow(L("听哪里"), SourceName(s.Listens), null, sources, s.Listens, app.SetListenSource), 8));
 
         // 同声传译
         stack.Children.Add(Rule());
@@ -188,6 +191,13 @@ sealed class TrayFlyout : Window
         stack.Children.Add(foot);
         return stack;
     }
+
+    public static string SourceName(string source) => source switch
+    {
+        ListenSource.Room => L("会议室"),
+        ListenSource.Both => L("电脑和会议室"),
+        _ => L("电脑声音"),
+    };
 
     static FrameworkElement Gap(FrameworkElement e, double top) { e.Margin = new Thickness(e.Margin.Left, top, e.Margin.Right, e.Margin.Bottom); return e; }
 

@@ -401,6 +401,7 @@ sealed class MainWindow : Window
         var into = s.Lines.Select(l => l.DstLang).FirstOrDefault(x => x is not null);
         var meta = new List<string> { local.ToString(L("M月d日"), Culture) + " " + local.ToString("HH:mm", Culture) };
         meta.Add(live ? L("正在听") : LF("%@ 分钟", Math.Max(1, (int)Math.Round(s.Duration.TotalMinutes))));
+        if (s.Room == true) meta.Add(L("会议室"));
         if (spoken is not null && into is not null) meta.Add($"{Ui.SpokenName(spoken)} → {Ui.TargetName(into)}");
         top.Children.Add(Ui.Text(string.Join(" · ", meta), 13, live ? Palette.AccentText : Palette.Secondary));
 

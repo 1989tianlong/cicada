@@ -307,6 +307,54 @@ static class Tests
         Check(JsonNode.DeepEquals(JsonNode.Parse(mac), JsonNode.Parse(Json.Write(s))), "written back with every key: " + Json.Write(s));
     }
 
+    // MARK: 会议室
+
+    public static void RoomMicSkipsTheCableAndHeadsets()
+    {
+        RoomMicPlan.Input usb = new("usb"), headset = new("bt", Bluetooth: true), cable = new("cable", Virtual: true);
+        Equal("usb", RoomMicPlan.Pick("usb", [headset, usb]), "the default");
+        Equal("usb", RoomMicPlan.Pick("bt", [headset, usb]), "a headset hears the wearer, not the table");
+        Equal("usb", RoomMicPlan.Pick("cable", [cable, usb]), "never the virtual cable");
+        Equal("bt", RoomMicPlan.Pick("cable", [cable, headset]), "a headset when nothing else is left");
+        Equal(null, RoomMicPlan.Pick(null, [cable]), "no microphone");
+    }
+
+    public static void RoomSpeechLineFollowsTheNoise()
+    {
+        var gate = new VoiceGate();
+        Equal(0.004, gate.Threshold, "before the room is known");
+        // Half a minute of a fan at 0.003 with a voice at 0.02 now and then.
+        for (int i = 0; i < 30 * 33; i++) gate.Voiced(i % 10 == 0 ? 0.02 : 0.003, 0.03);
+        Check(Math.Abs(gate.Threshold - 0.006) < 1e-9, $"twice the room's noise, got {gate.Threshold}");
+        Check(gate.Voiced(0.008, 0.03), "a quiet voice across the table");
+        Check(!gate.Voiced(0.004, 0.03), "the fan");
+        var loud = new VoiceGate();
+        for (int i = 0; i < 200; i++) loud.Voiced(0.5, 0.03);
+        Equal(VoiceGate.Fixed, loud.Threshold, "never above the computer's line");
+    }
+
+    public static void ARoomMicHearsQuietSpeechTheFixedLineMisses()
+    {
+        // A voice at -48 dBFS (0.004 RMS) over a quieter floor: under the fixed 0.01 line.
+        var rng = new Random(1);
+        short[] Noise(double seconds, double rms) => Enumerable.Range(0, (int)(seconds * Segmenter.Rate)).Select(_ => (short)((rng.NextDouble() * 2 - 1) * rms * 1.7 * 32768)).ToArray();
+        short[] Voice(double seconds, double rms) => Enumerable.Range(0, (int)(seconds * Segmenter.Rate)).Select(i => (short)(Math.Sin(i * 0.05) * Math.Sin(i * 0.0007) * rms * 2 * 32768)).ToArray();
+        int Count(Segmenter s) { int n = 0; s.Emitted += _ => n++; s.Feed(Noise(5, 0.0008)); s.Feed(Voice(1.5, 0.004)); s.Feed(Noise(2, 0.0008)); s.Flush(); return n; }
+        Equal(0, Count(new Segmenter()), "the computer's line hears nothing");
+        Equal(1, Count(new Segmenter(new VoiceGate())), "the room's line hears the sentence");
+    }
+
+    public static void ARoomMeetingIsMarked()
+    {
+        var store = new SessionStore();
+        var s = store.Begin(DateTimeOffset.Parse("2026-01-02T02:00:00Z"));
+        store.MarkRoom(s.Id);
+        Equal(true, store.Get(s.Id)!.Room, "room");
+        store.Delete(s.Id);
+        Equal(ListenSource.System, ListenSource.Parse("mac"), "an unknown value is the computer's audio");
+        Equal(ListenSource.Both, ListenSource.Parse("both"), "both");
+    }
+
     public static void RenameLikeTheMac()
     {
         var store = new SessionStore();

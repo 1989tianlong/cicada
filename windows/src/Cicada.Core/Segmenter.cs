@@ -27,6 +27,16 @@ public sealed class Segmenter
     long consumed;                               // samples seen, for timestamps
     double currentStart;
     int quietFrames, loudFrames, index;
+    /// 会议室: a microphone's line follows the room's noise (VoiceGate); null keeps the fixed one.
+    /// Swapped when 听哪里 changes mid-meeting (read once per frame on the audio thread).
+    public VoiceGate? Gate { get => gate; set => gate = value; }
+    volatile VoiceGate? gate;
+    double line = Threshold;
+
+    public Segmenter(VoiceGate? gate = null) { this.gate = gate; }
+
+    /// The level that counts as speech right now.
+    public double Line => line;
 
     public event Action<Segment>? Emitted;
 
@@ -58,7 +68,9 @@ public sealed class Segmenter
     void Step(short[] frame)
     {
         double level = Rms(frame);
-        bool loud = level >= Threshold;
+        var g = gate;
+        line = g?.Threshold ?? Threshold;
+        bool loud = g?.Voiced(level, Frame / (double)Rate) ?? level >= line;
         double now = consumed / (double)Rate;
         consumed += frame.Length;
 
@@ -100,12 +112,13 @@ public sealed class Segmenter
     /// Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
     /// the first loud one to the last counts, the quiet ones held at the gate: counting only the
     /// loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate.
-    internal static bool IsSteady(IEnumerable<double> frameLevels)
+    internal static bool IsSteady(IEnumerable<double> frameLevels, double? gate = null)
     {
         var all = frameLevels.ToList();
-        int first = all.FindIndex(l => l >= Threshold), last = all.FindLastIndex(l => l >= Threshold);
+        var threshold = gate ?? Threshold;
+        int first = all.FindIndex(l => l >= threshold), last = all.FindLastIndex(l => l >= threshold);
         if (first < 0 || last <= first) return false;
-        var body = all.GetRange(first, last - first + 1).Select(l => Math.Max(l, Threshold)).Order().ToList();
+        var body = all.GetRange(first, last - first + 1).Select(l => Math.Max(l, threshold)).Order().ToList();
         return body[(int)(0.9 * (body.Count - 1))] < Steady * body[(int)(0.1 * (body.Count - 1))];
     }
 
@@ -117,21 +130,21 @@ public sealed class Segmenter
         var rest = current.GetRange(end, current.Count - end);
         var restLevels = levels.GetRange(end / Frame, levels.Count - end / Frame);
         double start = currentStart;
-        bool speech = loudFrames * Frame >= MinSpeech * Rate && !IsSteady(levels.GetRange(0, Math.Min(levels.Count, end / Frame)));
+        bool speech = loudFrames * Frame >= MinSpeech * Rate && !IsSteady(levels.GetRange(0, Math.Min(levels.Count, end / Frame)), line);
         current.Clear(); levels.Clear();
         quietFrames = 0; loudFrames = 0;
         if (speech) Emitted?.Invoke(new Segment(++index, Math.Round(start, 3), samples));
 
         // A forced cut carries on with the remainder; after a pause the remainder is silence.
-        if (restLevels.Any(l => l >= Threshold))
+        if (restLevels.Any(l => l >= line))
         {
             currentStart = start + end / (double)Rate;
             current.AddRange(rest);
             levels.AddRange(restLevels);
             int trailing = 0;
-            for (int i = levels.Count - 1; i >= 0 && levels[i] < Threshold; i--) trailing++;
+            for (int i = levels.Count - 1; i >= 0 && levels[i] < line; i--) trailing++;
             quietFrames = trailing;
-            loudFrames = levels.Count(l => l >= Threshold);
+            loudFrames = levels.Count(l => l >= line);
         }
     }
 }

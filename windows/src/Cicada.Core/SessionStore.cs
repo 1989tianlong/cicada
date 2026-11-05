@@ -99,6 +99,12 @@ public sealed class SessionStore
 
     public void SetNotes(string id, MeetingNotes notes) => Mutate(id, s => s.Notes = notes);
 
+    /// Heard through a microphone in the room for some or all of it (SessionStore.swift › markLiveInRoom).
+    public void MarkRoom(string id)
+    {
+        if (Get(id) is { Room: not true }) Mutate(id, s => s.Room = true);
+    }
+
     /// An empty title, or the one shown already, goes back to / stays on the automatic one
     /// (SessionStore.swift › rename): saving the dialog unchanged mustn't freeze the notes' name.
     public void Rename(string id, string title)

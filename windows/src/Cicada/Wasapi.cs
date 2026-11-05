@@ -54,6 +54,32 @@ static class Endpoints
         return All(Flow.Capture).FirstOrDefault(x => x.Description != VirtualCable.OutputName && !x.Name.StartsWith(VirtualCable.OutputName));
     }
 
+    /// 会议室: the microphone that hears the table (RoomMicPlan): the default, unless that is the
+    /// virtual cable or a Bluetooth headset.
+    public static Device? RoomMic()
+    {
+        var inputs = new List<(Device d, RoomMicPlan.Input plan)>();
+        try
+        {
+            var e = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+            Marshal.ThrowExceptionForHR(e.EnumAudioEndpoints((int)Flow.Capture, 1 /* ACTIVE */, out var all));
+            all.GetCount(out var n);
+            for (uint i = 0; i < n; i++)
+            {
+                all.Item(i, out var d);
+                d.GetId(out var id);
+                var device = new Device(id, Prop(d, 14) ?? id, Prop(d, 2) ?? "");
+                // PKEY_Device_EnumeratorName: BTHENUM, BTHHFENUM, BTHLEDEVICE for Bluetooth.
+                var bus = Prop(d, 24) ?? "";
+                var virtualCable = device.Description == VirtualCable.OutputName || device.Name.StartsWith(VirtualCable.OutputName);
+                inputs.Add((device, new RoomMicPlan.Input(id, bus.StartsWith("BTH", StringComparison.OrdinalIgnoreCase), virtualCable)));
+            }
+        }
+        catch (Exception ex) { Log.Debug($"endpoints: inputs failed {ex.GetType().Name}"); }
+        var pick = RoomMicPlan.Pick(Default(Flow.Capture)?.Id, inputs.Select(i => i.plan).ToList());
+        return inputs.FirstOrDefault(i => i.d.Id == pick).d;
+    }
+
     static string? Prop(IMMDevice d, int pid)
     {
         if (d.OpenPropertyStore(0, out var store) != 0) return null;
