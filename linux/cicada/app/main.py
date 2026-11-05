@@ -119,13 +119,44 @@ class Controller:
         self._calls_busy = False
         from .updater import Updates
         self.updates = Updates(self)  # 新版本: GitHub Releases, the tray menu and 设置 › 关于
+        # Something only the user can fix, said beyond the notes window (problem.py): the tray's dot
+        # and, once a meeting while the window is put away, a notification.
+        from ..core.problem import Notices
+        self.notices = Notices()
+        self._notified = False
         GLib.timeout_add_seconds(1, self._tick)
         GLib.timeout_add_seconds(2, self._watch_end)
 
     def _tick(self) -> bool:
         if self.tray is not None and self.listen.listening:
             self.tray.tick()
+        self.check_problem()
         return True
+
+    def check_problem(self) -> None:
+        """Every second and on each change: a notification when problem.Notices says one is due,
+        withdrawn once the service works again. Never a dialog: it would take the focus from the
+        meeting app."""
+        from ..core import aicheck, problem
+        reason = self.ling.check_result.reason if self.ling.has_key else None
+        w = self.notes_window
+        shown = w is not None and w.get_visible() and w.shows_problem(reason)
+        kind = self.notices.tick(time.time(), self.listen.listening, reason, shown)
+        if kind is not None:
+            from .aicheck_view import blocking
+            name = self.ling.service_name
+            title = blocking(self) if kind == "blocking" else LF("连不上 %@", name)
+            n = Gio.Notification.new(title or L("AI 服务的设置要改一下"))
+            n.set_body(self.ling.message() or "")
+            n.set_default_action("app.ai-settings")
+            n.add_button(L("打开设置"), "app.ai-settings")
+            self.application.send_notification("problem", n)
+            self._notified = True
+            Log.d("problem: notified %s (%s)" % (kind, reason))
+        elif self._notified and not (problem.blocking(reason) or reason == aicheck.UNREACHABLE):
+            self.application.withdraw_notification("problem")
+            self._notified = False
+            Log.d("problem: withdrawn")
 
     def launch(self, speak: bool = False, background: bool = False) -> None:
         ui.install_css()
@@ -191,6 +222,7 @@ class Controller:
                 self.tray.update()
             if self.settings_window is not None:
                 self.settings_window.refresh_version()
+            self.check_problem()
             return False
         GLib.idle_add(run)
 
@@ -591,6 +623,7 @@ class Controller:
         self.end_watch = meeting_end.MeetingEndWatch(self.end_config(), time.time())
         self.online_answered = False
         self.online_prompt = None
+        self.notices.start()
         room = self._room_side_source() if kind == "both" else None
         self.listen.start(source, kind, mic=kind == "room")
         if room is not None:
@@ -938,8 +971,9 @@ class App(Gtk.Application):
         speak = Gio.SimpleAction.new("speak", None)  # `cicada --speak`: 开始 / 停止说
         speak.connect("activate", lambda *_: self.controller.toggle_speaking())
         self.add_action(speak)
-        # The update notification's click and its 更新说明 button.
+        # The update notification's click and its 更新说明 button; a problem's 打开设置.
         for name, action in (("install-update", lambda: self.controller.updates.install()),
+                             ("ai-settings", lambda: self.controller.show_settings(ai=True)),
                              ("update-notes", lambda: self.controller.updates.open_notes())):
             a = Gio.SimpleAction.new(name, None)
             a.connect("activate", lambda _a, _p, f=action: f())

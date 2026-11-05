@@ -50,7 +50,7 @@ class Tray:
         lib.app_indicator_set_icon_full.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
         self.lib = lib
         self.icon = icon or "cicada"
-        self.badged = False
+        self.badged = (False, None)
         # An absolute path works as the icon "name", so no icon theme install is needed.
         self.ind = lib.app_indicator_new(b"cicada", (icon or "cicada").encode(), self.CATEGORY_APPLICATION_STATUS)
         lib.app_indicator_set_status(self.ind, self.STATUS_ACTIVE)
@@ -72,8 +72,9 @@ class Tray:
             menu.append(i)
             return i
         # The AI service when only the user can fix it (AIServiceStrip.swift, the panel's top): what's
-        # wrong, and a click opens 设置 › AI 服务. The icon stays as it is.
-        from .aicheck_view import strip_words
+        # wrong, and a click opens 设置 › AI 服务. One that stays until the user changes something also
+        # puts the dot on the icon (below).
+        from .aicheck_view import blocking, strip_words
         broken = strip_words(self.app)
         if broken:
             item("⚠ " + broken[0].rstrip("。.") + " · " + L("打开设置"), lambda: self.app.show_settings(ai=True))
@@ -116,19 +117,22 @@ class Tray:
         self.lib.app_indicator_set_menu(self.ind, _gpointer(menu))
         self.menu = menu  # the indicator holds a ref too; keep ours so Python doesn't free it early
         self.lib.app_indicator_set_label(self.ind, (self._clock() if listening else "").encode(), b"")
-        self._badge(self.app.updates.update)
+        self._badge(self.app.updates.update, blocking(self.app))
 
-    def _badge(self, update) -> None:
-        """The Mac's update dot on the top-bar icon: the same icon with an orange dot top right."""
-        on = update is not None
-        if on == self.badged:
+    def _badge(self, update, problem) -> None:
+        """The Mac's menu bar dot on the top-bar icon: the same icon with an orange dot top right, for
+        something only the user can fix or else a new version. The icon's description says which (the
+        Mac's tooltip; screen readers and the indicator read it)."""
+        on = problem is not None or update is not None
+        desc = L("知了") + (" · " + problem if problem else " · " + LF("有新版本 %@", update.version) if update else "")
+        if (on, desc) == self.badged:
             return
         path = badged_icon(self.icon) if on else self.icon
         if path is None:
             return
-        desc = L("知了") + (" · " + LF("有新版本 %@", update.version) if on else "")
         self.lib.app_indicator_set_icon_full(self.ind, path.encode(), desc.encode())
-        self.badged = on
+        self.badged = (on, desc)
+        Log.d("tray: badge=%s %s" % ("problem" if problem else "update" if update else "none", desc))
 
     def _clock(self) -> str:
         from datetime import datetime, timezone

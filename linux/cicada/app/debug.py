@@ -13,7 +13,8 @@ per connection, one JSON line back. Never in release builds.
   ask settings|fix|close (answer the 开始听 dialog a failed check put up) | settings-ai (设置 at AI 服务) | tray-menu
   pill (the records window capsule's widget sizes)
   listen-source system|room|both (听哪里) | room-mic [<source>|auto] | lines [<record id>] (each line's via)
-  online both|no (answer 线上也有人？) | room-mic-force <source>|"" (a null sink's monitor as the room mic)"""
+  online both|no (answer 线上也有人？) | room-mic-force <source>|"" (a null sink's monitor as the room mic)
+  hide notes | problem-wait <seconds>|off (how long unreachable lasts before its notification; off: 2 min)"""
 from __future__ import annotations
 
 import os
@@ -103,6 +104,14 @@ def _speakers(app, s) -> dict:
     return out
 
 
+def _problem(app) -> dict:
+    from .aicheck_view import blocking
+    w = app.notes_window
+    return {"blocking": blocking(app), "reason": app.ling.check_result.reason, "sent": sorted(app.notices.sent),
+            "wait": app.notices.wait, "notesShown": bool(w is not None and w.get_visible()),
+            "tray": app.tray.badged[1] if app.tray is not None else None}
+
+
 def updates_notified():
     from ..core import updates
     return updates.notified()
@@ -133,6 +142,7 @@ def command(app, line: str) -> dict:
                 "speakers": _speakers(app, s),
                 "ending": {"title": app.ending_title(app.ending), "left": app.ending_left(app.ending),
                            "reason": repr(app.ending.reason)} if app.ending else None,
+                "aiProblem": _problem(app),
                 "autoEnded": app.auto_ended, "fakeCalls": app.fake_calls,
                 "endTimes": list(app.end_times) if app.end_times else None,
                 "inCall": dict(app.end_watch.in_call) if app.end_watch else None}
@@ -148,6 +158,14 @@ def command(app, line: str) -> dict:
         app.ling.simulate = None if arg == "off" else arg
         threading.Thread(target=app.ling.check, daemon=True).start()
         return {"ok": True, "simulate": app.ling.simulate}
+    if cmd == "hide" and arg == "notes":
+        if app.notes_window is not None:
+            app.notes_window.hide()
+        return {"ok": True}
+    if cmd == "problem-wait":
+        from ..core.problem import UNREACHABLE_AFTER
+        app.notices.wait = UNREACHABLE_AFTER if arg == "off" else float(arg)
+        return {"ok": True, "problem": _problem(app)}
     if cmd == "ai-check":
         threading.Thread(target=app.ling.check, daemon=True).start()
         return {"ok": True}

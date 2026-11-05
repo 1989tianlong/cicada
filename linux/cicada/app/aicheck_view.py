@@ -146,14 +146,21 @@ def strip_words(app):
     if f is None:
         return r.balance_line(name), L("用完后纪要会停下")
     c = ling.config()
-    reason = f[1]
-    title = {aicheck.UNREACHABLE: lambda: LF("连不上 %@", name),
-             aicheck.INVALID_KEY: lambda: LF("%@ 的 key 用不了", name),
-             aicheck.MGMT_KEY: lambda: LF("%@ 的 key 用不了", name),
-             aicheck.NO_CREDIT: lambda: LF("%@ 账户余额不足。", name),
-             aicheck.NO_MODEL: lambda: LF("%@ 上找不到 %@ 这个模型。", name, c.text_model),
-             aicheck.DEAF: lambda: LF("%@ 听不了声音。", c.hear_model)}.get(reason, lambda: L("AI 服务的设置要改一下"))()
+    from ..core import problem
+    title = LF("连不上 %@", name) if f[1] == aicheck.UNREACHABLE else \
+        problem.title(f[1], name, c.text_model, c.hear_model) or L("AI 服务的设置要改一下")
     return title, ling.message() or ""
+
+
+def blocking(app) -> str | None:
+    """What stops Cicada until the user changes something (AIServiceStrip.blocking): the tray's dot
+    and the notification. Not the network, a busy service or one that errs."""
+    from ..core import problem
+    ling = app.ling
+    if not ling.has_key:
+        return None
+    c = ling.config()
+    return problem.title(ling.check_result.reason, ling.service_name, c.text_model, c.hear_model)
 
 
 def key_hint(app, key: str):

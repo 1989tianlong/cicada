@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from gi.repository import Gdk, GLib, Gtk
 
 from ..core import notes as notesmod
+from ..core import problem
 from ..core import roommic, speakers
 from ..core.strings import L, LF
 from ..core.support import Log, clock
@@ -737,6 +738,19 @@ class NotesWindow(Gtk.Window):
             row.pack_end(b, False, False, 0)
         box.pack_start(row, False, False, 0)
 
+    def _reason(self) -> str | None:
+        ling = self.app.ling
+        return ling.check_result.reason if ling.has_key else None
+
+    def shows_problem(self, reason) -> bool:
+        """Whether this window, as it is laid out, says what's wrong (then no notification): the
+        subtitle bar and the live card only what stops hearing; the notes column the rest."""
+        if not problem.blocking(reason) and reason != "unreachable":
+            return True
+        if self.subtitles or getattr(self, "body", None) is None:
+            return problem.stops_hearing(reason) or reason == "unreachable"
+        return self.wide or self.tab == "notes"
+
     def _fill_live(self) -> None:
         box = self.live
         ui.clear(box)
@@ -760,6 +774,12 @@ class NotesWindow(Gtk.Window):
             ling = self.app.ling.provider.id == "ling"
             self._state_card(box, "dialog-password-symbolic", "warn", listen.problem or L("Ling key 无效"),
                              L("在设置里更换 Ling key") if ling else L("在 设置 › AI 服务 里换一个"), L("设置"), self.app.show_settings)
+        elif problem.stops_hearing(self._reason()) and kind not in ("network", "busy"):
+            # Nothing is heard until it's fixed (no credit, a bad address…): said where the subtitles
+            # would be, with the way to fix it, not "等有人说话".
+            from .aicheck_view import blocking
+            self._state_card(box, "dialog-warning-symbolic", "warn", blocking(self.app), self.app.ling.message() or "",
+                             L("设置"), lambda: self.app.show_settings(ai=True))
         elif line is None:
             if listen.listening:
                 hearing = listen.pending > 0 or listen.level >= 0.01
@@ -840,8 +860,21 @@ class NotesWindow(Gtk.Window):
         s = self._session()
         covered = engine.notes.covered
         last = s.lines[covered - 1].t if s is not None and 0 < covered <= len(s.lines) else 0.0
+        reason = self._reason()
         if engine.status == notesmod.INVALID_KEY:
             text, tone = LF("key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。", clock(last)), "error"
+        elif problem.blocking(reason) and (reason in problem.NOTES_ONLY or not self.live_box.get_visible()):
+            # Only the user can fix it (the live card says it too, when it shows): what, and 打开设置.
+            from .aicheck_view import blocking
+            row = ui.hbox(10)
+            row.pack_start(ui.vbox(2, ui.text(blocking(self.app), 12, "ink", bold=True, width_chars=24),
+                                   ui.text(self.app.ling.message() or "", 12, "secondary", width_chars=24)), True, True, 0)
+            b = ui.button(L("打开设置"), lambda: self.app.show_settings(ai=True), "darkbtn")
+            b.set_can_focus(False)
+            b.set_valign(Gtk.Align.CENTER)
+            row.pack_end(b, False, False, 0)
+            body.pack_start(ui.pad(ui.panel(ui.pad(row, 12), "notice", "error"), 0, 0, 10, 0), False, False, 0)
+            return
         elif engine.status == notesmod.RATE_LIMITED:
             text, tone = LF("%@ 很忙，纪要稍后补上。字幕照常。", self.app.ling.service_name), "busy"
         elif engine.status == notesmod.FAILED and self.app.ling.check_result.reason == "unreachable":
