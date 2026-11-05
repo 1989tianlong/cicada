@@ -58,7 +58,7 @@
   },
   {
     "version": "1.2.1",
-    "date": null,
+    "date": "2026-11-05",
     "title": "小声说话也能出字幕，Linux 设置里能填 key",
     "summary": "修复 Windows、Linux、Android 上说话声音较小时被当成底噪、不出字幕的问题；修复 Linux 设置里不出现 key 输入框的问题。",
     "image": null,
@@ -70,8 +70,8 @@
           "linux",
           "android"
         ],
-        "title": "Windows、Linux、Android 上，会议里小声说话不再被当成风扇声丢掉、不出字幕。",
-        "text": "过滤底噪时把字与字之间的停顿也算进去，小声的人声不再显得“平稳”而被误删；风扇声、电流声照样过滤。"
+        "title": "Windows、Linux、Android 上，会议里小声说话不再被当成风扇声丢掉。",
+        "text": "过滤底噪时把字与字之间的停顿也算进去，小声的人声大多能出字幕了；风扇声、电流声照样过滤。"
       },
       {
         "kind": "fixed",
@@ -85,7 +85,7 @@
   },
   {
     "version": "1.2.0",
-    "date": null,
+    "date": "2026-11-05",
     "title": "用不了 Ling 时换一家 AI 服务，出问题时说清怎么修",
     "summary": "Windows、Linux、Android 版也能用 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务；AI 服务连不上或 key、模型有问题时，知了会说清坏在哪一步、该怎么修。",
     "image": null,
