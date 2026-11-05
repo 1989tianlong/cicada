@@ -8,7 +8,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-from gi.repository import Gdk, Gio, GLib, Gtk
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 from ..core import roommic, session_store, speakers
 from ..core.strings import L, LF
@@ -108,7 +108,19 @@ class RecordsWindow(Gtk.Window):
         ui.pad(self.content, 6, 36, 28, 36)
         self.right.add(self.content)
         ui.classes(self.right, "sheet")
-        root.pack_start(self.right, True, True, 0)
+        # Once the title scrolls away, a slim bar over the top of the page keeps the title, 导出…
+        # and the two columns' names in view (the Mac's pinned bar).
+        # A plain box shown and hidden: an overlay child takes the clicks under it even while a
+        # revealer hides its content.
+        self.pinned = Gtk.Box()
+        self.pinned.set_valign(Gtk.Align.START)
+        self.pinned.set_no_show_all(True)
+        page = Gtk.Overlay()
+        page.add(self.right)
+        page.add_overlay(self.pinned)
+        root.pack_start(page, True, True, 0)
+        self.top_box = None
+        self.right.get_vadjustment().connect("value-changed", lambda *_: self._pin())
         self.columns = None
         self.connect("size-allocate", self._resized)
         self.connect("key-press-event", self._key)
@@ -417,6 +429,48 @@ class RecordsWindow(Gtk.Window):
             if self.columns.get_orientation() != want:
                 self.columns.set_orientation(want)
                 self.columns.set_homogeneous(want == Gtk.Orientation.HORIZONTAL)
+                if self.pinned_heads is not None:
+                    self.pinned_heads.set_visible(want == Gtk.Orientation.HORIZONTAL)
+
+    pinned_heads = None
+
+    def _pinned_bar(self, s) -> Gtk.Widget:
+        """The title (a click goes back to the top), 导出… and ⋯; under them, side by side, the two
+        columns' names, so a long scroll still says which side is the notes."""
+        title = Gtk.Button()
+        ui.classes(title, "flat", "pinned-title")
+        self.pinned_title = ui.text(session_store.display_title(s), 14, "heading", bold=True, wrap=False)
+        self.pinned_title.set_ellipsize(Pango.EllipsizeMode.END)
+        self.pinned_title.set_xalign(0)
+        title.add(self.pinned_title)
+        title.set_tooltip_text(L("回到顶部"))
+        title.connect("clicked", lambda *_: self.right.get_vadjustment().set_value(0))
+        row = ui.hbox(8)
+        row.pack_start(title, True, True, 0)
+        row.pack_end(self._more_menu(s), False, False, 0)
+        row.pack_end(ui.button(L("导出…"), lambda: self.export(s), "outline", "document-save-symbolic"), False, False, 0)
+        heads = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=40)
+        heads.set_homogeneous(True)
+        heads.pack_start(self._section_title(L("纪要")), True, True, 0)
+        heads.pack_start(self._section_title("%s %d" % (L("文字记录"), len(s.lines))), True, True, 0)
+        heads.set_no_show_all(True)
+        heads.set_visible(self.columns is None or self.columns.get_orientation() == Gtk.Orientation.HORIZONTAL)
+        for c in heads.get_children():
+            c.show()
+        self.pinned_heads = heads
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.pack_start(row, False, False, 0)
+        box.pack_start(heads, False, False, 0)
+        ui.pad(box, 6, 36, 8, 36)
+        return ui.panel(box, "pinned-bar")
+
+    def _pin(self) -> None:
+        """Show the pinned bar while the title block is above the top of the page."""
+        top = self.top_box
+        show = top is not None and top.get_mapped() and \
+            self.right.get_vadjustment().get_value() > top.get_allocation().y + top.get_allocation().height
+        if show != self.pinned.get_visible():
+            self.pinned.set_visible(show)
 
     def _setup_page(self) -> Gtk.Widget:
         """No meetings and not set up yet (Windows' Welcome › Checklist): what is left, ticked by what
@@ -563,6 +617,8 @@ class RecordsWindow(Gtk.Window):
         keep = self.right.get_vadjustment().get_value()
         if empty or no_match:
             ui.clear(d)
+            self.top_box = None
+            self.pinned.hide()
             self.columns = None
             self._built_key = None
         if empty and self.app.setup_left:
@@ -584,6 +640,8 @@ class RecordsWindow(Gtk.Window):
         s = self.app.store.get(self.selected) if self.selected else None
         if s is None:
             ui.clear(d)
+            self.top_box = None
+            self.pinned.hide()
             self.columns = None
             self._built_key = None
             d.show_all()
@@ -610,6 +668,7 @@ class RecordsWindow(Gtk.Window):
         actions.pack_start(self._more_menu(s), False, False, 0)
         top.pack_end(actions, False, False, 0)
         d.pack_start(top, False, False, 0)
+        self.top_box = top
 
         # Notes | transcript
         self.columns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=40)
@@ -622,7 +681,12 @@ class RecordsWindow(Gtk.Window):
         d.pack_start(self.columns, False, False, 0)
         self._resized(self, self.get_allocation())
         d.show_all()
-        GLib.idle_add(lambda: self.right.get_vadjustment().set_value(keep) and False)
+        for old in self.pinned.get_children():
+            old.destroy()
+        bar = self._pinned_bar(s)
+        self.pinned.pack_start(bar, True, True, 0)
+        bar.show_all()
+        GLib.idle_add(lambda: (self.right.get_vadjustment().set_value(keep), self._pin()) and False)
 
     def _meta(self, s, live) -> str:
         langs = ""
@@ -648,6 +712,7 @@ class RecordsWindow(Gtk.Window):
             self.show_detail()
             return
         ui.retext(self.title_label, session_store.display_title(s))
+        ui.retext(self.pinned_title, session_store.display_title(s))
         ui.retext(self.meta_label, self._meta(s, live))
         state = self._notes_state(s, live)
         if state != self._notes_key:

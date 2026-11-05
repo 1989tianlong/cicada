@@ -20,6 +20,8 @@ CSS = b"""
 .ground { background-color: #F3F4F6; }
 .sheet, .sheet viewport { background-color: #FFFFFF; }
 .soft-bar { background-color: #F3F4F6; }
+.pinned-bar { background-color: #FFFFFF; border-bottom: 1px solid #ECEDF0; }
+button.pinned-title { background: none; border: none; box-shadow: none; padding: 0; min-height: 0; }
 
 /* Header bars: flat, the window buttons small glyphs (the Mac's quiet chrome, not Yaru's discs). */
 headerbar.cicada { background-image: none; background-color: #FFFFFF; border: none; box-shadow: none; min-height: 44px; padding: 0 6px; }
