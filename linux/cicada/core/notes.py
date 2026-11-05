@@ -366,6 +366,10 @@ def carry_times(old: MeetingNotes, nxt: MeetingNotes) -> None:
     for t in nxt.topics:
         times = [_min(t.point_time(i), known.get(p)) for i, p in enumerate(t.points)]
         t.pointTimes = times if any(x is not None for x in times) else None
+        # A topic starts no later than its first point (the reply dates it from the lines it cites now).
+        first = min((x for x in times if x is not None), default=None)
+        if first is not None and first < t.start:
+            t.start = first
     items = {}
     for i in old.conclusions + old.todos:
         if i.t is not None:
