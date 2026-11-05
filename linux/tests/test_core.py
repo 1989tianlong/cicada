@@ -356,6 +356,10 @@ class Hearing(Base):
         self.assertEqual("Hello", clean_translation("Here is the translation:\nHello", "en"))
         self.assertIsNone(clean_translation("请提供需要翻译的字幕内容", "en"))
         self.assertIsNone(clean_translation("Hello", "zh-CN"))
+        # Ling translated the fixed "Translate." instruction instead of the subtitle.
+        self.assertIsNone(clean_translation("翻译。", "zh-CN"))
+        self.assertIsNone(clean_translation("Translate.", "en"))
+        self.assertEqual("好的，翻译。", clean_translation("好的，翻译。", "zh-CN"))
         self.assertEqual("Done.", clean_translation("<think>x</think>Done.", "en"))
 
     def test_joins_cut_sentences(self):

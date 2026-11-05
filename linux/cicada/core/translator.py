@@ -261,6 +261,12 @@ _ABOUT = ("translat", "subtitle", "garbled", "transcri", "asr", "speech recognit
 _ZH_ABOUT = ("字幕", "翻译")
 _ZH_REMARK = ("请提供", "似乎", "看起来", "无法", "乱码", "没有附上", "您只发送")
 
+# "Translate." in each target language, letters only and lowercased.
+_INSTRUCTION_ECHOES = frozenset((
+    "翻译", "翻譯", "translate", "翻訳", "翻訳して", "翻訳する", "翻訳してください", "번역", "번역해", "번역하세요", "번역해주세요",
+    "traducir", "traduce", "traduzca", "traduire", "traduisez", "traduis", "übersetzen", "übersetze", "traduzir", "traduza",
+))
+
 
 def clean_translation(reply: str, target: str) -> str | None:
     """Ling sometimes comments on a garbled subtitle instead of translating it ("The subtitle appears
@@ -289,5 +295,10 @@ def clean_translation(reply: str, target: str) -> str | None:
             output = output[1:-1]
     output = output.strip()
     if not output:
+        return None
+    # Ling translated the fixed "Translate." instruction instead of the subtitle ("翻译。" for an empty
+    # subtitle, or for "Translate this into Chinese please."); the next provider translates it. Port of
+    # instructionEchoes.
+    if "".join(c for c in output.lower() if c.isalpha()) in _INSTRUCTION_ECHOES:
         return None
     return output if in_script(output, target) else None
