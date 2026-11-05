@@ -297,12 +297,13 @@ static class Tests
 
     public static void KeepsTheMacsImportAndRoomFields()
     {
-        // A Mac record of an imported room recording, plus a key no version knows yet.
+        // A Mac record of an imported room recording (a line by the room mic), plus a key no version knows yet.
         const string mac = """
-        {"endedAt":"2026-01-01T02:10:00Z","futureKey":{"a":[1,2]},"hasAudio":true,"id":"20260101-100000","importing":false,"lines":[],"room":true,"sourceFile":"周会.m4a","sourcePath":"/Users/x/周会.m4a","startedAt":"2026-01-01T02:00:00Z","title":"会议 1月1日 10:00"}
+        {"endedAt":"2026-01-01T02:10:00Z","futureKey":{"a":[1,2]},"hasAudio":true,"id":"20260101-100000","importing":false,"lines":[{"dstLang":"en","id":"h1-1","speaker":"them","src":"你好","srcLang":"zh-CN","t":2.5,"via":"room"}],"room":true,"sourceFile":"周会.m4a","sourcePath":"/Users/x/周会.m4a","startedAt":"2026-01-01T02:00:00Z","title":"会议 1月1日 10:00"}
         """;
         var s = Json.Read<Session>(mac)!;
         Equal(true, s.Room, "room");
+        Equal("room", s.Lines[0].Via, "a line the room mic heard");
         Equal("周会.m4a", s.SourceFile, "sourceFile");
         Check(JsonNode.DeepEquals(JsonNode.Parse(mac), JsonNode.Parse(Json.Write(s))), "written back with every key: " + Json.Write(s));
     }
