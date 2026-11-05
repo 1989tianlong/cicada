@@ -61,6 +61,7 @@
 "这个服务不支持 JSON" = "This service doesn't support JSON";
 "换一个模型后可用" = "Available with another model";
 "翻译" = "Translation";
+"随语音识别一步翻出；不行时换 Google" = "Translated together with transcription; falls back to Google";
 "整句用它；不行时换 Google、本机" = "Used for full sentences; falls back to Google, then on-device";
 "整句用它；不行时换 Google" = "Used for full sentences; falls back to Google";
 "先用 Google 翻译" = "Google Translate for now";
@@ -72,6 +73,7 @@
 "只有 Ling" = "Ling only";
 "换用 Ling 才有" = "Switch to Ling to use";
 "语音识别" = "Speech recognition";
+"识别和翻译一步完成" = "Transcribed and translated in one step";
 "更快，不花钱" = "Faster, and free";
 "自己选模型" = "Choose models yourself";
 "模型" = "Model";
@@ -80,6 +82,7 @@
 "纪要和整句翻译" = "Notes and sentence translation";
 "声音模型" = "Voice model";
 "同传念给对方" = "Speaks to the room when interpreting";
+"一小时会议约 ¥0.15–1（目前优惠价）。说话的声音分段发给 Ling 识别和翻译；会议录音和文字记录只存在这台 Mac 上。" = "Roughly ¥0.15–1 for an hour-long meeting at current promotional pricing. Speech is sent to Ling in short segments for transcription and translation; recordings and transcripts stay on this Mac.";
 "一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字（用你自己的声音时还有那段录音），语音识别留在本机。" = "About ¥0.15–1 per hour of meeting (current discount pricing). Only text is sent (plus your voice sample if you use your own voice); speech recognition stays on this Mac.";
 "按所选模型计费。发出去的只有文字，语音识别留在本机。" = "Billed by chosen model. Only text is sent; speech recognition stays on-device.";
 "在 %@ 创建 key，复制后粘贴到这里。" = "Create a key on %@, then copy and paste it here.";
@@ -92,6 +95,7 @@
 "正在检查…" = "Checking…";
 "已连接" = "Connected";
 "%@ 现在很忙" = "%@ is busy right now";
+"填入 Ling key 后才能识别语音、出字幕和纪要" = "Enter a Ling key to transcribe speech and generate subtitles and notes";
 "不填 key 时，字幕和翻译仍可正常使用" = "Subtitles and translation work without a key";
 "更换" = "Change";
 "保存并检查" = "Save and check";
@@ -321,6 +325,8 @@
 "只看原文时不翻译，也不用 Ling 额度" = "Original: no translation, no Ling quota";
 "翻译成" = "Translate to";
 "只按这种语言识别" = "Recognize only this language";
+"说话后自动听出是哪种语言" = "Detects the spoken language automatically as people speak";
+"从已安装的语音模型里挑最有把握的" = "Picks the most confident of the installed speech models";
 "自动识别" = "Auto-detect";
 "对方说的正是系统语言时，翻成系统里的另一种" = "When they speak your system language, translates into your other system language";
 "对方说的就是这种语言时不翻译" = "Not translated when they already speak this language";
@@ -340,7 +346,6 @@
 "（同声传译未开）" = "(interpreting off)";
 "你说" = "You say";
 "现在听出是 %@" = "Currently hearing %@";
-"从已安装的语音模型里挑最有把握的" = "Picks the most confident of the installed speech models";
 "会议原文 · %@" = "Meeting's own · %@";
 "会议原文" = "Meeting's own";
 
@@ -352,16 +357,19 @@
 "自动识别 → %@" = "Auto-detect → %@";
 "等你允许使用麦克风" = "Waiting for microphone access";
 "正在听" = "Listening";
+"请先在设置 › AI 服务里填入 Ling key" = "Enter a Ling key in Settings › AI Service first";
 "此 Mac 不支持本机语音识别" = "This Mac doesn't support on-device speech recognition";
 "请在系统设置里允许“系统音频录制”，再重新打开知了" = "Allow System Audio Recording in System Settings, then reopen Cicada";
 "无法读取系统音频，请在系统设置里允许“系统音频录制”" = "Can't read system audio. Allow “System Audio Recording” in System Settings";
 "没能下载 %@ 语音模型" = "Couldn't download the %@ speech model";
 "已暂停" = "Paused";
 "麦克风无法启动，请在系统设置里允许%@使用麦克风" = "The microphone won't start. Allow %@ to use it in System Settings";
+"%@ 在听" = "%@ is listening";
 "识别出错，%lld 秒后重试" = "Recognition error; retrying in %lld s";
 "听不出是哪种语言，到菜单栏里选一下" = "Can't tell the language. Pick one from the menu bar";
 "正在识别语言…" = "Detecting language…";
-"%@ 在听" = "%@ is listening";
+"key 已失效，到设置 › AI 服务里重填" = "The key stopped working. Enter a new one in Settings › AI Service";
+"%@ 暂时连不上，正在重试" = "Can't reach %@. Retrying";
 "翻译暂不可用" = "Translation unavailable for now";
 
 /* ListenPill */
@@ -483,7 +491,9 @@
 "改用%@重新整理" = "Rewrite in %@";
 "在会议记录中查看" = "View in Meetings";
 "开始新会议" = "New Meeting";
+"识别语音和生成纪要需要 Ling key" = "A Ling key is required for transcription and notes";
 "生成纪要需要 API key" = "Notes need an API key";
+"填好 %@ 的 key 后，立即开始识别语音、出双语字幕和实时纪要。" = "Add your %@ key to start transcribing speech and generating bilingual subtitles and live notes.";
 "文字记录仍在保存。填好 %@ 的 key 后，会从头整理出整场纪要。" = "Transcript is still being saved. Enter a %@ key to generate notes from the beginning.";
 "获取 %@ key ↗" = "Get %@ key ↗";
 "保存并开始" = "Save and Start";
@@ -514,8 +524,8 @@
 "播放示例 · 0:09" = "Play sample · 0:09";
 "正在听…" = "Listening…";
 "听声音" = "Audio";
-"看效果" = "Try it";
 "接 Ling" = "Ling";
+"看效果" = "Try it";
 "第 %lld 步，共 %lld 步：%@" = "Step %lld of %lld: %@";
 "打开后自动继续" = "Continues once it's on";
 "上一步" = "Back";
@@ -525,6 +535,7 @@
 "继续" = "Continue";
 "让知了听到电脑里的声音" = "Let Cicada hear your Mac";
 "字幕和纪要都从这里来。去系统设置打开，回来会自动识别。" = "Subtitles and notes come from it. Turn it on in System Settings; Cicada notices when you're back.";
+"会议录音和文字记录只存在这台 Mac 上" = "Meeting recordings and transcripts stay on this Mac";
 "声音只在本机识别" = "Audio is recognized only on this Mac";
 "听电脑里的声音" = "Hear the Mac's audio";
 "在系统设置里打开后，要重新打开知了" = "After turning it on in System Settings, reopen Cicada";
@@ -566,6 +577,7 @@
 "每场会都存在会议记录里" = "Every meeting is kept in Meetings";
 "就是它" = "This one";
 "字幕条可任意拖动，拖拽右下角可调整大小。" = "Drag the subtitle bar anywhere; drag its corner to resize.";
+"先在上一步接上 Ling key，示例会议才能识别出实时字幕。" = "Connect your Ling key in the previous step first to see live subtitles for the sample meeting.";
 "开会时，这些字幕还能整理成纪要" = "In meetings, these subtitles become notes";
 "下一步接上 Ling 就有" = "Connect Ling in the next step";
 
@@ -573,9 +585,10 @@
 "用其他服务" = "Use another service";
 "纪要和翻译都能用，模型已经选好。" = "Notes and translation are ready; models are preselected.";
 "接上 Ling，一个 key 用上全部功能" = "Connect Ling to unlock all features with one key";
-"更准的翻译" = "Sharper translation";
+"实时翻译字幕" = "Live translated subtitles";
 "自然的同传声音" = "Natural interpreting voice";
 "用你自己的声音" = "Use your own voice";
+"更准的翻译" = "Sharper translation";
 "Ling 每月赠送 ¥10 额度" = "Ling gives ¥10 of credit every month";
 "约够 10–50 小时会议" = "Enough for about 10–50 hours of meetings";
 "‹ 还是用 Ling" = "‹ Use Ling instead";
@@ -597,14 +610,17 @@
 "人名、术语前后一致" = "Names and terms stay consistent";
 "自然人声" = "Natural voices";
 "同传约 2 秒出声" = "Interpreting speaks in ~2 s";
+"Intel 版 Mac 需要接上 Ling 才能识别语音" = "Intel Macs require a Ling key for speech recognition";
+"可以先进入应用，开会前在设置 › AI 服务里填上 Ling key 即可。" = "You can enter the app now and add your Ling key in Settings › AI Service before a meeting.";
 "先不接也行，基础功能照常能用" = "You can skip it; the basics still work";
 "随时可在纪要窗口或设置里接上，开完的会也能补出纪要。" = "Connect any time from the notes window or Settings; past meetings can get notes too.";
 "现在可用" = "Works now";
-"实时翻译字幕" = "Live translated subtitles";
+"查看以往的会议记录" = "Browse past meeting records";
+"接上 Ling 才有" = "Needs Ling";
+"实时翻译字幕和双语记录" = "Live translated subtitles & bilingual transcripts";
+"实时纪要和会后总结" = "Live notes and a summary after";
 "双语文字记录" = "Bilingual transcript";
 "同声传译（系统语音）" = "Interpreting (Mac voices)";
-"接上 Ling 才有" = "Needs Ling";
-"实时纪要和会后总结" = "Live notes and a summary after";
 "自然人声，约 2 秒出声" = "Natural voices in about 2 s";
 "粘贴并检查" = "Paste and Check";
 "接上后继续" = "Connect to continue";
@@ -750,6 +766,7 @@
 "文件里说的" = "Spoken in the file";
 "译成“翻译成”里的语言" = "Translated into your Translate to language";
 "转完后生成纪要" = "Write notes when done";
+"导入转写和生成纪要都需要 Ling key" = "Both file transcription and notes require a Ling key";
 "需要 Ling key；没有也能转出文字记录" = "Needs a Ling key; the transcript works without one";
 "会议应用挂断后结束" = "End when the meeting app hangs up";
 "Zoom、腾讯会议、飞书、Teams 等" = "Zoom, Tencent Meeting, Lark, Teams and others";
@@ -807,6 +824,7 @@
 "合成声音" = "Voice";
 "示例句子" = "Sample sentence";
 "麦克风峰值 %lld dB" = "Mic peak %lld dB";
+"云端转写定稿" = "Cloud transcription";
 "本机转写定稿" = "Final transcript on this Mac";
 "没有译文" = "No translation";
 "本机（%@ 失败）" = "On-device (%@ failed)";
@@ -833,6 +851,7 @@
 "有削波" = "Clipping";
 "音量正常" = "Level OK";
 "听得清" = "Clear";
+"重新听写" = "Re-transcribed";
 "本机重新听写" = "Re-transcribed here";
 "意思对" = "Meaning";
 "一致 %lld" = "Matches %lld";
@@ -966,8 +985,8 @@
 "后台转写 %@ · %lld%%" = "Transcribing %@ · %lld%%";
 "后台转写 %@ · %lld%%，还有 %lld 个" = "Transcribing %@ · %lld%%, %lld more";
 "屏幕上不出字幕，文字记录照常保存" = "Nothing on screen; the transcript is still saved";
-"填入 API key 后可生成纪要；文字记录照常保存" = "Add an API key for notes; the transcript is saved either way";
 "什么时候出现" = "Appears";
+"填入 API key 后可生成纪要；文字记录照常保存" = "Add an API key for notes; the transcript is saved either way";
 "译文从扬声器念出来" = "Translations are read out from the speakers";
 "系统麦克风换成 %@" = "System mic switches to %@";
 "译文送进 %@" = "Translations go into %@";

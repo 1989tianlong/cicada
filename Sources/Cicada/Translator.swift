@@ -192,10 +192,11 @@ final class TranslationService {
     /// 先用○○听: one stretch of the meeting heard by the service's audio model (Ming), its language,
     /// what was said and its translation in one call. nil for no speech or noise; throws when the
     /// call failed, so listening can tell a service that is down from a quiet meeting.
-    func hear(wav: Data, seconds: Double, target: String, hint: String?) async throws -> CloudHeard? {
+    func hear(wav: Data, seconds: Double, target: String, hint: String?,
+              priority: LingClient.Priority = .translate) async throws -> CloudHeard? {
         guard ling.hearsAudio else { throw LingClient.Failure.noKey }
         let reply = try await ling.chat(content: CloudHearing.prompt(target: target, hint: hint, names: glossary()),
-                                        instruction: CloudHearing.instruction(target: target), priority: .translate,
+                                        instruction: CloudHearing.instruction(target: target), priority: priority,
                                         maxTokens: CloudHearing.tokens(seconds: seconds), timeout: 12,
                                         model: "Ming-3.0-audio-flash", audio: wav, role: "heard-them")
         return CloudHearing.parse(reply, target: target, hint: hint, seconds: seconds)

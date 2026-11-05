@@ -420,7 +420,9 @@ final class SpeakTester: ObservableObject {
             r.problem = L("麦克风几乎没收到声音：检查系统设置里的输入设备")
         } else if p.text.isEmpty {
             r.broken = .recognize
-            r.problem = L("没听出说了什么：靠近麦克风再说一次")
+            // An Intel Mac hears only through Ming: without a Ling key nothing could have been heard.
+            r.problem = Recognition.cloudOnly && !ling.hearsAudio ? L("请先在设置 › AI 服务里填入 Ling key")
+                : L("没听出说了什么：靠近麦克风再说一次")
         } else if p.translation == nil {
             r.broken = .translate
             r.problem = L("翻译没有成功：检查网络，或稍后再试")

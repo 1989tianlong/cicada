@@ -132,7 +132,7 @@ struct SpeakTestView: View {
                      detail: r.map { $0.sample ? L("示例句子") : $0.micPeakDB.map { L("麦克风峰值 \(Int($0)) dB") } ?? "" } ?? "",
                      time: nil, state: state(.mic), playable: r?.micURL),
             StageRow(id: .recognize, name: ming ? L("识别 + 翻译") : L("识别"),
-                     detail: r.map { $0.source } ?? L("本机转写定稿"), time: r?.recognize, state: state(.recognize)),
+                     detail: r.map { $0.source } ?? (Recognition.cloudOnly ? L("云端转写定稿") : L("本机转写定稿")), time: r?.recognize, state: state(.recognize)),
             StageRow(id: .translate, name: L("翻译"),
                      detail: r.map { $0.translation ?? L("没有译文") } ?? "", time: ming ? nil : r?.translate, state: state(.translate)),
             StageRow(id: .voice, name: L("合成声音"), detail: r.map { voiceName($0) } ?? "", time: r?.synth, state: state(.voice)),
@@ -260,7 +260,7 @@ struct SpeakTestView: View {
             tile(L("有声"), r.clipped > 200 ? L("有削波") : L("音量正常"), ok: r.clipped <= 200,
                  detail: "\(Int(r.heardPeakDB.rounded())) dB")
             tile(L("听得清"), r.intelligibility.map { L("\(Int(($0 * 100).rounded()))% 词对上") } ?? L("未检查"),
-                 ok: (r.intelligibility ?? 1) >= 0.6, detail: L("本机重新听写"))
+                 ok: (r.intelligibility ?? 1) >= 0.6, detail: Recognition.cloudOnly ? L("重新听写") : L("本机重新听写"))
             switch r.meaning {
             case .score(let s, _): tile(L("意思对"), s >= 60 ? L("一致 \(s)") : L("走样 \(s)"), ok: s >= 60, detail: L("Ling 比对原话"))
             case .back: tile(L("意思对"), L("请看上面"), ok: true, detail: L("已译回你的语言"))

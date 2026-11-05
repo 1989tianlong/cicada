@@ -2,14 +2,33 @@ import AVFoundation
 import CoreMedia
 import Speech
 
-/// On-device speech recognition, whatever the macOS. On 26 and later it is `SpeechAnalyzer`; on
-/// 14.4–15 it is the older `SFSpeechRecognizer` (on-device only: audio never leaves the Mac, as on
-/// 26). The engines only see this file, so the version check lives in one place.
+/// Speech recognition, whatever the Mac. On Apple silicon it is on the device: `SpeechAnalyzer` on 26
+/// and later, the older `SFSpeechRecognizer` on 14.4–15 (on-device only: audio never leaves the Mac).
+/// Intel Macs have neither, so the AI service hears everything there (`cloudOnly`). The engines only
+/// see this file, so the check lives in one place.
 enum Recognition {
     /// Dev builds can run the older recognizer on macOS 26, which is where most of its testing
     /// happens: `lsctl recognizer:legacy`, or `open --env CICADA_RECOGNIZER=legacy` from launch.
     /// Not kept in settings: two dev copies share them.
     nonisolated(unsafe) static var forceLegacy = DevBuild.isDev && ProcessInfo.processInfo.environment["CICADA_RECOGNIZER"] == "legacy"
+    /// Dev builds run as an Intel Mac would on Apple silicon: `lsctl recognizer:cloud`, or
+    /// `open --env CICADA_RECOGNIZER=cloud`.
+    nonisolated(unsafe) static var forceCloud = DevBuild.isDev && ProcessInfo.processInfo.environment["CICADA_RECOGNIZER"] == "cloud"
+
+    /// No speech model on this Mac: everything is heard by the AI service's audio model (`CloudStream`),
+    /// so nothing works without its key. Intel Macs: `SpeechTranscriber` isn't there, and the older
+    /// recognizer's on-device mode is Apple silicon only.
+    static var cloudOnly: Bool {
+        #if arch(x86_64)
+        return true
+        #else
+        return forceCloud
+        #endif
+    }
+
+    /// `cloudOnly`: what the service heard in one stretch of `locale` (nil: any language), set by the
+    /// app. The live meeting goes through `ListenEngine.startCloud`; this serves imports and clips.
+    nonisolated(unsafe) static var cloudHear: (@MainActor @Sendable (_ wav: Data, _ seconds: Double, _ locale: String?) async -> CloudHeard?)?
 
     /// Set by the iOS simulator's dev build only: its speech models are empty placeholders, so it
     /// hands the audio to the Mac it runs on (ios/tools/host-recognizer), which recognizes it on
@@ -17,12 +36,12 @@ enum Recognition {
     nonisolated(unsafe) static var host: ((_ locale: String, _ drafts: Bool) throws -> RecognitionStream)?
 
     static var legacy: Bool {
-        if host != nil { return false }
+        if host != nil || cloudOnly { return false }
         if #available(macOS 26, *) { return forceLegacy }
         return true
     }
 
-    static var name: String { host != nil ? "mac-host" : legacy ? "legacy" : dictationModel ? "dictation" : "analyzer" }
+    static var name: String { cloudOnly ? "cloud" : host != nil ? "mac-host" : legacy ? "legacy" : dictationModel ? "dictation" : "analyzer" }
 
     /// iOS only: a device without `SpeechTranscriber` (older iPhones, the simulator) still has the
     /// on-device dictation model, `DictationTranscriber`, which runs in the same `SpeechAnalyzer`.
@@ -57,7 +76,7 @@ enum Recognition {
     enum ModelStatus { case installed, downloadable, unsupported }
 
     static var isAvailable: Bool {
-        if host != nil { return true }
+        if host != nil || cloudOnly { return true }
         if !legacy, #available(macOS 26, *) { return SpeechTranscriber.isAvailable || dictationModel }
         return true
     }
@@ -109,6 +128,7 @@ enum Recognition {
 
     /// BCP-47 ids of the languages that can be recognized right now without a download.
     static func installedLocales() async -> Set<String> {
+        if cloudOnly { return Set(sourceLanguages.map(\.locale)) }
         if !legacy, #available(macOS 26, *) {
             let installed = dictationModel ? await DictationTranscriber.installedLocales : await SpeechTranscriber.installedLocales
             return Set(installed.map { $0.identifier(.bcp47) })
@@ -117,7 +137,7 @@ enum Recognition {
     }
 
     static func status(_ locale: String) async -> ModelStatus {
-        if host != nil { return .installed }
+        if host != nil || cloudOnly { return .installed }
         if !legacy, #available(macOS 26, *) {
             switch await AssetInventory.status(forModules: [Analyzer.module(locale)]) {
             case .installed: return .installed
@@ -133,7 +153,7 @@ enum Recognition {
     /// Fetches the model for `locale` when it isn't on the Mac; `progress` is called once a
     /// download starts. Throws when this Mac can't recognize the language.
     static func install(_ locale: String, progress: (Progress) -> Void = { _ in }) async throws {
-        if host != nil { return }
+        if host != nil || cloudOnly { return }
         if !legacy, #available(macOS 26, *) {
             let t = Analyzer.module(locale)
             if await AssetInventory.status(forModules: [t]) == .unsupported { throw unsupported(locale) }
@@ -150,13 +170,13 @@ enum Recognition {
     /// The models this app holds (macOS keeps five per app), as BCP-47 ids; none on 14/15,
     /// where Dictation owns them.
     static func reservedLocales() async -> [String] {
-        guard !legacy, #available(macOS 26, *) else { return [] }
+        guard !legacy, !cloudOnly, #available(macOS 26, *) else { return [] }
         return await AssetInventory.reservedLocales.map { $0.identifier(.bcp47) }
     }
 
     /// Gives a held model back to the system, making room under the five-model limit.
     static func release(_ locale: String) async -> Bool {
-        guard !legacy, #available(macOS 26, *) else { return false }
+        guard !legacy, !cloudOnly, #available(macOS 26, *) else { return false }
         return await AssetInventory.release(reservedLocale: Locale(identifier: locale.replacingOccurrences(of: "-", with: "_")))
     }
 
@@ -179,6 +199,7 @@ enum Recognition {
     static func start(_ locale: String, drafts: Bool, confidence: Bool = false, speaking: Bool = false,
                       background: Bool = false) async throws -> RecognitionStream {
         if let host { return try host(locale, drafts) }
+        if cloudOnly { return cloudStream(speaking ? nil : locale) }
         if !legacy, #available(macOS 26, *) {
             return try await Analyzer.start(locale, drafts: drafts, confidence: confidence)
         }
@@ -189,6 +210,7 @@ enum Recognition {
 
     /// The audio format `start(locale, drafts:)` will want, known before starting one.
     static func format(_ locale: String, drafts: Bool) async -> AVAudioFormat {
+        if cloudOnly { return cloudStream(nil).format }
         if !legacy, #available(macOS 26, *) {
             return await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [Analyzer.module(locale, drafts: drafts)])
                 ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
@@ -200,13 +222,21 @@ enum Recognition {
     /// recognizing as soon as the recognizer is ready: the talk key opens the mic without waiting.
     /// It is what the user says (`speaking` above).
     static func startNow(_ locale: String, drafts: Bool, format: AVAudioFormat) -> RecognitionStream {
-        DeferredStream(locale, drafts: drafts, format: format)
+        // The talk key: Ming hears the press as a whole (`TranslationService.interpret`), so this one
+        // hears nothing and costs nothing.
+        if cloudOnly { return CloudStream(format: format) { _, _ in nil } }
+        return DeferredStream(locale, drafts: drafts, format: format)
+    }
+
+    static func cloudStream(_ locale: String?) -> CloudStream {
+        CloudStream { wav, seconds in await cloudHear?(wav, seconds, locale) }
     }
 
     /// Transcribes recorded audio (a clip, one press of the talk key): the finished lines joined,
     /// their confidence and how many letters they hold. Nil when the language can't be recognized.
     static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> (text: String, confidence: Double, letters: Int)? {
-        guard await status(locale) == .installed else { return nil }
+        // Language detection compares models; the service names the language itself.
+        guard !cloudOnly, await status(locale) == .installed else { return nil }
         // The older recognizer can't run two tasks at once (both come back "no speech"): a clip
         // waits for a pause in the live line, which meanwhile holds its audio back.
         let gated = legacy

@@ -709,8 +709,10 @@ struct NotesWindowView: View {
 
     private var keyEntry: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("生成纪要需要 API key").font(.system(size: 15, weight: .bold))
-            Text(L("文字记录仍在保存。填好 \(model.ling.provider.name) 的 key 后，会从头整理出整场纪要。"))
+            Text(Recognition.cloudOnly ? L("识别语音和生成纪要需要 Ling key") : L("生成纪要需要 API key")).font(.system(size: 15, weight: .bold))
+            Text(Recognition.cloudOnly
+                 ? L("填好 \(model.ling.provider.name) 的 key 后，立即开始识别语音、出双语字幕和实时纪要。")
+                 : L("文字记录仍在保存。填好 \(model.ling.provider.name) 的 key 后，会从头整理出整场纪要。"))
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
             HStack(spacing: 8) {
                 SecureField("sk-…", text: $keyDraft)

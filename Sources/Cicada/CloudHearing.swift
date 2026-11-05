@@ -300,6 +300,9 @@ final class CloudStream: RecognitionStream, @unchecked Sendable {
         }
     }
 
+    /// Stretches sent and not back yet: a file being imported is fed only a little ahead of them.
+    var backlog: Int { queue.sync { calls.count } }
+
     func finalize(through seconds: Double) async throws {
         queue.sync { segmenter.flush { send($0) } }
     }

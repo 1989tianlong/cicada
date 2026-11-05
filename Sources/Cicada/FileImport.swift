@@ -32,6 +32,9 @@ final class FileImporter: ObservableObject {
     @Published private(set) var toTranslate = 0
     @Published private(set) var untranslated = 0
 
+    /// `cloudOnly`: stretches of the current file the service couldn't hear (set by the app).
+    var hearFailures = 0
+
     /// A file was transcribed and translated to the end.
     var onFinished: ((_ sessionID: String) -> Void)?
 
@@ -153,10 +156,20 @@ final class FileImporter: ObservableObject {
         guard !Task.isCancelled, store.session(job.id) != nil else { return }
 
         var lang = job.lang ?? sourceLanguages[0]
-        if job.lang == nil { lang = await language(of: pcm) }
+        // The service names each line's language itself (`cloudOnly`): no models to compare.
+        let named = job.lang ?? sourceLanguages.first { $0.locale == settings.importLanguage }
+        if Recognition.cloudOnly { lang = named ?? lastLanguage } else if job.lang == nil { lang = await language(of: pcm) }
         guard !Task.isCancelled else { return }
         let target = settings.resolvedTarget(source: lang.code)
         debugLog("import: \(job.id) \(lang.locale) → \(target)")
+        // Nothing hears it on an Intel Mac without a Ling key: left unfinished, it offers 重新转写 once there is one.
+        if Recognition.cloudOnly, !translator.ling.hearsAudio {
+            debugLog("import: \(job.id) needs a Ling key")
+            return
+        }
+        hearFailures = 0
+        // What the service heard was translated for this target with it (`Recognition.cloudHear`).
+        let heardTarget = settings.resolvedTarget(source: named?.code)
 
         do {
             if await Recognition.status(lang.locale) != .installed {
@@ -166,18 +179,22 @@ final class FileImporter: ObservableObject {
             phase = .transcribing
             var n = 0
             var translations: [Task<Void, Never>] = []
-            let add = { (sentences: [(text: String, t: Double)]) in
+            let add = { (sentences: [(text: String, t: Double)], heard: String?, translation: String?) in
+                let src = heard.flatMap { code in sourceLanguages.first { $0.code == code }?.code } ?? lang.code
+                let to = heard == nil ? target : self.settings.resolvedTarget(source: src)
+                // The service's translation covers the whole stretch: kept when the stretch is one line.
+                let given = sentences.count == 1 && to == heardTarget ? translation : nil
                 for sentence in sentences {
                     let text = HeardText.clean(sentence.text)
                     guard text.contains(where: \.isLetter) else { continue }
                     n += 1
                     let line = TranscriptLine(id: "f\(n)", t: max(0, sentence.t), speaker: "them",
-                                              src: text, dst: lang.code == target ? text : nil, srcLang: lang.code, dstLang: target)
+                                              src: text, dst: src == to ? text : given, srcLang: src, dstLang: to)
                     self.store.append(line, to: job.id)
                     if line.dst == nil { translations.append(self.translate(line, session: job.id)) }
                 }
             }
-            if !Recognition.legacy, #available(macOS 26, *) {
+            if !Recognition.legacy, !Recognition.cloudOnly, #available(macOS 26, *) {
                 let transcriber = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
                                                     reportingOptions: [], attributeOptions: [.audioTimeRange])
                 let file = try AVAudioFile(forReading: pcm)
@@ -189,15 +206,20 @@ final class FileImporter: ObservableObject {
                     let pieces = result.text.runs.map { run in
                         (String(result.text[run.range].characters), run.audioTimeRange.map { CMTimeGetSeconds($0.start) })
                     }
-                    add(Self.sentences(pieces, start: CMTimeGetSeconds(result.range.start)))
+                    add(Self.sentences(pieces, start: CMTimeGetSeconds(result.range.start)), nil, nil)
                 }
                 _ = analyzer
             } else {
-                try await transcribeLegacy(pcm, locale: lang.locale, session: job.id) { piece in
-                    add(Self.sentences(Self.words(piece), start: piece.start))
+                let hint = Recognition.cloudOnly ? named?.locale : lang.locale
+                try await transcribeLegacy(pcm, locale: hint, session: job.id) { piece in
+                    add(Self.sentences(Self.words(piece), start: piece.start), piece.language, piece.translation)
                 }
             }
             guard !Task.isCancelled, store.session(job.id) != nil else { return }
+            if Recognition.cloudOnly, hearFailures > 0 {
+                debugLog("import: \(job.id) \(hearFailures) stretches not heard, left unfinished")
+                return
+            }
             heard = duration
             phase = .translating
             for t in translations { await t.value }
@@ -211,9 +233,11 @@ final class FileImporter: ObservableObject {
 
     /// macOS 14.4–15: the file fed through the older recognizer, which ends a line at each pause.
     /// It is fed only a couple of lines ahead of what has come back, so a long file doesn't queue up in memory.
-    private func transcribeLegacy(_ pcm: URL, locale: String, session id: String,
+    private func transcribeLegacy(_ pcm: URL, locale: String?, session id: String,
                                   line: @escaping (Recognition.Piece) -> Void) async throws {
-        let stream = try await Recognition.start(locale, drafts: false, background: true)
+        // Heard by the service: `locale` is only its hint, nil when the file's language isn't known.
+        let stream = Recognition.cloudOnly ? Recognition.cloudStream(locale)
+            : try await Recognition.start(locale ?? sourceLanguages[0].locale, drafts: false, background: true)
         analyzer = stream
         let file = try AVAudioFile(forReading: pcm)
         let rate = file.processingFormat.sampleRate
@@ -242,7 +266,7 @@ final class FileImporter: ObservableObject {
             fedSeconds += Double(buf.frameLength) / rate
             heard = max(heard, fedSeconds - 10)
             // A couple of lines in the recognizer at a time.
-            while ((stream as? LegacyStream)?.backlog ?? 0) > 2, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
+            while ((stream as? LegacyStream)?.backlog ?? (stream as? CloudStream)?.backlog ?? 0) > 2, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
         }
         if Task.isCancelled { await stream.cancel() } else { await stream.finish() }
         await reader.value
@@ -291,6 +315,12 @@ final class FileImporter: ObservableObject {
 
     /// The file's language: the one chosen in settings, else the installed model that understands
     /// a few clips from across the file best.
+    /// The language the last meeting was heard in, else the first.
+    private var lastLanguage: Lang {
+        let last = UserDefaults.standard.string(forKey: "lastDetected")
+        return sourceLanguages.first { $0.locale == last } ?? sourceLanguages[0]
+    }
+
     private func language(of pcm: URL) async -> Lang {
         if let fixed = sourceLanguages.first(where: { $0.locale == settings.importLanguage }) { return fixed }
         let langs = await Self.installed()

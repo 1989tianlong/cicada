@@ -357,7 +357,13 @@ struct OnboardingView: View {
     static let steps = 4
     static let done = 5
 
-    private var stepNames: [String] { [L("听声音"), L("看效果"), L("接 Ling"), L("同声传译")] }
+    private var stepNames: [String] {
+        Recognition.cloudOnly
+            ? [L("听声音"), L("接 Ling"), L("看效果"), L("同声传译")]
+            : [L("听声音"), L("看效果"), L("接 Ling"), L("同声传译")]
+    }
+    private var keyStep: Int { Recognition.cloudOnly ? 2 : 3 }
+    private var tryStep: Int { Recognition.cloudOnly ? 3 : 2 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -366,8 +372,8 @@ struct OnboardingView: View {
             Group {
                 switch step {
                 case 1: permissions
-                case 2: tryIt
-                case 3: OnboardingKeyStep(model: model, ling: model.ling, settings: settings, skipping: $model.onboardingKeySkip)
+                case tryStep: tryIt
+                case keyStep: OnboardingKeyStep(model: model, ling: model.ling, settings: settings, skipping: $model.onboardingKeySkip)
                 case 4: speaking
                 default: closing
                 }
@@ -436,8 +442,8 @@ struct OnboardingView: View {
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.secondary)
                     .padding(.horizontal, 24).frame(height: 44)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.87)))
-            case 3:
-                OnboardingKeyFooter(ling: model.ling, skipping: $model.onboardingKeySkip, next: { step = 4 })
+            case keyStep:
+                OnboardingKeyFooter(ling: model.ling, skipping: $model.onboardingKeySkip, next: { step = keyStep + 1 })
             case 4 where !speakSetupShown:
                 // The two cards above are the choice; nothing to confirm here.
                 EmptyView()
@@ -555,7 +561,7 @@ struct OnboardingView: View {
                     }
                 }
             } }
-            Label("声音只在本机识别", systemImage: "lock")
+            Label(Recognition.cloudOnly ? L("会议录音和文字记录只存在这台 Mac 上") : L("声音只在本机识别"), systemImage: "lock")
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
     }
@@ -798,6 +804,8 @@ struct OnboardingNotesTeaser: View {
     var body: some View {
         if ling.hasKey {
             Text("字幕条可任意拖动，拖拽右下角可调整大小。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+        } else if Recognition.cloudOnly {
+            Text("先在上一步接上 Ling key，示例会议才能识别出实时字幕。").font(.system(size: 12)).foregroundStyle(Palette.accentInk)
         } else {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {

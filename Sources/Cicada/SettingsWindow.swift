@@ -737,7 +737,9 @@ struct SettingsView: View {
                     }
                     .labelsHidden().fixedSize()
                 }
-                SettingsRow(title: L("转完后生成纪要"), detail: L("需要 Ling key；没有也能转出文字记录"), divider: false) {
+                SettingsRow(title: L("转完后生成纪要"),
+                            detail: Recognition.cloudOnly ? L("导入转写和生成纪要都需要 Ling key") : L("需要 Ling key；没有也能转出文字记录"),
+                            divider: false) {
                     Toggle("转完后生成纪要", isOn: $settings.importNotes)
                         .toggleStyle(.switch).labelsHidden().controlSize(.small).tint(Palette.ink)
                 }

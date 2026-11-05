@@ -246,6 +246,20 @@ final class AppModel: ObservableObject {
             }
         }
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
+        // An Intel Mac's imports: heard at a lower priority than the live meeting.
+        Recognition.cloudHear = { [weak self] wav, seconds, locale in
+            guard let self else { return nil }
+            let hint = sourceLanguages.first { $0.locale == locale }?.code
+            do {
+                return try await self.translator.hear(wav: wav, seconds: seconds, target: self.settings.resolvedTarget(source: hint),
+                                                      hint: hint, priority: .notes)
+            } catch {
+                // A stretch not heard is not silence: the import stays unfinished and offers 重新转写.
+                debugLog("import: hear failed: \(error)")
+                self.importer.hearFailures += 1
+                return nil
+            }
+        }
         importer.onFinished = { [weak self] id in self?.importFinished(id) }
         notes.language = { [weak self] id in
             TranslationService.englishName(self?.notesLanguageCode(id) ?? "zh-CN")
@@ -1548,9 +1562,10 @@ final class AppModel: ObservableObject {
             listen.simulatedSystemLanguages = arg == "off" || p.count < 2 ? nil : p[1]
             Task { await listen.refreshInstalledLocales() }
         case "recognizer":
-            // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26; recognizer:auto ends it.
-            // Takes effect from the next start.
+            // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26; recognizer:cloud
+            // hears as an Intel Mac does; recognizer:auto ends either. Takes effect from the next start.
             Recognition.forceLegacy = arg == "legacy"
+            Recognition.forceCloud = arg == "cloud"
             debugLog("recognizer: \(Recognition.name)")
             Task { await listen.refreshInstalledLocales() }
         case "releaseModel":

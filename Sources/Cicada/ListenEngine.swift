@@ -240,7 +240,8 @@ final class ListenEngine {
     /// Detection needs two models: a Mac with fewer fetches the likeliest missing ones in the
     /// background, one at a time (each one's end refreshes the list and asks for the next).
     private func fetchSecondModel(besides starting: Lang? = nil) {
-        guard settings.sourceMode == .auto, fetchingModel == nil, candidates.count < 2 else { return }
+        // The service hears every language (`cloudOnly`): a "download" would only restart it.
+        guard !Recognition.cloudOnly, settings.sourceMode == .auto, fetchingModel == nil, candidates.count < 2 else { return }
         let last = UserDefaults.standard.string(forKey: "lastDetected")
         // The model being started is fetched by `ensureModel` already. At a start that is `starting`:
         // `activeLang` is still the last run's then, and may be a model since taken away.
@@ -306,6 +307,11 @@ final class ListenEngine {
         }
         guard !Recognition.authorizationDenied else {
             setStatus(Recognition.notAllowed.localizedDescription)
+            return
+        }
+        // An Intel Mac hears only through the service: without its key there is nothing to listen with.
+        guard !Recognition.cloudOnly || cloudService != nil else {
+            setStatus(L("请先在设置 › AI 服务里填入 Ling key"))
             return
         }
         languageConfirmed = false
@@ -590,6 +596,14 @@ final class ListenEngine {
     }
 
     private func switchTranscriber(to lang: Lang, replaySeconds: Double = 0) async {
+        // No models to switch between: the service hears every language, and a language picked in
+        // settings only becomes its hint (`cloudHint`).
+        if Recognition.cloudOnly {
+            guard isRunning else { return }
+            if case .fixed = settings.sourceMode { activeLang = lang } else if activeLang == nil { activeLang = lang }
+            if !cloudListening { startCloud() }
+            return
+        }
         if cloudListening { debugLog("cloud: off, \(lang.locale) on this Mac") }
         resetCloud()
         generation += 1
@@ -1100,6 +1114,7 @@ final class ListenEngine {
                     try await Task.sleep(for: .seconds(1))
                     heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
                 }
+                if self.cloudFailures >= 3 { self.setStatus(L("\(self.cloudService ?? "AI") 在听")) }
                 self.cloudFailures = 0
                 return heard
             } catch {
@@ -1107,7 +1122,13 @@ final class ListenEngine {
                 debugLog("cloud: hear failed: \(error)")
                 self.cloudFailures += 1
                 // The service is down or the key stopped working: listening shouldn't go quiet with it.
-                if self.cloudFailures >= 3 { self.stopCloud() }
+                if self.cloudFailures >= 3 {
+                    if !Recognition.cloudOnly { self.stopCloud() }
+                    // Nothing to go back to on an Intel Mac: say why it's quiet, and keep trying.
+                    else if case LingClient.Failure.invalidKey = error { self.setStatus(L("key 已失效，到设置 › AI 服务里重填")) }
+                    else if case LingClient.Failure.noKey = error { self.setStatus(L("请先在设置 › AI 服务里填入 Ling key")) }
+                    else { self.setStatus(L("\(self.cloudService ?? "AI") 暂时连不上，正在重试")) }
+                }
                 return nil
             }
         }
@@ -1125,7 +1146,7 @@ final class ListenEngine {
 
     /// 换回等待 (or the service failing): back to what listened before, the download carrying on.
     func stopCloud() {
-        guard cloudListening else { return }
+        guard cloudListening, !Recognition.cloudOnly else { return }
         let back = cloudReplaced
         let lang = back?.lang ?? activeLang
         debugLog("cloud: off, back to \(lang?.locale ?? "nothing")")
