@@ -1,9 +1,9 @@
 [
   {
-    "version": "1.2.1",
+    "version": "1.3.0",
     "date": null,
-    "title": "小声说话也能出字幕，Linux 设置里能填 key",
-    "summary": "修复 Windows、Linux、Android 上说话声音较小时被当成底噪、不出字幕的问题；修复 Linux 设置里不出现 key 输入框的问题。",
+    "title": "线上和桌边的人一起听",
+    "summary": "“听哪里”多了“电脑和会议室”，同一句话不记两遍；语音模型下载太久时可以先交给 Ling 听。",
     "image": null,
     "items": [
       {
@@ -30,6 +30,39 @@
         "title": "下载语音模型时显示已经等了多久，装好后会告诉你。",
         "text": "macOS 不报下载进度，原来的进度条一直停在开头；现在是一直在动的进度条加上已等时长。"
       },
+      {
+        "kind": "improved",
+        "platforms": [
+          "mac"
+        ],
+        "title": "Mac 上点开始听，实时纪要窗口马上出现。",
+        "text": "不用等有人开口才知道已经在听；开机或会议软件来电时自动开始，仍等第一句话再出现。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "mac"
+        ],
+        "title": "先用 Ling 听时，等待音乐、铃声和提示音不再发给 Ling。",
+        "text": "发出去之前先用 macOS 自带的声音分类听一下有没有人说话；被晾在等待音乐里一分钟，原来要白白调用 Ling 三十来次。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "会议里有人敲键盘，不再被当成有人在说话。",
+        "text": "一下下的按键声会打断静音，知了等不到停顿：换语言的判断和会议结束的提示都会推迟。"
+      }
+    ]
+  },
+  {
+    "version": "1.2.1",
+    "date": null,
+    "title": "小声说话也能出字幕，Linux 设置里能填 key",
+    "summary": "修复 Windows、Linux、Android 上说话声音较小时被当成底噪、不出字幕的问题；修复 Linux 设置里不出现 key 输入框的问题。",
+    "image": null,
+    "items": [
       {
         "kind": "fixed",
         "platforms": [
@@ -131,30 +164,6 @@
         ],
         "title": "Android 悬浮窗加了回到知了的按钮。",
         "text": "点悬浮窗顶上的按钮，直接回到正在听的页面，看完整纪要或结束会议。"
-      },
-      {
-        "kind": "improved",
-        "platforms": [
-          "mac"
-        ],
-        "title": "Mac 上点开始听，实时纪要窗口马上出现。",
-        "text": "不用等有人开口才知道已经在听；开机或会议软件来电时自动开始，仍等第一句话再出现。"
-      },
-      {
-        "kind": "fixed",
-        "platforms": [
-          "mac"
-        ],
-        "title": "会议里有人敲键盘，不再被当成有人在说话。",
-        "text": "一下下的按键声会打断静音，知了等不到停顿：换语言的判断和会议结束的提示都会推迟。"
-      },
-      {
-        "kind": "improved",
-        "platforms": [
-          "mac"
-        ],
-        "title": "先用 Ling 听时，等待音乐、铃声和提示音不再发给 Ling。",
-        "text": "发出去之前先用 macOS 自带的声音分类听一下有没有人说话；被晾在等待音乐里一分钟，原来要白白调用 Ling 三十来次。"
       }
     ]
   },
