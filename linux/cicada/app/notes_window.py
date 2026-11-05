@@ -781,7 +781,10 @@ class NotesWindow(Gtk.Window):
         if engine.status == notesmod.INVALID_KEY:
             text, tone = LF("key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。", clock(last)), "error"
         elif engine.status == notesmod.RATE_LIMITED:
-            text, tone = LF("请求过于频繁，稍后会自动重试。纪要停留在 %@。", clock(last)), ""
+            text, tone = LF("%@ 很忙，纪要稍后补上。字幕照常。", self.app.ling.service_name), "busy"
+        elif engine.status == notesmod.FAILED and self.app.ling.check_result.reason == "unreachable":
+            # The network or the proxy, not the notes: say which, and that it picks up by itself.
+            text, tone = LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", self.app.ling.service_name, clock(last)), "error"
         elif engine.status == notesmod.FAILED:
             text, tone = L("这轮没整理好，下一轮会自动重试。"), ""
         else:
@@ -789,7 +792,9 @@ class NotesWindow(Gtk.Window):
         row = ui.hbox(10)
         row.pack_start(ui.text(text, 12, "ink", width_chars=24), True, True, 0)
         if tone == "error":
-            b = ui.button(L("更换 key"), self.app.show_settings, "darkbtn")
+            unreachable = engine.status == notesmod.FAILED
+            b = ui.button(L("设置") if unreachable else L("更换 key"), lambda: self.app.show_settings(ai=True),
+                          "outline" if unreachable else "darkbtn")
             b.set_can_focus(False)
             b.set_valign(Gtk.Align.CENTER)
             row.pack_end(b, False, False, 0)

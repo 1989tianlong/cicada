@@ -5,11 +5,9 @@
 "句" = "lines";
 "重命名" = "Rename";
 "保存失败" = "Couldn't save";
-"Ling key" = "Ling key";
 "只存在这台电脑上（只有你的账户能读），只发给 Ling（ant-ling.com）" = "Stored only on this computer (readable only by your account) and sent only to Ling (ant-ling.com)";
 "界面语言" = "App language";
 "关于" = "About";
-"可以用" = "Works";
 "需要 Ling key 才能听" = "Listening needs a Ling key";
 "Ling key 无效" = "The Ling key is invalid";
 "Ling 太忙，稍后再试" = "Ling is busy; trying again shortly";
@@ -49,8 +47,6 @@
 "正在听时" = "While listening";
 "悬浮窗" = "Floating window";
 "登录后在顶栏待命" = "Stand by in top bar after login";
-"翻译与纪要模型" = "Translation & notes model";
-"Ming（云端）" = "Ming (cloud)";
 "打开记录文件夹" = "Open meetings folder";
 "打开会议记录" = "Open meetings";
 "没能开始听" = "Couldn't start listening";
@@ -154,8 +150,6 @@
 "例如 qwen3-omni" = "e.g. qwen3-omni";
 "听的模型" = "Listening model";
 "要能输入音频：听对方和“我说”都用它" = "Must take audio in: used for Listen and for Speak";
-"还不能用" = "Not yet";
-"这个模型听不了声音，换一个支持音频输入的" = "This model can't take audio. Choose one that accepts audio input";
 "Ming 一次识别并翻译" = "Ming recognizes and translates in one step";
 "比 Ling 晚 1–2 秒出字" = "Text appears 1–2 s later than with Ling";
 "用不了" = "Unavailable";
@@ -169,3 +163,19 @@
 "%@ 的 key 无效" = "%@ key is invalid";
 "%@ 太忙，稍后再试" = "%@ is busy. Try again shortly";
 "仅保存在本机当前账户下，仅发送至 %@（%@）" = "Stored only for this account on this computer, sent only to %1$@ (%2$@)";
+/* AI 服务检查 (aicheck.py): the steps, 开始听 when a check failed. */
+"%@ 听不了声音。" = "%@ can't hear audio.";
+"%@ 现在听不了声音" = "%@ can't hear audio right now";
+"%@ 只收文字。换成推荐的模型就能开始听。" = "%@ only takes text. Switch to the recommended model to start listening.";
+"换成推荐的并开始" = "Use Recommended and Start";
+"重新检查并开始" = "Check Again and Start";
+"去修" = "Fix";
+"上次同传没出声" = "Silent last time it interpreted";
+"仅保存在本机当前账户下，仅发送至 Ling（ant-ling.com）" = "Stored only for this account on this computer, sent only to Ling (ant-ling.com)";
+"这台电脑访问不到 %@。" = "This computer can't reach %@.";
+"刚刚开会时用过" = "used in a meeting just now";
+"%lld 分钟前开会时用过" = "used in a meeting %lld min ago";
+"%lld 小时前开会时用过" = "used in a meeting %lld h ago";
+"%lld 天前开会时用过" = "used in a meeting %lld days ago";
+"文字 %@ 秒" = "text %@ s";
+"听 %@ 秒" = "hearing %@ s";

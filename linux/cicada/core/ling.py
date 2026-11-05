@@ -8,10 +8,11 @@ import socket
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 
-from . import jsonfmt
+from . import aicheck, jsonfmt, proxy, strings
 from .jsonfmt import arr, obj, string
 from .providers import LING, AIConfig, catalog, is_local
 from .support import Log, Paths
@@ -203,20 +204,29 @@ class LingClient:
         self.transport = transport
         self.config = config or _ling_config
         self.key_state = NONE if self.current_key() is None else UNCHECKED
-        # Why the last check failed, shown under the key: a Mac string key and its arguments for LF()
-        # ("连不上 %@，请检查网络或代理", "ZenMux"); None when it didn't.
-        self.problem: tuple | None = None
+        # Step by step, where the service stands (aicheck.py); `key_state` is its short form.
+        self.check_result = aicheck.AICheck()
         self.seconds: float | None = None   # how long the last good check took
-        # Whether the hear model takes audio: None until a check asked (always True on Ling).
-        self.hears: bool | None = None
+        # The last time the room voice spoke (or failed to) through this service: (ok, time).
+        self.last_voice: tuple | None = None
+        # Reads this computer's proxy settings to word the "can't reach" hint (never used to connect).
+        self.proxy_hint = proxy.hint
+        # Debug control only: every check ends this way (a reason, or "lowBalance"), for screenshots.
+        self.simulate: str | None = None
         self.text_catalog: list = []
         self.hear_catalog: list = []
+        # Every model id the service lists, and those that take audio, to tell whether the chosen
+        # ones still exist (None: the service can't tell).
+        self._listed: tuple = (None, None)
         self.rate_limited_at = None
         self._listeners = []
         self._gate = threading.Condition()
         self._waiting = []
         self._last_start = 0.0
         self._seq = 0
+        self._check_lock = threading.Lock()
+        self._check_seq = 0
+        self._checking = 0  # a check's own requests aren't real ones: they don't feed `observe`
 
     def on_change(self, listener) -> None:
         self._listeners.append(listener)
@@ -251,82 +261,257 @@ class LingClient:
         return self.usable and self.config().has_voices
 
     @property
+    def hears(self) -> bool | None:
+        """Whether the hear model takes audio: False when found deaf, True once proved (always on
+        Ling, whose Ming hears by design), None until something asked."""
+        st = self.check_result["hear"]
+        if st.kind == aicheck.FAIL and st.reason == aicheck.DEAF:
+            return False
+        if st.kind in (aicheck.OK, aicheck.BUSY_STATE) or self.config().is_ling:
+            return True
+        return None
+
+    @property
     def can_hear(self) -> bool:
         """Listening and 同声传译 can work: the hear model wasn't found to refuse audio."""
         return self.usable and self.hears is not False and bool(self.config().hear_model)
 
+    @property
+    def service_name(self) -> str:
+        """The service's name for messages ("这个服务" for a custom address, localized)."""
+        p = self.provider
+        return p.name if p.id != "custom" else strings.L("这个服务")
+
+    @property
+    def service_host(self) -> str:
+        c = self.config()
+        return urllib.parse.urlsplit(c.base or c.provider.base or "").hostname or ""
+
+    def message(self) -> str | None:
+        """The failed step's sentence (or the busy note), in the UI language."""
+        c = self.config()
+        return self.check_result.message(self.service_name, self.service_host, c.text_model, c.hear_model)
+
     def key_changed(self) -> None:
         """The key, the service or its models changed: forget what the last check found."""
         self.key.reload()
+        with self._check_lock:
+            self._check_seq += 1  # a check still running for the old settings is dropped
+            self.check_result = aicheck.AICheck()
         self.key_state = NONE if self.current_key() is None else UNCHECKED
-        self.problem = None
-        self.hears = True if self.config().is_ling else None
+        self.last_voice = None
         self.text_catalog, self.hear_catalog = [], []
+        self._listed = (None, None)
         self._changed()
 
     def check(self) -> str:
-        """The cheapest request that proves the key: Ling's tiny model, else one token from the text
-        model. The others' hear model must also take audio (half a second of silence), and a custom
-        service must return JSON (the notes need it)."""
-        self.key_state = CHECKING
-        self.problem = None
-        self._changed()
+        """The cheapest requests that prove each step: Ling's tiny model, else one token from the
+        text model, then half a second of silence to the hear model (a 400 or 404 says it can't
+        take audio). A custom service must also return JSON (the notes need it); OpenRouter's key
+        and credits give the balance. The model list then tells whether the chosen models still
+        exist. Returns the short form (`key_state`)."""
+        with self._check_lock:
+            self._check_seq += 1
+            seq = self._check_seq
+        k = self.current_key()
         c = self.config()
-        name = c.provider.name if c.provider.id != "custom" else "这个服务"
+        if k is None:
+            with self._check_lock:
+                self.check_result = aicheck.AICheck()
+            self.key_state = NONE
+            self._changed()
+            return NONE
+        r = aicheck.AICheck()
+        r["reach"] = aicheck.State(aicheck.RUNNING)
+        with self._check_lock:
+            self.check_result = r.copy()
+        self.key_state = CHECKING
+        self._changed()
+        with self._check_lock:
+            self._checking += 1
+        try:
+            r = self._run_check(r, c, k)
+        finally:
+            with self._check_lock:
+                self._checking -= 1
+        return self._finish_check(r, c, seq)
+
+    def _run_check(self, r, c: AIConfig, k: str):
+        if self.simulate:
+            return aicheck.simulated(self.simulate)
+        if c.provider.id == "custom" and c.base is None:
+            r.fail("reach", aicheck.BAD_ADDRESS, reached=False)
+            return r
+        if (aicheck.owner(k) or ("", False))[1]:
+            r.fail("key", aicheck.MGMT_KEY, reached=False)
+            return r
         started = time.monotonic()
-        state = UNREACHABLE
         try:
             if c.is_ling:
                 self.chat("Reply with OK.", "Reply.", SPEAK, max_tokens=5, timeout=10.0, model="Ling-3.0-tiny")
-                self.seconds = time.monotonic() - started
-                self.hears = True
             else:
-                if c.base is None or not c.text_model:
-                    raise LingError(LingError.NO_KEY)
                 self.chat("Reply with OK.", "Reply.", SPEAK, max_tokens=5, timeout=20.0)
-                self.seconds = time.monotonic() - started
-                if c.provider.id == "custom":
-                    try:
-                        self.chat("Reply with the JSON object {\"ok\": true}.", "Reply.", SPEAK, json=True, max_tokens=20, timeout=20.0)
-                    except LingError as e:
-                        if e.kind == LingError.HTTP:
-                            self.problem = ("这个服务不支持 JSON（HTTP %lld），纪要用不了", e.status)
-                        else:
-                            raise
-                self.hears = self._hears(c)
-            state = OK
+            self.seconds = time.monotonic() - started
+            r.pass_up_to("text", self.seconds)
+            if c.provider.id == "custom":
+                try:
+                    self.chat("Reply with the JSON object {\"ok\": true}.", "Reply.", SPEAK, json=True, max_tokens=20, timeout=20.0)
+                except LingError as e:
+                    if e.kind != LingError.HTTP:
+                        raise
+                    r.fail("text", aicheck.NO_JSON, e.status)
         except LingError as e:
-            state = {LingError.NO_KEY: NONE, LingError.INVALID_KEY: INVALID,
-                     LingError.RATE_LIMITED: OK}.get(e.kind, UNREACHABLE)  # a busy key is still a good key
-            if e.kind == LingError.HTTP and e.status in (400, 404):
-                self.problem = (("找不到模型，或地址不对（HTTP %lld）", e.status) if c.provider.id == "custom"
-                                else ("%@ 拒绝了请求（HTTP %lld），请检查模型名", name, e.status))
-            elif state == UNREACHABLE:
-                self.problem = ("连不上 %@，请检查网络或代理", name)
+            self._failed(r, aicheck.classify(e, "text"), "text")
         except Exception:  # noqa: BLE001
-            state = UNREACHABLE
-            self.problem = ("连不上 %@，请检查网络或代理", name)
-        self.key_state = state
-        Log.d("ai %s: key check -> %s%s" % (c.provider.id, state, "" if self.hears is not False else " (hear model refuses audio)"))
-        self._changed()
-        if state == OK and not c.is_ling:
-            self.fetch_catalog()
-        return state
-
-    def _hears(self, c: AIConfig) -> bool | None:
-        """Whether the hear model takes audio: a 400 or 404 says no; anything else can't tell."""
+            r.fail("reach", aicheck.UNREACHABLE)
+        if r.failure is not None or c.is_ling:
+            return r  # Ling's hearing is Ming: a meeting proves it, no probe
         if not c.hear_model:
+            r.fail("hear", aicheck.DEAF)
+        else:
+            started = time.monotonic()
+            try:
+                self.chat("Transcribe the audio.", "Reply with what is said, or NONE.", SPEAK, max_tokens=10, timeout=20.0,
+                          model=c.hear_model, audio=silence_wav())
+                r["hear"] = aicheck.State(aicheck.OK, time.monotonic() - started)
+            except LingError as e:
+                if e.kind == LingError.HIJACKED:
+                    r["hear"] = aicheck.State(aicheck.OK, time.monotonic() - started)  # it answered: it took the audio
+                else:
+                    self._failed(r, aicheck.classify(e, "hear", audio=True), "hear")
+            except Exception:  # noqa: BLE001
+                r.fail("reach", aicheck.UNREACHABLE)
+        if c.provider.id == "openrouter" and r.failure is None:
+            r.balance = aicheck.balance(self._get_json("key", k), self._get_json("credits", k))
+        if r.failure is None or r.failure[0] == "hear":  # the menus want the models even when the hear one is deaf
+            self.fetch_catalog()
+            every, hear = self._listed
+            # A model the service no longer lists fails here, before a meeting finds out.
+            if every is not None and c.text_model and c.text_model not in every:
+                r.fail("text", aicheck.NO_MODEL)
+            elif hear is not None and c.hear_model not in hear and r.failure is None:
+                r.fail("hear", aicheck.DEAF)
+        return r
+
+    @staticmethod
+    def _failed(r, classified, step: str) -> None:
+        """A check's request failed: busy passes (the key works), anything else stops there."""
+        if classified is None:
+            r.pass_up_to(step, None)  # a reply came (a search essay, odd JSON): the service answers
+            return
+        at, reason, code = classified
+        if reason == aicheck.BUSY:
+            r.pass_up_to(at, None)
+            r[at] = aicheck.State(aicheck.BUSY_STATE)
+        else:
+            r.fail(at, reason, code)
+
+    def _finish_check(self, r, c: AIConfig, seq: int) -> str:
+        if r.reason == aicheck.UNREACHABLE and r.proxy is None:
+            try:
+                r.proxy = self.proxy_hint()
+            except Exception:  # noqa: BLE001 - it only words a hint
+                r.proxy = None
+        if self.simulate == "lowBalance":
+            r.balance = 0.4
+        r.at = time.time()
+        with self._check_lock:
+            if seq != self._check_seq:
+                Log.d("ai %s: check result dropped (settings changed meanwhile)" % c.provider.id)
+                return self.key_state
+            self.check_result = r
+        self._sync_key_state()
+        Log.d("ai %s: check -> %s" % (c.provider.id, r.summary()))
+        self._changed()
+        return self.key_state
+
+    def _sync_key_state(self) -> None:
+        """The short form older callers read: invalid stops every request; a failure before the
+        hear step is "unreachable" with a reason; a deaf hear model leaves notes and translation ok."""
+        if not self.has_key:
+            self.key_state = NONE
+            return
+        r = self.check_result
+        f = r.failure
+        if f is not None and f[1] in (aicheck.INVALID_KEY, aicheck.MGMT_KEY):
+            self.key_state = INVALID
+        elif f is not None and f[0] != "hear" and f[1] != aicheck.BUSY:
+            self.key_state = UNREACHABLE
+        elif r.at is not None and not r.running:
+            self.key_state = OK
+            for s in ("reach", "key", "text"):
+                if r[s].kind == aicheck.OK and r[s].seconds is not None:
+                    self.seconds = r[s].seconds
+
+    def observe(self, failure: LingError | None, seconds: float = 0.0, audio: bool = False) -> None:
+        """A real request (hearing, notes, translation) came back: keep the steps current without a
+        check. One server error in a meeting isn't worth repainting the settings for."""
+        if self._checking or self.simulate or not self.has_key:
+            return
+        with self._check_lock:
+            old = self.check_result
+            if old.running:
+                return
+            r = old.copy()
+            if failure is not None:
+                cl = aicheck.classify(failure, "hear" if audio else "text", audio)
+                if cl is None or cl[1] == aicheck.SERVER_ERROR:
+                    return
+                step, reason, code = cl
+                if reason == aicheck.BUSY:
+                    r.pass_up_to("key", None)
+                    r[step] = aicheck.State(aicheck.BUSY_STATE)
+                else:
+                    r.fail(step, reason, code)
+            elif audio:
+                # Heard: says nothing about the text model, which keeps what it had.
+                r.pass_up_to("key", None)
+                r["hear"] = aicheck.State(aicheck.OK, seconds)
+            else:
+                r.pass_up_to("text", seconds)
+            r.at = time.time()
+            r.passive = True
+            if r.reason != aicheck.UNREACHABLE:
+                r.proxy = None
+            if [r[s] for s in aicheck.STEPS] == [old[s] for s in aicheck.STEPS] and old.passive and old.at is not None:
+                old.at = r.at  # only the time: nothing worth repainting for
+                return
+            newly_unreachable = r.reason == aicheck.UNREACHABLE and old.reason != aicheck.UNREACHABLE
+            self.check_result = r
+        self._sync_key_state()
+        Log.d("ai: from a real request -> %s" % r.summary())
+        self._changed()
+        if newly_unreachable:
+            threading.Thread(target=self._word_proxy, daemon=True).start()
+
+    def _word_proxy(self) -> None:
+        hint = self.proxy_hint()
+        with self._check_lock:
+            if self.check_result.reason != aicheck.UNREACHABLE:
+                return
+            nxt = self.check_result.copy()
+            nxt.proxy = hint
+            self.check_result = nxt
+        self._changed()
+
+    def network_changed(self) -> bool:
+        """The network came back (or changed) while the service was unreachable: look again.
+        True when a check started."""
+        r = self.check_result
+        if not self.has_key or r.reason != aicheck.UNREACHABLE or r.running:
             return False
+        Log.d("ai: network changed while unreachable, checking again")
+        threading.Thread(target=self.check, daemon=True).start()
+        return True
+
+    def _get_json(self, path: str, k: str):
+        """A GET under the service's address, as JSON; None when it fails (it only adds detail)."""
+        c = self.config()
         try:
-            self.chat("Transcribe the audio.", "Reply with what is said, or NONE.", SPEAK, max_tokens=10, timeout=20.0,
-                      model=c.hear_model, audio=silence_wav())
-            return True
-        except LingError as e:
-            if e.kind == LingError.HTTP and e.status in (400, 404, 415, 422):
-                return False
-            if e.kind == LingError.HIJACKED:
-                return True
+            res = self.transport.send(c.base + path, "GET", None, self._headers(k), 15.0)
+        except (OSError, TimeoutError):
             return None
+        return jsonfmt.parse_object(res.body) if res.status == 200 else None
 
     def fetch_catalog(self) -> None:
         """The service's models, for the model menus: those that chat, and those that hear. Quietly
@@ -343,6 +528,7 @@ class LingClient:
             return
         self.text_catalog = catalog(res.body, [m.id for m in c.provider.text_models], hears=False)
         self.hear_catalog = catalog(res.body, [m.id for m in c.provider.hear_models], hears=True)
+        self._listed = aicheck.listed(res.body)
         Log.d("ai %s: %d models, %d hear" % (c.provider.id, len(self.text_catalog), len(self.hear_catalog)))
         self._changed()
 
@@ -394,8 +580,10 @@ class LingClient:
                 if self.rate_limited_at is not None:
                     self.rate_limited_at = None
                     self._changed()
+                self.observe(None, time.monotonic() - started, audio is not None)
                 return trimmed
             except LingError as e:
+                self.observe(e, audio=audio is not None)
                 if e.kind != LingError.RATE_LIMITED:
                     raise
                 if attempt > len(waits):
@@ -408,6 +596,18 @@ class LingClient:
                 attempt += 1
 
     def speech(self, text: str, voice: str | None = "UK_Charlotte", language: str | None = None, timeout: float = 20.0):
+        """_speech, remembering how it went (现在能用的 › 同传声音 says so). Cut short on purpose (stop,
+        a new press) is neither."""
+        try:
+            yield from self._speech(text, voice, language, timeout)
+        except GeneratorExit:
+            raise
+        except Exception:
+            self.last_voice = (False, time.time())
+            raise
+        self.last_voice = (True, time.time())
+
+    def _speech(self, text: str, voice: str | None, language: str | None, timeout: float):
         """The service's voice for `text`, as raw 24 kHz mono 16-bit PCM chunks while they arrive (a
         generator). On Ling, `voice` is Ming's and `language` its language_id, needed for Japanese,
         Korean, German, French and Spanish (Ling.swift › speech); elsewhere the configured speech

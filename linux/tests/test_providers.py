@@ -186,7 +186,8 @@ class Client(Base):
     def test_check_finds_a_hear_model_that_refuses_audio(self):
         def respond(url, body):
             if url.endswith("models"):
-                return Response(200, jsonfmt.write({"data": [{"id": "a/b", "input_modalities": ["text"], "output_modalities": ["text"]}]}))
+                return Response(200, jsonfmt.write({"data": [{"id": "a/b", "input_modalities": ["text"], "output_modalities": ["text"]},
+                                                              {"id": "inclusionai/ling-3.0-flash"}]}))
             return Response(400, "{}") if "input_audio" in body else reply("OK")
         ling, s = self.client(Fake(respond), aiHearModels={"zenmux": "x/text-only"})
         self.assertEqual(OK, ling.check())
@@ -203,7 +204,7 @@ class Client(Base):
         self.assertEqual(INVALID, ling.check())
         ling, _ = self.client(Fake(lambda u, b: Response(404, "")))
         ling.check()
-        self.assertEqual(("%@ 拒绝了请求（HTTP %lld），请检查模型名", "ZenMux", 404), ling.problem)
+        self.assertEqual(("text", "noModel", 404), ling.check_result.failure)
         ling, _ = self.client(Fake(lambda u, b: Response(200, "")), "openrouter", key=None)
         self.assertEqual(NONE, ling.key_state)
 

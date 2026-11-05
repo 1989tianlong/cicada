@@ -71,7 +71,14 @@ class Tray:
             i.set_sensitive(sensitive)
             menu.append(i)
             return i
-        # A new version first, with the accent dot the Mac's panel gives it; greyed while it downloads.
+        # The AI service when only the user can fix it (AIServiceStrip.swift, the panel's top): what's
+        # wrong, and a click opens 设置 › AI 服务. The icon stays as it is.
+        from .aicheck_view import strip_words
+        broken = strip_words(self.app)
+        if broken:
+            item("⚠ " + broken[0].rstrip("。.") + " · " + L("打开设置"), lambda: self.app.show_settings(ai=True))
+            menu.append(Gtk.SeparatorMenuItem())
+        # A new version, with the accent dot the Mac's panel gives it; greyed while it downloads.
         upd = self.app.updates.menu_label()
         if upd:
             item("● " + upd, self.app.updates.install, sensitive=self.app.updates.progress is None

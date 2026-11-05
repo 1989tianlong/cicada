@@ -149,6 +149,7 @@ class Controller:
         refresh_autostart(self.launcher)
         if self.settings.onboarded and self.ling.has_key:
             threading.Thread(target=self.ling.check, daemon=True).start()
+        self._watch_network()
         # Opened by hand, 知了 shows its window: a top-bar icon alone looks like nothing happened, and
         # plain GNOME has no top bar icon at all. Only a login start (--background) with an icon to be
         # reached through, set up already, stays out of the way. Not set up: the onboarding on top.
@@ -203,13 +204,16 @@ class Controller:
         self.records_window.present()
         self.records_window.set_focus(None)  # not the search box: its placeholder would vanish
 
-    def show_settings(self) -> None:
+    def show_settings(self, ai: bool = False) -> None:
+        """设置; `ai`: at AI 服务 (its first section), where every AI problem is fixed."""
         if self.settings_window is None:
             from .settings_window import SettingsWindow
             self.settings_window = SettingsWindow(self)
             self.application.add_window(self.settings_window)
         self.settings_window.show_all()
         self.settings_window.present()
+        if ai:
+            self.settings_window.scroll.get_vadjustment().set_value(0)
 
     # Setup (会议记录 › 还差几步 and the capsule)
 
@@ -218,7 +222,14 @@ class Controller:
         """The setup steps as the onboarding numbers them (key, computer sound, sample): done by what
         really happened, not by "the onboarding was finished" (Windows' SetupDone)."""
         s = self.settings
-        return self.ling.has_key, s.heardSystemAudio or s.onboarded, s.sampleSeen or s.onboarded
+        return self.key_works, s.heardSystemAudio or s.onboarded, s.sampleSeen or s.onboarded
+
+    @property
+    def key_works(self) -> bool:
+        """The key step is done: a key, and no failure only the user can fix (a check still running,
+        or one not run yet, doesn't undo it; busy counts as passed)."""
+        f = self.ling.check_result.failure
+        return self.ling.has_key and (f is None or f[1] in ("busy", "serverError"))
 
     @property
     def setup_left(self) -> int:
@@ -238,7 +249,8 @@ class Controller:
     def show_onboarding(self, step: int | None = None) -> None:
         """The onboarding at `step`, or at the first step not done, over the records window."""
         from .onboarding import AUDIO, KEY, SAMPLE, Onboarding
-        key, audio, _ = self.setup_done
+        _, audio, _ = self.setup_done
+        key = self.ling.has_key
         at = step if step is not None else KEY if not key else AUDIO if not audio else SAMPLE
         if self.onboarding is not None:
             if step is not None and self.onboarding.step != step:
@@ -302,6 +314,46 @@ class Controller:
         self.ling.key_changed()
         if self.ling.has_key:
             threading.Thread(target=self.ling.check, daemon=True).start()
+
+    def recheck(self) -> None:
+        """重新检查: the AI service, step by step, off the main loop."""
+        if self.ling.has_key and not self.ling.check_result.running:
+            threading.Thread(target=self.ling.check, daemon=True).start()
+
+    def use_recommended(self, kind: str) -> None:
+        """换成推荐的: the service's first recommended text or hear model, then a fresh check. Only
+        ever on the user's click: the app never changes a model by itself."""
+        p = self.ling.provider
+        models = p.text_models if kind == "text" else p.hear_models
+        if models:
+            self.set_ai_model(kind, models[0].id)
+
+    def switch_service(self, provider: str, key: str) -> None:
+        """改用 <服务>: a key pasted for another service goes there, then it is checked."""
+        self.settings.aiProvider = provider
+        self.settings.save()
+        self.key.save(key)
+        self.ai_changed()
+
+    def _watch_network(self) -> None:
+        """A change of route (Wi-Fi back, a proxy app's TUN) waits 3 s for the network to settle, then
+        the service is looked at again if it was unreachable. No timer otherwise."""
+        monitor = Gio.NetworkMonitor.get_default()
+        self._net_wait = None
+
+        def settled():
+            self._net_wait = None
+            self.ling.network_changed()
+            return False
+
+        def changed(_m, available):
+            if not available:
+                return
+            if self._net_wait is not None:
+                GLib.source_remove(self._net_wait)
+            self._net_wait = GLib.timeout_add(3000, settled)
+        monitor.connect("network-changed", changed)
+        self._net_monitor = monitor
 
     def set_view(self, view: str) -> None:
         if view not in ("notes", "subtitles") or view == self.settings.view:
@@ -374,11 +426,22 @@ class Controller:
         if answer == Gtk.ResponseType.ACCEPT and self.listen.listening and self.listen.session_id == sid:
             self.stop_listening()
 
-    def start_listening(self, source, kind: str) -> None:
+    def start_listening(self, source, kind: str, checked: bool = False) -> None:
         if self.listen.listening:
             return
         if not self.ling.has_key:
             self.show_onboarding()
+            return
+        # The service hears for us: a known failure stops here with the fix, not in an empty window.
+        # Unknown or busy starts as usual; unreachable is looked at once more first.
+        r = self.ling.check_result
+        if r.reason == "unreachable" and not checked:
+            def again():
+                self.ling.check()
+                GLib.idle_add(lambda: self.start_listening(source, kind, checked=True) and False)
+            threading.Thread(target=again, daemon=True).start()
+            return
+        if r.reason in ("deaf", "unreachable") and not self._may_start(source, kind):
             return
 
         def ended(reason):
@@ -399,6 +462,57 @@ class Controller:
         self.listen.start(source, kind)
         self.show_notes()
         self.changed()
+
+    def _may_start(self, source, kind: str) -> bool:
+        """开始听 when the last check found the hear model deaf or the service unreachable: say so,
+        with 打开设置 and the one fix (换成推荐的并开始 / 重新检查并开始). False: not now."""
+        from ..core import aicheck
+        ling = self.ling
+        r = ling.check_result
+        name = ling.service_name
+        if r.reason == aicheck.DEAF:
+            model = ling.config().hear_model
+            title, body, hint = LF("%@ 现在听不了声音", model), LF("%@ 只收文字。换成推荐的模型就能开始听。", model), None
+            p = ling.provider
+            fix = L("换成推荐的并开始") if p.hear_models and p.hear_models[0].id != model else None
+        else:
+            title, body = LF("连不上 %@", name), ling.message()
+            hint = r.proxy_line(name, ling.service_host)
+            fix = L("重新检查并开始")
+        dialog = Gtk.Dialog(transient_for=self.records_window if self.records_window and self.records_window.get_visible() else None,
+                            modal=True)
+        dialog.set_decorated(False)
+        dialog.set_resizable(False)
+        dialog.set_keep_above(True)
+        ui.classes(dialog, "endask")
+        texts = ui.vbox(6, ui.text(title, 15, "ink", bold=True, width_chars=36), ui.text(body or "", 12, "secondary", width_chars=36))
+        if hint:
+            texts.pack_start(ui.panel(ui.pad(ui.text(hint, 12, "", width_chars=36), 7, 10), "proxybox"), False, False, 0)
+        row = ui.hbox(8)
+        row.set_halign(Gtk.Align.END)
+        settings = ui.button(L("打开设置"), lambda: dialog.response(Gtk.ResponseType.CANCEL), "outline")
+        row.pack_start(settings, False, False, 0)
+        if fix:
+            row.pack_start(ui.button(fix, lambda: dialog.response(Gtk.ResponseType.ACCEPT), "darkbtn"), False, False, 0)
+        dialog.connect("key-press-event", lambda _d, e: e.keyval == Gdk.KEY_Escape and dialog.response(Gtk.ResponseType.CLOSE))
+        dialog.get_content_area().pack_start(ui.pad(ui.vbox(18, texts, row), 22, 22), True, True, 0)
+        dialog.get_content_area().show_all()
+        self._asking = dialog  # debug: screenshots, and answering it from the control socket
+        answer = dialog.run()
+        self._asking = None
+        dialog.destroy()
+        if answer == Gtk.ResponseType.CANCEL:
+            self.show_settings(ai=True)
+        elif answer == Gtk.ResponseType.ACCEPT:
+            if r.reason == aicheck.DEAF:
+                self.use_recommended("hear")  # checks again; the meeting starts now
+                return True
+
+            def again():
+                self.ling.check()
+                GLib.idle_add(lambda: self.start_listening(source, kind, checked=True) and False)
+            threading.Thread(target=again, daemon=True).start()
+        return False
 
     # 结束会议
 

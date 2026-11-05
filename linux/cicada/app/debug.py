@@ -9,6 +9,8 @@ per connection, one JSON line back. Never in release builds.
   calls <program=name,…>|none|real (meeting apps in a call) | endtimes <silence> <countdown> <grace>|off | endkeep
   notes-tab notes|transcript | notes-search <text> | notes-wide on|off | onboarding-step <n> | settings-scroll <0-1>
   settings-models on|off (unfold 自己选模型)
+  ai-check-sim <reason|lowBalance|off> (every check ends this way: screenshots of each state) | ai-check (check now)
+  ask settings|fix|close (answer the 开始听 dialog a failed check put up) | settings-ai (设置 at AI 服务) | tray-menu
   pill (the records window capsule's widget sizes)"""
 from __future__ import annotations
 
@@ -130,7 +132,34 @@ def command(app, line: str) -> dict:
                 "endTimes": list(app.end_times) if app.end_times else None,
                 "inCall": dict(app.end_watch.in_call) if app.end_watch else None}
     if cmd == "start":
-        app.toggle_listening() if not listen.listening else None
+        # Later, not here: 开始听 may ask first (a deaf hear model), and its dialog runs its own loop.
+        if not listen.listening:
+            GLib.idle_add(lambda: app.toggle_listening() and False)
+        return {"ok": True}
+    if cmd == "ai-check-sim":
+        from ..core import aicheck
+        if arg not in aicheck.REASONS + ("lowBalance", "off"):
+            return {"ok": False, "error": "reason, lowBalance or off"}
+        app.ling.simulate = None if arg == "off" else arg
+        threading.Thread(target=app.ling.check, daemon=True).start()
+        return {"ok": True, "simulate": app.ling.simulate}
+    if cmd == "ai-check":
+        threading.Thread(target=app.ling.check, daemon=True).start()
+        return {"ok": True}
+    if cmd == "ask":
+        from gi.repository import Gtk
+        d = getattr(app, "_asking", None)
+        if d is None:
+            return {"ok": False, "error": "no question open"}
+        d.response({"settings": Gtk.ResponseType.CANCEL, "fix": Gtk.ResponseType.ACCEPT}.get(arg, Gtk.ResponseType.CLOSE))
+        return {"ok": True}
+    if cmd == "tray-menu":
+        # The top-bar menu's items (opening it takes a real click on the top bar).
+        if app.tray is None:
+            return {"ok": False, "error": "no tray"}
+        return {"ok": True, "items": [i.get_label() for i in app.tray.menu.get_children() if hasattr(i, "get_label")]}
+    if cmd == "settings-ai":
+        app.show_settings(ai=True)
         return {"ok": True}
     if cmd == "stop":
         app.stop_listening()
@@ -295,5 +324,8 @@ def _ai(app) -> dict:
     """The AI service in use and what its last check found (never the key itself)."""
     c, ling = app.ling.config(), app.ling
     return {"provider": c.provider.id, "base": c.base, "text": c.text_model, "hear": c.hear_model, "voice": c.voice_model,
-            "state": ling.key_state, "hears": ling.hears, "problem": list(ling.problem) if ling.problem else None,
+            "state": ling.key_state, "hears": ling.hears, "check": ling.check_result.summary(), "message": ling.message(),
+            "proxyLine": ling.check_result.proxy_line(ling.service_name, ling.service_host),
+            "keyWorks": app.key_works, "asking": getattr(app, "_asking", None) is not None,
+            "lastVoice": list(ling.last_voice) if ling.last_voice else None, "simulate": ling.simulate,
             "catalog": [len(ling.text_catalog), len(ling.hear_catalog)], "keyFile": os.path.basename(app.key.path)}

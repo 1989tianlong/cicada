@@ -176,7 +176,9 @@ class RecordsWindow(Gtk.Window):
                 sep.set_valign(Gtk.Align.CENTER)
                 b.add(inner)
                 ui.classes(b, "listenpill")
-                b.connect("clicked", lambda *_: self.app.show_onboarding())
+                # A key the check found failing is fixed in 设置 › AI 服务, not in the onboarding.
+                b.connect("clicked", lambda *_: self.app.show_settings(ai=True) if self.app.ling.has_key and not self.app.key_works
+                          else self.app.show_onboarding())
                 b.get_accessible().set_name(L("继续设置"))
                 box.pack_start(b, False, False, 0)
             elif state in ("idle", "auto"):
@@ -439,7 +441,11 @@ class RecordsWindow(Gtk.Window):
         speak = (LF("按 %@ 说话，对方听到翻译后的声音", SHORTCUTS["speak"][2].replace(" + Shift + ", " ⇧ "))
                  if gnome_shortcut("speak") else L("点纪要窗的麦克风说话，对方听到翻译后的声音"))
         service = L("接上 Ling") if app.settings.aiProvider == "ling" else LF("接上 %@", app.ling.provider.name)
-        steps = ((service, L("只存在这台电脑上（只有你的账户能读）") if key else L("识别、翻译和纪要都靠它，约 1 分钟"), key),
+        # A key that the check found failing: why, and 去修 opens 设置 › AI 服务 (not the onboarding).
+        from . import aicheck_view
+        broken = aicheck_view.strip_words(app) if app.ling.has_key and not key else None
+        key_line = (broken[1] or broken[0]) if broken else (L("只存在这台电脑上（只有你的账户能读）") if key else L("识别、翻译和纪要都靠它，约 1 分钟"))
+        steps = ((service, key_line, key),
                  (L("听一下电脑里的声音"), L("放一段测试声音，看音量条动起来"), audio),
                  (L("看看效果"), L("一段 9 秒的英文会议，字幕和纪要一句句出来"), sample),
                  (L("同声传译"), L("以后在设置 › 同声传译里打开") if app.settings.speakLater and not app.settings.speakEnabled
@@ -470,7 +476,10 @@ class RecordsWindow(Gtk.Window):
             row = ui.hbox(14, disc)
             row.pack_start(texts, True, True, 0)  # filled, so the words start at the left of every row
             action = None
-            if now:
+            if now and i == 0 and broken:
+                action = ui.button(L("去修"), lambda: app.show_settings(ai=True), "darkbtn")
+                sub.get_style_context().add_class("stepwhy")
+            elif now:
                 action = ui.button(L("继续设置"), lambda n=i: app.show_onboarding(n), "darkbtn")
             elif i == 3 and not done and not app.settings.speakLater:
                 action = ui.button(L("以后再说"), self._speak_later, "outline")

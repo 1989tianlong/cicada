@@ -234,7 +234,7 @@ class ListenEngine:
                 heard = self.translator.hear(wav, seg.asked, lang)
                 self.problem = self.problem_kind = None
             except LingError as e:
-                self.problem_kind, self.problem = problem(e, self.ling.provider.name)
+                self.problem_kind, self.problem = problem(e, self.ling.provider.name, self.ling.config().hear_model)
                 Log.d("listen: segment %d failed %s" % (seg.index, e))
             except Exception as e:  # noqa: BLE001
                 Log.d("listen: segment %d failed %s" % (seg.index, type(e).__name__))
@@ -358,19 +358,20 @@ def join(a: str, b: str, lang: str) -> str:
     return a.rstrip() + b.lstrip() if cjk else a.rstrip() + " " + b.lstrip()
 
 
-def problem(e: LingError, service: str):
+def problem(e: LingError, service: str, hear_model: str = ""):
     """(kind, what to say) for a stretch that couldn't be heard. Ling keeps its own words; another
-    service is named. A hear model that refuses audio (400 / 404) is a key-like problem: 设置 fixes it."""
+    service is named. A hear model that refuses audio (400 / 404 / 415 / 422) is a key-like problem:
+    设置 fixes it, in the words of the settings' 听对方 step."""
     L, LF = strings.L, strings.LF
     ling = service == "Ling"
-    if e.kind == LingError.HTTP and e.status in (400, 404) and not ling:
-        return "key", L("这个模型听不了声音，换一个支持音频输入的")
+    if e.kind == LingError.HTTP and e.status in (400, 404, 415, 422) and not ling:
+        return "key", LF("%@ 听不了声音。", hear_model or service)
     kind = {LingError.NO_KEY: "key", LingError.INVALID_KEY: "key", LingError.RATE_LIMITED: "busy",
             LingError.NETWORK: "network", LingError.TIMEOUT: "network"}.get(e.kind)
     if ling:
         text = {LingError.NO_KEY: L("需要 Ling key 才能听"), LingError.INVALID_KEY: L("Ling key 无效"),
-                LingError.RATE_LIMITED: L("Ling 太忙，稍后再试"), LingError.NETWORK: L("连不上 Ling，检查网络或代理"),
-                LingError.TIMEOUT: L("连不上 Ling，检查网络或代理")}.get(e.kind)
+                LingError.RATE_LIMITED: L("Ling 太忙，稍后再试"), LingError.NETWORK: L("连不上 Ling"),
+                LingError.TIMEOUT: L("连不上 Ling")}.get(e.kind)
     else:
         text = {LingError.NO_KEY: LF("需要 %@ 的 key 才能听", service), LingError.INVALID_KEY: LF("%@ 的 key 无效", service),
                 LingError.RATE_LIMITED: LF("%@ 太忙，稍后再试", service), LingError.NETWORK: LF("连不上 %@", service),

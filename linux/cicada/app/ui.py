@@ -123,6 +123,28 @@ button.iconbtn.on { background-color: #F3F4F6; color: #15171C; }
 .aitag.off label { color: #5A5F6B; }
 .aitag.ling { background-color: #FDEEE8; }
 .aitag.ling label { color: #B23A12; }
+.aitag.warn { background-color: #FFF4D6; }
+.aitag.warn label { color: #8A5A00; }
+/* The AI service check (AICheckView.swift): a 20 px disc per step, the reason in red (busy in amber). */
+.stepdisc { border-radius: 10px; min-width: 20px; min-height: 20px; }
+.stepdisc.ok { background-color: #E3F3EA; }
+.stepdisc.ok image { color: #1F6B3A; }
+.stepdisc.fail { background-color: #FDECEA; }
+.stepdisc.fail image { color: #B3261E; }
+.stepdisc.busy { background-color: #FFF4D6; }
+.stepdisc.busy image { color: #8A5A00; }
+.stepdisc.running { background-color: #FDEEE8; }
+.stepdisc.running image { color: #B33A14; }
+.stepdisc.off { background-color: #F2F3F5; }
+.stepdisc.off image { color: #6B7080; }
+.stepwhy { color: #B3261E; }
+.stepwhy.busy { color: #8A5A00; }
+.proxybox { background-color: #F2F3F5; border-radius: 8px; }
+.proxybox label { color: #3D4149; }
+.warnstrip { background-color: #FFF4D6; border-radius: 10px; }
+.warnstrip label { color: #8A5A00; }
+.notice.busy { background-color: #FFF4D6; }
+.busyline { color: #8A5A00; }
 .chip { background-color: #F2F3F5; border-radius: 5px; padding: 1px 6px; color: #15171C; }
 .chip.now { background-color: #E8552B; color: #FFFFFF; }
 .chip.time { background-color: transparent; padding: 0; color: #B33A14; }

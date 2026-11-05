@@ -459,10 +459,11 @@ class SettingsWindow(Gtk.Window):
         self.key_status = ui.hbox(6)
         key_left = ui.vbox(4, self.key_line, self.key_status)
         self.change_button = ui.button(L("更换…"), self._toggle_entry, "outline")
+        self.recheck_button = ui.button(L("重新检查"), app.recheck, "outline")
         self.remove_button = ui.button(L("删除"), self.remove_key, "dangertext")
         key_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         key_row.pack_start(key_left, True, True, 0)
-        for b in (self.change_button, self.remove_button):
+        for b in (self.change_button, self.recheck_button, self.remove_button):
             b.set_valign(Gtk.Align.CENTER)
             key_row.pack_start(b, False, False, 0)
         key_row = ui.panel(ui.pad(key_row, 10, 14), "prow")
@@ -476,7 +477,10 @@ class SettingsWindow(Gtk.Window):
         entry_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         entry_row.pack_start(self.key_entry, True, True, 0)
         entry_row.pack_start(ui.button(L("保存并检查"), self.save_key, "darkbtn"), False, False, 0)
-        self.entry_row = ui.panel(ui.pad(entry_row, 12, 16), "prow")
+        # A pasted key that belongs elsewhere (AISettings.swift › keyHint): what it is, 改用 <服务>.
+        self.key_hint = ui.hbox(8)
+        self.key_hint.set_no_show_all(True)  # no gap while empty
+        self.entry_row = ui.panel(ui.pad(ui.vbox(8, entry_row, self.key_hint), 12, 16), "prow")
         # A custom service: its address and models come before a key can be checked.
         self.custom_base = self._field("https://api.example.com/v1", s.aiCustomBase)
         self.custom_text = self._field(L("例如 qwen3:14b"), s.aiModels.get("custom", ""))
@@ -500,7 +504,15 @@ class SettingsWindow(Gtk.Window):
         title = ui.hbox(8, ui.pad(ui.text(L("AI 服务"), 12, "group-title", bold=True, wrap=False), 0, 0, 0, 2))
         title.pack_end(self.provider_menu, False, False, 0)
         self.lock_line = ui.text("", 11, "tertiary", width_chars=60)
-        page.pack_start(ui.vbox(6, title, self.custom_rows, self.key_group, ui.pad(self.lock_line, 0, 2, 0, 2)), False, False, 0)
+        # The check, step by step, while something is wrong or being checked; OpenRouter's balance.
+        self.steps = ui.vbox(0)
+        self.steps_card = ui.panel(ui.pad(self.steps, 2, 14), "boxed")
+        self.steps_card.set_no_show_all(True)
+        self.balance_row = ui.hbox(8)
+        self.balance_strip = ui.panel(ui.pad(self.balance_row, 10, 12), "warnstrip")
+        self.balance_strip.set_no_show_all(True)
+        page.pack_start(ui.vbox(6, title, self.custom_rows, self.key_group, self.steps_card, self.balance_strip,
+                                ui.pad(self.lock_line, 0, 2, 0, 2)), False, False, 0)
         # What works with it.
         self.uses = ui.vbox(0)
         page.pack_start(self._group(L("现在能用的"), self.uses), False, False, 0)
@@ -561,28 +573,51 @@ class SettingsWindow(Gtk.Window):
         return c
 
     def _uses_rows(self) -> list:
-        """现在能用的 (AISettings.swift › usage), with 听对方 first: on the ports the service hears."""
+        """现在能用的 (AISettings.swift › usage), with 听对方 first: on the ports the service hears. Only
+        what the last result supports: when the service can't be reached or the key fails, nothing
+        says "用 ZenMux" in green."""
+        from ..core import aicheck
         ling = self.app.ling
         c = ling.config()
+        r = ling.check_result
         name = L(c.provider.name) if c.provider.id == "custom" else c.provider.name
-        on = ling.usable
+        reason = r.reason
+        down = ling.has_key and r.down
+        on = ling.usable and not down
+        text_on = on and reason != aicheck.NO_MODEL
+        notes_on = text_on and reason != aicheck.NO_JSON
+        hear_on = on and ling.hears is not False
         uses = LF("用 %@", name)
+        later = ((LF("连上 %@ 后可用", name) if reason == aicheck.UNREACHABLE else L("换好 key 后可用")) if down
+                 else L("填好 key 后可用"))
+        off = L("暂不可用") if ling.has_key else L("需要 key")
         rows = []
-        if not on:
-            hear = (L("需要 key"), "off", L("填好 key 后可用"))
-        elif ling.hears is False:
-            hear = (L("还不能用"), "off", L("这个模型听不了声音，换一个支持音频输入的"))
-        elif c.is_ling:
-            hear = (uses, "ok", L("Ming 一次识别并翻译"))
+        if hear_on:
+            hear = (uses, "ok", L("Ming 一次识别并翻译") if c.is_ling else c.hear_model + " · " + L("比 Ling 晚 1–2 秒出字"))
+        elif on:
+            hear = (off, "off", LF("%@ 听不了声音。", c.hear_model) if c.hear_model else L("换一个模型后可用"))
         else:
-            hear = (uses, "ok", c.hear_model + " · " + L("比 Ling 晚 1–2 秒出字"))
+            hear = (off, "off", later)
         rows.append((L("听对方"),) + hear)
-        rows.append((L("实时纪要"),) + ((uses, "ok", L("会中每 45 秒更新")) if on else (L("需要 key"), "off", L("填好 key 后可用"))))
-        rows.append((L("翻译"),) + ((uses, "ok", L("整句用它；不行时换 Google")) if on else ("Google", "off", L("没有 key 时照常可用"))))
-        if ling.speaks:
-            rows.append((L("同传声音"), uses, "ok", L("Ming 的声音") if c.is_ling else c.voice_model))
+        if notes_on and r.busy:
+            rows.append((L("实时纪要"), L("很忙"), "warn", L("会自动重试，纪要可能晚一点")))
         else:
-            rows.append((L("同传声音"), L("用不了"), "off", L("这个服务不能出声音") if on else L("填好 key 后可用")))
+            rows.append((L("实时纪要"),) + ((uses, "ok", L("会中每 45 秒更新")) if notes_on else
+                                          (off, "off", L("这个服务不支持 JSON") if reason == aicheck.NO_JSON
+                                           else L("换一个模型后可用") if reason == aicheck.NO_MODEL else later)))
+        rows.append((L("翻译"),) + ((uses, "ok", L("整句用它；不行时换 Google")) if text_on else
+                                  ("Google", "off", L("先用 Google 翻译") if ling.has_key else L("没有 key 时照常可用"))))
+        if ling.speaks and hear_on:
+            # 同传 hears me with the hear model first, then speaks with the voice model.
+            if ling.last_voice is not None:
+                note = L("上次同传时正常") if ling.last_voice[0] else L("上次同传没出声")
+            else:
+                note = L("Ming 的声音") if c.is_ling else c.voice_model
+            rows.append((L("同传声音"), uses, "ok", note))
+        elif ling.speaks:
+            rows.append((L("同传声音"), off, "off", LF("%@ 听不了声音。", c.hear_model) if on else later))
+        else:
+            rows.append((L("同传声音"), L("用不了") if on else off, "off", L("这个服务不能出声音") if on else later))
         if not c.is_ling:
             rows.append((L("你自己的声音"), L("只有 Ling"), "ling", L("换用 Ling 才有")))
         out = []
@@ -626,18 +661,23 @@ class SettingsWindow(Gtk.Window):
         have = k is not None
         ui.retext(self.key_line, AIKey.masked(k) if k else (L("本机服务，不用 key") if have else
                                                            (L("还没填好") if p.id == "custom" else L("还没填 API key"))))
-        problem = None
-        if app.ling.problem:
-            problem = LF(app.ling.problem[0], *[L(a) if isinstance(a, str) else a for a in app.ling.problem[1:]])
-        icon_name, cls, label = {
-            lingmod.OK: ("object-select-symbolic", "ok", L("已连接") +
-                         " · " + LF("%@ · 响应约 %@ 秒", c.text_model, "%.1f" % (app.ling.seconds or 0))),
-            lingmod.CHECKING: ("content-loading-symbolic", "secondary", L("正在检查…")),
-            lingmod.INVALID: ("dialog-error-symbolic", "warn", LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", name)),
-            lingmod.UNREACHABLE: ("network-offline-symbolic", "warn", problem or LF("连不上 %@，请检查网络或代理", name)),
-        }.get(state, (None, "secondary", ""))
-        if state == lingmod.OK and problem:
-            icon_name, cls, label = "dialog-warning-symbolic", "warn", problem
+        from ..core import aicheck
+        from . import aicheck_view
+        r = app.ling.check_result
+        f = r.failure
+        if r.running or state == lingmod.CHECKING:
+            icon_name, cls, label = "content-loading-symbolic", "secondary", L("正在检查…")
+        elif f is not None and f[1] != aicheck.BUSY:
+            # Named after the step that failed: a missing model is not a connection problem.
+            label = {"reach": L("暂时连不上"), "key": L("这个 key 用不了")}.get(f[0], L("模型用不了"))
+            icon_name, cls = "dialog-warning-symbolic", "warn"
+        elif r.busy:
+            icon_name, cls, label = "dialog-warning-symbolic", "busyline", LF("%@ 现在很忙", name)
+        elif state == lingmod.OK:
+            line = aicheck_view.passed_line(app)
+            icon_name, cls, label = "object-select-symbolic", "ok", L("已连接") + (" · " + line if line else "")
+        else:
+            icon_name, cls, label = None, "secondary", ""
         if have and label:
             if icon_name:
                 img = ui.icon(icon_name, 14)
@@ -647,8 +687,31 @@ class SettingsWindow(Gtk.Window):
         self.key_status.show_all()
         self.key_status.set_visible(have and bool(label))
         self.change_button.set_visible(bool(k))
+        self.recheck_button.set_visible(have)
+        self.recheck_button.set_sensitive(not r.running)
         self.remove_button.set_visible(bool(k))
-        self.entry_row.set_visible(not k or state == lingmod.INVALID)
+        self.entry_row.set_visible(not k or state == lingmod.INVALID or (self.entry_row.get_visible() and bool(self.key_hint.get_children())))
+        # The steps, rebuilt when they change.
+        steps_key = (r.summary(), r.at is None, c.text_model, c.hear_model, have)
+        if steps_key != getattr(self, "_steps_shown", None):
+            self._steps_shown = steps_key
+            ui.clear(self.steps)
+            if have and aicheck_view.show_steps(r):
+                self.steps.pack_start(aicheck_view.steps_widget(app, self._change_key, recheck_in_step=False), False, False, 0)
+                self.steps.show_all()
+                self.steps_card.get_child().show_all()  # show_all stops at a no_show_all widget
+                self.steps_card.set_visible(True)
+            else:
+                self.steps_card.set_visible(False)
+            ui.clear(self.balance_row)
+            low = r.balance_line(name) if have else None
+            if low:
+                self.balance_row.pack_start(ui.text(low, 12, "", width_chars=40), True, True, 0)
+                b = ui.button(L("去充值"), lambda: open_uri(aicheck_view.top_up_url(p)), "outline")
+                b.set_valign(Gtk.Align.CENTER)
+                self.balance_row.pack_end(b, False, False, 0)
+                self.balance_strip.get_child().show_all()
+            self.balance_strip.set_visible(bool(low))
         self.custom_rows.set_visible(p.id == "custom")
         self.get_key.set_visible(p.site is not None and not k)
         ui.retext(self.get_key_label, L("获取 Ling key") if p.id == "ling" else LF("打开 %@", name))
@@ -660,7 +723,7 @@ class SettingsWindow(Gtk.Window):
                   else L("按所选模型计费。") + LF("听的时候，电脑里的声音会发给 %@。", sent))
         # The rows that depend on the service and what its check found.
         shown = (p.id, state, app.ling.hears, bool(k), c.text_model, c.hear_model, c.voice_model,
-                 len(app.ling.text_catalog), len(app.ling.hear_catalog))
+                 len(app.ling.text_catalog), len(app.ling.hear_catalog), r.reason, r.busy, app.ling.last_voice)
         if shown != getattr(self, "ai_shown", None):
             self.ai_shown = shown
             ui.clear(self.uses)
@@ -691,11 +754,44 @@ class SettingsWindow(Gtk.Window):
                 s.aiCustomVoiceBase = self.custom_voice_base.get_text().strip()
             s.save()
         text = self.key_entry.get_text().strip()
+        self._show_key_hint(None)
         if text:
+            # The prefix says whose key it is: a management key can't call models, and another
+            # service's key goes there with one click (never a silent switch).
+            from . import aicheck_view
+            hint = aicheck_view.key_hint(app, text)
+            if hint is not None:
+                self._show_key_hint(hint, text)
+                return
             if not app.key.save(text):
                 return
             self.key_entry.set_text("")
         app.ai_changed()
+
+    def _show_key_hint(self, hint, key: str = "") -> None:
+        ui.clear(self.key_hint)
+        self.key_hint.set_visible(hint is not None)
+        if hint is None:
+            return
+        words, service = hint
+        self.key_hint.pack_start(ui.text(words, 12, "stepwhy", width_chars=40), True, True, 0)
+        if service:
+            from ..core.providers import named
+
+            def switch():
+                self._show_key_hint(None)
+                self.key_entry.set_text("")
+                self.app.switch_service(service, key)
+            b = ui.button(LF("改用 %@", named(service).name), switch, "darkbtn")
+            b.set_valign(Gtk.Align.CENTER)
+            self.key_hint.pack_end(b, False, False, 0)
+        for w in self.key_hint.get_children():
+            w.show_all()
+
+    def _change_key(self) -> None:
+        """更换 key from a failed step: the field opens, focused."""
+        self.entry_row.set_visible(True)
+        self.key_entry.grab_focus()
 
     def remove_key(self) -> None:
         self.app.key.remove()
