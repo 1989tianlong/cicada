@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
 </p>
 
-<p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a></p>
+<p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a></p>
 
 无论是用 Zoom、飞书、腾讯会议开会，还是听 X Spaces 和 YouTube 直播，知了都能实时给出双语字幕、边听边写结构化纪要。遇到需要发言的时候，按住说话键（Mac 上是右 `⌥`，Windows 上是右 `Ctrl`）开口，对方就能在会里直接听到翻译好的语音。知了直接读取系统声音，不用往会里塞机器人，对方完全无感；在 Mac 上还全部在本机识别，声音不出电脑。
 
@@ -114,7 +114,7 @@ Windows、Linux 和 Android 版用 Ming 识别：说话的声音分段发给 Lin
 3. 在知了里打开设置里的 AI 服务，粘贴后点保存并检查，也可以直接粘贴到纪要窗口顶部的提示框里。知了会发一个只用一个 token 的请求确认 key 可用。
 4. 同一页面可以选模型（默认 `Ling-3.1-flash`），每种语言用哪个 Ming 声音在同声传译设置里选。想移除 key，在同一页面点移除即可。
 
-注册不了 Ling 时，可以在“设置 › AI 服务”右上角换成 OpenRouter、ZenMux、OpenAI，或填任何 OpenAI 兼容服务的地址（比如本机跑的模型）。实时纪要和整句翻译都能用，模型已经按效果和价格选好，也可以自己换；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆只有 Ling 有，其他服务下同传先在本机识别再翻译。每个服务的 key 各存一份，切换时不用重填。
+**注册不了 Ling？**可以在“设置 › AI 服务”右上角换成 OpenRouter、ZenMux、OpenAI，或填任何 OpenAI 兼容服务的地址（比如本机跑的模型）。实时纪要和整句翻译都能用，模型已经按效果和价格选好，也可以自己换；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆只有 Ling 有，其他服务下同传先在本机识别再翻译。每个服务的 key 各存一份，切换时不用重填。Windows、Linux、Android 版的识别靠 Ling 的 Ming，暂时只能用 Ling；想用别的服务，欢迎[告诉我们](https://github.com/wquguru/cicada/issues)。
 
 ## 系统要求与安装
 
@@ -132,7 +132,7 @@ Windows、Linux 和 Android 版用 Ming 识别：说话的声音分段发给 Lin
 
 ### Windows
 
-需要 Windows 10 2004 或更新版本。下载 `Cicada-Setup.exe`（骁龙笔记本选 `Cicada-Setup-arm64.exe`），双击就装好，不用管理员权限；安装程序还没有代码签名，SmartScreen 拦下时点更多信息 › 仍要运行。打开就是主窗口，列着还差哪几步：接上 Ling key、放一段测试声音、看示例会议；同声传译要装免费的 VB-Cable 虚拟麦克风，引导会带你装。新版本在知了里提示，点一下就升级。
+需要 Windows 10 2004 或更新版本。下载 Windows 安装包（大多数电脑选 x64，骁龙笔记本选 ARM64），双击就装好，不用管理员权限；安装程序还没有代码签名，SmartScreen 拦下时点更多信息 › 仍要运行。打开就是主窗口，列着还差哪几步：接上 Ling key、放一段测试声音、看示例会议；同声传译要装免费的 VB-Cable 虚拟麦克风，引导会带你装。新版本在知了里提示，点一下就升级。
 
 ### Linux
 
