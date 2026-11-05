@@ -640,3 +640,18 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .cmp tbody th { font-weight: 600; white-space: nowrap; color: var(--ink); }
 .dlcmp .more { margin: 18px 0 0; font-size: 14px; color: var(--grey); }
 .pblock > .steps:last-child { padding-bottom: 96px; }
+/* 上手页第 2 步（Mac）: two services, the first one (per the page's language) stands out. */
+.svc { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.svc-card { padding: 18px; border-radius: 16px; background: var(--card); border: 1px solid var(--line2); display: flex; flex-direction: column; gap: 8px; }
+.svc-card h3 { margin: 0; font-size: 18px; font-weight: 800; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.svc-card .tag { padding: 3px 10px; border-radius: 999px; background: var(--orange-soft); color: var(--orange-text); font-size: 12px; font-weight: 700; }
+.svc-card .tag:empty { display: none; }
+.svc-card p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--grey); }
+.svc-card .btn { margin-top: auto; width: 100%; min-height: 46px; font-size: 15px; background: var(--card); color: var(--ink); border: 1px solid #DADDE2; }
+.svc-card .btn:hover { border-color: var(--ink); color: var(--ink); }
+.svc[data-first=ling] .svc-ling, .svc[data-first=openrouter] .svc-or { order: -1; border: 1.5px solid var(--ink); }
+.svc[data-first=ling] .svc-ling .btn, .svc[data-first=openrouter] .svc-or .btn { background: var(--orange); color: #FFFFFF; border-color: var(--orange); }
+.svc[data-first=ling] .svc-ling .btn:hover, .svc[data-first=openrouter] .svc-or .btn:hover { background: #D44A22; color: #FFFFFF; }
+.step-text .svc + p.hint { margin-top: 12px; font-size: 13px; line-height: 1.6; }
+.step-text p.alt-svc { margin-top: 14px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line2); font-size: 13px; line-height: 1.6; color: var(--grey); }
+.step-text p.alt-svc b { color: var(--ink); }
