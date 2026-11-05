@@ -417,6 +417,43 @@ class Segmenting(Base):
 
 
 class Notes(Base):
+    def test_notes_language_as_on_the_mac(self):
+        # "mine" or "source"; one meeting's choice over the setting; a change while live rewrites.
+        store = SessionStore()
+        settings = AppSettings(target="zh-CN", notesLanguage="source")
+        ling = client(Fake(lambda body: reply("{}")))
+        notes = NotesEngine(ling, store)
+        engine = ListenEngine(ling, Translator(ling), store, notes, settings)
+        s = store.begin()
+        for i, lang in enumerate(("en", "en", "ja")):
+            store.append(s.id, TranscriptLine(id="h%d-%d" % (i + 1, i + 1), t=i, src="x", srcLang=lang, dstLang="zh-CN"))
+        store.append(s.id, TranscriptLine(id="m1", t=4, speaker="me", src="y", srcLang="ja", dstLang="en"))
+        self.assertEqual("en", engine.meeting_language(s.id), "the other side's most spoken, not mine")
+        self.assertEqual("English", notes.language(s.id))
+        engine.notes_for[s.id] = "mine"
+        self.assertEqual("Simplified Chinese", notes.language(s.id))
+        self.assertEqual("zh-CN", AppSettings(target="zh-CN").notes_code("source", None), "nothing heard yet: mine")
+        rewrites = []
+        notes.rewrite = lambda: rewrites.append(1)
+        engine.listening, engine.session_id = True, s.id
+        engine.set_notes_language("source", meeting_only=True)
+        self.assertEqual((1, "source"), (len(rewrites), settings.notesLanguage))
+        engine.set_notes_language("source", meeting_only=True)
+        self.assertEqual(1, len(rewrites), "the same language again: nothing to rewrite")
+        engine.listening = False
+
+    def test_old_notes_language_settings_become_mine(self):
+        with open(Paths.settings(), "w", encoding="utf-8") as f:
+            f.write('{"notesLanguage" : "ja"}')
+        self.assertEqual("mine", AppSettings.load().notesLanguage)
+
+    def test_todo_owner_names_people_when_voices_are_told_apart(self):
+        lines = [TranscriptLine(id="h%d-%d" % (i, i), t=i * 3, src="we should ship this on Friday", voice=i % 2) for i in range(12)]
+        owner = lambda voices: [x for x in notesmod.prompt(MeetingNotes(), lines, 0, "English", False, voices=voices).split("\n")
+                                if '"todos"' in x][0]  # noqa: E731
+        self.assertIn('"owner": "对方" or "你" or null,', owner(False))
+        self.assertIn('"owner": the person\'s label from the transcript (a name like "George", or "说话人2"), "你", or null when unclear,', owner(True))
+
     def test_parses_notes(self):
         raw = """```json
         {"title": "“发布评审”", "summary": "讨论发布。",

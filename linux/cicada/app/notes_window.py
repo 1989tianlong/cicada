@@ -186,6 +186,11 @@ class NotesWindow(Gtk.Window):
             self.tabs_wrap = ui.pad(self.tabs, 2, 16, 10, 16)
             outer.pack_start(self.tabs_wrap, False, False, 0)
             outer.pack_start(self.ending_wrap, False, False, 0)
+            # This meeting's languages ("English → 简体中文", the Mac's languageLink) and, opened from
+            # it, the card that changes them; after the meeting, 改用…重新整理.
+            self.lang_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            self.lang_wrap = ui.pad(self.lang_box, 0, 12, 8, 12)
+            outer.pack_start(self.lang_wrap, False, False, 0)
             self.columns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0, homogeneous=True)
             self.scroll = Gtk.ScrolledWindow()
             self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -211,7 +216,7 @@ class NotesWindow(Gtk.Window):
             self.live_box = ui.panel(self.live, "livebox")
             ui.pad(self.live_box, 6, 12, 0, 12)
             outer.pack_start(self.live_box, False, False, 0)
-            for w in (self.ending_wrap, self.tabs_wrap, self.scroll, self.transcript_col, self.live_box):
+            for w in (self.ending_wrap, self.tabs_wrap, self.scroll, self.transcript_col, self.live_box, self.lang_wrap):
                 w.set_no_show_all(True)
             speak_panel = ui.panel(ui.pad(self.speakbox, 10, 16), "speakbox")
             self.speakwrap = Gtk.Box()
@@ -254,6 +259,7 @@ class NotesWindow(Gtk.Window):
         if self.body is not None:
             self._layout()
             self._fill_ending()
+            self._fill_languages()
             adj = self.scroll.get_vadjustment()
             keep = adj.get_value()
             self._fill_body()
@@ -515,6 +521,84 @@ class NotesWindow(Gtk.Window):
         return row
 
     # Ending by itself
+
+    def _names(self) -> dict:
+        from ..core.support import TARGETS
+        return {code: name for name, code in TARGETS}
+
+    def _fill_languages(self) -> None:
+        """While live: "English → 简体中文" (what they speak → the notes' language), which opens this
+        meeting's choice in place, not a popup (the window never takes focus). After the meeting: the
+        notes once more in the other language, when the meeting wasn't in mine."""
+        listen = self.app.listen
+        names = self._names()
+        name = lambda c: names.get(c, c)  # noqa: E731
+        s = self._session()
+        live = listen.listening and s is not None
+        mine = self.app.settings.target_code
+        heard = listen.meeting_language(s.id) if s is not None else None
+        notes = self.app.notes
+        other = None
+        if not live and s is not None and s.lines and heard and heard != mine and notes.status != notesmod.UPDATING:
+            other = ("mine", mine) if listen.notes_choice(s.id) == "source" else ("source", heard)
+        open_ = live and getattr(self, "lang_open", False)
+        key = (live, open_, s.id if s else None, heard, listen.notes_choice(s.id) if s else None, mine, other)
+        self.lang_wrap.set_visible(live or other is not None)
+        if key == getattr(self, "_lang_key", None):
+            return
+        self._lang_key = key
+        ui.clear(self.lang_box)
+        if live:
+            # 12 px grey and underlined, as on the Mac: a quiet way in, not a button.
+            link = Gtk.Button()
+            label = ui.text((name(heard) if heard else L("自动")) + " → " + name(listen.notes_code(s.id)), 12, "secondary", wrap=False)
+            label.set_markup(label.get_label().replace("<span ", '<span underline="single" ', 1))
+            link.add(label)
+            ui.classes(link, "quietbtn")
+            link.set_relief(Gtk.ReliefStyle.NONE)
+            link.connect("clicked", lambda *_: self._toggle_languages())
+            link.set_tooltip_text(L("这场会议的语言"))
+            link.get_accessible().set_name(L("这场会议的语言"))
+            link.set_can_focus(False)
+            link.set_halign(Gtk.Align.START)
+            self.lang_box.pack_start(link, False, False, 0)
+        if open_:
+            card = ui.vbox(10)
+            top = ui.hbox(8)
+            top.pack_start(ui.text(L("这场会议的语言"), 13, "ink", bold=True, wrap=False), True, True, 0)
+            top.pack_end(ui.icon_button("window-close-symbolic", L("收起"), self._toggle_languages, focus=False), False, False, 0)
+            card.pack_start(top, False, False, 0)
+            card.pack_start(ui.vbox(6, ui.text(L("对方说"), 12, "secondary", bold=True, wrap=False),
+                                    ui.text(name(heard) if heard else L("还没听出来"), 13, "ink", wrap=False)), False, False, 0)
+            seg = ui.segmented([("mine", name(mine)), ("source", LF("%@（原文）", name(heard)) if heard else L("会议原文"))],
+                               listen.notes_choice(s.id), lambda v: listen.set_notes_language(v, meeting_only=True))
+            for b in seg.get_children():
+                b.set_can_focus(False)
+            card.pack_start(ui.vbox(6, ui.text(L("纪要"), 12, "secondary", bold=True, wrap=False), seg,
+                                    ui.text(L("换了以后会马上用新语言重写纪要"), 12, "tertiary", width_chars=30)), False, False, 0)
+            settings = ui.link(L("打开语言设置"), lambda: (self._toggle_languages(), self.app.show_settings()))
+            settings.set_can_focus(False)
+            settings.set_halign(Gtk.Align.START)
+            card.pack_start(settings, False, False, 0)
+            self.lang_box.pack_start(ui.panel(ui.pad(card, 14), "notice"), False, False, 0)
+        if other is not None:
+            sid, choice = s.id, other[0]
+
+            def again():
+                listen.notes_for[sid] = choice
+                notes.generate(sid)
+                GLib.timeout_add(150, lambda: self.refresh() or False)
+            b = ui.button(LF("改用%@重新整理", name(other[1])), again, "outline")
+            b.set_can_focus(False)
+            b.set_halign(Gtk.Align.START)
+            self.lang_box.pack_start(b, False, False, 0)
+        # The box itself is no_show_all (it hides with the tabs), so show_all() on it does nothing.
+        for c in self.lang_box.get_children():
+            c.show_all()
+
+    def _toggle_languages(self) -> None:
+        self.lang_open = not getattr(self, "lang_open", False)
+        self._fill_languages()
 
     def _ask_end(self) -> None:
         """结束 in the header (the Mac's askToEnd): nothing said yet just stops; otherwise the question

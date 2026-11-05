@@ -74,7 +74,6 @@ class Controller:
         self.store = SessionStore()
         self.notes = NotesEngine(self.ling, self.store)
         # 纪要语言 for notes written outside a meeting too (生成纪要 in the records window).
-        self.notes.language = lambda: english_name(self.settings.notes_code)
         self.translator = Translator(self.ling)
         self.listen = ListenEngine(self.ling, self.translator, self.store, self.notes, self.settings)
         # 同声传译: my microphone → Ming → 知了 麦克风. The listen side's loudness feeds its echo check.
@@ -124,7 +123,7 @@ class Controller:
     def launch(self, speak: bool = False, background: bool = False) -> None:
         ui.install_css()
         lang = strings.language
-        ui.DEFAULT_LANG = ui.pango_lang({"zh-Hans": "zh-CN"}.get(lang, lang)) if lang != "en" else ui.pango_lang(self.settings.notes_code)
+        ui.DEFAULT_LANG = ui.pango_lang({"zh-Hans": "zh-CN"}.get(lang, lang)) if lang != "en" else ui.pango_lang(self.settings.target_code)
         backend = type(Gdk.Display.get_default()).__name__
         Log.d("app: launch %s %s on %s, session %s" % ("dev" if Paths.dev else "release", sys.version.split()[0], backend,
                                                        os.environ.get("XDG_SESSION_TYPE", "?")))

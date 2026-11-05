@@ -31,12 +31,13 @@ class NotesEngine:
         self._session_id = None
         self._in_flight = False
         self._pending_final = None
+        self._pending_fresh = None
         self._last_attempt = 0.0
         self._listeners = []
         self.notes = MeetingNotes()
         self.status = IDLE
         self.shown_id = None  # the session the notes belong to (stays set after the meeting ends)
-        self.language = lambda: "Simplified Chinese"  # the notes' language (English name), from 纪要语言
+        self.language = lambda sid: "Simplified Chinese"  # a meeting's notes language (English name), from 纪要语言
         self.working_id = None  # the record being written now, for a "正在整理纪要…" next to it
 
     def on_change(self, listener) -> None:
@@ -92,6 +93,13 @@ class NotesEngine:
             self.notes = (s.notes if s else None) or MeetingNotes()
         self._changed()
 
+    def rewrite(self) -> None:
+        """The live meeting's notes again from its first line (纪要语言 changed): the Mac's rewrite."""
+        with self._gate:
+            sid = self._session_id
+        if sid is not None:
+            self._work.submit(self._update, sid, False, True)
+
     def generate(self, sid: str) -> None:
         """Notes for a finished meeting that has none (runs in the background)."""
         self._work.submit(self._update, sid, True)
@@ -113,11 +121,13 @@ class NotesEngine:
                 return
         self._work.submit(self._update, sid, False)
 
-    def _update(self, sid: str, final: bool) -> None:
+    def _update(self, sid: str, final: bool, fresh: bool = False) -> None:
         with self._gate:
             if self._in_flight:
                 if final:
                     self._pending_final = sid
+                elif fresh:
+                    self._pending_fresh = sid  # after the round in the old language
                 return
             session = self.store.get(sid)
             if session is None or not session.lines:
@@ -130,12 +140,12 @@ class NotesEngine:
             self.working_id = sid
             self._last_attempt = time.time()
             self.status = UPDATING
-            base = MeetingNotes() if final else (self.notes if sid == self.shown_id else (session.notes or MeetingNotes()))
+            base = MeetingNotes() if final or fresh else (self.notes if sid == self.shown_id else (session.notes or MeetingNotes()))
         self._changed()
         try:
             lines = self.store.lines(sid)
             frm = 0 if final else min(base.covered, len(lines))
-            lang = self.language()
+            lang = self.language(sid)
             shown = speakers.names(session) if self.voices() else {}
             p = prompt(base, lines, frm, lang, final, shown, self.voices())
             nxt = None
@@ -175,11 +185,13 @@ class NotesEngine:
             with self._gate:
                 self._in_flight = False
                 self.working_id = None
-                queued = self._pending_final
-                self._pending_final = None
+                queued, again = self._pending_final, self._pending_fresh
+                self._pending_final = self._pending_fresh = None
             self._changed()
             if queued is not None:
                 self._update(queued, final=True)
+            elif again is not None:
+                self._update(again, final=False, fresh=True)
 
 
 def _min(a, b):

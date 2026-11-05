@@ -199,18 +199,21 @@ class SettingsWindow(Gtk.Window):
             save()
 
         def set_notes(v):
-            s.notesLanguage = v
-            save()
+            app.listen.set_notes_language(v)  # saves, and rewrites the live meeting's notes in it
 
         def set_ui(v):
             s.uiLanguage = v
             save()
+        names = {code: name for name, code in TARGETS}
+        heard = app.listen.meeting_language(app.listen.session_id) if app.listen.listening else None
+        notes_options = [("mine", LF("我的语言 · %@", names.get(s.target_code, s.target_code))),
+                         ("source", LF("会议原文 · %@", names.get(heard, heard)) if heard else L("会议原文"))]
         combos = [choice(target_options(), s.target, set_target),
-                  choice([("system", L("和字幕一样"))] + [(c, n) for n, c in TARGETS], s.notesLanguage, set_notes),
+                  ui.segmented(notes_options, s.notesLanguage, set_notes),
                   choice([("system", L("跟随系统")), ("zh-Hans", "简体中文"), ("en", "English"), ("ja", "日本語"), ("ko", "한국어")],
                          s.uiLanguage, set_ui)]
         ui_row = ui.prow(L("界面语言"), combos[2], L("重启知了后生效"))
-        page.pack_start(self._group(L("语言"), ui.boxed([ui.prow(L("翻译成"), combos[0]), ui.prow(L("纪要语言"), combos[1]), ui_row])),
+        page.pack_start(self._group(L("语言"), ui.boxed([ui.prow(L("翻译成"), combos[0]), ui.prow(L("纪要语言"), combos[1], L("实时纪要和完整版同一种语言")), ui_row])),
                         False, False, 0)
 
         # While listening

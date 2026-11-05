@@ -12,7 +12,7 @@ DEFAULT_MODEL = "Ling-3.1-flash"
 class AppSettings:
     FIELDS = {
         "target": "system",          # what subtitles translate into; "system" follows the desktop language
-        "notesLanguage": "system",   # 纪要语言; "system" is the same as the subtitles'
+        "notesLanguage": "mine",     # 纪要语言, the Mac's: "mine" (my language) or "source" (the meeting's own)
         "model": DEFAULT_MODEL,
         "view": "notes",             # "notes" (the notes window, default) or "subtitles" (the subtitle bar)
         "showInCapture": False,      # 共享屏幕时让对方看到 (Linux can't hide it; see NotesWindow)
@@ -52,9 +52,10 @@ class AppSettings:
         they speak mine (the Mac's resolvedTarget)."""
         return follow_system_target(source, system_languages()) if self.target == "system" else self.target
 
-    @property
-    def notes_code(self) -> str:
-        return self.target_code if self.notesLanguage == "system" else self.notesLanguage
+    def notes_code(self, choice: str | None = None, meeting: str | None = None) -> str:
+        """The notes' language for a 纪要语言 choice (this one's when None): the meeting's own language
+        (`meeting`, the one it was heard in) for "source", else mine (the Mac's notesLanguageCode)."""
+        return meeting if (choice or self.notesLanguage) == "source" and meeting else self.target_code
 
     @property
     def speak_from_code(self) -> str:
@@ -83,6 +84,9 @@ class AppSettings:
                     o = jsonfmt.parse_object(f.read())
                 if o is not None:
                     kw = {k: o[k] for k, d in AppSettings.FIELDS.items() if k in o and type(o[k]) is type(d)}
+                    # 纪要语言 was "system" or a language code before it took the Mac's two choices.
+                    if kw.get("notesLanguage") not in (None, "mine", "source"):
+                        kw["notesLanguage"] = "mine"
                     return AppSettings(**kw)
         except OSError as e:
             Log.d("settings: unreadable, defaults used (%s)" % type(e).__name__)

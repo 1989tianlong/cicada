@@ -61,6 +61,9 @@ class ListenEngine:
         self._voice_pool = ThreadPoolExecutor(1, thread_name_prefix="Voiceprint")
         self._deliver_lock = threading.Lock()
         self._voices_waiting = 0
+        # 纪要语言 chosen for one meeting (the notes window's language card), over the setting.
+        self.notes_for: dict = {}
+        notes.language = lambda sid: english_name(self.notes_code(sid))
         translator.glossary = notes.glossary
 
     def on_change(self, listener) -> None:
@@ -73,6 +76,40 @@ class ListenEngine:
     @property
     def target(self) -> str:
         return self.settings.target_code
+
+    def meeting_language(self, sid: str | None) -> str | None:
+        """The language the other side spoke most in a meeting; while nothing is recorded yet, the one
+        the live meeting is being heard in (the Mac's meetingLanguage)."""
+        s = self.store.get(sid) if sid else None
+        counts: dict = {}
+        for l in (s.lines if s else []):
+            if l.speaker != "me" and l.srcLang:
+                counts[l.srcLang] = counts.get(l.srcLang, 0) + 1
+        if counts:
+            return max(counts, key=counts.get)
+        return self._hint if self.listening and sid == self.session_id else None
+
+    def notes_choice(self, sid: str | None) -> str:
+        return self.notes_for.get(sid, self.settings.notesLanguage)
+
+    def notes_code(self, sid: str | None) -> str:
+        """The language a meeting's notes are written in (the Mac's notesLanguageCode)."""
+        return self.settings.notes_code(self.notes_choice(sid), self.meeting_language(sid))
+
+    def set_notes_language(self, choice: str, meeting_only: bool = False) -> None:
+        """纪要语言 changed, in the settings or for this meeting only: a different language during a
+        meeting rewrites its notes in it right away (the Mac's setNotesLanguage)."""
+        live = self.session_id if self.listening else None
+        before = self.notes_code(live) if live else None
+        if meeting_only and live:
+            self.notes_for[live] = choice
+        else:
+            self.settings.notesLanguage = choice
+            self.settings.save()
+        if live and self.notes_code(live) != before:
+            self.notes.rewrite()
+        Log.d("notesLanguage=%s meetingOnly=%s" % (self.notes_code(live) if live else choice, meeting_only))
+        self._changed()
 
     @property
     def spoken(self):
@@ -100,7 +137,6 @@ class ListenEngine:
             self.problem_kind = None
         self.heard_seconds = 0.0
         self.peak = 0.0
-        self.notes.language = lambda: english_name(self.settings.notes_code)
         self.notes.begin(session.id)
         if self.speakers is not None:
             self.speakers.reset()
