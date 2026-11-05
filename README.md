@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-14.4%2B%20·%20Apple%20芯片-black" alt="macOS 14.4+，Apple 芯片">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
   <img src="https://img.shields.io/badge/Windows-10%202004%2B-black" alt="Windows 10 2004+">
   <img src="https://img.shields.io/badge/Ubuntu-22.04%2B-black" alt="Ubuntu 22.04+">
   <img src="https://img.shields.io/badge/Android-10%2B-black" alt="Android 10+">
@@ -25,7 +25,7 @@
 
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a></p>
 
-无论是用 Zoom、飞书、腾讯会议开会，还是听 X Spaces 和 YouTube 直播，知了都能实时给出双语字幕、边听边写结构化纪要。遇到需要发言的时候，按住说话键（Mac 上是右 `⌥`，Windows 上是右 `Ctrl`）开口，对方就能在会里直接听到翻译好的语音。知了直接读取系统声音，不用往会里塞机器人，对方完全无感；在 Mac 上还全部在本机识别，声音不出电脑。
+无论是用 Zoom、飞书、腾讯会议开会，还是听 X Spaces 和 YouTube 直播，知了都能实时给出双语字幕、边听边写结构化纪要。遇到需要发言的时候，按住说话键（Mac 上是右 `⌥`，Windows 上是右 `Ctrl`）开口，对方就能在会里直接听到翻译好的语音。知了直接读取系统声音，不用往会里塞机器人，对方完全无感；在 Apple 芯片的 Mac 上还全部在本机识别，声音不出电脑。
 
 <p align="center">
   <img src="docs/demo.gif" width="800" alt="YouTube 播着 Bloomberg 英文直播，右边是知了实时整理的中文纪要、议题与鱼骨图，底部是双语字幕">
@@ -35,7 +35,7 @@
 
 | 平台 | 系统要求 | 说明 |
 |---|---|---|
-| Mac | macOS 14.4+，Apple 芯片 | 功能最全；本机识别，不填 key 也能用 |
+| Mac | macOS 14.4+，Apple 芯片 / Intel | 功能最全；Apple 芯片本机识别（不填 key 也能用），Intel 版需要 Ling key（识别走 Ming） |
 | Windows | Windows 10 2004+，x64 / ARM64 | 需要 Ling key（用不了 Ling 时可换 OpenRouter、ZenMux 等）；见 [windows/](windows/README.md) |
 | Linux | Ubuntu 22.04 / 24.04 桌面版 | 需要 Ling 或其他 AI 服务的 key；纪要窗会被屏幕共享看到；见 [linux/](linux/README.md) |
 | Android | Android 10+ | 需要 Ling 或其他 AI 服务的 key；视频与直播字幕、面对面互译；见 [android/](android/README.md) |
@@ -74,9 +74,9 @@
 
 ## 隐私与权限
 
-在 Mac 上，声音采集、语言识别、语音识别（Apple SpeechAnalyzer，macOS 14.4–15 上是 SFSpeechRecognizer 的本机模式）和会议录音全部在本机完成。会离开电脑的只有识别出来的文字（发去做翻译和生成纪要），以及填了 Ling API key 并按住说话键用同声传译时你说的那几句语音。不填 API key 时，实时字幕、翻译（走 Google 或退回 Apple 本机翻译，本机翻译只在 macOS 26 上有）、会议记录和同声传译都能正常用。实时纪要、一步语音翻译和声音克隆需要你自己的 Ling（蚂蚁集团的大模型服务）API key（配置方法见[下文](#配置-ling-api-key)），开一小时会大约花 0.15 到 1 元人民币，Ling 每月赠送 10 元额度，约够 10 到 50 小时会议。
+在 Apple 芯片的 Mac 上，声音采集、语言识别、语音识别（Apple SpeechAnalyzer，macOS 14.4–15 上是 SFSpeechRecognizer 的本机模式）和会议录音全部在本机完成。会离开电脑的只有识别出来的文字（发去做翻译和生成纪要），以及填了 Ling API key 并按住说话键用同声传译时你说的那几句语音。不填 API key 时，实时字幕、翻译（走 Google 或退回 Apple 本机翻译，本机翻译只在 macOS 26 上有）、会议记录和同声传译都能正常用。实时纪要、一步语音翻译和声音克隆需要你自己的 Ling（蚂蚁集团的大模型服务）API key（配置方法见[下文](#配置-ling-api-key)），开一小时会大约花 0.15 到 1 元人民币，Ling 每月赠送 10 元额度，约够 10 到 50 小时会议。
 
-Windows、Linux 和 Android 版在云端识别：说话的声音分段发给 Ling 的 Ming（或换成的 OpenRouter、ZenMux 等服务），所以必须填一个 AI 服务的 key；录音和会议记录同样只存在本机。
+Intel 版 Mac 以及 Windows、Linux 和 Android 版在云端识别：说话的声音分段发给 Ling 的 Ming（Windows、Linux、Android 也可换成 OpenRouter、ZenMux 等服务），所以必须填 AI 服务的 key；录音和会议记录同样只存在本机。
 
 下面说的是 Mac 版。知了只在用到某项功能时才请求对应的权限，拒绝后其他功能照常可用。
 
@@ -120,9 +120,9 @@ Windows、Linux 和 Android 版在云端识别：说话的声音分段发给 Lin
 
 ### Mac
 
-需要 macOS 14.4 或更新版本、Apple 芯片的 Mac。macOS 26 上用新的本机语音识别，更准；14.4–15 上用系统较早的识别，要在系统设置 › 键盘里打开“听写”，并把要听的语言加进听写语言。界面有中文、英文、日文和韩文，默认跟随系统语言，也可以在系统设置的语言与地区里单独给知了指定。
+需要 macOS 14.4 或更新版本（支持 Apple 芯片与 Intel）。Apple 芯片 Mac 在 macOS 26 上用新的本机语音识别，更准；14.4–15 上用系统较早的识别，要在系统设置 › 键盘里打开“听写”，并把要听的语言加进听写语言；Intel 版 Mac 则通过云端 Ming 模型识别语音，需要配置 Ling key。界面有中文、英文、日文和韩文，默认跟随系统语言，也可以在系统设置的语言与地区里单独给知了指定。
 
-从 [Releases 页面](https://github.com/wquguru/cicada/releases/latest) 或 [官网](https://cicada.indaloop.app) 下载 `Cicada-<版本>-macOS-AppleSilicon.dmg`，打开后把知了拖进应用程序文件夹。应用目前是本地签名，还没有苹果公证（见[路线图](#路线图)），第一次打开被拦下时，去系统设置的隐私与安全性里点仍要打开。下载页同时提供 `checksums.txt`，可以用 `shasum -a 256 Cicada-*.dmg` 核对。有疑问可以去 X 找作者 [@wquguru](https://x.com/wquguru)。
+从 [Releases 页面](https://github.com/wquguru/cicada/releases/latest) 或 [官网](https://cicada.indaloop.app) 下载 `Cicada-<版本>-macOS-AppleSilicon.dmg`（Apple 芯片）或 `Cicada-<版本>-macOS-Intel.dmg`（Intel），打开后把知了拖进应用程序文件夹。应用目前是本地签名，还没有苹果公证（见[路线图](#路线图)），第一次打开被拦下时，去系统设置的隐私与安全性里点仍要打开。下载页同时提供 `checksums.txt`，可以用 `shasum -a 256 Cicada-*.dmg` 核对。有疑问可以去 X 找作者 [@wquguru](https://x.com/wquguru)。
 
 打开后跟着首次引导开一个权限、听一段双人示例会议直接看字幕效果、接上 Ling key（也可以先跳过），要用同声传译时再装虚拟麦克风。之后有新版本时菜单栏图标会出现橙点，点一下就能更新，权限不会丢。
 

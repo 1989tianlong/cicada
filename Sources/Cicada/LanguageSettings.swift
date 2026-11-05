@@ -132,7 +132,8 @@ struct LanguageSettings: View {
 
     private var heardDetail: String {
         if case .fixed = settings.sourceMode { return L("只按这种语言识别") }
-        return model.listen.activeLang.map { L("现在听出是 \($0.name)") } ?? L("从已安装的语音模型里挑最有把握的")
+        let fallback = Recognition.multilingual ? L("说话后自动听出是哪种语言") : L("从已安装的语音模型里挑最有把握的")
+        return model.listen.activeLang.map { L("现在听出是 \($0.name)") } ?? fallback
     }
 
     private var targetDetail: String {

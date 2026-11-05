@@ -200,6 +200,7 @@ struct DiagnosticsView: View {
 
     private static func title(_ role: String) -> String {
         switch role {
+        case "hear": L("听懂对方说的")
         case "translate": L("整句翻译")
         case "heard-me": L("听懂你说的")
         case "voice": L("同传声音")
@@ -255,8 +256,9 @@ struct DiagnosticsView: View {
 
     private var fixedRows: [(title: String, detail: String, stat: Diagnostics.Stat?, foot: [String])] {
         var rows: [(title: String, detail: String, stat: Diagnostics.Stat?, foot: [String])] = []
-        if let r = diagnostics.recognize { rows.append((L("识别对方"), L("本机识别"), r, [L("\(r.n) 句")])) }
-        if let r = diagnostics.recognizeMine { rows.append((L("识别你说的"), L("本机识别"), r, [L("\(r.n) 句")])) }
+        let recDetail = Recognition.multilingual ? L("云端识别") : L("本机识别")
+        if let r = diagnostics.recognize { rows.append((L("识别对方"), recDetail, r, [L("\(r.n) 句")])) }
+        if let r = diagnostics.recognizeMine { rows.append((L("识别你说的"), recDetail, r, [L("\(r.n) 句")])) }
         let d = diagnostics.drafts
         if d.n > 0 {
             rows.append((L("半句翻译"), "Google", diagnostics.draftStat,

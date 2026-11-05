@@ -33,6 +33,11 @@ struct AIProviderTests {
     @Test func onlyLingClonesAndHearsAudio() {
         for p in AIProvider.all { #expect(p.clones == (p.id == .ling) && p.hearsAudio == (p.id == .ling)) }
         #expect(!AIProvider.openai.hasVoices && AIProvider.zenmux.hasVoices && AIProvider.openrouter.hasVoices)
+        #expect(AIConfig.default.audioModel == AIProvider.ling.audioModels.first?.id)
+        #expect(AIConfig.default.hearsAudio)
+        let customWithAudio = AIConfig(provider: .custom, base: URL(string: "https://api.example.com/v1/"),
+                                       textModel: "qwen", audioModel: "custom-audio-model")
+        #expect(customWithAudio.hearsAudio && customWithAudio.audioModel == "custom-audio-model")
     }
 
     @Test func wavHeaderIsStripped() {

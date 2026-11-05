@@ -1,3 +1,4 @@
+import AVFoundation
 import Testing
 @testable import Cicada
 
@@ -73,5 +74,85 @@ import Testing
         #expect(TranslationService.parseInterpretation("ORIGINAL: OK.\nTRANSLATION: OK.", target: "zh-CN") == nil)
         #expect(TranslationService.parseInterpretation("ORIGINAL: 我们周五发布。\nTRANSLATION: 我们周五发布。", target: "en-US") == nil)
         #expect(TranslationService.parseInterpretation("ORIGINAL: We ship on Friday.\nTRANSLATION: We ship on Friday", target: "zh-CN") == nil)
+    }
+
+    @Test func cloudHearParsesValidThreeLineReply() {
+        let reply = """
+        LANG: en
+        ORIGINAL: We will ship the update on Friday.
+        TRANSLATION: 我们周五发布更新。
+        """
+        let heard = TranslationService.parseHeard(reply, target: "zh-CN", hint: nil, seconds: 2.5)
+        #expect(heard == .init(lang: "en", original: "We will ship the update on Friday.", translation: "我们周五发布更新。"))
+    }
+
+    @Test func cloudHearDropsSilenceNoiseAndRefusals() {
+        #expect(TranslationService.parseHeard("LANG: en\nORIGINAL: NONE\nTRANSLATION: NONE", target: "zh-CN", hint: nil) == nil)
+        #expect(TranslationService.parseHeard("LANG: zh-CN\nORIGINAL: （笑声）\nTRANSLATION: (laughter)", target: "en-US", hint: nil) == nil)
+        #expect(TranslationService.parseHeard("LANG: en\nORIGINAL: um uh\nTRANSLATION: 嗯", target: "zh-CN", hint: nil) == nil)
+        #expect(TranslationService.parseHeard("根据现有检索证据，无法回答该问题。", target: "zh-CN", hint: nil) == nil)
+    }
+
+    @Test func cloudHearSameLanguageAndLanguageNormalization() {
+        let reply = """
+        LANG: Chinese
+        ORIGINAL: 我们周五发布。
+        TRANSLATION: 我们周五发布。
+        """
+        let heard = TranslationService.parseHeard(reply, target: "zh-CN", hint: nil, seconds: 1.5)
+        #expect(heard?.lang == "zh-CN")
+        #expect(heard?.original == "我们周五发布。")
+        #expect(heard?.translation == "我们周五发布。")
+        #expect(TranslationService.sameLanguage("zh-CN", "zh-Hans"))
+        #expect(TranslationService.sameLanguage("en-US", "en"))
+        #expect(!TranslationService.sameLanguage("en", "zh-CN"))
+    }
+
+    @Test func cloudSegmenterSplitsOnPauseAndCutsLongSpeech() {
+        var out: [Segmenter.Segment] = []
+        var seg = Segmenter { out.append($0) }
+        let silence = [Int16](repeating: 0, count: Segmenter.frameSamples)
+        let loud = [Int16](repeating: 3000, count: Segmenter.frameSamples)
+
+        // Pure silence produces nothing.
+        for _ in 0..<30 { seg.feed(silence) }
+        #expect(out.isEmpty)
+
+        // 10 frames of speech (300 ms) followed by 20 frames of silence (600 ms) emits 1 segment.
+        for _ in 0..<10 { seg.feed(loud) }
+        for _ in 0..<20 { seg.feed(silence) }
+        #expect(out.count == 1)
+        #expect(out[0].seconds > 0.25)
+        #expect(out[0].wav.count == 44 + out[0].pcm.count * 2)
+
+        // Continuous speech exceeding maxFrames (266) is cut automatically.
+        out.removeAll()
+        for _ in 0..<270 { seg.feed(loud) }
+        #expect(out.count == 1)
+        seg.flush()
+    }
+
+    @Test func cloudStreamYieldsPiecesThroughRecognitionStreamProtocol() async throws {
+        let oldCloud = Recognition.cloud
+        defer { Recognition.cloud = oldCloud }
+        Recognition.cloud = { _, _, _, _ in
+            Recognition.CloudHeard(text: "Hello from cloud stream.", lang: "en", translation: "来自云端流的问候。")
+        }
+        let stream = CloudStream(locale: "en-US", speaking: false, background: false)
+        let buf = AVAudioPCMBuffer(pcmFormat: stream.format, frameCapacity: 4800)!
+        buf.frameLength = 4800
+        let ch = buf.int16ChannelData![0]
+        for i in 0..<4800 { ch[i] = 3000 }
+        stream.append(buf)
+        await stream.finish()
+
+        var pieces: [Recognition.Piece] = []
+        for try await p in stream.results {
+            pieces.append(p)
+        }
+        #expect(pieces.count == 1)
+        #expect(pieces[0].text == "Hello from cloud stream.")
+        #expect(pieces[0].lang == "en")
+        #expect(pieces[0].translation == "来自云端流的问候。")
     }
 }

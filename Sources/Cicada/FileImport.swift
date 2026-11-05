@@ -177,7 +177,7 @@ final class FileImporter: ObservableObject {
                     if line.dst == nil { translations.append(self.translate(line, session: job.id)) }
                 }
             }
-            if !Recognition.legacy, #available(macOS 26, *) {
+            if Recognition.name == "analyzer", #available(macOS 26, *) {
                 let transcriber = SpeechTranscriber(locale: Locale(identifier: lang.locale), transcriptionOptions: [],
                                                     reportingOptions: [], attributeOptions: [.audioTimeRange])
                 let file = try AVAudioFile(forReading: pcm)
@@ -209,7 +209,7 @@ final class FileImporter: ObservableObject {
         }
     }
 
-    /// macOS 14.4–15: the file fed through the older recognizer, which ends a line at each pause.
+    /// macOS 14.4–15 or cloud recognizer: the file fed through `RecognitionStream`, which ends a line at each pause.
     /// It is fed only a couple of lines ahead of what has come back, so a long file doesn't queue up in memory.
     private func transcribeLegacy(_ pcm: URL, locale: String, session id: String,
                                   line: @escaping (Recognition.Piece) -> Void) async throws {
@@ -242,7 +242,7 @@ final class FileImporter: ObservableObject {
             fedSeconds += Double(buf.frameLength) / rate
             heard = max(heard, fedSeconds - 10)
             // A couple of lines in the recognizer at a time.
-            while ((stream as? LegacyStream)?.backlog ?? 0) > 2, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
+            while stream.backlog > 2, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
         }
         if Task.isCancelled { await stream.cancel() } else { await stream.finish() }
         await reader.value

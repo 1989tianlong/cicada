@@ -28,9 +28,9 @@ import Testing
         return #"{"tag_name":"\#(tag)","html_url":"https://x/\#(tag)","prerelease":\#(prerelease),"assets":[\#(list.joined(separator: ","))]}"#
     }
 
-    static func newest(_ releases: [String]) -> String? {
+    static func newest(_ releases: [String], suffix: String = "-macOS-AppleSilicon.zip") -> String? {
         UpdateChecker.decode(Data("[\(releases.joined(separator: ","))]".utf8))
-            .flatMap(UpdateChecker.newestMac)?.version
+            .flatMap { UpdateChecker.newestMac(in: $0, suffix: suffix) }?.version
     }
 
     @Test func aReleaseWithoutTheMacZipIsSkipped() {
@@ -38,6 +38,14 @@ import Testing
         let windows = Self.release("v1.2.0", ["Cicada-1.2.0-Windows-x64.zip", "checksums.txt"])
         #expect(Self.newest([windows, mac]) == "1.1.0")
         #expect(Self.newest([windows]) == nil)
+    }
+
+    @Test func intelMacMatchesIntelZip() {
+        let armOnly = Self.release("v1.1.0", ["Cicada-1.1.0-macOS-AppleSilicon.zip", "checksums.txt"])
+        let both = Self.release("v1.2.0", ["Cicada-1.2.0-macOS-AppleSilicon.zip", "Cicada-1.2.0-macOS-Intel.zip", "checksums.txt"])
+        #expect(Self.newest([armOnly], suffix: "-macOS-Intel.zip") == nil)
+        #expect(Self.newest([armOnly, both], suffix: "-macOS-Intel.zip") == "1.2.0")
+        #expect(Self.newest([armOnly, both], suffix: "-macOS-AppleSilicon.zip") == "1.2.0")
     }
 
     @Test func prereleasesAreSkippedAndNewestWins() {
@@ -49,7 +57,7 @@ import Testing
 
     @Test func aSingleReleaseFeedStillWorks() {
         let one = Self.release("v1.3.0", ["Cicada-1.3.0-macOS-AppleSilicon.zip"])
-        #expect(UpdateChecker.decode(Data(one.utf8)).flatMap(UpdateChecker.newestMac)?.version == "1.3.0")
+        #expect(UpdateChecker.decode(Data(one.utf8)).flatMap { UpdateChecker.newestMac(in: $0, suffix: "-macOS-AppleSilicon.zip") }?.version == "1.3.0")
     }
 }
 

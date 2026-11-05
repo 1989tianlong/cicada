@@ -194,8 +194,25 @@ final class AppModel: ObservableObject {
         watchNetwork()
         translator.onDraft = { [weak self] in self?.diagnostics.recordDraft(seconds: $0, ok: $1) }
 
-        ling.config = { [weak self] in self?.settings.aiConfig ?? AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash") }
+        ling.config = { [weak self] in self?.settings.aiConfig ?? .default }
         listen.translator = translator
+        Recognition.cloud = { [weak self] wav, seconds, locale, background in
+            guard let self else { return nil }
+            let hint: String? = await MainActor.run {
+                if background { return sourceLanguages.first { $0.locale == locale }?.code }
+                if case .fixed(let lang) = self.settings.sourceMode { return lang.code }
+                return self.listen.languageConfirmed ? self.listen.activeLang?.code : nil
+            }
+            let target = await MainActor.run { self.settings.resolvedTarget(source: hint) }
+            guard let heard = try await self.translator.hear(
+                wav: wav, seconds: seconds, target: target, hint: hint,
+                priority: background ? .notes : .translate, role: background ? "file" : "hear"
+            ) else { return nil }
+            let finalTarget = await MainActor.run { self.settings.resolvedTarget(source: heard.lang) }
+            let same = TranslationService.sameLanguage(heard.lang, finalTarget)
+            let tr = same ? heard.original : (TranslationService.sameLanguage(target, finalTarget) ? heard.translation : nil)
+            return Recognition.CloudHeard(text: heard.original, lang: heard.lang, translation: tr)
+        }
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
         importer.onFinished = { [weak self] id in self?.importFinished(id) }
         notes.language = { [weak self] id in
@@ -1312,14 +1329,15 @@ final class AppModel: ObservableObject {
             listen.simulatedSystemLanguages = arg == "off" || p.count < 2 ? nil : p[1]
             Task { await listen.refreshInstalledLocales() }
         case "recognizer":
-            // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26; recognizer:auto ends it.
+            // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26;
+            // recognizer:cloud runs the cloud recognizer; recognizer:auto ends it.
             // Takes effect from the next start.
+            Recognition.forceCloud = arg == "cloud" || arg == "ming"
             Recognition.forceLegacy = arg == "legacy"
             debugLog("recognizer: \(Recognition.name)")
             Task { await listen.refreshInstalledLocales() }
         case "releaseModel":
             // releaseModel:<locale> gives back a speech model this app reserved (macOS keeps five per app).
-            guard #available(macOS 26, *) else { break }
             guard #available(macOS 26, *) else { break }
             Task {
                 let ok = await AssetInventory.release(reservedLocale: Locale(identifier: arg.replacingOccurrences(of: "-", with: "_")))

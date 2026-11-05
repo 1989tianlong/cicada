@@ -47,6 +47,10 @@
 "自定义服务" = "Custom service";
 
 /* AISettings */
+"填入 Ling key 后才能识别语音、出字幕和纪要" = "Enter a Ling key to transcribe speech and generate subtitles and notes";
+"一小时会议约 ¥0.15–1（目前优惠价）。说话的声音分段发给 Ling 识别和翻译；会议录音和文字记录只存在这台 Mac 上。" = "Roughly ¥0.15–1 for an hour-long meeting at current promotional pricing. Speech is sent to Ling in short segments for transcription and translation; recordings and transcripts stay on this Mac.";
+"识别和翻译一步完成" = "Transcribed and translated in one step";
+"随语音识别一步翻出；不行时换 Google" = "Translated together with transcription; falls back to Google";
 "现在能用的" = "What works now";
 "用 %@" = "Uses %@";
 "连上 %@ 后可用" = "Available once %@ is reachable";
@@ -226,6 +230,7 @@
 "AI 请求 %d 次 · 排队最久 %.2fs · token %d/%d" = "AI requests: %d · longest queue %.2fs · tokens %d/%d";
 
 /* DiagnosticsView */
+"云端识别" = "Cloud";
 "有人说话后，这里会显示每句话的耗时明细" = "Each sentence's timing shows here once someone speaks";
 "这场会议 · %lld 分钟 · %lld 句 · 同声传译 %lld 次" = "This meeting · %lld min · sentences: %lld · interpreted: %lld";
 "开始聆听后，这里会显示每句话的耗时明细" = "Once listening starts, the timing of every sentence shows here";
@@ -263,6 +268,7 @@
 "网络错误" = "Network error";
 "未安装语言包" = "Language not installed";
 "整句翻译" = "Sentence translation";
+"听懂对方说的" = "Hearing them";
 "听懂你说的" = "Hearing you";
 "认出说话人" = "Naming speakers";
 "跟着 AI 服务走 · %@" = "Depends on the AI service · %@";
@@ -313,6 +319,7 @@
 "录音或视频，一次可放多个" = "Recordings or videos, several at once";
 
 /* LanguageSettings */
+"说话后自动听出是哪种语言" = "Detects the spoken language automatically as people speak";
 "听对方" = "Listening";
 "同声传译" = "Interpreting";
 "对方说的语言" = "Language they speak";
@@ -361,6 +368,8 @@
 "听不出是哪种语言，到菜单栏里选一下" = "Can't tell the language. Pick one from the menu bar";
 "正在识别语言…" = "Detecting language…";
 "翻译暂不可用" = "Translation unavailable for now";
+"Ling key 无效，请去设置重填" = "Invalid Ling key; enter a new one in Settings";
+"请先在设置 › AI 服务里填入 Ling key" = "Enter a Ling key in Settings › AI Service first";
 
 /* ListenPill */
 "开始听" = "Start listening";
@@ -435,6 +444,8 @@
 "现在结束" = "End now";
 
 /* NotesWindow */
+"填好 %@ 的 key 后，立即开始识别语音、出双语字幕和实时纪要。" = "Add your %@ key to start transcribing speech and generating bilingual subtitles and live notes.";
+"识别语音和生成纪要需要 Ling key" = "A Ling key is required for transcription and notes";
 "key 已失效（令牌被删或免费额度用尽），纪要停留在 %@。" = "The key stopped working (token deleted or free quota used up). Notes stop at %@.";
 "%@ 很忙，纪要稍后补上。字幕照常。" = "%@ is busy; notes will catch up. Subtitles go on.";
 "连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。" = "Can't reach %1$@; notes stop at %2$@ for now. They resume when the network is back.";
@@ -507,6 +518,8 @@
 "收起后新增 " = "New: ";
 
 /* Onboarding */
+"先在上一步接上 Ling key，示例会议才能识别出实时字幕。" = "Connect your Ling key in the previous step first to see live subtitles for the sample meeting.";
+"会议录音和文字记录只存在这台 Mac 上" = "Meeting recordings and transcripts stay on this Mac";
 "%@（有新版本）" = "%@ (update available)";
 "重播" = "Replay";
 "播放示例 · 0:09" = "Play sample · 0:09";
@@ -568,6 +581,10 @@
 "下一步接上 Ling 就有" = "Connect Ling in the next step";
 
 /* OnboardingKey */
+"实时翻译字幕和双语记录" = "Live translated subtitles & bilingual transcripts";
+"查看以往的会议记录" = "Browse past meeting records";
+"可以先进入应用，开会前在设置 › AI 服务里填上 Ling key 即可。" = "You can enter the app now and add your Ling key in Settings › AI Service before a meeting.";
+"Intel 版 Mac 需要接上 Ling 才能识别语音" = "Intel Macs require a Ling key for speech recognition";
 "用其他服务" = "Use another service";
 "纪要和翻译都能用，模型已经选好。" = "Notes and translation are ready; models are preselected.";
 "接上 Ling，一个 key 用上全部功能" = "Connect Ling to unlock all features with one key";
@@ -646,6 +663,7 @@
 "未识别" = "Unidentified";
 
 /* SettingsWindow */
+"导入转写和生成纪要都需要 Ling key" = "Both file transcription and notes require a Ling key";
 "语言" = "Language";
 "通用" = "General";
 "诊断" = "Diagnostics";
@@ -771,6 +789,8 @@
 "意思可能走样了" = "The meaning may have drifted";
 
 /* SpeakTestView */
+"重新听写" = "Re-transcribed";
+"云端转写定稿" = "Cloud transcription";
 "对方听得到，也听得懂" = "They can hear it, and understand it";
 "对方听不到" = "They can't hear it";
 "这句话没送出去" = "This sentence wasn't sent";

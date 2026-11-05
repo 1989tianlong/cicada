@@ -350,7 +350,7 @@ extension MenuPanelView {
                     .fixedSize(horizontal: false, vertical: true)
             default:
                 // Shown only without a Ling key: the notes window itself opens and closes from the tile.
-                Text("填入 API key 后可生成纪要；文字记录照常保存")
+                Text(Recognition.multilingual ? L("填入 Ling key 后才能识别语音、出字幕和纪要") : L("填入 API key 后可生成纪要；文字记录照常保存"))
                     .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

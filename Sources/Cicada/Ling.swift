@@ -154,7 +154,14 @@ final class LingClient: ObservableObject {
     }
 
     static let models = AIProvider.ling.textModels.map(\.id)
-    private static let hijackPrefixes = ["根据现有检索证据", "暂未找到足够可靠的信息", "根据检索"]
+    private nonisolated static let hijackPrefixes = [
+        "根据现有检索证据", "暂未找到足够可靠的信息", "根据检索",
+        "作为一个人工智能", "作为AI", "很抱歉，我无法", "抱歉，这个问题",
+    ]
+    nonisolated static func looksLikeRefusal(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return hijackPrefixes.contains(where: { t.hasPrefix($0) }) || t.contains("超出我目前的学习范围")
+    }
 
     @Published private(set) var keyState: KeyState
     @Published private(set) var rateLimitedAt: Date?
@@ -174,8 +181,7 @@ final class LingClient: ObservableObject {
     /// Debug control only: report this OpenRouter balance instead of the real one.
     var simulateBalance: Double?
     /// The service in use, its address and models. Set by the app from settings.
-    var config: () -> AIConfig = { AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash",
-                                            voiceModel: "Ming-3.0-tts-0.5B", voiceBase: AIProvider.ling.base) }
+    var config: () -> AIConfig = { .default }
     var provider: AIProvider { config().provider }
 
     /// Debug control only: make every chat call fail this way.
@@ -204,8 +210,8 @@ final class LingClient: ObservableObject {
     var speaks: Bool { usable && config().hasVoices }
     /// The user's own voice: only Ling clones.
     var clones: Bool { usable && provider.clones }
-    /// Speak-back heard by the service's audio model (Ming) instead of on this Mac.
-    var hearsAudio: Bool { usable && provider.hearsAudio }
+    /// Audio heard by the service's audio model instead of on this Mac.
+    var hearsAudio: Bool { usable && config().hearsAudio }
 
     init() {
         keyState = AIKey.read() == nil ? .none : .unchecked
@@ -424,7 +430,8 @@ final class LingClient: ObservableObject {
             throw simulate
         }
         let c = config()
-        let call = CallLabel(provider: c.provider.id.rawValue, model: model ?? c.textModel,
+        let resolvedModel = model ?? (audio != nil ? c.audioModel : nil) ?? c.textModel
+        let call = CallLabel(provider: c.provider.id.rawValue, model: resolvedModel,
                              role: role ?? (priority == .notes ? "notes" : "translate"))
         var body: [String: Any] = [
             "model": call.model,
@@ -439,7 +446,7 @@ final class LingClient: ObservableObject {
         ]
         c.shape(&body, maxTokens: maxTokens)
         if json { body["response_format"] = ["type": "json_object"] }
-        let waits = Self.retryWaits(priority, patient: patient)
+        let waits = audio != nil && priority != .notes ? [0.6] : Self.retryWaits(priority, patient: patient)
         for attempt in 1...(waits.count + 1) {
             let asked = Date()
             await acquire(priority)
@@ -453,7 +460,7 @@ final class LingClient: ObservableObject {
                       let text = message["content"] as? String else { throw Failure.parse }
                 let finish = choice["finish_reason"] as? String
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if (finish == nil && c.provider.id == .ling) || Self.hijackPrefixes.contains(where: { trimmed.hasPrefix($0) }) {
+                if (finish == nil && c.provider.id == .ling) || Self.looksLikeRefusal(trimmed) {
                     debugLog("ling: \(priority) search-style reply dropped (finish=\(finish ?? "nil"))")
                     throw Failure.hijacked
                 }

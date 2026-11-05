@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-14.4%2B%20·%20Apple%20silicon-black" alt="macOS 14.4+, Apple silicon">
+  <img src="https://img.shields.io/badge/macOS-14.4%2B-black" alt="macOS 14.4+">
   <img src="https://img.shields.io/badge/Windows-10%202004%2B-black" alt="Windows 10 2004+">
   <img src="https://img.shields.io/badge/Ubuntu-22.04%2B-black" alt="Ubuntu 22.04+">
   <img src="https://img.shields.io/badge/Android-10%2B-black" alt="Android 10+">
@@ -35,7 +35,7 @@ Zoom, Teams, Feishu 회의부터 X Spaces, Discord 스테이지, YouTube 라이�
 
 | 플랫폼 | 요구 사항 | 비고 |
 |---|---|---|
-| Mac | macOS 14.4+, Apple silicon | 모든 기능 지원. Mac 기기 내 음성 인식, 키 없이도 사용 가능 |
+| Mac | macOS 14.4+, Apple silicon / Intel | 모든 기능 지원. Apple silicon은 기기 내 음성 인식(키 없이도 사용 가능), Intel 버전은 Ling 키 필요(Ming으로 음성 인식) |
 | Windows | Windows 10 2004+, x64 / ARM64 | Ling 키 필요(쓸 수 없으면 OpenRouter, ZenMux 등도 가능). [windows/](windows/README.md) 참고 |
 | Linux | Ubuntu 22.04 / 24.04 데스크톱 | Ling 또는 다른 AI 서비스 키 필요. 화면 공유 시 회의록 창이 보임. [linux/](linux/README.md) 참고 |
 | Android | Android 10+ | Ling 또는 다른 AI 서비스 키 필요. 동영상·라이브 자막, 대면 통역. [android/](android/README.md) 참고 |
@@ -131,9 +131,9 @@ Windows, Linux, Android 버전은 클라우드에서 음성을 인식합니다. 
 
 ### Mac
 
-**Apple silicon**이 탑재된 Mac과 **macOS 14.4 이상**이 필요합니다. macOS 26에서는 더 정확한 최신 기기 내 음성 인식을 사용합니다. 14.4–15에서는 이전 시스템 음성 인식을 쓰므로 **시스템 설정 › 키보드**에서 **받아쓰기**를 켜고 인식할 언어를 받아쓰기 언어에 추가해야 합니다. 인터페이스는 한국어, 영어, 중국어, 일본어를 지원하며, macOS 기본 언어를 따르거나 **시스템 설정 › 일반 › 언어 및 지역**에서 앱별로 지정할 수 있습니다.
+**Apple silicon 또는 Intel**이 탑재된 Mac과 **macOS 14.4 이상**이 필요합니다. Apple silicon Mac의 경우 macOS 26에서는 더 정확한 최신 기기 내 음성 인식을 사용하며, 14.4–15에서는 이전 시스템 음성 인식을 쓰므로 **시스템 설정 › 키보드**에서 **받아쓰기**를 켜고 인식할 언어를 받아쓰기 언어에 추가해야 합니다. Intel 버전 Mac에서는 클라우드 Ming 모델로 음성을 인식하므로 Ling 키가 필요합니다. 인터페이스는 한국어, 영어, 중국어, 일본어를 지원하며, macOS 기본 언어를 따르거나 **시스템 설정 › 일반 › 언어 및 지역**에서 앱별로 지정할 수 있습니다.
 
-[Releases](https://github.com/wquguru/cicada/releases/latest)나 [웹사이트](https://cicada.indaloop.app/ko/)에서 `Cicada-<version>-macOS-AppleSilicon.dmg`를 내려받아 열고 **Cicada**를 **응용 프로그램**으로 끌어다 놓으세요. 현재 빌드는 로컬 서명만 되어 있고 아직 Apple 공증을 받지 않았으므로([로드맵](#로드맵) 참고), 처음 실행할 때 macOS가 차단하면 **시스템 설정 › 개인정보 보호 및 보안**을 열고 **확인 없이 열기**를 클릭하세요. 릴리스마다 `checksums.txt`가 함께 제공되며 `shasum -a 256 Cicada-*.dmg` 명령으로 검증할 수 있습니다. 궁금한 점은 X에서 개발자 [@wquguru](https://x.com/wquguru)에게 문의해 주세요.
+[Releases](https://github.com/wquguru/cicada/releases/latest)나 [웹사이트](https://cicada.indaloop.app/ko/)에서 `Cicada-<version>-macOS-AppleSilicon.dmg`(Apple silicon) 또는 `Cicada-<version>-macOS-Intel.dmg`(Intel)를 내려받아 열고 **Cicada**를 **응용 프로그램**으로 끌어다 놓으세요. 현재 빌드는 로컬 서명만 되어 있고 아직 Apple 공증을 받지 않았으므로([로드맵](#로드맵) 참고), 처음 실행할 때 macOS가 차단하면 **시스템 설정 › 개인정보 보호 및 보안**을 열고 **확인 없이 열기**를 클릭하세요. 릴리스마다 `checksums.txt`가 함께 제공되며 `shasum -a 256 Cicada-*.dmg` 명령으로 검증할 수 있습니다. 궁금한 점은 X에서 개발자 [@wquguru](https://x.com/wquguru)에게 문의해 주세요.
 
 처음 실행하면 안내에 따라 권한 하나를 허용하고, 짧은 2인 샘플 회의를 재생해 실시간 자막을 바로 확인한 뒤, AI 서비스 키를 연결(건너뛰기 가능)하고, 동시통역을 쓸 경우 가상 마이크를 설치합니다. 이후 새 버전이 나오면 메뉴 막대 아이콘에 주황색 점이 표시되며, 클릭 한 번으로 기존 권한을 유지한 채 업데이트됩니다.
 

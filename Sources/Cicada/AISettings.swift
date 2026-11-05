@@ -238,7 +238,7 @@ struct AISettingsView: View {
         case .ok(let s): ling.aiCheck.busy ? L("\(name) 现在很忙") : AICheckSummary.text(ling.aiCheck).map { "\(settings.textModel) · \($0)" }
             ?? L("\(settings.textModel) · 响应约 \(String(format: "%.1f", s)) 秒")
         case .invalid, .unreachable: nil
-        case .none: L("不填 key 时，字幕和翻译仍可正常使用")
+        case .none: Recognition.multilingual ? L("填入 Ling key 后才能识别语音、出字幕和纪要") : L("不填 key 时，字幕和翻译仍可正常使用")
         default: nil
         }
     }
@@ -261,9 +261,14 @@ struct AISettingsView: View {
             usageRow(L("实时纪要"), tag: notesOn ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: notesOn ? .ok : .off,
                      note: notesOn ? L("会中每 45 秒更新") : reason == .noJSON ? L("这个服务不支持 JSON") : reason == .noModel ? L("换一个模型后可用") : later)
         }
-        usageRow(L("翻译"), tag: textOn ? uses : "Google", style: textOn ? .ok : .off,
-                 note: textOn ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))
-                              : ling.hasKey ? L("先用 Google 翻译") : L("没有 key 时照常可用"))
+        if Recognition.multilingual {
+            usageRow(L("翻译"), tag: textOn ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: textOn ? .ok : .off,
+                     note: textOn ? L("随语音识别一步翻出；不行时换 Google") : later)
+        } else {
+            usageRow(L("翻译"), tag: textOn ? uses : "Google", style: textOn ? .ok : .off,
+                     note: textOn ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))
+                                  : ling.hasKey ? L("先用 Google 翻译") : L("没有 key 时照常可用"))
+        }
         let speaks = ling.speaks && !down
         usageRow(L("同传声音"), tag: speaks ? uses : L("本机"), style: speaks ? .ok : .off, note: voiceNote(down: down))
         if provider.clones {
@@ -272,7 +277,16 @@ struct AISettingsView: View {
         } else {
             usageRow(L("你自己的声音"), tag: L("只有 Ling"), style: .ling, note: L("换用 Ling 才有"))
         }
-        usageRow(L("语音识别"), tag: L("本机"), style: .off, note: L("更快，不花钱"), divider: false)
+        if Recognition.multilingual {
+            if provider.hearsAudio {
+                usageRow(L("语音识别"), tag: on ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: on ? .ok : .off,
+                         note: on ? L("识别和翻译一步完成") : later, divider: false)
+            } else {
+                usageRow(L("语音识别"), tag: L("只有 Ling"), style: .ling, note: L("换用 Ling 才有"), divider: false)
+            }
+        } else {
+            usageRow(L("语音识别"), tag: L("本机"), style: .off, note: L("更快，不花钱"), divider: false)
+        }
     }
 
     private func voiceNote(down: Bool) -> String {
@@ -351,7 +365,10 @@ struct AISettingsView: View {
     }
 
     private var footnote: String {
-        switch provider.id {
+        if Recognition.multilingual {
+            return L("一小时会议约 ¥0.15–1（目前优惠价）。说话的声音分段发给 Ling 识别和翻译；会议录音和文字记录只存在这台 Mac 上。")
+        }
+        return switch provider.id {
         case .ling: L("一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字（用你自己的声音时还有那段录音），语音识别留在本机。")
         default: L("按所选模型计费。发出去的只有文字，语音识别留在本机。")
         }

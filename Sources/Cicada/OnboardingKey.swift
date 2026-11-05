@@ -34,7 +34,10 @@ struct OnboardingKeyStep: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("接上 Ling，一个 key 用上全部功能").font(.system(size: 26, weight: .bold)).foregroundStyle(Palette.ink)
                     HStack(spacing: 6) {
-                        ForEach([L("实时纪要"), L("更准的翻译"), L("自然的同传声音"), L("用你自己的声音")], id: \.self) { item in
+                        let items = Recognition.multilingual
+                            ? [L("实时翻译字幕"), L("实时纪要"), L("自然的同传声音"), L("用你自己的声音")]
+                            : [L("实时纪要"), L("更准的翻译"), L("自然的同传声音"), L("用你自己的声音")]
+                        ForEach(items, id: \.self) { item in
                             Text("✓ " + item).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ok)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(RoundedRectangle(cornerRadius: 6).fill(Palette.okPale))
@@ -55,8 +58,10 @@ struct OnboardingKeyStep: View {
                         Text("约够 10–50 小时会议")
                             .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                         Spacer()
-                        Button(L("用不了 Ling？")) { switchTo(.openrouter) }.buttonStyle(.plain)
-                            .font(.system(size: 12)).foregroundStyle(Palette.secondary).underline()
+                        if !Recognition.multilingual {
+                            Button(L("用不了 Ling？")) { switchTo(.openrouter) }.buttonStyle(.plain)
+                                .font(.system(size: 12)).foregroundStyle(Palette.secondary).underline()
+                        }
                     }
                 }
             }
@@ -216,8 +221,12 @@ struct OnboardingKeyStep: View {
             Divider()
             Text("现在可以用了").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
             HStack(spacing: 10) {
+                if Recognition.multilingual {
+                    benefit(L("实时翻译字幕"), L("识别和翻译一步完成"))
+                } else {
+                    benefit(L("更准的翻译"), L("人名、术语前后一致"))
+                }
                 benefit(L("实时纪要"), L("会中每 45 秒更新"))
-                benefit(L("更准的翻译"), L("人名、术语前后一致"))
                 if ling.speaks { benefit(L("自然人声"), L("同传约 2 秒出声")) }
             }
             Text("开会时，纪要会跟着字幕一起更新。").font(.system(size: 12)).foregroundStyle(Palette.secondary)
@@ -232,15 +241,27 @@ struct OnboardingKeyStep: View {
     /// Honest about both sides, so skipping is a choice rather than a dead end.
     private var withoutKey: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("先不接也行，基础功能照常能用").font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
-            HStack(alignment: .top, spacing: 10) {
-                column(L("现在可用"), [L("实时翻译字幕"), L("双语文字记录"), L("同声传译（系统语音）")],
-                       head: Palette.secondary, fill: Palette.ground, check: true)
-                column(L("接上 Ling 才有"), [L("实时纪要和会后总结"), L("人名、术语前后一致"), L("自然人声，约 2 秒出声")],
-                       head: Palette.accentInk, fill: Palette.accentPale, check: false)
+            if Recognition.multilingual {
+                Text("Intel 版 Mac 需要接上 Ling 才能识别语音").font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
+                HStack(alignment: .top, spacing: 10) {
+                    column(L("现在可用"), [L("查看以往的会议记录")],
+                           head: Palette.secondary, fill: Palette.ground, check: true)
+                    column(L("接上 Ling 才有"), [L("实时翻译字幕和双语记录"), L("实时纪要和会后总结"), L("同声传译")],
+                           head: Palette.accentInk, fill: Palette.accentPale, check: false)
+                }
+                Text("可以先进入应用，开会前在设置 › AI 服务里填上 Ling key 即可。")
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            } else {
+                Text("先不接也行，基础功能照常能用").font(.system(size: 16, weight: .semibold)).foregroundStyle(Palette.ink)
+                HStack(alignment: .top, spacing: 10) {
+                    column(L("现在可用"), [L("实时翻译字幕"), L("双语文字记录"), L("同声传译（系统语音）")],
+                           head: Palette.secondary, fill: Palette.ground, check: true)
+                    column(L("接上 Ling 才有"), [L("实时纪要和会后总结"), L("人名、术语前后一致"), L("自然人声，约 2 秒出声")],
+                           head: Palette.accentInk, fill: Palette.accentPale, check: false)
+                }
+                Text("随时可在纪要窗口或设置里接上，开完的会也能补出纪要。")
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
             }
-            Text("随时可在纪要窗口或设置里接上，开完的会也能补出纪要。")
-                .font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
         .padding(22)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))

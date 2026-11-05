@@ -31,19 +31,22 @@ struct AIProvider: Identifiable, Equatable {
     let voiceModels: [Model]
     /// Voices of `voiceModels` (all Gemini TTS: the same names in every language).
     let voices: [CloudVoice]
+    /// Empty: this service does not hear audio directly.
+    let audioModels: [Model]
     let clones: Bool
-    let hearsAudio: Bool
     /// Ling's account allows ~2 requests per second across every model; the aggregators allow far more.
     let spacing: TimeInterval
 
     var hasVoices: Bool { !voiceModels.isEmpty }
+    var hearsAudio: Bool { !audioModels.isEmpty }
 
     static let ling = AIProvider(
         id: .ling, name: "Ling", base: URL(string: "https://api.ant-ling.com/v1/"),
         site: URL(string: "https://chat.ant-ling.com/platform/api"),
         textModels: [Model(id: "Ling-3.1-flash", note: L("更准")), Model(id: "Ling-3.0-flash", note: L("更快、更省"))],
         voiceModels: [Model(id: "Ming-3.0-tts-0.5B", note: "")], voices: [],
-        clones: true, hearsAudio: true, spacing: 0.6)
+        audioModels: [Model(id: "Ming-3.0-audio-flash", note: "")],
+        clones: true, spacing: 0.6)
 
     static let gemini: [CloudVoice] = [
         CloudVoice(id: "Kore", gender: L("女")), CloudVoice(id: "Aoede", gender: L("女")),
@@ -57,7 +60,7 @@ struct AIProvider: Identifiable, Equatable {
                      Model(id: "qwen/qwen3.8-flash", note: L("中文好"))],
         voiceModels: [Model(id: "google/gemini-3.8-flash-tts", note: L("效果和价格最均衡")),
                       Model(id: "google/gemini-3.8-flash-lite-tts", note: L("更省"))],
-        voices: gemini, clones: false, hearsAudio: false, spacing: 0.1)
+        voices: gemini, audioModels: [], clones: false, spacing: 0.1)
 
     static let zenmux = AIProvider(
         id: .zenmux, name: "ZenMux", base: URL(string: "https://zenmux.ai/api/v1/"),
@@ -66,20 +69,20 @@ struct AIProvider: Identifiable, Equatable {
                      Model(id: "qwen/qwen3.8-flash", note: L("中文好"))],
         voiceModels: [Model(id: "google/gemini-3.8-flash-tts", note: L("效果和价格最均衡")),
                       Model(id: "google/gemini-3.8-flash-lite-tts", note: L("更省"))],
-        voices: gemini, clones: false, hearsAudio: false, spacing: 0.1)
+        voices: gemini, audioModels: [], clones: false, spacing: 0.1)
 
     /// No voices: `/audio/speech` models shut down 2027-01-06 and their successor is Realtime-only.
     static let openai = AIProvider(
         id: .openai, name: "OpenAI", base: URL(string: "https://api.openai.com/v1/"),
         site: URL(string: "https://platform.openai.com/api-keys"),
         textModels: [Model(id: "gpt-5.4-nano", note: L("够用、更省"))],
-        voiceModels: [], voices: [], clones: false, hearsAudio: false, spacing: 0.1)
+        voiceModels: [], voices: [], audioModels: [], clones: false, spacing: 0.1)
 
     /// Any OpenAI-compatible address (a company gateway, Ollama, LM Studio…). Voices only when the
     /// user names a speech model; plain standard requests, none of Ling's workarounds.
     static let custom = AIProvider(
         id: .custom, name: L("自定义服务"), base: nil, site: nil,
-        textModels: [], voiceModels: [], voices: [], clones: false, hearsAudio: false, spacing: 0.1)
+        textModels: [], voiceModels: [], voices: [], audioModels: [], clones: false, spacing: 0.1)
 
     static let all: [AIProvider] = [.ling, .openrouter, .zenmux, .openai, .custom]
 
@@ -120,8 +123,17 @@ struct AIConfig: Equatable {
     var voiceBase: URL?
     /// The voice a custom speech model speaks with (others pick per language).
     var customVoice: String?
+    /// nil: this service does not hear audio directly.
+    var audioModel: String?
 
     var hasVoices: Bool { voiceModel != nil && voiceBase != nil }
+    var hearsAudio: Bool { audioModel != nil && base != nil }
+
+    static let `default` = AIConfig(
+        provider: .ling, base: AIProvider.ling.base,
+        textModel: AIProvider.ling.textModels[0].id,
+        voiceModel: AIProvider.ling.voiceModels.first?.id, voiceBase: AIProvider.ling.base,
+        audioModel: AIProvider.ling.audioModels.first?.id)
 
     /// The voices the room can pick from with this service.
     var voices: [CloudVoice] {

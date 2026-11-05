@@ -185,7 +185,7 @@ final class ListenEngine {
     /// Detection needs two models: a Mac with fewer fetches the likeliest missing ones in the
     /// background, one at a time (each one's end refreshes the list and asks for the next).
     private func fetchSecondModel(besides starting: Lang? = nil) {
-        guard settings.sourceMode == .auto, fetchingModel == nil, candidates.count < 2 else { return }
+        guard !Recognition.multilingual, settings.sourceMode == .auto, fetchingModel == nil, candidates.count < 2 else { return }
         let last = UserDefaults.standard.string(forKey: "lastDetected")
         // The model being started is fetched by `ensureModel` already. At a start that is `starting`:
         // `activeLang` is still the last run's then, and may be a model since taken away.
@@ -602,8 +602,19 @@ final class ListenEngine {
             // A "." or "…" from a breath or a click is no sentence: Ling would answer it with a note that
             // there was nothing to translate, and it would sit in the record as a line.
             guard text.contains(where: \.isLetter) else { renderSubtitles(); return }
+            if let code = result.lang, settings.sourceMode == .auto,
+               let detected = sourceLanguages.first(where: { $0.code == code || $0.locale == code }) {
+                activeLang = detected
+                languageConfirmed = true
+                needsDetection = false
+                updateHold()
+                flushUnconfirmed()
+                UserDefaults.standard.set(detected.locale, forKey: "lastDetected")
+                onStateChange?()
+            }
             let conf = result.confidence ?? 1
-            let provisional = volatileTranslation.isEmpty ? nil : volatileTranslation
+            let inline = translationOff() ? nil : result.translation
+            let provisional = inline ?? (volatileTranslation.isEmpty ? nil : volatileTranslation)
             var seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
             seg.start = result.start
             seg.end = result.end
@@ -639,7 +650,7 @@ final class ListenEngine {
                 // Held lines keep their audio only while recent: an undecided language must not pile up minutes of it.
                 if unconfirmed.count > 20 { unconfirmed[unconfirmed.count - 21].seg.voiceSamples = nil }
             }
-            translateSegment(id: seg.id)
+            if inline == nil { translateSegment(id: seg.id) }
             if settings.sourceMode == .auto, conf < 0.6, text.count >= 4 {
                 needsDetection = true
             }
@@ -687,7 +698,7 @@ final class ListenEngine {
 
     private func maybeDetectLanguage() {
         // One model can still tell whether the audio is its language, until the language is known.
-        guard isRunning, settings.sourceMode == .auto, !detecting, !legacySingleLanguage,
+        guard !Recognition.multilingual, isRunning, settings.sourceMode == .auto, !detecting, !legacySingleLanguage,
               candidates.count >= 2 || (!languageConfirmed && candidates.first == activeLang && activeLang != nil) else { return }
         var stats = router.stats(window: 6)
         if stats.silenceRun >= AudioRouter.gapSeconds { needsDetection = true }

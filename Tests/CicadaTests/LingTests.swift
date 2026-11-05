@@ -146,9 +146,10 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         _ = try await ling.chat(content: "x", instruction: "y", priority: .translate)
         _ = try await ling.chat(content: "x", instruction: "y", priority: .notes)
         _ = try await ling.chat(content: "x", instruction: "y", priority: .notes, model: "Ling-3.0-tiny", role: "speakers")
-        #expect(calls.map(\.provider) == ["ling", "ling", "ling"])
-        #expect(calls.map(\.role) == ["translate", "notes", "speakers"])
-        #expect(calls.map(\.model) == ["Ling-3.1-flash", "Ling-3.1-flash", "Ling-3.0-tiny"])
+        _ = try await ling.chat(content: "x", instruction: "y", priority: .translate, audio: Data([1, 2]), role: "heard")
+        #expect(calls.map(\.provider) == ["ling", "ling", "ling", "ling"])
+        #expect(calls.map(\.role) == ["translate", "notes", "speakers", "heard"])
+        #expect(calls.map(\.model) == ["Ling-3.1-flash", "Ling-3.1-flash", "Ling-3.0-tiny", "Ming-3.0-audio-flash"])
         #expect(calls.allSatisfy { $0.outcome == "ok" })
     }
 

@@ -2,14 +2,37 @@ import AVFoundation
 import CoreMedia
 import Speech
 
-/// On-device speech recognition, whatever the macOS. On 26 and later it is `SpeechAnalyzer`; on
-/// 14.4–15 it is the older `SFSpeechRecognizer` (on-device only: audio never leaves the Mac, as on
-/// 26). The engines only see this file, so the version check lives in one place.
+/// Speech recognition, whatever the Mac: `SpeechAnalyzer` on macOS 26 (`arm64`), the older
+/// `SFSpeechRecognizer` on macOS 14.4–15 (`arm64`), or `CloudStream` on Intel Macs (`x86_64`) where
+/// Apple's on-device speech models aren't available. The engines only see this file, so the backend
+/// check lives in one place.
 enum Recognition {
-    /// Dev builds can run the older recognizer on macOS 26, which is where most of its testing
-    /// happens: `lsctl recognizer:legacy`, or `open --env CICADA_RECOGNIZER=legacy` from launch.
+    /// Dev builds can run the older or cloud recognizer on macOS 26: `lsctl recognizer:legacy` /
+    /// `lsctl recognizer:cloud`, or `open --env CICADA_RECOGNIZER=legacy` / `cloud` from launch.
     /// Not kept in settings: two dev copies share them.
     nonisolated(unsafe) static var forceLegacy = DevBuild.isDev && ProcessInfo.processInfo.environment["CICADA_RECOGNIZER"] == "legacy"
+    nonisolated(unsafe) static var forceCloud = DevBuild.isDev && ["cloud", "ming"].contains(ProcessInfo.processInfo.environment["CICADA_RECOGNIZER"])
+
+    private static var cloudMode: Bool {
+        #if arch(x86_64)
+        return true
+        #else
+        return forceCloud
+        #endif
+    }
+
+    /// True when the active recognizer identifies the spoken language on each segment (`Piece.lang`),
+    /// so `LanguageDetector` and `ListenEngine` don't need to compare multiple single-language models.
+    static var multilingual: Bool { cloudMode }
+
+    struct CloudHeard: Sendable {
+        let text: String
+        let lang: String
+        let translation: String?
+    }
+
+    /// Cloud transcription (`AIConfig.audioModel`), wired by `AppModel`.
+    nonisolated(unsafe) static var cloud: ((_ wav: Data, _ seconds: Double, _ locale: String, _ background: Bool) async throws -> CloudHeard?)?
 
     /// Set by the iOS simulator's dev build only: its speech models are empty placeholders, so it
     /// hands the audio to the Mac it runs on (ios/tools/host-recognizer), which recognizes it on
@@ -17,12 +40,12 @@ enum Recognition {
     nonisolated(unsafe) static var host: ((_ locale: String, _ drafts: Bool) throws -> RecognitionStream)?
 
     static var legacy: Bool {
-        if host != nil { return false }
+        if cloudMode || host != nil { return false }
         if #available(macOS 26, *) { return forceLegacy }
         return true
     }
 
-    static var name: String { host != nil ? "mac-host" : legacy ? "legacy" : dictationModel ? "dictation" : "analyzer" }
+    static var name: String { cloudMode ? "cloud" : host != nil ? "mac-host" : legacy ? "legacy" : dictationModel ? "dictation" : "analyzer" }
 
     /// iOS only: a device without `SpeechTranscriber` (older iPhones, the simulator) still has the
     /// on-device dictation model, `DictationTranscriber`, which runs in the same `SpeechAnalyzer`.
@@ -36,6 +59,7 @@ enum Recognition {
 
     /// Apple's on-device translation can be made outside a SwiftUI view only on 26 (`Translator.viaApple`).
     static var hasOnDeviceTranslation: Bool {
+        if cloudMode { return false }
         if #available(macOS 26, *) { return true }
         return false
     }
@@ -49,12 +73,15 @@ enum Recognition {
         var end: Double
         /// Mean word confidence (0–1), nil when the recognizer gave none.
         var confidence: Double?
+        /// Spoken language code and inline translation when the recognizer produces them together (`CloudStream`).
+        var lang: String? = nil
+        var translation: String? = nil
     }
 
     enum ModelStatus { case installed, downloadable, unsupported }
 
     static var isAvailable: Bool {
-        if host != nil { return true }
+        if cloudMode || host != nil { return true }
         if !legacy, #available(macOS 26, *) { return SpeechTranscriber.isAvailable || dictationModel }
         return true
     }
@@ -92,20 +119,25 @@ enum Recognition {
         !legacy || (dictationEnabled && SFSpeechRecognizer.authorizationStatus() == .authorized)
     }
 
-    /// Thrown when Dictation is off; the engines show its message rather than a retry count.
+    /// Thrown when Dictation is off or a Ling key is needed; the engines show its message rather than a retry count.
     static let dictationOff = NSError(domain: "LiveSubsSpeech", code: 3,
                                       userInfo: [NSLocalizedDescriptionKey: L("请在系统设置 › 键盘里打开“听写”")])
     static let notAllowed = NSError(domain: "LiveSubsSpeech", code: 2,
                                     userInfo: [NSLocalizedDescriptionKey: L("请在系统设置里允许知了使用“语音识别”")])
+    static let keyNeeded = NSError(domain: "LiveSubsSpeech", code: 5,
+                                   userInfo: [NSLocalizedDescriptionKey: L("请先在设置 › AI 服务里填入 Ling key")])
+    static let keyInvalid = NSError(domain: "LiveSubsSpeech", code: 6,
+                                    userInfo: [NSLocalizedDescriptionKey: L("Ling key 无效，请去设置重填")])
 
-    /// A problem only the user can fix in System Settings.
+    /// A problem only the user can fix in System Settings or AI Settings.
     static func needsUser(_ error: Error) -> Bool {
         let ns = error as NSError
-        return ns.domain == "LiveSubsSpeech" && [2, 3, 4].contains(ns.code)
+        return ns.domain == "LiveSubsSpeech" && [2, 3, 4, 5, 6].contains(ns.code)
     }
 
     /// BCP-47 ids of the languages that can be recognized right now without a download.
     static func installedLocales() async -> Set<String> {
+        if cloudMode { return Set(sourceLanguages.map(\.locale)) }
         if !legacy, #available(macOS 26, *) {
             let installed = dictationModel ? await DictationTranscriber.installedLocales : await SpeechTranscriber.installedLocales
             return Set(installed.map { $0.identifier(.bcp47) })
@@ -114,7 +146,7 @@ enum Recognition {
     }
 
     static func status(_ locale: String) async -> ModelStatus {
-        if host != nil { return .installed }
+        if cloudMode || host != nil { return .installed }
         if !legacy, #available(macOS 26, *) {
             switch await AssetInventory.status(forModules: [Analyzer.module(locale)]) {
             case .installed: return .installed
@@ -130,7 +162,7 @@ enum Recognition {
     /// Fetches the model for `locale` when it isn't on the Mac; `progress` is called once a
     /// download starts. Throws when this Mac can't recognize the language.
     static func install(_ locale: String, progress: (Progress) -> Void = { _ in }) async throws {
-        if host != nil { return }
+        if cloudMode || host != nil { return }
         if !legacy, #available(macOS 26, *) {
             let t = Analyzer.module(locale)
             if await AssetInventory.status(forModules: [t]) == .unsupported { throw unsupported(locale) }
@@ -147,13 +179,13 @@ enum Recognition {
     /// The models this app holds (macOS keeps five per app), as BCP-47 ids; none on 14/15,
     /// where Dictation owns them.
     static func reservedLocales() async -> [String] {
-        guard !legacy, #available(macOS 26, *) else { return [] }
+        guard !cloudMode, !legacy, #available(macOS 26, *) else { return [] }
         return await AssetInventory.reservedLocales.map { $0.identifier(.bcp47) }
     }
 
     /// Gives a held model back to the system, making room under the five-model limit.
     static func release(_ locale: String) async -> Bool {
-        guard !legacy, #available(macOS 26, *) else { return false }
+        guard !cloudMode, !legacy, #available(macOS 26, *) else { return false }
         return await AssetInventory.release(reservedLocale: Locale(identifier: locale.replacingOccurrences(of: "-", with: "_")))
     }
 
@@ -176,6 +208,7 @@ enum Recognition {
     static func start(_ locale: String, drafts: Bool, confidence: Bool = false, speaking: Bool = false,
                       background: Bool = false) async throws -> RecognitionStream {
         if let host { return try host(locale, drafts) }
+        if cloudMode { return CloudStream(locale: locale, speaking: speaking, background: background) }
         if !legacy, #available(macOS 26, *) {
             return try await Analyzer.start(locale, drafts: drafts, confidence: confidence)
         }
@@ -186,6 +219,7 @@ enum Recognition {
 
     /// The audio format `start(locale, drafts:)` will want, known before starting one.
     static func format(_ locale: String, drafts: Bool) async -> AVAudioFormat {
+        if cloudMode { return CloudStream.audioFormat }
         if !legacy, #available(macOS 26, *) {
             return await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [Analyzer.module(locale, drafts: drafts)])
                 ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
@@ -202,7 +236,7 @@ enum Recognition {
 
     /// Transcribes recorded audio (a clip, one press of the talk key): the finished lines joined,
     /// their confidence and how many letters they hold. Nil when the language can't be recognized.
-    static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> (text: String, confidence: Double, letters: Int)? {
+    static func transcribe(_ buffers: [AVAudioPCMBuffer], locale: String) async -> (text: String, confidence: Double, letters: Int, lang: String?)? {
         guard await status(locale) == .installed else { return nil }
         // The older recognizer can't run two tasks at once (both come back "no speech"): a clip
         // waits for a pause in the live line, which meanwhile holds its audio back.
@@ -228,7 +262,7 @@ enum Recognition {
             weighted += (p.confidence ?? 0) * Double(n)
         }
         let text = pieces.map { $0.text.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-        return (text, letters > 0 ? weighted / Double(letters) : 0, letters)
+        return (text, letters > 0 ? weighted / Double(letters) : 0, letters, pieces.last?.lang)
     }
 }
 
@@ -236,12 +270,18 @@ enum Recognition {
 protocol RecognitionStream: AnyObject, Sendable {
     var format: AVAudioFormat { get }
     var results: AsyncThrowingStream<Recognition.Piece, Error> { get }
+    /// Lines given audio that haven't come back yet, for pacing file imports.
+    var backlog: Int { get }
     func append(_ buffer: AVAudioPCMBuffer)
     /// Ends the line in progress at `seconds` (or now), so it comes back finished.
     func finalize(through seconds: Double) async throws
     /// No more audio: returns once every line has come back and `results` has ended.
     func finish() async
     func cancel() async
+}
+
+extension RecognitionStream {
+    var backlog: Int { 0 }
 }
 
 // MARK: - macOS 26: SpeechAnalyzer
@@ -744,5 +784,326 @@ final class DeferredStream: RecognitionStream, @unchecked Sendable {
     func cancel() async {
         lock.withLock { closed = true; pending = [] }
         await opening?.value?.cancel()
+    }
+}
+
+// MARK: - Cloud recognition (`CloudStream`)
+
+/// Cuts the stream into 1–8 s speech segments (`Segmenter`) and sends each to `Recognition.cloud`,
+/// yielding `Recognition.Piece` in segment order.
+final class CloudStream: RecognitionStream, @unchecked Sendable {
+    static let audioFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!
+    let format = CloudStream.audioFormat
+    let results: AsyncThrowingStream<Recognition.Piece, Error>
+    private let out: AsyncThrowingStream<Recognition.Piece, Error>.Continuation
+    private let locale: String
+    private let speaking: Bool
+    private let background: Bool
+    private let lock = NSLock()
+    private var segmenter = Segmenter()
+    private var nextSeq = 0
+    private var nextDeliver = 0
+    private var inFlight: [Int: Task<Void, Never>] = [:]
+    private var ready: [Int: Recognition.Piece?] = [:]
+    private var closed = false
+    private var finishWaiter: CheckedContinuation<Void, Never>?
+
+    init(locale: String, speaking: Bool, background: Bool) {
+        self.locale = locale
+        self.speaking = speaking
+        self.background = background
+        (results, out) = AsyncThrowingStream.makeStream(of: Recognition.Piece.self)
+        segmenter.onSegment = { [weak self] clip in self?.submit(clip) }
+    }
+
+    var backlog: Int { lock.withLock { inFlight.count } }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        guard !speaking, buffer.frameLength > 0, let ch = buffer.int16ChannelData else { return }
+        lock.withLock {
+            guard !closed else { return }
+            segmenter.feed(UnsafeBufferPointer(start: ch[0], count: Int(buffer.frameLength)))
+        }
+    }
+
+    /// Called with `lock` held.
+    private func submit(_ clip: Segmenter.Segment) {
+        guard !closed else { return }
+        let seq = nextSeq
+        nextSeq += 1
+        let locale = self.locale
+        let background = self.background
+        inFlight[seq] = Task { [weak self] in
+            var piece: Recognition.Piece?
+            var failure: Error?
+            do {
+                if let heard = try await Recognition.cloud?(clip.wav, clip.seconds, locale, background) {
+                    let words = heard.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !words.isEmpty {
+                        piece = Recognition.Piece(
+                            text: words, isFinal: true, start: clip.start, end: clip.start + clip.seconds,
+                            confidence: 1.0, lang: heard.lang, translation: heard.translation
+                        )
+                    }
+                }
+            } catch {
+                failure = error
+            }
+            self?.complete(seq: seq, piece: piece, error: failure)
+        }
+    }
+
+    private func complete(seq: Int, piece: Recognition.Piece?, error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        inFlight.removeValue(forKey: seq)
+        if let error {
+            if let f = error as? LingClient.Failure {
+                switch f {
+                case .noKey:
+                    fail(Recognition.keyNeeded)
+                    return
+                case .invalidKey:
+                    fail(Recognition.keyInvalid)
+                    return
+                default:
+                    debugLog("cloud recognizer segment \(seq): \(f)")
+                }
+            } else {
+                debugLog("cloud recognizer segment \(seq): \(error)")
+            }
+        }
+        ready[seq] = piece
+        while let item = ready.removeValue(forKey: nextDeliver) {
+            nextDeliver += 1
+            if let p = item { out.yield(p) }
+        }
+        if closed, inFlight.isEmpty {
+            out.finish()
+            finishWaiter?.resume()
+            finishWaiter = nil
+        }
+    }
+
+    /// Called with `lock` held.
+    private func fail(_ error: Error?) {
+        closed = true
+        for t in inFlight.values { t.cancel() }
+        inFlight.removeAll()
+        ready.removeAll()
+        out.finish(throwing: error)
+        finishWaiter?.resume()
+        finishWaiter = nil
+    }
+
+    func finalize(through seconds: Double) async throws {
+        lock.withLock {
+            guard !closed, !speaking else { return }
+            segmenter.flush()
+        }
+    }
+
+    func finish() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if !closed, !speaking {
+                segmenter.flush(minFrames: nextSeq == 0 ? 1 : Segmenter.minSpeechFrames)
+            }
+            closed = true
+            if inFlight.isEmpty {
+                out.finish()
+                lock.unlock()
+                cont.resume()
+            } else {
+                finishWaiter = cont
+                lock.unlock()
+            }
+        }
+    }
+
+    func cancel() async {
+        lock.withLock { fail(nil) }
+    }
+}
+
+/// Cuts a 16 kHz mono PCM stream into speech segments of ~1–8 seconds for `CloudStream`:
+/// 30 ms frames, 150 ms pre-roll, 600 ms pause to end a line, and a soft cut at the quietest
+/// frame in the last 2 s when speech runs past 8 s.
+struct Segmenter {
+    static let sampleRate = 16_000
+    static let frameSamples = 480              // 30 ms
+    static let threshold: Float = 0.01         // ~ -40 dBFS
+    static let minSpeechFrames = 8             // ~240 ms
+
+    private static let preRollFrames = 5       // 150 ms
+    private static let tailFrames = 5          // 150 ms
+    private static let pauseFrames = 20        // 600 ms
+    private static let maxFrames = 266         // ~8.0 s
+    private static let cutWindowFrames = 66    // ~2.0 s
+
+    struct Segment: Sendable {
+        let start: TimeInterval
+        let pcm: [Int16]
+
+        var seconds: TimeInterval { Double(pcm.count) / Double(Segmenter.sampleRate) }
+        var wav: Data {
+            var d = Data()
+            func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+            func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+            let bytes = UInt32(pcm.count * 2)
+            let rate = UInt32(Segmenter.sampleRate)
+            d.append(contentsOf: Array("RIFF".utf8)); u32(36 + bytes); d.append(contentsOf: Array("WAVE".utf8))
+            d.append(contentsOf: Array("fmt ".utf8)); u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16)
+            d.append(contentsOf: Array("data".utf8)); u32(bytes)
+            pcm.withUnsafeBufferPointer { buf in
+                for s in buf { withUnsafeBytes(of: s.littleEndian) { d.append(contentsOf: $0) } }
+            }
+            return d
+        }
+    }
+
+    private struct Frame {
+        let pcm: [Int16]
+        let rms: Float
+        let startSample: Int64
+    }
+
+    var onSegment: ((Segment) -> Void)?
+    private(set) var level: Float = 0
+
+    private var carry: [Int16] = []
+    private var preRoll: [Frame] = []
+    private var active: [Frame] = []
+    private var silentRun = 0
+    private var speechFrames = 0
+    private var sampleCursor: Int64 = 0
+
+    init(onSegment: ((Segment) -> Void)? = nil) {
+        self.onSegment = onSegment
+    }
+
+    mutating func feed(_ samples: [Int16]) {
+        samples.withUnsafeBufferPointer { feed($0) }
+    }
+
+    mutating func feed(_ samples: UnsafeBufferPointer<Int16>) {
+        var idx = 0
+        if !carry.isEmpty {
+            let need = Self.frameSamples - carry.count
+            let take = min(need, samples.count)
+            carry.append(contentsOf: samples[0..<take])
+            idx += take
+            if carry.count == Self.frameSamples {
+                let frame = carry
+                carry.removeAll(keepingCapacity: true)
+                processFrame(frame)
+            }
+        }
+        while idx + Self.frameSamples <= samples.count {
+            let frame = Array(samples[idx..<(idx + Self.frameSamples)])
+            idx += Self.frameSamples
+            processFrame(frame)
+        }
+        if idx < samples.count {
+            carry.append(contentsOf: samples[idx..<samples.count])
+        }
+    }
+
+    mutating func flush(minFrames: Int = Segmenter.minSpeechFrames) {
+        if !carry.isEmpty {
+            var padded = carry
+            padded.append(contentsOf: repeatElement(0, count: Self.frameSamples - carry.count))
+            carry.removeAll(keepingCapacity: true)
+            processFrame(padded)
+        }
+        if !active.isEmpty && speechFrames >= minFrames {
+            let keep = max(1, active.count - max(0, silentRun - Self.tailFrames))
+            emit(Array(active.prefix(keep)))
+        }
+        resetState()
+    }
+
+    private mutating func processFrame(_ pcm: [Int16]) {
+        let r = Self.rms(pcm)
+        level = r
+        let frame = Frame(pcm: pcm, rms: r, startSample: sampleCursor)
+        sampleCursor += Int64(Self.frameSamples)
+        let loud = r >= Self.threshold
+
+        if active.isEmpty {
+            if !loud {
+                preRoll.append(frame)
+                if preRoll.count > Self.preRollFrames { preRoll.removeFirst() }
+                return
+            }
+            active.append(contentsOf: preRoll)
+            preRoll.removeAll(keepingCapacity: true)
+            active.append(frame)
+            speechFrames = 1
+            silentRun = 0
+            return
+        }
+
+        active.append(frame)
+        if loud {
+            speechFrames += 1
+            silentRun = 0
+        } else {
+            silentRun += 1
+            if silentRun >= Self.pauseFrames {
+                let keep = max(1, active.count - (silentRun - Self.tailFrames))
+                let take = Array(active.prefix(keep))
+                if speechFrames >= Self.minSpeechFrames { emit(take) }
+                resetState()
+                return
+            }
+        }
+
+        if active.count >= Self.maxFrames {
+            let searchFrom = max(Self.minSpeechFrames, active.count - Self.cutWindowFrames)
+            var bestIdx = active.count - 1
+            var bestRms = Float.greatestFiniteMagnitude
+            for i in searchFrom..<active.count {
+                if active[i].rms <= bestRms {
+                    bestRms = active[i].rms
+                    bestIdx = i
+                }
+            }
+            let take = Array(active.prefix(bestIdx + 1))
+            let rest = Array(active.suffix(from: bestIdx + 1))
+            if speechFrames >= Self.minSpeechFrames { emit(take) }
+            active = rest
+            speechFrames = rest.filter { $0.rms >= Self.threshold }.count
+            silentRun = 0
+            for i in stride(from: rest.count - 1, through: 0, by: -1) {
+                if rest[i].rms < Self.threshold { silentRun += 1 } else { break }
+            }
+        }
+    }
+
+    private mutating func resetState() {
+        active.removeAll(keepingCapacity: true)
+        preRoll.removeAll(keepingCapacity: true)
+        silentRun = 0
+        speechFrames = 0
+    }
+
+    private func emit(_ frames: [Frame]) {
+        guard let first = frames.first else { return }
+        var out: [Int16] = []
+        out.reserveCapacity(frames.count * Self.frameSamples)
+        for f in frames { out.append(contentsOf: f.pcm) }
+        let start = Double(first.startSample) / Double(Self.sampleRate)
+        onSegment?(Segment(start: start, pcm: out))
+    }
+
+    static func rms(_ frame: [Int16]) -> Float {
+        guard !frame.isEmpty else { return 0 }
+        var sum: Double = 0
+        for v in frame {
+            let s = Double(v) * (1.0 / 32768.0)
+            sum += s * s
+        }
+        return Float((sum / Double(frame.count)).squareRoot())
     }
 }

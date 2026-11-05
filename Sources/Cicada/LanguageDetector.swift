@@ -20,7 +20,13 @@ enum LanguageDetector {
     }
 
     static func rank(_ clip: [AVAudioPCMBuffer], candidates: [Lang]) async -> [Candidate] {
-        await withTaskGroup(of: Candidate?.self) { group in
+        if Recognition.multilingual {
+            guard let heard = await Recognition.transcribe(clip, locale: candidates.first?.locale ?? "en-US"),
+                  heard.letters > 0 else { return [] }
+            let matched = candidates.first { $0.code == heard.lang || $0.locale == heard.lang } ?? candidates.first ?? sourceLanguages[0]
+            return [Candidate(lang: matched, confidence: heard.confidence, chars: heard.letters, text: heard.text, score: 1.0)]
+        }
+        return await withTaskGroup(of: Candidate?.self) { group in
             for lang in candidates {
                 group.addTask { await evaluate(clip, lang: lang) }
             }

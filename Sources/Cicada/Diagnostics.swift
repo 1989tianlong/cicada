@@ -187,7 +187,7 @@ final class Diagnostics: ObservableObject {
     }
 
     /// The uses shown, in this order; test scores and file imports only count in the totals.
-    static let roles = ["translate", "heard-me", "voice", "notes", "speakers"]
+    static let roles = ["hear", "translate", "heard-me", "voice", "notes", "speakers"]
 
     var uses: [Use] {
         Dictionary(grouping: calls.filter { Self.roles.contains($0.role) }) { "\($0.role)|\($0.provider)|\($0.model)" }
