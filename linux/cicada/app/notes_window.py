@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from gi.repository import Gdk, GLib, Gtk
 
 from ..core import notes as notesmod
-from ..core import speakers
+from ..core import roommic, speakers
 from ..core.strings import L, LF
 from ..core.support import Log, clock
 from . import ui, x11
@@ -158,7 +158,7 @@ class NotesWindow(Gtk.Window):
         ui.pad(self.header, 8, 8, 4, 16)
         outer.pack_start(self.header, False, False, 0)
         # 听哪里 while listening (正在听 · 会议室 换 ⌄): changed here, the same meeting goes on.
-        self.source_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.source_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.source_row.set_no_show_all(True)
         if not self.subtitles:
             outer.pack_start(ui.pad(self.source_row, 0, 16, 4, 16), False, False, 0)
@@ -317,11 +317,29 @@ class NotesWindow(Gtk.Window):
             return
         from .tray import sources
         names = dict(sources())
-        row.pack_start(ui.text(names.get(self.app.settings.listenSource, ""), 12, "secondary", wrap=False), False, False, 0)
+        line = ui.hbox(6, ui.text(names.get(self.app.settings.listenSource, ""), 12, "secondary", wrap=False))
         change = ui.link(L("换") + " ⌄", lambda: self._source_menu(change))
         change.set_can_focus(False)
-        row.pack_start(change, False, False, 0)
-        row.show_all()
+        line.pack_start(change, False, False, 0)
+        row.pack_start(line, False, False, 0)
+        # How the room is heard when it isn't the plain way (one grey line, the Mac's HybridNote).
+        note = self.app.hybrid_note()
+        if note:
+            row.pack_start(ui.text(note, 11, "tertiary", width_chars=40), False, False, 0)
+        # 线上也有人？: only the room is heard while a meeting app here is in a call.
+        app_name = self.app.online_prompt
+        if app_name:
+            strip = ui.vbox(8, ui.vbox(2, ui.text(L("线上也有人？"), 13, "ink", bold=True, wrap=False),
+                                       ui.text(LF("%@ 正在通话", app_name), 12, "secondary", wrap=False)))
+            buttons = ui.hbox(8, ui.button(L("也听电脑"), lambda: self.app.answer_online(True), "darkbtn"),
+                              ui.button(L("不用"), lambda: self.app.answer_online(False), "outline"))
+            for b in buttons.get_children():
+                b.set_can_focus(False)
+            strip.pack_start(buttons, False, False, 0)
+            row.pack_start(ui.gap(ui.panel(ui.pad(strip, 12, 14), "endingstrip"), 4), False, False, 0)
+        for c in row.get_children():
+            c.show_all()
+        row.show()  # show_all() skips a no_show_all widget itself
 
     def _source_menu(self, widget) -> None:
         from .tray import sources
@@ -483,7 +501,8 @@ class NotesWindow(Gtk.Window):
         names = speakers.names(session) if voices else {}
         pending = self.app.listen.listening and self.app.listen.pending > 0
         topics = [(t.start, t.title) for t in self.app.notes.notes.topics]
-        key = (len(lines), lines[-1].id if lines else None, (lines[-1].dst or "") if lines else "", tuple(terms), current,
+        self._places = roommic.heard_both(lines)  # 电脑和会议室: each of their lines says where
+        key = (self._places, len(lines), lines[-1].id if lines else None, (lines[-1].dst or "") if lines else "", tuple(terms), current,
                tuple(sorted(nums.items())), tuple(sorted(names.items())), pending, tuple(topics))
         self._fill_search_tools()
         if key == self._transcript_key and not scroll:
@@ -547,6 +566,8 @@ class NotesWindow(Gtk.Window):
         elif l.id in nums:
             n = nums[l.id]
             top.pack_start(ui.text(speakers.label(n, names), 11, "spk%d" % ((n - 1) % 4 + 1), bold=True, wrap=False, ellipsize=False), False, False, 0)
+        if l.speaker != "me" and getattr(self, "_places", False):
+            top.pack_start(ui.place_tag(l), False, False, 0)
         top.pack_start(ui.text(clock(l.t), 11, "tertiary", wrap=False, ellipsize=False), False, False, 0)
         row.pack_start(top, False, False, 0)
         if l.dst and l.dst != l.src:

@@ -39,8 +39,9 @@ class AppSettings:
         "speakTo": "room",           # what the room hears; "room" = the language they have been speaking
         "speakVoices": {},           # Ming voice per language key ("en": "US_Emma")
         "speakHeadphones": False,    # 戴着耳机: skip the echo guard, talking over them is fine
-        # 听哪里 (the Mac's listenSource): "system" (what the computer plays) or "room" (a real
-        # microphone, for a meeting in the room); roomMic: the source chosen for it, "" = 自动.
+        # 听哪里 (the Mac's listenSource): "system" (what the computer plays), "room" (a real
+        # microphone, for a meeting in the room) or "both" (电脑和会议室: people online and in the
+        # room, each heard on its own); roomMic: the room's microphone, "" = 自动.
         "listenSource": "system",
         "roomMic": "",
         # 结束会议 (meeting_end.py), the Mac's keys: end when the meeting app hangs up; when nobody
@@ -50,7 +51,7 @@ class AppSettings:
         "silenceMinutes": 10,
     }
 
-    SOURCES = ("system", "room")
+    SOURCES = ("system", "room", "both")
 
     def __init__(self, **kw):
         for k, v in self.FIELDS.items():
@@ -79,7 +80,7 @@ class AppSettings:
 
     @property
     def hears_room(self) -> bool:
-        """The room microphone is open: 会议室."""
+        """The room microphone is open: 会议室 or 电脑和会议室."""
         return self.listenSource != "system"
 
     @property

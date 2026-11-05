@@ -5,13 +5,15 @@ from __future__ import annotations
 import threading
 import time
 
-from test_core import Base, Fake, client, concat, reply, silence, tone
+from test_core import Base, Fake, client, concat, content, reply, silence, tone
 
 from cicada.core.audio import PcmAudioSource
 from cicada.core.ling import LingClient
-from cicada.core.listen import ListenEngine
+from cicada.core.listen import ROOM_IDS, ListenEngine
+from cicada.core.models import TranscriptLine
 from cicada.core.notes import NotesEngine
-from cicada.core.roommic import Input, VoiceGate, parse_sources, pick
+from cicada.core.roommic import (EchoGate, EchoMatch, Heard, Input, VoiceGate, asks_online, heard_both, hybrid_note, parse_sources,
+                                 pick, place_starts)
 from cicada.core.session_store import SessionStore
 from cicada.core.settings import AppSettings
 from cicada.core.translator import Translator
@@ -132,7 +134,8 @@ class Room(Base):
         s = store.get(e.session_id)
         self.assertEqual(["Hello from the table."], [l.src for l in s.lines])
         self.assertTrue(s.room, "the record says 会议室")
-        self.assertIsNone(s.lines[0].via, "会议室 alone: no place on each line, as on the Mac")
+        self.assertEqual("room", s.lines[0].via)
+        self.assertFalse(heard_both(s.lines), "会议室 alone: no place on each line, as on the Mac")
 
     def test_the_computers_audio_keeps_the_fixed_gate(self):
         store = SessionStore()
@@ -173,3 +176,137 @@ class Room(Base):
         time.sleep(0.3)
         e.stop()
         self.assertEqual(0, len(store.get(e.session_id).lines) if store.get(e.session_id) else 0)
+
+
+def h(text, start, end):
+    return Heard(text, start, end)
+
+
+class EchoMatchTests(Base):
+    """The Mac's EchoMatchTests, case for case."""
+
+    def test_the_rooms_copy_of_a_remote_sentence_is_an_echo(self):
+        online = [h("Revenue grew by 12%, mostly from the new region.", 10, 14)]
+        # Heard worse from the speakers, and a word lost.
+        self.assertTrue(EchoMatch.is_echo(h("revenue grew by 12% mostly from new region", 10.3, 14.2), online))
+
+    def test_cut_differently_still_matches(self):
+        online = [h("我们先看一下这个季度的数据。", 0, 2), h("收入增长了百分之十二，主要来自新的市场。", 2.2, 5)]
+        self.assertTrue(EchoMatch.is_echo(h("这个季度的数据收入增长了百分之十二", 0.8, 4), online))
+
+    def test_room_speech_is_kept(self):
+        online = [h("Revenue grew by 12%, mostly from the new region.", 10, 14)]
+        self.assertFalse(EchoMatch.is_echo(h("I think we should check the numbers for Europe first", 11, 15), online))
+        self.assertFalse(EchoMatch.is_echo(h("我觉得应该先看一下欧洲的情况", 11, 15), online))
+
+    def test_the_same_words_long_after_are_not_an_echo(self):
+        online = [h("Can everyone hear me okay?", 0, 2)]
+        self.assertFalse(EchoMatch.is_echo(h("can everyone hear me okay", 20, 22), online))
+
+    def test_short_lines_match_only_exactly(self):
+        online = [h("OK.", 5, 5.5)]
+        self.assertTrue(EchoMatch.is_echo(h("ok", 5.2, 5.6), online))
+        self.assertFalse(EchoMatch.is_echo(h("no", 5.2, 5.6), online))
+
+    def test_gate_closes_for_the_hang(self):
+        g = EchoGate()
+        self.assertFalse(g.closed(100))
+        g.hold(100)
+        self.assertTrue(g.closed(100.3))
+        self.assertFalse(g.closed(100 + EchoGate.hang + 0.01))
+
+
+def line(i, speaker="them", via=None):
+    return TranscriptLine(id=i, speaker=speaker, src="x", srcLang="en", dstLang="zh-CN", via=via)
+
+
+class Places(Base):
+    """The Mac's HybridRecordTests."""
+
+    def test_only_a_meeting_that_heard_both_shows_places(self):
+        self.assertFalse(heard_both([line("a"), line("b")]))
+        self.assertFalse(heard_both([line("a", via="room"), line("b", via="room")]))
+        # My own lines (同声传译) don't make it a meeting that heard the computer.
+        self.assertFalse(heard_both([line("a", via="room"), line("b", "me")]))
+        self.assertTrue(heard_both([line("a", via="room"), line("b")]))
+
+    def test_a_change_of_place_starts_a_new_run(self):
+        ls = [line("a"), line("b"), line("c", via="room"), line("d", "me"), line("e", via="room"), line("f")]
+        self.assertEqual({"a", "c", "e", "f"}, place_starts(ls))
+
+    def test_online_prompt_asks_only_in_the_room_during_a_call(self):
+        self.assertTrue(asks_online(True, False, True))
+        self.assertFalse(asks_online(True, False, False))
+        self.assertFalse(asks_online(True, True, True))
+        self.assertFalse(asks_online(False, False, True))
+
+    def test_note_says_how_the_room_is_heard(self):
+        self.assertIsNone(hybrid_note(True, True, False, False))
+        self.assertIsNone(hybrid_note(False, False, False, True))
+        self.assertEqual("线上有人说话时，先不听会议室", hybrid_note(True, False, False, True))
+        self.assertEqual("用电脑自带的麦克风听会议室", hybrid_note(True, True, False, True))
+        # 戴着耳机: nothing to cancel, nothing paused.
+        self.assertIsNone(hybrid_note(True, False, True, False))
+
+
+ONLINE = "Revenue grew by 12%, mostly from the new region."
+
+
+def both_engine(store, room_text):
+    """The computer plays a 1 s sentence; the room mic hears 1.6 s at the same time."""
+    def respond(body):
+        if "Ming-3.0-audio-flash" not in body:
+            return reply("{}")
+        short = len(content(body, 1)[0]["audio_url"]["url"]) < 60000
+        return reply("LANG: en\nORIGINAL: %s\nTRANSLATION: 译文。" % (ONLINE if short else room_text))
+    LingClient.spacing = 0.02
+    ling = client(Fake(respond))
+    return ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target="zh-CN"))
+
+
+def run_both(e, gated=False):
+    main = PcmAudioSource(lambda: concat(tone(1.0), silence(1.0)), speed=0)
+    room = PcmAudioSource(lambda: concat(silence(0.5), tone(1.6, amp=0.2), silence(1.0)), speed=0)
+    done = [threading.Event(), threading.Event()]
+    main.on_ended = lambda why: done[0].set()
+    room.on_ended = lambda why: done[1].set()
+    e.start(main, "both")
+    e.start_room(room, gated=gated)
+    for d in done:
+        d.wait(10)
+    time.sleep(0.6)
+    e.stop()
+
+
+class Both(Base):
+    def test_the_rooms_own_words_are_kept_and_say_room(self):
+        store = SessionStore()
+        e = both_engine(store, "I think we should check the numbers for Europe first.")
+        run_both(e)
+        s = store.get(e.session_id)
+        got = sorted((l.via or "", l.src) for l in s.lines)
+        self.assertEqual([("", ONLINE), ("room", "I think we should check the numbers for Europe first.")], got)
+        room = next(l for l in s.lines if l.via == "room")
+        self.assertTrue(room.id.endswith("-%d" % (ROOM_IDS + 1)), room.id)
+        self.assertTrue(s.room)
+        self.assertTrue(heard_both(s.lines))
+
+    def test_the_rooms_copy_of_an_online_sentence_is_dropped(self):
+        store = SessionStore()
+        e = both_engine(store, "revenue grew by 12% mostly from new region")
+        run_both(e)
+        s = store.get(e.session_id)
+        self.assertEqual([(None, ONLINE)], [(l.via, l.src) for l in s.lines])
+
+    def test_stopping_the_room_side_keeps_the_meeting(self):
+        store = SessionStore()
+        e = both_engine(store, "x")
+        e.start(PcmAudioSource(lambda: silence(0.2), speed=0), "both")
+        e.start_room(PcmAudioSource(lambda: silence(0.2), speed=0), gated=True)
+        self.assertTrue(e.hears_room_too and e.gated)
+        sid = e.session_id
+        e.stop_room()
+        self.assertFalse(e.hears_room_too or e.gated)
+        self.assertTrue(e.listening)
+        self.assertEqual(sid, e.session_id)
+        e.stop()

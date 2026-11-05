@@ -17,12 +17,14 @@ from . import strings
 from .audio import RATE, Wav
 from .ling import LingError
 from .models import TranscriptLine
-from .roommic import VoiceGate
+from .roommic import EchoGate, EchoMatch, Heard, VoiceGate
 from .segmenter import Segmenter
 from .support import Log, english_name, is_cjk_language
 from .translator import Translator
 
 _END = object()
+# Segment numbers from here up are the room side's (the Mac's ListenEngine.roomIDs).
+ROOM_IDS = 1_000_000
 
 
 class _Lane:
@@ -61,6 +63,13 @@ class ListenEngine:
         self._gate = threading.RLock()
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="Listen")
         self._main = _Lane()
+        self._room = None  # 电脑和会议室's room side, while it runs
+        # Without echo cancellation the room mic hears silence while the computer plays speech.
+        self.echo_gate = EchoGate()
+        self.gated = False
+        self._recent_online: list = []  # the computer's lines of the last 20 s, as EchoMatch.Heard
+        self._held: list = []  # room lines waiting EchoMatch.hold for the computer's line they may echo
+        self._main_loud_at = 0.0
         self._in_flight: list = []
         self._line_count = 0
         self._listeners = []
@@ -147,8 +156,9 @@ class ListenEngine:
 
     @property
     def spoken(self):
+        """The language the other side has been speaking (the room's, when only the room has spoken)."""
         with self._gate:
-            return self._hint
+            return self._main.hint or (self._room.hint if self._room is not None else None)
 
     @property
     def pending(self) -> int:
@@ -157,7 +167,12 @@ class ListenEngine:
             return sum(len(l.segments) for l in self._lanes())
 
     def _lanes(self) -> list:
-        return [self._main]
+        return [self._main] + ([self._room] if self._room is not None else [])
+
+    @property
+    def hears_room_too(self) -> bool:
+        """电脑和会议室: the room side is running."""
+        return self._room is not None
 
     def start(self, source, kind: str, mic: bool = False) -> None:
         """Listens to `source`; `mic` when it is a microphone in the room (会议室): speech is told
@@ -169,6 +184,8 @@ class ListenEngine:
         self.source_kind = kind
         with self._gate:
             self._main = _Lane()
+            self._room = None
+            self._recent_online, self._held = [], []
             self._in_flight.clear()
             self._line_count = 0
             self.problem = self.problem_kind = None
@@ -199,6 +216,9 @@ class ListenEngine:
                 if lane.muted:
                     # Silence rather than nothing keeps the segmenter's clock in step.
                     buf = array("h", bytes(len(buf) * 2))
+                now = time.monotonic()
+                if lane is not self._main and self.gated and self.echo_gate.closed(now):
+                    buf = array("h", bytes(len(buf) * 2))
                 level = Wav.rms(buf)
                 gate = lane.gate
                 if gate is not None:
@@ -209,8 +229,14 @@ class ListenEngine:
                 segmenter.feed(buf)
                 lane.level = level
                 lane.peak = max(lane.peak * 0.995, level)
-                if lane is self._main and self.loudness is not None and gate is None:
-                    self.loudness.add(level >= Segmenter.threshold)
+                if lane is self._main and gate is None:
+                    loud = level >= Segmenter.threshold
+                    if self.loudness is not None:
+                        self.loudness.add(loud)
+                    if loud:
+                        self._main_loud_at = now
+                        if self.gated:
+                            self.echo_gate.hold(now)
                 lane.heard_seconds += seconds
             segmenter.flush()
         lane.worker = threading.Thread(target=work, name="ListenWorker", daemon=True)
@@ -225,6 +251,9 @@ class ListenEngine:
             old.on_samples = None
             old.stop()
         lane.gate = VoiceGate(adaptive=True) if mic else None
+        # Lines heard through a microphone say "room", so a meeting that changes between 会议室 and
+        # 电脑和会议室 still labels each line by where it was heard (one place alone shows no labels).
+        lane.via = "room" if mic else None
         if mic and self.session_id:
             self.store.mark_room(self.session_id)
         lane.source = source
@@ -234,10 +263,43 @@ class ListenEngine:
             Log.d("listen: source changed to %s" % ("a microphone" if mic else "the computer's audio"))
 
     def set_muted(self, on: bool) -> None:
-        """会议室 while 同声传译 hears me through the same microphone: my words aren't the room's."""
-        if self._main.gate is not None and self._main.muted != on:
-            self._main.muted = on
-            Log.d("listen: room mic %s" % ("muted" if on else "open"))
+        """The room mic while 同声传译 hears me through the same microphone: my words aren't the room's."""
+        for lane in self._lanes():
+            if lane.gate is not None and lane.muted != on:
+                lane.muted = on
+                Log.d("listen: room mic %s" % ("muted" if on else "open"))
+
+    def start_room(self, source, gated: bool) -> None:
+        """电脑和会议室: the room side, on its own microphone, beside the computer's audio. Its lines say
+        "room"; it keeps its own language and pauses. `gated`: no echo cancellation, so the room mic
+        hears silence while the computer plays speech."""
+        if not self.listening or self._room is not None:
+            return
+        lane = _Lane(via="room", first=ROOM_IDS)
+        lane.gate = VoiceGate(adaptive=True)
+        lane.muted = any(l.muted for l in self._lanes())
+        self.gated = gated
+        self._run(lane)
+        with self._gate:
+            self._room = lane
+        self.store.mark_room(self.session_id)
+        lane.source = source
+        source.on_samples = lane.audio.put
+        source.start()
+        Log.d("listen: room side started (%s)" % ("gated" if gated else "echo cancelled"))
+        self._changed()
+
+    def stop_room(self) -> None:
+        """The room side stops; its lines still waiting for their echo check are what was said: kept."""
+        with self._gate:
+            lane, self._room = self._room, None
+        if lane is None:
+            return
+        self._end_lane(lane)
+        self._release_all()
+        self.gated = False
+        Log.d("listen: room side stopped")
+        self._changed()
 
     def stop(self, ended_at=None) -> None:
         """Stops listening, waits (briefly) for segments still at Ming, ends the record (at `ended_at`
@@ -251,6 +313,9 @@ class ListenEngine:
         with self._gate:
             waiting = list(self._in_flight)
         wait(waiting, timeout=15)
+        self._release_all()
+        self._room = None
+        self.gated = False
         sid = self.session_id
         if sid is None:
             return
@@ -334,10 +399,69 @@ class ListenEngine:
                     ready.append((lane.segments.pop(lane.next), heard))
                     lane.next += 1
             for seg, heard in ready:
-                if heard is not None:
+                if heard is None:
+                    continue
+                if lane is not self._main:  # the room side of 电脑和会议室
+                    self._heard_in_room(lane, seg, heard)
+                else:
                     self._record(lane, seg, heard)
+                    self._heard_online(heard.original, seg.seconds)
         if ready:
             self._changed()
+
+    # 电脑和会议室: the room's copy of an online sentence (EchoMatch)
+
+    def _heard_online(self, text: str, seconds: float) -> None:
+        """A sentence from the computer's audio, remembered to tell the room's copy of it; room lines
+        waiting for it that turn out to be its echo are dropped."""
+        if self._room is None:
+            return
+        now = time.monotonic()
+        with self._gate:
+            self._recent_online.append(Heard(text, now - seconds, now))
+            self._recent_online = [h for h in self._recent_online if h.end >= now - 20]
+            online = list(self._recent_online)
+            dropped = [h for h in self._held if EchoMatch.is_echo(h[3], online)]
+            self._held = [h for h in self._held if h not in dropped]
+        for _ in dropped:
+            Log.d("listen: room line dropped as an echo")
+
+    def _heard_in_room(self, lane, seg, heard) -> None:
+        """A sentence from the room mic: an echo of the computer's audio is dropped; the rest waits a
+        moment for the computer's line it may echo, then is recorded where it was said."""
+        now = time.monotonic()
+        h = Heard(heard.original, now - seg.seconds, now)
+        with self._gate:
+            online = list(self._recent_online)
+        if EchoMatch.is_echo(h, online):
+            Log.d("listen: room line dropped as an echo")
+            return
+        # The computer has played nothing for a while: nothing for this to echo, no need to wait.
+        if now - self._main_loud_at >= EchoMatch.window:
+            self._record(lane, seg, heard)
+            return
+        entry = (lane, seg, heard, h)
+        with self._gate:
+            self._held.append(entry)
+        timer = threading.Timer(EchoMatch.hold, self._release, (entry,))
+        timer.daemon = True
+        timer.start()
+
+    def _release(self, entry) -> None:
+        with self._deliver_lock:
+            with self._gate:
+                if entry not in self._held:
+                    return
+                self._held.remove(entry)
+            self._record(*entry[:3])
+        self._changed()
+
+    def _release_all(self) -> None:
+        with self._deliver_lock:
+            with self._gate:
+                held, self._held = self._held, []
+            for entry in held:
+                self._record(*entry[:3])
 
     def _voice(self, seg, heard):
         """The segment's voice, or None when unsure. A line with hardly a letter ("." from a breath or

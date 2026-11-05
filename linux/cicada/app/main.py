@@ -79,8 +79,14 @@ class Controller:
         self.listen = ListenEngine(self.ling, self.translator, self.store, self.notes, self.settings)
         # 同声传译: my microphone → the AI service → 知了 麦克风. The listen side's loudness feeds its echo check.
         from ..core.speak import SpeakEngine
-        from .room import Player, VirtualMic
+        from .room import EchoCanceller, Player, VirtualMic
         self.room = VirtualMic()
+        # 电脑和会议室: the online voices taken out of the room mic (module-echo-cancel).
+        self.echo = EchoCanceller()
+        self.online_prompt = None    # 线上也有人？: the meeting app in a call, while only the room is heard
+        self.online_answered = False
+        self.headset_default = False  # the default input is a Bluetooth headset's (the room uses another mic)
+        self.forced_room_mic = None
         self.speak = SpeakEngine(self.ling, self.translator, self.settings, self.store, self.listen, player=lambda: Player())
         self.listen.loudness = self.speak.loudness
         # 说话人识别: voiceprints (native/voiceprint.c), Ling's guesses at names.
@@ -137,6 +143,7 @@ class Controller:
         self.tray = tray.make(self, icon)
         def prepare():
             (self.room.create if self.settings.speakEnabled else self.room.leftovers)()
+            self.echo.remove()  # left by a run that crashed during 电脑和会议室
             if speak:  # `cicada --speak` before Cicada was running: speak once 知了 麦克风 is there
                 GLib.idle_add(lambda: self.toggle_speaking() and False)
         threading.Thread(target=prepare, daemon=True).start()
@@ -387,6 +394,8 @@ class Controller:
     def room_mic(self) -> str:
         """The microphone that hears the room now (roommic.pick). 知了 麦克风 as the default input
         (同声传译 on) stands for the real microphone it took the place of."""
+        if self.forced_room_mic:  # debug: a null sink's monitor standing in for one (a VM has no microphone)
+            return self.forced_room_mic
         inputs = roommic.parse_sources(capture.sources_text())
         default = capture.default_source()
         if default == "cicada_mic":
@@ -398,7 +407,10 @@ class Controller:
         return picked
 
     def heard_source(self):
-        """(source, kind) for 听哪里: the computer's audio, or the room through a microphone."""
+        """(source, kind) for 听哪里: the computer's audio, or the room through a microphone. For
+        电脑和会议室 the computer's audio; the room side starts beside it (_start_room_side)."""
+        if self.settings.listenSource == "both":
+            return SystemAudio(), "both"
         if self.settings.listenSource == "room":
             mic = self.room_mic()
             if mic is not None:
@@ -414,11 +426,84 @@ class Controller:
         self.settings.listenSource = value
         self.settings.save()
         Log.d("listenSource=%s" % value)
-        if self.listen.listening and self.listen.source_kind in ("system", "room"):
+        if self.listen.listening and self.listen.source_kind != "file":
+            if self.listen.hears_room_too:
+                self._stop_room_side()
+            # The canceller first: it changes the default output, which the computer's audio is read from.
+            room = self._room_side_source() if value == "both" else None
             source, kind = self.heard_source()
             source.on_ended = self._source_ended(kind)
             self.listen.source_kind = kind
             self.listen.attach(source, mic=kind == "room")
+            if room is not None:
+                self.listen.start_room(*room)
+        self.changed()
+
+    def _room_side_source(self):
+        """(source, gated) for 电脑和会议室's room side, or None without a microphone: the room mic
+        through the echo canceller; without one (or the sound server won't) the plain mic, gated
+        while the computer plays speech. 戴着耳机: nothing comes out of the speakers to cancel."""
+        mic = self.room_mic()
+        if mic is None:
+            Log.d("hybrid: no microphone, the computer's audio only")
+            return None
+        default = capture.default_source()
+        bt = [i.name for i in roommic.parse_sources(capture.sources_text()) if i.bluetooth]
+        self.headset_default = (self.room.real_mic if default == "cicada_mic" else default) in bt
+        cancelled = None if self.settings.speakHeadphones else self.echo.create(mic)
+        if cancelled is None and not self.settings.speakHeadphones:
+            Log.d("hybrid: no echo cancellation, gating the room mic")
+        source = SystemAudio(cancelled or mic, L("知了 · 会议室"))
+        source.on_ended = self._room_lost
+        return source, cancelled is None and not self.settings.speakHeadphones
+
+    def _start_room_side(self) -> None:
+        room = self._room_side_source()
+        if room is not None:
+            self.listen.start_room(*room)
+
+    def _room_lost(self, why) -> None:
+        """The room side's microphone went away (unplugged, the sound server gone for 20 s): another
+        one takes over if there is one; otherwise the computer's audio goes on alone."""
+        def run():
+            if self.listen.listening and self.listen.hears_room_too and why:
+                Log.d("hybrid: room microphone lost (%s)" % why)
+                self._stop_room_side()
+                self._start_room_side()
+                self.changed()
+            return False
+        GLib.idle_add(run)
+
+    def _stop_room_side(self) -> None:
+        self.listen.stop_room()
+        if self.echo.on:
+            self.echo.remove()
+
+    def set_headphones(self, on: bool) -> None:
+        """戴着耳机 (同声传译's and 会议室's): in 电脑和会议室 the room side starts again with or without
+        taking the speakers' sound out."""
+        if on == self.settings.speakHeadphones:
+            return
+        self.settings.speakHeadphones = on
+        self.settings.save()
+        if self.listen.listening and self.listen.hears_room_too:
+            self._stop_room_side()
+            self._start_room_side()
+        self.changed()
+
+    def hybrid_note(self) -> str | None:
+        """The grey line under 听哪里 in 电脑和会议室 (roommic.hybrid_note)."""
+        key = roommic.hybrid_note(self.listen.hears_room_too, self.echo.on, self.settings.speakHeadphones,
+                                  self.headset_default)
+        return L(key) if key == "线上有人说话时，先不听会议室" else L("用电脑自带的麦克风听会议室") if key else None
+
+    def answer_online(self, both: bool) -> None:
+        """线上也有人？ answered: 也听电脑 turns 电脑和会议室 on in the same meeting; 不用 just goes."""
+        self.online_answered = True
+        self.online_prompt = None
+        Log.d("online prompt: %s" % ("both" if both else "no"))
+        if both:
+            self.set_listen_source("both")
         self.changed()
 
     def _source_ended(self, kind: str):
@@ -504,7 +589,12 @@ class Controller:
         self.auto_ended = False
         self.ending = None
         self.end_watch = meeting_end.MeetingEndWatch(self.end_config(), time.time())
+        self.online_answered = False
+        self.online_prompt = None
+        room = self._room_side_source() if kind == "both" else None
         self.listen.start(source, kind, mic=kind == "room")
+        if room is not None:
+            self.listen.start_room(*room)
         self.show_notes()
         self.changed()
 
@@ -599,6 +689,12 @@ class Controller:
             s = self.store.get(self.listen.session_id) if self.listen.session_id else None
             reason = w.tick(now, calls, bool(s and s.lines))
             self._set_ending(w.pending)
+            ask = roommic.asks_online(self.listen.source_kind == "room", self.online_answered, bool(calls))
+            prompt = next(iter(calls.values()), None) if ask else None
+            if prompt != self.online_prompt:
+                self.online_prompt = prompt
+                Log.d("online prompt: %s" % ("shown" if prompt else "gone"))
+                self.changed()
             if reason is not None:
                 self._auto_end(reason, w)
         elif not self.listen.listening and self.auto_ended and self.settings.endWithApp and calls:
@@ -705,9 +801,13 @@ class Controller:
         self.auto_ended = auto
 
         # stop() waits for Ming's last replies: off the main loop.
+        self.online_prompt = None
+
         def run():
             sid = self.listen.session_id
             self.listen.stop(ended_at)
+            if self.echo.on:
+                self.echo.remove()  # the speakers are the default output again
             if sid and self.settings.speakerVoices:
                 self.namer.guess(sid, force=True)  # the whole meeting read once more for names
             self.changed()
@@ -811,6 +911,8 @@ class Controller:
             self.speak.cancel()
             if self.room.on:
                 self.room.remove()  # the real microphone is the default again
+            if self.echo.on:
+                self.echo.remove()
             if self.listen.listening:
                 self.listen.stop()
             self.store.flush()

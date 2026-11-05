@@ -12,7 +12,8 @@ per connection, one JSON line back. Never in release builds.
   ai-check-sim <reason|lowBalance|off> (every check ends this way: screenshots of each state) | ai-check (check now)
   ask settings|fix|close (answer the 开始听 dialog a failed check put up) | settings-ai (设置 at AI 服务) | tray-menu
   pill (the records window capsule's widget sizes)
-  listen-source system|room|both (听哪里) | room-mic [<source>|auto] | lines [<record id>] (each line's via)"""
+  listen-source system|room|both (听哪里) | room-mic [<source>|auto] | lines [<record id>] (each line's via)
+  online both|no (answer 线上也有人？) | room-mic-force <source>|"" (a null sink's monitor as the room mic)"""
 from __future__ import annotations
 
 import os
@@ -120,7 +121,10 @@ def command(app, line: str) -> dict:
                 "lines": len(s.lines) if s else 0, "last": {"src": last.src, "dst": last.dst, "lang": last.srcLang} if last else None,
                 "pending": listen.pending, "problem": listen.problem, "problemKind": listen.problem_kind, "heardSeconds": round(listen.heard_seconds, 1),
                 "peak": round(listen.peak, 4), "notes": {"title": n.title, "topics": len(n.topics), "status": app.notes.status, "final": n.final},
-                "key": app.ling.key_state, "ai": _ai(app), "view": app.settings.view, "listenSource": app.settings.listenSource, "target": app.settings.target_code,
+                "key": app.ling.key_state, "ai": _ai(app), "view": app.settings.view, "listenSource": app.settings.listenSource,
+                "hybrid": {"roomSide": listen.hears_room_too, "echoCancel": app.echo.on, "gated": listen.gated,
+                           "note": app.hybrid_note(), "onlinePrompt": app.online_prompt},
+                "target": app.settings.target_code,
                 "ui": __import__("cicada.core.strings", fromlist=["language"]).language, "records": len(app.store.all()),
                 "tray": app.tray is not None, "home": Paths.data(),
                 "speak": {"enabled": app.settings.speakEnabled, "room": app.room.on, "active": app.speak.active, "stage": app.speak.stage,
@@ -165,6 +169,12 @@ def command(app, line: str) -> dict:
     if cmd == "listen-source":  # 听哪里 (system|room|both), mid-meeting too
         app.set_listen_source(arg)
         return {"ok": True, "listenSource": app.settings.listenSource, "source": listen.source_kind}
+    if cmd == "online":  # answer 线上也有人？ (both|no)
+        app.answer_online(arg == "both")
+        return {"ok": True, "listenSource": app.settings.listenSource}
+    if cmd == "room-mic-force":  # any source as the room mic, e.g. a null sink's monitor ("" = off)
+        app.forced_room_mic = arg or None
+        return {"ok": True, "forced": app.forced_room_mic}
     if cmd == "room-mic":  # which microphone 会议室 would use now; with an argument, choose it ("" = 自动)
         if arg:
             app.settings.roomMic = "" if arg == "auto" else arg

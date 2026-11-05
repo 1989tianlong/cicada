@@ -45,6 +45,8 @@ def _lib():
         l.pa_context_get_module_info_list.argtypes = [ctypes.c_void_p, _MODULE_CB, ctypes.c_void_p]
         l.pa_context_set_default_source.restype = ctypes.c_void_p
         l.pa_context_set_default_source.argtypes = [ctypes.c_void_p, ctypes.c_char_p, _SUCCESS_CB, ctypes.c_void_p]
+        l.pa_context_set_default_sink.restype = ctypes.c_void_p
+        l.pa_context_set_default_sink.argtypes = [ctypes.c_void_p, ctypes.c_char_p, _SUCCESS_CB, ctypes.c_void_p]
         l._room_ready = True
     return l
 
@@ -123,6 +125,12 @@ class _Session:
         def done(_c, _ok, _u):
             pass
         self.wait(self.l.pa_context_set_default_source(self.ctx, name.encode(), done, None))
+
+    def set_default_sink(self, name: str) -> None:
+        @_SUCCESS_CB
+        def done(_c, _ok, _u):
+            pass
+        self.wait(self.l.pa_context_set_default_sink(self.ctx, name.encode(), done, None))
 
     def close(self) -> None:
         self.l.pa_context_disconnect(self.ctx)
@@ -226,6 +234,96 @@ class VirtualMic:
             self._give_back(s)
             self.on = False
             Log.d("room: 知了 麦克风 removed")
+        finally:
+            s.close()
+
+
+AEC_SINK = "cicada_aec_out"
+AEC_MIC = "cicada_aec_mic"
+
+
+def _real_sink_path() -> str:
+    return os.path.join(os.path.dirname(Paths.log()), "real-sink")
+
+
+class EchoCanceller:
+    """电脑和会议室: the online voices taken out of the room mic, so a remote sentence isn't heard
+    twice and the room can talk over it (the Mac's voice-processing unit). One sound-server module,
+    module-echo-cancel (WebRTC's canceller, in PipeWire and PulseAudio):
+
+      cicada_aec_out   an output in front of the speakers, made the default while it runs: what it
+                       plays is what the canceller takes out (the meeting app's voices)
+      cicada_aec_mic   the room microphone with them taken out: the room side listens to it
+
+    Removed when 电脑和会议室 stops, on 退出, SIGTERM, and after a crash at the next launch; the
+    output that was the default is the default again each time."""
+
+    def __init__(self):
+        self.on = False
+        try:
+            with open(_real_sink_path()) as f:
+                self.real_sink = f.read().strip() or None
+        except OSError:
+            self.real_sink = None
+
+    @staticmethod
+    def _ours(modules) -> list:
+        return [i for i, name, arg in modules if name == "module-echo-cancel" and ("sink_name=" + AEC_SINK) in arg]
+
+    def create(self, mic: str) -> str | None:
+        """Puts the canceller between `mic` and the speakers; the source to listen to, or None when the
+        sound server won't (the room is then gated instead)."""
+        try:
+            s = _Session()
+        except OSError:
+            return None
+        try:
+            if not s.ok:
+                return None
+            self._give_back(s)
+            sink = s.server().get("sink")
+            if not sink or sink == AEC_SINK:
+                return None
+            self.real_sink = sink
+            try:
+                with open(_real_sink_path(), "w") as f:
+                    f.write(sink)
+            except OSError:
+                pass
+            out_desc = L("知了 · 防回声").replace("'", "")
+            index = s.load("module-echo-cancel",
+                           "aec_method=webrtc source_master=%s sink_master=%s source_name=%s sink_name=%s "
+                           "source_properties=\"device.description='%s'\" sink_properties=\"device.description='%s'\""
+                           % (mic, sink, AEC_MIC, AEC_SINK, out_desc, out_desc))
+            if index is None:
+                Log.d("echo cancel: module not loaded")
+                return None
+            s.set_default_sink(AEC_SINK)
+            self.on = True
+            Log.d("echo cancel: on, in front of the default output")
+            return AEC_MIC
+        finally:
+            s.close()
+
+    def _give_back(self, s) -> None:
+        if s.server().get("sink") == AEC_SINK and self.real_sink:
+            s.set_default_sink(self.real_sink)
+        for index in self._ours(s.modules()):
+            s.unload(index)
+
+    def remove(self) -> None:
+        """Also what launch does (a crash may have left it): harmless when there is nothing to remove."""
+        try:
+            s = _Session()
+        except OSError:
+            return
+        try:
+            if s.ok:
+                had = bool(self._ours(s.modules()))
+                self._give_back(s)
+                if had:
+                    Log.d("echo cancel: removed")
+            self.on = False
         finally:
             s.close()
 

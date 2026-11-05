@@ -418,9 +418,10 @@ class SettingsWindow(Gtk.Window):
         phones.set_valign(Gtk.Align.CENTER)
 
         def phones_toggled(sw, _p):
-            s.speakHeadphones = sw.get_active()
-            s.save()
+            self.app.set_headphones(sw.get_active())
+            self.room_phones.set_active(sw.get_active())  # 会议室's 戴着耳机 is the same setting
         phones.connect("notify::active", phones_toggled)
+        self.speak_phones = phones
         phones_row = ui.prow(L("戴着耳机"), phones, L("和对方同时说的话也会传出去"))
         dependents.append(phones_row)
         rows.append(phones_row)
@@ -460,7 +461,18 @@ class SettingsWindow(Gtk.Window):
         if s.roomMic and all(v != s.roomMic for v, _ in options):
             options.append((s.roomMic, s.roomMic))  # chosen before, not plugged in now
         mic = choice(options, s.roomMic, set_mic)
-        rows = [ui.prow(L("听哪里"), where), ui.prow(L("麦克风"), mic, L("戴着蓝牙耳机时，自动用电脑自带的麦克风"))]
+        # 戴着耳机, the same setting as 同声传译's: nothing comes out of the speakers, so no echo to take out.
+        phones = Gtk.Switch()
+        phones.set_active(s.speakHeadphones)
+        phones.set_valign(Gtk.Align.CENTER)
+        def toggled(sw, _p):
+            app.set_headphones(sw.get_active())
+            if getattr(self, "speak_phones", None) is not None:
+                self.speak_phones.set_active(sw.get_active())
+        phones.connect("notify::active", toggled)
+        self.room_phones = phones
+        rows = [ui.prow(L("听哪里"), where), ui.prow(L("麦克风"), mic, L("戴着蓝牙耳机时，自动用电脑自带的麦克风")),
+                ui.prow(L("戴着耳机"), phones, L("戴着就不用防回声，桌边的话不会被丢；和同声传译共用这个开关"))]
         return self._group(L("会议室"), ui.boxed(rows)), [where, mic]
 
     def _group(self, title, body, footer=None) -> Gtk.Widget:

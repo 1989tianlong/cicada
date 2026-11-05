@@ -13,6 +13,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
+from ..core.strings import L  # noqa: E402
+
 CSS = b"""
 * { font-family: "Noto Sans", sans-serif; font-size: 13px; }
 .ground { background-color: #F3F4F6; }
@@ -148,6 +150,9 @@ button.iconbtn.on { background-color: #F3F4F6; color: #15171C; }
 .chip { background-color: #F2F3F5; border-radius: 5px; padding: 1px 6px; color: #15171C; }
 .chip.now { background-color: #E8552B; color: #FFFFFF; }
 .chip.time { background-color: transparent; padding: 0; color: #B33A14; }
+.placetag { border-radius: 4px; border: 1px solid #E4E6EA; }
+.placetag.room { background-color: #F2F3F5; border-color: #F2F3F5; }
+.placetag label { color: #5A5F6B; }
 .badge { background-color: #FDEEE8; border-radius: 5px; padding: 0 6px; color: #B33A14; }
 .softcard { background-color: #F5F6F8; border-radius: 12px; }
 .summarycard { background-color: #F5F6F8; border-radius: 12px; }
@@ -261,6 +266,9 @@ button.pillkeep label { color: #15171C; }
 .panel.dark .chip { background-color: #34363D; color: #F2F3F5; }
 .panel.dark .chip.now { background-color: #E8552B; }
 .panel.dark .chip.time { background-color: transparent; color: #F08A6C; }
+.panel.dark .placetag { border-color: #44474F; }
+.panel.dark .placetag.room { background-color: #34363D; border-color: #34363D; }
+.panel.dark .placetag label { color: #A3A7B1; }
 .panel.dark .link { color: #F08A6C; }
 .panel.dark .badge { background-color: rgba(232,85,43,0.18); color: #F08A6C; }
 .panel.dark button.iconbtn:hover { background-color: rgba(255,255,255,0.08); }
@@ -627,6 +635,18 @@ def ring_pixbuf(fraction: float, px: int = 26, track: str = "#3A3D45", color: st
     loader.write(svg.encode())
     loader.close()
     return loader.get_pixbuf()
+
+
+def place_tag(line) -> Gtk.Widget:
+    """现场 / 线上 beside the other side's label in a meeting that heard both (the Mac's PlaceTag): filled
+    for the room microphone, outlined for the computer's audio."""
+    room = line.via == "room"
+    l = text(L("现场") if room else L("线上"), 10, "", wrap=False, ellipsize=False)
+    pad(l, 0, 5)  # a margin: GTK 3 ignores CSS padding on an EventBox
+    c = panel(l, "placetag", *(["room"] if room else []))
+    c.set_valign(Gtk.Align.CENTER)
+    c.set_tooltip_text(L("会议室的麦克风听到的") if room else L("电脑里放出来的"))
+    return c
 
 
 def chip(s: str, now: bool = False) -> Gtk.Widget:

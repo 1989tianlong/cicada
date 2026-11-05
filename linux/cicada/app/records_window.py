@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from gi.repository import Gdk, Gio, GLib, Gtk
 
-from ..core import session_store, speakers
+from ..core import roommic, session_store, speakers
 from ..core.strings import L, LF
 from ..core.support import SOURCES, TARGETS, Log, clock
 from . import ui
@@ -629,7 +629,8 @@ class RecordsWindow(Gtk.Window):
         if s.lines:
             src, dst = s.lines[0].srcLang, s.lines[0].dstLang
             langs = " · " + (lang_name(src) if src == dst else lang_name(src) + " → " + lang_name(dst))
-        place = " · " + L("会议室") if s.room else ""  # heard through a microphone in the room, as on the Mac
+        # Heard through a microphone in the room, and with the computer's audio too: as on the Mac.
+        place = " · " + (L("电脑和会议室") if roommic.heard_both(s.lines) else L("会议室")) if s.room else ""
         return "%s · %s · %d %s%s%s" % (session_store._local_date(s.startedAt, L("M月d日 HH:mm")), L("正在听") if live else clock(s.duration),
                                         len(s.lines), L("句"), langs, place)
 
@@ -659,7 +660,7 @@ class RecordsWindow(Gtk.Window):
             self.columns.reorder_child(new, 0)
             new.show_all()
         self._nums = speakers.numbers(s.lines) if self._vnums else {}
-        starts = speakers.run_starts(s.lines, self._nums)
+        starts = self._starts(s.lines)
         for i, l in enumerate(s.lines[:len(self._rows)]):
             if self._rows[i][0] != self._row_key(l, l.id in starts):
                 old_row = self._rows[i][1]
@@ -783,6 +784,7 @@ class RecordsWindow(Gtk.Window):
         self.transcript = col
         self._both = s.sourceFile is None and any(l.speaker == "me" for l in s.lines)
         self._nums, self._vnums, self._shown = self._speakers(s)
+        self._places = roommic.heard_both(s.lines)
         self._speaker_key = self._speaker_state_key(s)
         self._sid = s.id
         if self._vnums:
@@ -804,7 +806,9 @@ class RecordsWindow(Gtk.Window):
     def _speaker_state_key(self, s):
         _n, vnums, shown = self._speakers(s)
         busy = s.id in self.app.namer.busy
-        return (tuple(sorted(vnums.items())), tuple(sorted(shown.items())), str(sorted((s.voiceGuesses or {}).keys())), busy)
+        # The room side's first line in 电脑和会议室: every line of theirs now says where it was heard.
+        return (tuple(sorted(vnums.items())), tuple(sorted(shown.items())), str(sorted((s.voiceGuesses or {}).keys())), busy,
+                roommic.heard_both(s.lines))
 
     def _row_key(self, l, start):
         return (l.id, l.src, l.dst, l.voice, start)
@@ -976,8 +980,11 @@ class RecordsWindow(Gtk.Window):
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         # Whose it is, where the speaker changes (as chat apps do): with voices told apart, or in a
         # meeting I spoke in through 同声传译.
-        if start and (self._both or self._vnums):
-            texts.pack_start(self._speaker_label(l), False, False, 0)
+        if start and (self._both or self._vnums or self._places):
+            label = self._speaker_label(l)
+            if self._places and l.speaker != "me":
+                label = ui.hbox(6, label, ui.place_tag(l))
+            texts.pack_start(label, False, False, 0)
         translated = l.dst and l.dst != l.src
         texts.pack_start(ui.text(l.dst if translated else l.src, 13, "ink", selectable=True, width_chars=46,
                                  lang=l.dstLang if translated else l.srcLang), False, False, 0)
@@ -986,6 +993,11 @@ class RecordsWindow(Gtk.Window):
         row.pack_start(texts, True, True, 0)
         ui.pad(row, 9, 0, 9, 0)
         return self._row_key(l, start), ui.panel(row, "transcript-row")
+
+    def _starts(self, lines) -> set:
+        """Lines whose speaker label shows: a change of speaker, or in 电脑和会议室 of place too."""
+        starts = speakers.run_starts(lines, self._nums)
+        return starts | roommic.place_starts(lines) if self._places else starts
 
     def _more_rows(self, first: bool = False) -> None:
         """Rows not shown yet: the first screenful at once, the rest in batches between frames, so
@@ -999,7 +1011,7 @@ class RecordsWindow(Gtk.Window):
             if s is None:
                 return False
             lines = s.lines
-            starts = speakers.run_starts(lines, self._nums)
+            starts = self._starts(lines)
             for l in lines[len(self._rows):len(self._rows) + count]:
                 k, row = self._row(l, l.id in starts)
                 self.transcript.pack_start(row, False, False, 0)
