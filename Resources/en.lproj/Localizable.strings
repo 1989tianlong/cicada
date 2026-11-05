@@ -95,7 +95,7 @@
 "正在检查…" = "Checking…";
 "已连接" = "Connected";
 "%@ 现在很忙" = "%@ is busy right now";
-"填入 Ling key 后才能识别语音、出字幕和纪要" = "Enter a Ling key to transcribe speech and generate subtitles and notes";
+"填入 Ling key 后才能识别语音、出字幕和纪要" = "Subtitles and notes need a Ling key";
 "不填 key 时，字幕和翻译仍可正常使用" = "Subtitles and translation work without a key";
 "更换" = "Change";
 "保存并检查" = "Save and check";
