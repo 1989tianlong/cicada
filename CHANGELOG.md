@@ -44,6 +44,7 @@ Intel Macs, Listen to › Room on Windows and Linux and Computer + Room on every
 - Switching speech recognition back to this Mac, or to another AI service, during a meeting stops sending its audio to the service ([a2746a2](https://github.com/wquguru/cicada/commit/a2746a283f2c6116b8cec6c6bf99826476268e6e))
 - Translations heard by the AI service no longer start with a note about which language the meeting is in ([7c0be87](https://github.com/wquguru/cicada/commit/7c0be8720cd11f946a31d9da9e2469c06015bcc5))
 - A long meeting's live notes no longer give a topic a start time minutes after what was said in it ([e6ccaac](https://github.com/wquguru/cicada/commit/e6ccaacc266420d5d7062959331fb61bddf2410b))
+- A server on the local network that can't be reached no longer gets advice to turn on a proxy ([73c0457](https://github.com/wquguru/cicada/commit/73c04579518e954a9f11690f217a6b6f874848f4))
 
 ### Windows
 
@@ -81,6 +82,7 @@ Intel Macs, Listen to › Room on Windows and Linux and Computer + Room on every
 - A long meeting's live notes no longer give a topic a start time minutes after what was said in it ([0ea6180](https://github.com/wquguru/cicada/commit/0ea618084dd63070b66a5a91621a50aa7bf2bac7))
 - The update download shows its progress as 39% instead of 39%% ([dedc2dc](https://github.com/wquguru/cicada/commit/dedc2dc05cfa069e9c253700a03db488db7bc156))
 - Generate Notes on a meeting record says it is writing them and can't be clicked twice ([1961635](https://github.com/wquguru/cicada/commit/19616354f5c5e761d056ff8210853f4a8bedc8cc))
+- A server on the local network that can't be reached no longer gets advice to turn on a proxy ([9bbf2f7](https://github.com/wquguru/cicada/commit/9bbf2f78f0f9963509e8cdf9e587df983e91863d))
 
 ### Android
 
@@ -147,6 +149,8 @@ Intel Macs, Listen to › Room on Windows and Linux and Computer + Room on every
 - Translations heard by the AI service no longer start with a note about which language the meeting is in ([8413c00](https://github.com/wquguru/cicada/commit/8413c009e877f43ece95b2b0b3956f5ee8bfb814))
 - The key field of your own AI server is wide enough to read its hint in English, Japanese and Korean ([96e714b](https://github.com/wquguru/cicada/commit/96e714babb1165bd086b6210fdae25657f8f74d2))
 - A long meeting's live notes no longer give a topic a start time minutes after what was said in it ([4187d08](https://github.com/wquguru/cicada/commit/4187d08eb52c5f5609e79fd47818f2f8144ecc57))
+- The switch-source menu in the live notes window opens and works instead of freezing the app ([1d3169c](https://github.com/wquguru/cicada/commit/1d3169c0d2097d8f116024e9c6fb7273e50bf03a))
+- A server on the local network that can't be reached no longer gets advice to turn on a proxy ([1c4c5d0](https://github.com/wquguru/cicada/commit/1c4c5d011c8fbfaf4c270a76df1c85991242b7d8))
 
 ### Website
 
