@@ -16,6 +16,8 @@ class Segmenter {
     companion object {
         const val RATE = 16000
         private const val FRAME = 480 // 30 ms
+        private const val STEP = 160 // 10 ms: a key click is judged in these, as the Mac's VoiceActivity does
+        private const val ONSET = 3 // steps of sound before it counts as speech
         @Volatile var threshold = 0.01 // the Mac AudioRouter's gate (about -40 dBFS)
         @Volatile var pause = 0.6
         @Volatile var maxLength = 8.0
@@ -37,6 +39,9 @@ class Segmenter {
     private val current = ShortList()            // the open segment
     private val levels = ArrayList<Double>()     // per frame of `current`
     private val highs = ArrayList<Double>()      // per frame of `current`: its level over 100 Hz
+    private val speech = ArrayList<Boolean>()    // per frame of `current`: whether it held speech (isSpeech)
+    private var sounding = 0                     // 10 ms steps of sound in a row so far
+    private var carried = false                  // the sound that made the last frame speech began in the frame before
     private var hx = 0.0                         // the high-pass's last input and output, carried from frame to frame
     private var hy = 0.0
     private val before = ArrayDeque<Triple<ShortArray, Double, Double>>() // recent quiet frames and their levels, for the pre-roll
@@ -63,10 +68,30 @@ class Segmenter {
         if (current.size > 0) close(current.size - quietFrames * FRAME + (TAIL * RATE).toInt())
     }
 
+    /// Whether the frame holds speech: sound that has lasted 30 ms, judged in 10 ms steps against the
+    /// line, so a lone key click (a few ms) neither opens a segment nor breaks the pause that ends one
+    /// (VoiceActivity.swift's onset); the pre-roll then reaches back to where that sound began.
+    private fun isSpeech(frame: ShortArray): Boolean {
+        val line = threshold
+        var said = false
+        var early = sounding > 0
+        var i = 0
+        while (i < frame.size) {
+            val end = minOf(frame.size, i + STEP)
+            var sum = 0.0
+            for (k in i until end) sum += frame[k].toDouble() * frame[k]
+            if (Math.sqrt(sum / (end - i)) / 32768 >= line) {
+                if (++sounding >= ONSET && !said) { said = true; carried = early }
+            } else { sounding = 0; early = false }
+            i = end
+        }
+        return said
+    }
+
     private fun step(frame: ShortArray) {
         val level = Wav.rms(frame)
         val high = high(frame)
-        val loud = level >= threshold
+        val loud = isSpeech(frame)
         val now = consumed / RATE.toDouble()
         consumed += frame.size
 
@@ -75,13 +100,15 @@ class Segmenter {
                 idle.addLast(level)
                 while (idle.size > (pause * RATE / FRAME).toInt()) idle.removeFirst()
                 before.addLast(Triple(frame, level, high))
-                while (before.size > PRE_ROLL * RATE / FRAME) before.removeFirst()
+                while (before.size > PRE_ROLL * RATE / FRAME + 1) before.removeFirst()
                 return
             }
+            // One frame more when the sound began in the last quiet one.
+            while (before.size > PRE_ROLL * RATE / FRAME + (if (carried) 1 else 0)) before.removeFirst()
             currentStart = now - before.size * FRAME / RATE.toDouble()
             lead = idle.minOrNull()
             idle.clear()
-            for ((f, l, h) in before) { current.addAll(f, 0, f.size); levels.add(l); highs.add(h) }
+            for ((f, l, h) in before) { current.addAll(f, 0, f.size); levels.add(l); highs.add(h); speech.add(false) }
             before.clear()
             quietFrames = 0; loudFrames = 0
         }
@@ -89,6 +116,7 @@ class Segmenter {
         current.addAll(frame, 0, frame.size)
         levels.add(level)
         highs.add(high)
+        speech.add(loud)
         if (loud) { quietFrames = 0; loudFrames++ } else quietFrames++
 
         if (quietFrames * FRAME >= pause * RATE) {
@@ -186,26 +214,28 @@ class Segmenter {
         val rest = current.slice(end, current.size)
         val restLevels = ArrayList(levels.subList(minOf(levels.size, end / FRAME), levels.size))
         val restHighs = ArrayList(highs.subList(minOf(highs.size, end / FRAME), highs.size))
+        val restSpeech = ArrayList(speech.subList(minOf(speech.size, end / FRAME), speech.size))
         val start = currentStart
         val sent = ArrayList(levels.subList(0, minOf(levels.size, end / FRAME)))
-        val speech = if (isWord(levels)) sent.count { it >= threshold / 4 } * FRAME >= minWord * RATE
+        val said = if (isWord(levels)) sent.count { it >= threshold / 4 } * FRAME >= minWord * RATE
             else loudFrames * FRAME >= minSpeech * RATE && !isSteady(sent)
-        val heard = speech && !isRumble(sent, ArrayList(highs.subList(0, sent.size)))
-        current.clear(); levels.clear(); highs.clear()
+        val heard = said && !isRumble(sent, ArrayList(highs.subList(0, sent.size)))
+        current.clear(); levels.clear(); highs.clear(); speech.clear()
         quietFrames = 0; loudFrames = 0
         if (heard) onSegment?.invoke(Segment(++index, Math.round(start * 1000) / 1000.0, samples))
 
         // A forced cut carries on with the remainder; after a pause the remainder is silence.
-        if (restLevels.any { it >= threshold }) {
+        if (restSpeech.any { it }) {
             currentStart = start + end / RATE.toDouble()
             lead = null
             current.addAll(rest, 0, rest.size)
             levels.addAll(restLevels)
             highs.addAll(restHighs)
+            speech.addAll(restSpeech)
             var trailing = 0
-            for (i in levels.indices.reversed()) { if (levels[i] >= threshold) break; trailing++ }
+            for (i in speech.indices.reversed()) { if (speech[i]) break; trailing++ }
             quietFrames = trailing
-            loudFrames = levels.count { it >= threshold }
+            loudFrames = speech.count { it }
         }
     }
 }

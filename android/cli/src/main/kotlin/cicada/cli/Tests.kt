@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.sin
 
 object Tests {
@@ -54,6 +55,7 @@ object Tests {
             "cleansTranslations" to ::cleansTranslations,
             "joinsCutSentences" to ::joinsCutSentences,
             "segmentsOnPauses" to ::segmentsOnPauses,
+            "keyClicksAreNotSpeech" to ::keyClicksAreNotSpeech,
             "cutsLongSpeechAtItsQuietestMoment" to ::cutsLongSpeech,
             "ignoresClicks" to ::ignoresClicks,
             "wavRoundTrip" to ::wavRoundTrip,
@@ -420,6 +422,14 @@ object Tests {
         (sin(2 * PI * 300 * it / 16000) * env * amp * 32767).toInt().toShort()
     }
     private fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
+    /// Typing: a key click every 0.2 s, 6 ms of decaying crackle peaking near -12 dBFS (scripts/vad-clips.py).
+    private fun keys(seconds: Double) = silence(seconds).also { out ->
+        var at = 1600
+        while (at < out.size - 96) {
+            for (k in 0 until 96) out[at + k] = (0.25 * exp(-k / 24.0) * (if (k % 2 == 1) 1 else -1) * 32767).toInt().toShort()
+            at += 3200
+        }
+    }
     /// A sine at `freq` that swells and fades four times a second like syllables.
     private fun hz(freq: Double, seconds: Double, amp: Double) = ShortArray((seconds * 16000).toInt()) {
         (sin(2 * PI * freq * it / 16000) * (0.55 + 0.45 * sin(2 * PI * 4 * it / 16000)) * amp * 32767).toInt().toShort()
@@ -455,6 +465,13 @@ object Tests {
         check(list[1].seconds in 6.9..7.4, "cut inside the dip, got ${list[1].seconds}")
         check(list.all { it.seconds <= 8.0 }, "no segment over 8 s")
         check(abs(list[2].start - (list[1].start + list[1].seconds)) < 0.001, "the rest carries on without a gap")
+    }
+
+    fun keyClicksAreNotSpeech() {
+        val list = cut(tone(2.0), keys(1.5), tone(1.5), silence(1.0))
+        equal(2, list.size, "clicks in a pause don't hold it open")
+        check(abs(list[1].start - 3.35) < 0.06, "second start, got ${list[1].start}")
+        equal(0, cut(silence(0.5), keys(3.0), silence(1.0)).size, "typing alone makes no segment")
     }
 
     fun ignoresClicks() {
