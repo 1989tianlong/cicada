@@ -1119,6 +1119,8 @@ final class AppModel: ObservableObject {
             guard let id = self?.settings.provider.id, id != .ling else { return "ming" }
             return id.rawValue
         }
+        // Takes effect from the next meeting: one already running keeps how it listens.
+        Recognition.serverPreferred = c.transcribes
         ling.reconfigure()
         applyVoice()
     }
@@ -1894,7 +1896,8 @@ final class AppModel: ObservableObject {
             ling.simulateBalance = arg == "lowBalance" ? 0.4 : nil
             Task { await ling.check() }
         // AI service: aiProvider:<ling|openrouter|zenmux|openai|custom>, aiTextModel:<id>, aiVoiceModel:<id|"">,
-        // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>.
+        // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>, aiCustomHearModel:<name>,
+        // aiCustomHearBase:<url|"">, aiCustomRecognize:on|off.
         case "aiProvider": settings.aiProvider = AIProvider.named(arg).id.rawValue; applyAIService()
         case "aiTextModel":
             if settings.provider.id == .ling { settings.aiModel = arg } else { settings.aiModels[settings.aiProvider] = arg }
@@ -1903,6 +1906,9 @@ final class AppModel: ObservableObject {
         case "aiCustomBase": settings.aiCustomBase = arg; applyAIService()
         case "aiCustomVoiceBase": settings.aiCustomVoiceBase = arg; applyAIService()
         case "aiCustomVoice": settings.aiCustomVoice = arg; applyAIService()
+        case "aiCustomHearModel": settings.aiCustomHearModel = arg; applyAIService()
+        case "aiCustomHearBase": settings.aiCustomHearBase = arg; applyAIService()
+        case "aiCustomRecognize": settings.aiCustomRecognize = arg == "on"; applyAIService()
         case "subtitles": setSubtitles(arg)
         case "meetingSubtitles": setSubtitles(arg, meetingOnly: true)
         case "notesLang": setNotesLanguage(arg)

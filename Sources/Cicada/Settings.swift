@@ -124,6 +124,18 @@ final class AppSettings: ObservableObject {
     @Published var aiCustomVoice: String {
         didSet { save() }
     }
+    /// The custom service's speech recognition model (`/audio/transcriptions`, e.g. Qwen3-ASR) and
+    /// its address (empty: the same one), and whether the meeting is recognized there instead of on
+    /// this Mac (off by default: the audio then leaves the Mac).
+    @Published var aiCustomHearModel: String {
+        didSet { save() }
+    }
+    @Published var aiCustomHearBase: String {
+        didSet { save() }
+    }
+    @Published var aiCustomRecognize: Bool {
+        didSet { save() }
+    }
 
     var provider: AIProvider { AIProvider.named(aiProvider) }
 
@@ -138,8 +150,12 @@ final class AppSettings: ObservableObject {
             let voice = (aiVoiceModels["custom"] ?? "").trimmingCharacters(in: .whitespaces)
             let voiceBase = aiCustomVoiceBase.isEmpty ? base : AIProvider.customBase(aiCustomVoiceBase)
             let name = aiCustomVoice.trimmingCharacters(in: .whitespaces)
+            let hear = aiCustomHearModel.trimmingCharacters(in: .whitespaces)
+            let hearBase = aiCustomHearBase.isEmpty ? base : AIProvider.customBase(aiCustomHearBase)
+            let recognizes = aiCustomRecognize && !hear.isEmpty
             return AIConfig(provider: p, base: base, textModel: aiModels["custom"] ?? "", voiceModel: voice.isEmpty ? nil : voice,
-                            voiceBase: voiceBase, customVoice: name.isEmpty ? nil : name)
+                            voiceBase: voiceBase, customVoice: name.isEmpty ? nil : name,
+                            hearModel: recognizes ? hear : nil, hearBase: recognizes ? hearBase : nil)
         default:
             return AIConfig(provider: p, base: p.base, textModel: aiModels[p.id.rawValue] ?? p.textModels.first?.id ?? "",
                             voiceModel: p.hasVoices ? aiVoiceModels[p.id.rawValue] ?? p.voiceModels.first?.id : nil, voiceBase: p.base)
@@ -225,6 +241,9 @@ final class AppSettings: ObservableObject {
         aiCustomBase = defaults.string(forKey: "aiCustomBase") ?? ""
         aiCustomVoiceBase = defaults.string(forKey: "aiCustomVoiceBase") ?? ""
         aiCustomVoice = defaults.string(forKey: "aiCustomVoice") ?? ""
+        aiCustomHearModel = defaults.string(forKey: "aiCustomHearModel") ?? ""
+        aiCustomHearBase = defaults.string(forKey: "aiCustomHearBase") ?? ""
+        aiCustomRecognize = defaults.bool(forKey: "aiCustomRecognize")
         displayMode = defaults.string(forKey: "displayMode") ?? "notes"
         speakVoices = defaults.dictionary(forKey: "speakVoices") as? [String: String] ?? [:]
         endWithApp = defaults.object(forKey: "endWithApp") as? Bool ?? true
@@ -274,6 +293,9 @@ final class AppSettings: ObservableObject {
         defaults.set(aiCustomBase, forKey: "aiCustomBase")
         defaults.set(aiCustomVoiceBase, forKey: "aiCustomVoiceBase")
         defaults.set(aiCustomVoice, forKey: "aiCustomVoice")
+        defaults.set(aiCustomHearModel, forKey: "aiCustomHearModel")
+        defaults.set(aiCustomHearBase, forKey: "aiCustomHearBase")
+        defaults.set(aiCustomRecognize, forKey: "aiCustomRecognize")
         defaults.set(displayMode, forKey: "displayMode")
         defaults.set(speakVoices, forKey: "speakVoices")
         defaults.set(endWithApp, forKey: "endWithApp")

@@ -18,7 +18,13 @@ struct AISettingsView: View {
     private var provider: AIProvider { settings.provider }
     private var name: String { provider.name }
 
+    @State private var open: Set<String> = []
+
     var body: some View {
+        if provider.id == .custom { customPage } else { servicePage }
+    }
+
+    private var servicePage: some View {
         VStack(alignment: .leading, spacing: 14) {
             keyCard
             Text("现在能用的").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
@@ -41,6 +47,234 @@ struct AISettingsView: View {
         .onChange(of: settings.aiProvider) { _, _ in syncDrafts(); editing = false; draft = ""; keyHint = nil }
     }
 
+    // MARK: Own service
+
+    /// 其他（兼容 OpenAI）: one row per use, each at its own address if need be (a text model, a
+    /// speech model and a recognition model often run as separate servers), each saying whether it
+    /// works and how fast. Recognition stays on this Mac unless the user picks their service.
+    private var customPage: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("每样可以接不同的机器；这台 Mac 和局域网里的服务可以用 http。")
+                .font(.system(size: 12)).foregroundStyle(Palette.tertiary).fixedSize(horizontal: false, vertical: true)
+            SettingsCard {
+                textSection
+                Divider()
+                voiceSection
+                Divider()
+                hearSection
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "lock").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                Text(lockLine).font(.system(size: 11)).foregroundStyle(Palette.tertiary).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                if let key = ling.key, !key.isEmpty {
+                    Button("移除 key") { ling.removeKey() }
+                        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                }
+            }
+            Text(footnote).font(.system(size: 12)).foregroundStyle(Palette.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear {
+            syncDrafts()
+            // A service that isn't set up yet, or doesn't work, opens where it needs filling in.
+            if open.isEmpty, !ling.aiCheck.passed || ling.aiCheck.slow { open = ["text"] }
+        }
+        .onChange(of: settings.aiProvider) { _, _ in syncDrafts(); editing = false; draft = ""; keyHint = nil }
+    }
+
+    /// A row that opens to its fields: a state dot, the use, what it runs on, and how it's doing.
+    private func sectionHeader(_ id: String, title: String, detail: String, dot: Color, trailing: String?,
+                               trailingColor: Color = Palette.tertiary) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) { if open.contains(id) { open.remove(id) } else { open.insert(id) } }
+        } label: {
+            HStack(spacing: 10) {
+                Circle().fill(dot).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13)).foregroundStyle(Palette.ink)
+                    Text(detail).font(.system(size: 11)).foregroundStyle(Palette.tertiary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing).font(.system(size: 12).monospacedDigit()).foregroundStyle(trailingColor).lineLimit(1).fixedSize()
+                }
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Palette.secondary)
+                    .rotationEffect(.degrees(open.contains(id) ? 90 : 0))
+            }
+            .padding(.horizontal, 16).frame(minHeight: 52).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var textHost: String { AIProvider.customBase(baseDraft)?.host ?? settings.aiConfig.base?.host ?? "" }
+
+    @ViewBuilder private var textSection: some View {
+        let check = ling.aiCheck
+        let model = settings.aiModels["custom"] ?? ""
+        let detail = textHost.isEmpty || model.isEmpty ? L("填上地址和模型") : "\(textHost) · \(model)"
+        let trailing: String? = check.running ? L("正在检查…") : check.failure != nil && ling.hasKey ? statusTitle
+            : check.translate.map { L("翻一句 \(String(format: "%.1f", $0.seconds)) 秒") }
+        sectionHeader("text", title: L("翻译和纪要"), detail: detail, dot: customTextDot, trailing: trailing,
+                      trailingColor: check.slow ? Palette.warn : check.failure != nil ? Palette.error : Palette.tertiary)
+        if open.contains("text") {
+            VStack(alignment: .leading, spacing: 8) {
+                field(L("地址"), "http://192.168.1.20:8000/v1", $baseDraft)
+                if !baseDraft.isEmpty, AIProvider.customBase(baseDraft) == nil {
+                    Text("地址要用 https；这台 Mac 和局域网里的服务可以用 http。").font(.system(size: 11)).foregroundStyle(Palette.error)
+                        .padding(.leading, 42)
+                }
+                HStack(spacing: 8) {
+                    Text("模型").font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(minWidth: 34, alignment: .leading).fixedSize()
+                    if ling.catalog.isEmpty {
+                        TextField(L("例如 qwen3:14b"), text: $textDraft)
+                            .textFieldStyle(.plain).font(.system(size: 13, design: .monospaced))
+                            .padding(.horizontal, 12).frame(height: 32)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.line, lineWidth: 1))
+                            .onSubmit(save)
+                    } else {
+                        // The models the service lists: picking one saves and checks it.
+                        ModelMenu(value: textDraft, recommended: [], catalog: ling.catalog) {
+                            textDraft = $0
+                            save()
+                        }
+                        Spacer()
+                    }
+                }
+                HStack(spacing: 8) {
+                    Text("key").font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(minWidth: 34, alignment: .leading).fixedSize()
+                    if let key = ling.key, !key.isEmpty, !editing {
+                        Text(AIKey.masked(key)).font(.system(size: 13, design: .monospaced)).foregroundStyle(Palette.ink)
+                            .padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.line, lineWidth: 1))
+                        SoftButton(L("更换")) { draft = ""; editing = true }
+                    } else {
+                        SecureField(keyPlaceholder, text: $draft)
+                            .textFieldStyle(.plain).font(.system(size: 13, design: .monospaced))
+                            .padding(.horizontal, 12).frame(height: 32)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.line, lineWidth: 1))
+                            .onSubmit(save)
+                    }
+                    SoftButton(check.running ? L("正在检查…") : L("保存并检查"), dark: true, action: save)
+                        .disabled(check.running)
+                }
+                if let hint = keyHint {
+                    Text(hint.text).font(.system(size: 12)).foregroundStyle(Palette.error).fixedSize(horizontal: false, vertical: true)
+                }
+                if let slow = check.slowLine() {
+                    Text(slow).font(.system(size: 12)).foregroundStyle(Palette.warn).fixedSize(horizontal: false, vertical: true)
+                }
+                if showSteps {
+                    AICheckSteps(model: model_, ling: ling, recheckInStep: false) { draft = ""; editing = true }
+                        .padding(.horizontal, 12).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line, lineWidth: 1))
+                } else if check.passed {
+                    Text(textFacts).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                }
+            }
+            .padding(.leading, 34).padding(.trailing, 16).padding(.bottom, 14)
+        }
+    }
+
+    private var model_: AppModel { model }
+
+    /// "能写纪要 · 不思考": what the check proved beyond the speed.
+    private var textFacts: String {
+        var parts = [ling.aiCheck.failure == nil ? L("能写纪要") : L("纪要写不了")]
+        if let t = ling.aiCheck.translate { parts.append(t.thinks ? L("会先思考") : L("不思考")) }
+        return parts.joined(separator: " · ")
+    }
+
+    private var customTextDot: Color {
+        let check = ling.aiCheck
+        if !ling.hasKey { return Color(white: 0.75) }
+        if check.running { return Palette.accent }
+        if check.failure != nil { return Palette.error }
+        if check.slow || check.busy { return Palette.warn }
+        return check.passed ? Palette.ok : Color(white: 0.75)
+    }
+
+    @ViewBuilder private var voiceSection: some View {
+        let c = settings.aiConfig
+        let voiceModel = settings.aiVoiceModels["custom"] ?? ""
+        let host = c.voiceBase?.host ?? textHost
+        let detail = voiceModel.isEmpty ? L("没填，用本机声音")
+            : [host, voiceModel, settings.aiCustomVoice].filter { !$0.isEmpty }.joined(separator: " · ")
+        let last = ling.lastVoice
+        sectionHeader("voice", title: L("同传声音"), detail: detail,
+                      dot: voiceModel.isEmpty ? Color(white: 0.75) : last.map { $0.ok ? Palette.ok : Palette.error } ?? Color(white: 0.75),
+                      trailing: voiceModel.isEmpty ? L("本机") : last.map { $0.ok ? L("上次正常") : L("上次没出声") },
+                      trailingColor: last?.ok == false ? Palette.error : Palette.tertiary)
+        if open.contains("voice") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("需支持 /audio/speech；不填则用本机声音。").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                CommitField(label: L("模型"), placeholder: L("例如 qwen3-tts"), value: voiceModel) {
+                    settings.aiVoiceModels["custom"] = $0
+                    model.applyAIService()
+                }
+                CommitField(label: L("声音"), placeholder: L("例如 vivian"), value: settings.aiCustomVoice) {
+                    settings.aiCustomVoice = $0
+                    model.applyAIService()
+                }
+                CommitField(label: L("地址"), placeholder: L("跟上面一样"), value: settings.aiCustomVoiceBase) {
+                    settings.aiCustomVoiceBase = $0
+                    model.applyAIService()
+                }
+            }
+            .padding(.leading, 34).padding(.trailing, 16).padding(.bottom, 14)
+        }
+    }
+
+    @ViewBuilder private var hearSection: some View {
+        let c = settings.aiConfig
+        let own = settings.aiCustomRecognize
+        let hearModel = settings.aiCustomHearModel
+        let host = (settings.aiCustomHearBase.isEmpty ? c.base : AIProvider.customBase(settings.aiCustomHearBase))?.host ?? textHost
+        let hear = ling.aiCheck.hear
+        HStack(spacing: 10) {
+            Circle().fill(!own ? Palette.ok : hear?.ok == true ? Palette.ok : hear == nil ? Color(white: 0.75) : Palette.error)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("语音识别").font(.system(size: 13)).foregroundStyle(Palette.ink)
+                Text(own ? L("会议的声音会发到 \(host)；连不上时用本机") : L("更快，不花钱，声音不出这台 Mac"))
+                    .font(.system(size: 11)).foregroundStyle(Palette.tertiary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Segments(options: [("mac", L("本机")), ("own", L("自建服务"))], value: own ? "own" : "mac") {
+                settings.aiCustomRecognize = $0 == "own"
+                if $0 == "own" { open.insert("hear") }
+                model.applyAIService()
+            }
+        }
+        .padding(.horizontal, 16).frame(minHeight: 52)
+        if own {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("需支持 /audio/transcriptions，例如 Qwen3-ASR、Whisper。下一场会议起生效。")
+                    .font(.system(size: 11)).foregroundStyle(Palette.tertiary).fixedSize(horizontal: false, vertical: true)
+                CommitField(label: L("模型"), placeholder: L("例如 qwen3-asr"), value: hearModel) {
+                    settings.aiCustomHearModel = $0
+                    model.applyAIService()
+                }
+                CommitField(label: L("地址"), placeholder: L("跟上面一样"), value: settings.aiCustomHearBase) {
+                    settings.aiCustomHearBase = $0
+                    model.applyAIService()
+                }
+                if hearModel.isEmpty {
+                    Text("填上模型才会用它识别。").font(.system(size: 12)).foregroundStyle(Palette.warn)
+                } else if let line = ling.aiCheck.hearLine(host: host, model: hearModel) {
+                    Text(line).font(.system(size: 12)).foregroundStyle(Palette.error).fixedSize(horizontal: false, vertical: true)
+                } else if case .ok(let s)? = hear {
+                    Text(L("听一秒音频 \(String(format: "%.1f", s)) 秒")).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                }
+            }
+            .padding(.leading, 34).padding(.trailing, 16).padding(.bottom, 14)
+        }
+    }
+
     // MARK: Key
 
     private var keyCard: some View {
@@ -53,7 +287,6 @@ struct AISettingsView: View {
                 }
                 Spacer()
             }
-            if provider.id == .custom { customFields }
             if let key = ling.key, !key.isEmpty, !editing {
                 HStack(spacing: 8) {
                     Text(AIKey.masked(key)).font(.system(size: 13, design: .monospaced)).foregroundStyle(Palette.ink)
@@ -127,17 +360,6 @@ struct AISettingsView: View {
         .background(RoundedRectangle(cornerRadius: 14).fill(Palette.raised))
     }
 
-    /// A custom service needs its address and a model before a key can be checked.
-    private var customFields: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            field(L("地址"), "https://api.example.com/v1", $baseDraft)
-            field(L("模型"), L("例如 qwen3:14b"), $textDraft)
-            if !baseDraft.isEmpty, AIProvider.customBase(baseDraft) == nil {
-                Text("地址需用 https，仅 localhost 可用 http。").font(.system(size: 11)).foregroundStyle(Palette.error)
-            }
-        }
-    }
-
     private func field(_ label: String, _ placeholder: String, _ text: Binding<String>) -> some View {
         HStack(spacing: 8) {
             Text(label).font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(minWidth: 34, alignment: .leading).fixedSize()
@@ -153,14 +375,14 @@ struct AISettingsView: View {
     private var keyPlaceholder: String {
         switch provider.id {
         case .openrouter: "sk-or-…"
-        case .custom: AIProvider.isLocal(baseDraft) ? L("本机服务可不填") : "sk-…"
+        case .custom: AIProvider.isNearby(baseDraft) ? L("本机和局域网服务可不填") : "sk-…"
         default: "sk-…"
         }
     }
 
     private var lockLine: String {
         let host = provider.id == .custom ? (settings.aiConfig.base?.host ?? L("你填的地址")) : (provider.base?.host ?? "")
-        return provider.id == .custom ? L("只存在这台 Mac 上（只有你的账户能读），只发给 \(host)")
+        return provider.id == .custom ? L("key 只存在这台 Mac 上（只有你的账户能读），只发给 \(host)")
             : L("只存在这台 Mac 上（只有你的账户能读），只发给 \(name)（\(host)）")
     }
 
@@ -323,8 +545,6 @@ struct AISettingsView: View {
                     model.applyAIService()
                 }
             }
-        case .custom:
-            customVoiceFields
         default:
             SettingsRow(title: L("文字模型"), detail: L("纪要和整句翻译"), divider: provider.hasVoices) {
                 ModelMenu(value: settings.textModel, recommended: provider.textModels, catalog: ling.catalog) {
@@ -343,34 +563,17 @@ struct AISettingsView: View {
         }
     }
 
-    /// A custom service speaks only when given a speech model (`/audio/speech`), maybe at another address.
-    private var customVoiceFields: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("声音（可选）").font(.system(size: 13)).foregroundStyle(Palette.ink)
-            Text("需支持 /audio/speech；不填则用本机声音。").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
-            CommitField(label: L("模型"), placeholder: L("例如 kokoro"), value: settings.aiVoiceModels["custom"] ?? "") {
-                settings.aiVoiceModels["custom"] = $0
-                model.applyAIService()
-            }
-            CommitField(label: L("声音"), placeholder: L("例如 af_heart"), value: settings.aiCustomVoice) {
-                settings.aiCustomVoice = $0
-                model.applyAIService()
-            }
-            CommitField(label: L("地址"), placeholder: L("跟上面一样"), value: settings.aiCustomVoiceBase) {
-                settings.aiCustomVoiceBase = $0
-                model.applyAIService()
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-    }
-
     private var footnote: String {
-        if Recognition.cloudOnly {
+        if Recognition.cloudOnly, provider.id != .custom {
             return L("一小时会议约 ¥0.15–1（目前优惠价）。说话的声音分段发给 Ling 识别和翻译；会议录音和文字记录只存在这台 Mac 上。")
         }
-        return switch provider.id {
-        case .ling: L("一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字（用你自己的声音时还有那段录音），语音识别留在本机。")
-        default: L("按所选模型计费。发出去的只有文字，语音识别留在本机。")
+        switch provider.id {
+        case .ling: return L("一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字（用你自己的声音时还有那段录音），语音识别留在本机。")
+        case .custom:
+            let nearby = settings.aiConfig.base.map { AIProvider.isNearby($0.absoluteString) } ?? false
+            let cost = nearby ? L("跑在你自己的机器上，不按量计费。") : L("费用以这个服务为准。")
+            return cost + (settings.aiConfig.transcribes ? L("会议的声音会发给你的服务识别。") : L("发出去的只有文字，语音识别留在本机。"))
+        default: return L("按所选模型计费。发出去的只有文字，语音识别留在本机。")
         }
     }
 }
@@ -416,9 +619,11 @@ struct ModelMenu: View {
             }
         } else {
             Menu {
-                Section(L("推荐")) {
-                    ForEach(recommended, id: \.id) { m in
-                        Button(m.note.isEmpty ? m.id : "\(m.id)  ·  \(m.note)") { onPick(m.id) }
+                if !recommended.isEmpty {
+                    Section(L("推荐")) {
+                        ForEach(recommended, id: \.id) { m in
+                            Button(m.note.isEmpty ? m.id : "\(m.id)  ·  \(m.note)") { onPick(m.id) }
+                        }
                     }
                 }
                 let rest = catalog.filter { id in !recommended.contains { $0.id == id } }

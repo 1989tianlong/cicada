@@ -194,6 +194,13 @@ final class TranslationService {
     /// call failed, so listening can tell a service that is down from a quiet meeting.
     func hear(wav: Data, seconds: Double, target: String, hint: String?,
               priority: LingClient.Priority = .translate) async throws -> CloudHeard? {
+        // A custom service's speech model only transcribes: the text is translated as the Mac's own is.
+        if ling.transcribes {
+            // No language sent: a speech model takes it as an order, and an English line in a
+            // Chinese meeting would come back as Chinese. The server tells the language itself.
+            let heard = try await ling.transcribe(wav, language: nil)
+            return CloudHearing.transcript(heard.text, reported: heard.language, hint: hint, target: target, seconds: seconds)
+        }
         guard ling.hearsAudio else { throw LingClient.Failure.noKey }
         let reply = try await ling.chat(content: CloudHearing.prompt(target: target, hint: hint, names: glossary()),
                                         instruction: CloudHearing.instruction(target: target), priority: priority,

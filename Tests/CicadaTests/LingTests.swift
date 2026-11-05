@@ -7,10 +7,12 @@ import Testing
 final class LingStub: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var reply: (Int, String) = (200, "")
     nonisolated(unsafe) static var seen: [(at: Date, body: [String: Any])] = []
+    /// Answers each request by what it asked, instead of `reply`.
+    nonisolated(unsafe) static var respond: (([String: Any]) -> (Int, String))?
     private static let lock = NSLock()
 
     static func reset(_ status: Int = 200, _ body: String) {
-        lock.withLock { reply = (status, body); seen = [] }
+        lock.withLock { reply = (status, body); seen = []; respond = nil }
     }
 
     static func chatReply(_ text: String, finish: String? = "stop") -> String {
@@ -32,7 +34,7 @@ final class LingStub: URLProtocol, @unchecked Sendable {
             stream.close()
         }
         let body = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        let (status, text) = Self.lock.withLock { Self.seen.append((Date(), body)); return Self.reply }
+        let (status, text) = Self.lock.withLock { Self.seen.append((Date(), body)); return Self.respond?(body) ?? Self.reply }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(text.utf8))
@@ -56,6 +58,38 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         config.protocolClasses = [LingStub.self]
         ling.session = URLSession(configuration: config)
         return ling
+    }
+
+    // MARK: Custom service
+
+    private func customClient() -> LingClient {
+        let ling = client()
+        ling.config = { AIConfig(provider: .custom, base: URL(string: "http://localhost:9/v1/"), textModel: "m") }
+        return ling
+    }
+
+    @Test func aServerThatRefusesTemplateKwargsIsAskedWithoutThem() async throws {
+        LingStub.reset(200, "")
+        LingStub.respond = { body in body["chat_template_kwargs"] != nil ? (400, "{}") : (200, LingStub.chatReply("好")) }
+        let ling = customClient()
+        #expect(try await ling.chat(content: "x", instruction: "Translate.", priority: .translate) == "好")
+        _ = try await ling.chat(content: "y", instruction: "Translate.", priority: .translate)
+        let bodies = LingStub.seen.map(\.body)
+        #expect(bodies.count == 3 && bodies[0]["chat_template_kwargs"] != nil && bodies[1]["chat_template_kwargs"] == nil)
+        // Not sent again once refused.
+        #expect(bodies[2]["chat_template_kwargs"] == nil)
+    }
+
+    @Test func aRefusalForSomethingElseKeepsThinkingOff() async throws {
+        LingStub.reset(200, "")
+        // No JSON mode on this server: 400 with or without the kwargs.
+        LingStub.respond = { body in body["response_format"] != nil ? (400, "{}") : (200, LingStub.chatReply("好")) }
+        let ling = customClient()
+        await #expect(throws: LingClient.Failure.http(400)) {
+            try await ling.chat(content: "x", instruction: "Notes.", priority: .translate, json: true)
+        }
+        _ = try await ling.chat(content: "y", instruction: "Translate.", priority: .translate)
+        #expect(LingStub.seen.last?.body["chat_template_kwargs"] != nil)
     }
 
     // MARK: Retries

@@ -85,20 +85,45 @@ struct AIProvider: Identifiable, Equatable {
 
     static func named(_ raw: String) -> AIProvider { all.first { $0.id.rawValue == raw } ?? .ling }
 
-    /// http only on this Mac (Ollama, LM Studio); anything else must be https.
+    /// http only on this Mac or the local network (Ollama, LM Studio, a GPU box at home or work, a
+    /// Tailscale address); anything else must be https.
     static func customBase(_ raw: String) -> URL? {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
-        if !s.contains("://") { s = (isLocal(s) ? "http://" : "https://") + s }
+        if !s.contains("://") { s = (isNearby(s) ? "http://" : "https://") + s }
         if !s.hasSuffix("/") { s += "/" }
         guard let url = URL(string: s), let host = url.host, !host.isEmpty else { return nil }
         if url.scheme == "https" { return url }
-        return url.scheme == "http" && isLocal(host) ? url : nil
+        return url.scheme == "http" && isNearby(host) ? url : nil
     }
 
+    /// This Mac: a key isn't needed.
     static func isLocal(_ hostOrURL: String) -> Bool {
-        let host = URL(string: hostOrURL.contains("://") ? hostOrURL : "http://" + hostOrURL)?.host ?? hostOrURL
-        return ["localhost", "127.0.0.1", "::1"].contains(host)
+        ["localhost", "127.0.0.1", "::1"].contains(host(of: hostOrURL))
+    }
+
+    /// This Mac or the local network: plain http is allowed and a key isn't needed. Private IPv4
+    /// (10/8, 172.16/12, 192.168/16), link-local, Tailscale's 100.64/10, IPv6 unique and link-local
+    /// addresses, and `.local` names.
+    static func isNearby(_ hostOrURL: String) -> Bool {
+        let h = host(of: hostOrURL).lowercased()
+        if isLocal(h) || h.hasSuffix(".local") { return true }
+        let parts = h.split(separator: ".").compactMap { Int($0) }
+        if parts.count == 4, h.split(separator: ".").count == 4, parts.allSatisfy({ (0...255).contains($0) }) {
+            switch (parts[0], parts[1]) {
+            case (10, _), (192, 168), (169, 254): return true
+            case (172, 16...31), (100, 64...127): return true
+            default: return false
+            }
+        }
+        if h.contains(":") { return h.hasPrefix("fc") || h.hasPrefix("fd") || h.hasPrefix("fe80") }
+        return false
+    }
+
+    private static func host(of hostOrURL: String) -> String {
+        let s = hostOrURL.trimmingCharacters(in: .whitespaces)
+        let url = URL(string: s.contains("://") ? s : "http://" + s)
+        return (url?.host ?? s).trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
     }
 }
 
@@ -120,8 +145,14 @@ struct AIConfig: Equatable {
     var voiceBase: URL?
     /// The voice a custom speech model speaks with (others pick per language).
     var customVoice: String?
+    /// A custom service's speech recognition model (`/audio/transcriptions`) and its address; nil
+    /// when recognition stays on this Mac.
+    var hearModel: String? = nil
+    var hearBase: URL? = nil
 
     var hasVoices: Bool { voiceModel != nil && voiceBase != nil }
+    /// The meeting is recognized by the custom service instead of on this Mac.
+    var transcribes: Bool { provider.id == .custom && hearModel != nil && hearBase != nil }
 
     /// The voices the room can pick from with this service.
     var voices: [CloudVoice] {
@@ -131,8 +162,11 @@ struct AIConfig: Equatable {
     }
 
     /// The request body, shaped for the service: each one turns thinking off its own way, and
-    /// OpenAI's current models take neither `max_tokens` nor a temperature.
-    func shape(_ body: inout [String: Any], maxTokens: Int) {
+    /// OpenAI's current models take neither `max_tokens` nor a temperature. A custom service gets
+    /// `chat_template_kwargs` (vLLM, SGLang and llama.cpp pass it to the chat template, which is
+    /// how Qwen3 turns thinking off); `templateKwargs` false leaves it out for a server that
+    /// refused it.
+    func shape(_ body: inout [String: Any], maxTokens: Int, templateKwargs: Bool = true) {
         switch provider.id {
         case .ling:
             body["max_tokens"] = maxTokens
@@ -148,7 +182,20 @@ struct AIConfig: Equatable {
         case .custom:
             body["max_tokens"] = maxTokens
             body["temperature"] = 0.2
+            if templateKwargs { body["chat_template_kwargs"] = ["enable_thinking": false] }
         }
+    }
+
+    /// The model thought before answering, which makes every translation slow: a `reasoning_content`
+    /// (or `reasoning`) field, reasoning tokens in the usage, or a `<think>` block in the answer.
+    static func thought(_ root: [String: Any]) -> Bool {
+        let message = ((root["choices"] as? [[String: Any]])?.first?["message"]) as? [String: Any]
+        for k in ["reasoning_content", "reasoning"] {
+            if let r = message?[k] as? String, !r.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        }
+        let details = (root["usage"] as? [String: Any])?["completion_tokens_details"] as? [String: Any]
+        if let n = details?["reasoning_tokens"] as? Int, n > 0 { return true }
+        return (message?["content"] as? String)?.contains("<think>") ?? false
     }
 
     /// Text models from a `/models` reply, recommended ones first. Leaves out what cannot chat
@@ -162,7 +209,7 @@ struct AIConfig: Equatable {
             let arch = m["architecture"] as? [String: Any]
             let out = (m["output_modalities"] ?? arch?["output_modalities"]) as? [String]
             if let out, out != ["text"], !out.contains("text") { continue }
-            if out == nil, id.range(of: #"(embed|whisper|tts|transcribe|dall-e|image|moderation|realtime|audio|sora|search)"#,
+            if out == nil, id.range(of: #"(embed|whisper|tts|asr|transcribe|dall-e|image|moderation|realtime|audio|sora|search)"#,
                                     options: .regularExpression) != nil { continue }
             ids.append(id)
         }

@@ -188,13 +188,13 @@ final class LingClient: ObservableObject {
     var session: URLSession = .shared
 
     var hasKey: Bool { key != nil }
-    /// The key for the service in use. A custom service on this Mac may need none: "".
+    /// The key for the service in use. A custom service on this Mac or the local network may need none: "".
     var key: String? {
         if hideKey { return nil }
         let c = config()
         if c.provider.id == .custom {
             guard let base = c.base else { return nil }
-            return AIKey.read(c.provider.id.rawValue) ?? (AIProvider.isLocal(base.absoluteString) ? "" : nil)
+            return AIKey.read(c.provider.id.rawValue) ?? (AIProvider.isNearby(base.absoluteString) ? "" : nil)
         }
         return AIKey.read(c.provider.id.rawValue)
     }
@@ -206,6 +206,10 @@ final class LingClient: ObservableObject {
     var clones: Bool { usable && provider.clones }
     /// Speak-back heard by the service's audio model (Ming) instead of on this Mac.
     var hearsAudio: Bool { usable && provider.hearsAudio }
+    /// The meeting recognized by the custom service's speech model instead of on this Mac.
+    var transcribes: Bool { usable && config().transcribes }
+    /// The custom service refused `chat_template_kwargs` once: leave it out until settings change.
+    private var noTemplateKwargs = false
 
     init() {
         keyState = AIKey.read() == nil ? .none : .unchecked
@@ -213,13 +217,25 @@ final class LingClient: ObservableObject {
 
     /// Settings switched service, address or model: forget the old state and check again.
     func reconfigure() {
+        noTemplateKwargs = false
+        recheck?.cancel()
         catalog = []
         listed = nil
         aiCheck = AICheck()
         lastVoice = nil
         keyState = hasKey ? .unchecked : .none
-        if hasKey { Task { await check() } }
+        // A custom service's check is two real requests (and a hear one): fields saved one after
+        // another check once, not once each.
+        if hasKey {
+            let wait = config().provider.id == .custom ? 0.8 : 0
+            recheck = Task { [weak self] in
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                guard !Task.isCancelled else { return }
+                await self?.check()
+            }
+        }
     }
+    private var recheck: Task<Void, Never>?
 
     // MARK: Key
 
@@ -249,10 +265,12 @@ final class LingClient: ObservableObject {
     /// custom service must also return JSON (the notes need it). The model list then tells whether
     /// the chosen text model still exists.
     func check() async {
-        guard let key else { keyState = .none; aiCheck = AICheck(); return }
-        keyState = .checking
+        // Counted before anything else: a slower check still running (a custom service that thinks
+        // for seconds) must not land on top of what this one finds, even "no key".
         checkGeneration += 1
         let generation = checkGeneration
+        guard let key else { keyState = .none; aiCheck = AICheck(); return }
+        keyState = .checking
         let c = config()
         var r = AICheck()
         r[.reach] = .running
@@ -286,20 +304,31 @@ final class LingClient: ObservableObject {
             case .openai:
                 _ = try await get("models", key: key)
                 r.pass(upTo: .key, seconds: Date().timeIntervalSince(started))
-            case .zenmux, .custom:
+            case .zenmux:
                 var body: [String: Any] = ["model": c.textModel, "messages": [["role": "user", "content": "hi"]]]
                 c.shape(&body, maxTokens: 1)
                 _ = try await post("chat/completions", body: body, key: key, timeout: 20)
                 r.pass(upTo: .text, seconds: Date().timeIntervalSince(started))
-                if c.provider.id == .custom {
-                    var json: [String: Any] = ["model": c.textModel, "response_format": ["type": "json_object"],
-                                               "messages": [["role": "system", "content": "Reply with the JSON object {\"ok\": true}."],
-                                                            ["role": "user", "content": "Reply."]]]
-                    c.shape(&json, maxTokens: 20)
-                    do { _ = try await post("chat/completions", body: json, key: key, timeout: 20) } catch Failure.http(let code) {
-                        r.fail(.text, .noJSON, code: code)
-                    }
+            case .custom:
+                // A real sentence, the way a meeting translates: one token says nothing about a
+                // model that thinks for six seconds before every answer.
+                var body: [String: Any] = ["model": c.textModel, "messages": [
+                    ["role": "system", "content": "Translate the text into Simplified Chinese. Reply with the translation only.\n\nWe will ship the new version on Friday after the design review."],
+                    ["role": "user", "content": "Translate."]]]
+                c.shape(&body, maxTokens: 120, templateKwargs: !noTemplateKwargs)
+                let asked = Date()
+                let root = try await postChat(body, key: key, timeout: 30)
+                let seconds = Date().timeIntervalSince(asked)
+                r.pass(upTo: .text, seconds: Date().timeIntervalSince(started))
+                r.translate = AICheck.Speed(seconds: seconds, thinks: AIConfig.thought(root))
+                var json: [String: Any] = ["model": c.textModel, "response_format": ["type": "json_object"],
+                                           "messages": [["role": "system", "content": "Reply with the JSON object {\"ok\": true}."],
+                                                        ["role": "user", "content": "Reply."]]]
+                c.shape(&json, maxTokens: 20, templateKwargs: !noTemplateKwargs)
+                do { _ = try await postChat(json, key: key, timeout: 30) } catch Failure.http(let code) {
+                    r.fail(.text, .noJSON, code: code)
                 }
+                if r.failure == nil, c.transcribes { r.hear = await checkHearing(c, key: key) }
             }
         } catch let failure as Failure {
             if let (step, reason, code) = AICheck.classify(failure, at: AICheck.firstStep(c.provider.id)) {
@@ -437,7 +466,7 @@ final class LingClient: ObservableObject {
             ],
             "stream": false,
         ]
-        c.shape(&body, maxTokens: maxTokens)
+        c.shape(&body, maxTokens: maxTokens, templateKwargs: !noTemplateKwargs)
         if json { body["response_format"] = ["type": "json_object"] }
         let waits = Self.retryWaits(priority, patient: patient)
         for attempt in 1...(waits.count + 1) {
@@ -447,7 +476,7 @@ final class LingClient: ObservableObject {
             onQueued?(queued)
             let started = Date()
             do {
-                let root = try await post("chat/completions", body: body, key: key, timeout: timeout)
+                let root = try await postChat(body, key: key, timeout: timeout)
                 guard let choice = (root["choices"] as? [[String: Any]])?.first,
                       let message = choice["message"] as? [String: Any],
                       let text = message["content"] as? String else { throw Failure.parse }
@@ -623,7 +652,93 @@ final class LingClient: ObservableObject {
         return wav
     }
 
+    // MARK: Recognition
+
+    /// What the custom service's speech model heard in `wav` (a 16 kHz mono WAV): standard
+    /// `/audio/transcriptions` (Qwen3-ASR, Whisper servers, Fun-ASR). `language` (a BCP-47 code) is
+    /// the hint, for servers that take one. Throws like a chat call, so listening can tell a
+    /// service that is down from a quiet meeting.
+    func transcribe(_ wav: Data, language: String?, timeout: TimeInterval = 12) async throws -> (text: String, language: String?) {
+        guard let key else { throw Failure.noKey }
+        let c = config()
+        guard let base = c.hearBase, let model = c.hearModel else { throw Failure.noKey }
+        let asked = Date()
+        await acquire(.translate)
+        let queued = Date().timeIntervalSince(asked)
+        let started = Date()
+        let call = CallLabel(provider: c.provider.id.rawValue, model: model, role: "heard-them")
+        var req = URLRequest(url: base.appendingPathComponent("audio/transcriptions"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        let boundary = "cicada-" + UUID().uuidString
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var fields = [("model", model), ("temperature", "0")]
+        if let language { fields.append(("language", String(language.prefix { $0 != "-" }))) }
+        req.httpBody = Self.multipart(fields: fields, file: wav, boundary: boundary)
+        do {
+            let data = try await send(req, key: key, contentType: nil)
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let text = root["text"] as? String else { throw Failure.parse }
+            report(call, .translate, at: started, queued: queued, outcome: "ok", chars: text.count)
+            return (text.trimmingCharacters(in: .whitespacesAndNewlines), root["language"] as? String)
+        } catch let failure as Failure {
+            report(call, .translate, at: started, queued: queued, outcome: Self.name(failure))
+            throw failure
+        } catch {
+            report(call, .translate, at: started, queued: queued, outcome: "parse")
+            throw Failure.parse
+        }
+    }
+
+    /// One second of silence through the speech model: does the address answer, and does the
+    /// model take audio. The time is the request's.
+    private func checkHearing(_ c: AIConfig, key: String) async -> AICheck.Hearing {
+        let started = Date()
+        do {
+            _ = try await transcribe(CloudHearing.wav(Array(repeating: 0, count: 16000)), language: nil, timeout: 20)
+            return .ok(seconds: Date().timeIntervalSince(started))
+        } catch let failure as Failure {
+            if case .http(let code) = failure { return .fail(code: code) }
+            return failure == .network || failure == .timeout ? .unreachable : .fail(code: nil)
+        } catch {
+            return .fail(code: nil)
+        }
+    }
+
+    nonisolated static func multipart(fields: [(String, String)], file: Data, boundary: String) -> Data {
+        var d = Data()
+        for (name, value) in fields {
+            d.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        d.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
+        d.append(file)
+        d.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        return d
+    }
+
     // MARK: Transport
+
+    /// A chat completion. A custom server that refuses `chat_template_kwargs` (a strict gateway
+    /// answers 400 or 422 to fields it doesn't know) is asked again without it, and isn't sent it
+    /// again until settings change.
+    private func postChat(_ body: [String: Any], key: String, timeout: TimeInterval) async throws -> [String: Any] {
+        do {
+            return try await post("chat/completions", body: body, key: key, timeout: timeout)
+        } catch Failure.http(let code) where (code == 400 || code == 422) && body["chat_template_kwargs"] != nil {
+            // Only when the same request goes through without it: a 400 for something else (no
+            // JSON mode) must not turn thinking back on for every translation.
+            var plain = body
+            plain["chat_template_kwargs"] = nil
+            do {
+                let root = try await post("chat/completions", body: plain, key: key, timeout: timeout)
+                debugLog("ai custom: chat_template_kwargs refused (HTTP \(code)), sent without it from now on")
+                noTemplateKwargs = true
+                return root
+            } catch {
+                throw Failure.http(code)
+            }
+        }
+    }
 
     private func post(_ path: String, body: [String: Any], key: String, timeout: TimeInterval) async throws -> [String: Any] {
         guard let base = config().base else { throw Failure.noKey }
@@ -648,10 +763,10 @@ final class LingClient: ObservableObject {
         return try await send(req, key: key)
     }
 
-    private func send(_ request: URLRequest, key: String) async throws -> Data {
+    private func send(_ request: URLRequest, key: String, contentType: String? = "application/json") async throws -> Data {
         var req = request
         if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let contentType { req.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         let data: Data
         let response: URLResponse
         do {

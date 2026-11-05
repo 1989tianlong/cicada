@@ -49,6 +49,29 @@ struct AICheck: Equatable {
     var proxy: ProxyHint?
     /// OpenRouter only: dollars left (the smaller of the key's limit and the account's credits).
     var balance: Double?
+    /// A custom service: how long one real sentence took, and whether the model thought first.
+    var translate: Speed?
+    /// A custom service that recognizes the meeting: whether its speech model took audio.
+    var hear: Hearing?
+
+    struct Speed: Equatable {
+        let seconds: Double
+        let thinks: Bool
+        /// A sentence that takes this long often misses the 6 s a translation is given and falls
+        /// back to Google.
+        static let slowAfter = 3.0
+        var slow: Bool { thinks || seconds >= Self.slowAfter }
+    }
+
+    enum Hearing: Equatable {
+        case ok(seconds: Double)
+        case unreachable
+        case fail(code: Int?)
+        var ok: Bool { if case .ok = self { true } else { false } }
+    }
+
+    /// Text works but every sentence is slow (a thinking model): translations will fall back.
+    var slow: Bool { failure == nil && translate?.slow == true }
 
     static let lowBalance = 0.5
 
@@ -175,7 +198,7 @@ struct AICheck: Equatable {
         guard let f = failure else { return busy ? L("\(service) 现在很忙，key 没问题。开会时会自动重试。") : nil }
         switch f.reason {
         case .unreachable: return L("这台 Mac 访问不到 \(host)。")
-        case .badAddress: return L("地址要用 https，只有 localhost 可以用 http。")
+        case .badAddress: return L("地址要用 https；这台 Mac 和局域网里的服务可以用 http。")
         case .invalidKey: return L("\(service) 说这个 key 无效，可能没复制全，或已删除。")
         case .mgmtKey: return L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。")
         case .noCredit: return L("\(service) 账户余额不足。")
@@ -183,6 +206,23 @@ struct AICheck: Equatable {
         case .noJSON: return L("这个服务不支持 JSON，纪要写不了；翻译照常。")
         case .busy: return L("\(service) 现在很忙，key 没问题。开会时会自动重试。")
         case .serverError: return L("\(service) 暂时出错（HTTP \(f.code ?? 0)），稍后再试。")
+        }
+    }
+
+    /// Why translations are slow, and what to do (a custom service).
+    func slowLine() -> String? {
+        guard slow, let t = translate else { return nil }
+        let secs = String(format: "%.1f", t.seconds)
+        return t.thinks ? L("这个模型先思考再回答，翻一句要 \(secs) 秒，超过 6 秒会改用 Google。在服务端关掉思考，或换一个不思考的模型。")
+            : L("翻一句要 \(secs) 秒，超过 6 秒会改用 Google。换一个更小的模型会快一些。")
+    }
+
+    /// The speech model's problem, in one sentence.
+    func hearLine(host: String, model: String) -> String? {
+        switch hear {
+        case .unreachable?: return L("这台 Mac 访问不到 \(host)，开会时先用本机识别。")
+        case .fail(let code)?: return L("\(model) 没接受音频（HTTP \(code ?? 0)），开会时先用本机识别。")
+        default: return nil
         }
     }
 
@@ -218,5 +258,7 @@ struct AICheck: Equatable {
             return "\(s.id.rawValue)=\(v)"
         }.joined(separator: " ") + (proxy.map { " proxy=\($0)" } ?? "") + (balance.map { " balance=\(String(format: "%.2f", $0))" } ?? "")
             + (passive ? " passive" : "")
+            + (translate.map { " translate=\(String(format: "%.1f", $0.seconds))s\($0.thinks ? " thinks" : "")" } ?? "")
+            + (hear.map { " hear=\($0)" } ?? "")
     }
 }
