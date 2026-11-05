@@ -167,7 +167,7 @@ defaults delete com.wquguru.cicada
 
 ## 开发
 
-Mac 版从源码构建只需要安装 Xcode Command Line Tools（`xcode-select --install`），项目没有任何第三方依赖。Windows、Linux、Android 的构建方法见 [windows/README.md](windows/README.md)、[linux/README.md](linux/README.md)、[android/README.md](android/README.md)。
+Mac 版从源码构建只需要安装 Xcode Command Line Tools（`xcode-select --install`），项目没有任何第三方依赖。在 macOS 27 上如果编译时报 `SwiftUIMacros` 缺失，说明这一版 Command Line Tools 不带 SwiftUI 的宏插件，安装完整的 Xcode 并运行 `sudo xcode-select -s /Applications/Xcode.app` 即可。Windows、Linux、Android 的构建方法见 [windows/README.md](windows/README.md)、[linux/README.md](linux/README.md)、[android/README.md](android/README.md)。
 
 ```bash
 scripts/build.sh            # 编译开发版 → build/Cicada.app（名为 Cicada Dev，可与正式版同时运行）

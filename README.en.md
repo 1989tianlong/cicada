@@ -168,7 +168,7 @@ defaults delete com.wquguru.cicada
 
 ## Development
 
-Building the Mac app from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has no third-party dependencies and builds directly against macOS system frameworks. For Windows, Linux and Android, see [windows/README.md](windows/README.md), [linux/README.md](linux/README.md) and [android/README.md](android/README.md).
+Building the Mac app from source requires Xcode Command Line Tools (`xcode-select --install`). Cicada has no third-party dependencies and builds directly against macOS system frameworks. On macOS 27, if the build fails because `SwiftUIMacros` is missing, that version of the Command Line Tools lacks SwiftUI's macro plugin: install the full Xcode and run `sudo xcode-select -s /Applications/Xcode.app`. For Windows, Linux and Android, see [windows/README.md](windows/README.md), [linux/README.md](linux/README.md) and [android/README.md](android/README.md).
 
 ```bash
 scripts/build.sh            # dev build → build/Cicada.app ("Cicada Dev", runs beside the installed app)
