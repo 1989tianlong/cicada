@@ -122,9 +122,11 @@ class OnboardingActivity : Activity() {
         val root = ui.screen(this, null, back = false, ground = Palette.ground, body = content, bottom = bottom)
         window.navigationBarColor = Palette.ground
         bottom.setBackgroundColor(Palette.ground)
-        // The screen's own bar is replaced by the progress bar.
-        root.removeViewAt(0)
-        root.addView(topBar, 0)
+        // The screen's own bar is replaced by the progress bar. The bar is the first child of the
+        // column inside the root (the root's other child is the floating bottom), not of the root.
+        val column = root.getChildAt(0) as LinearLayout
+        column.removeViewAt(0)
+        column.addView(topBar, 0)
         return root
     }
 
