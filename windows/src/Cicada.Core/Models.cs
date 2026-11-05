@@ -18,6 +18,8 @@ public sealed class TranscriptLine
     [JsonPropertyName("srcLang")] public string SrcLang { get; set; } = "";
     /// Seconds from the start of the session.
     [JsonPropertyName("t")] public double T { get; set; }
+    /// 电脑和会议室: "room" when the room mic heard it; absent for the computer's audio (and older records).
+    [JsonPropertyName("via")] public string? Via { get; set; }
     /// Experimental voice id on the Mac; Windows doesn't tell voices apart yet.
     [JsonPropertyName("voice")] public int? Voice { get; set; }
 

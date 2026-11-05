@@ -205,7 +205,7 @@ static class Tests
         {
             Id = "20261103-101611", Title = "会议 11月3日 10:16", HasAudio = false,
             StartedAt = DateTimeOffset.Parse("2026-11-03T15:16:11Z"),
-            Lines = [new TranscriptLine { Id = "h1-1", T = 2.7636849899291995, Src = "你好/世界", SrcLang = "zh-CN", DstLang = "en" }],
+            Lines = [new TranscriptLine { Id = "h1-1", T = 2.7636849899291995, Src = "你好/世界", SrcLang = "zh-CN", DstLang = "en", Via = "room", Voice = 1 }],
         };
         var json = Json.Write(s);
         Check(json.Contains("\"startedAt\": \"2026-11-03T15:16:11Z\""), "dates are whole-second ISO-8601 UTC");
@@ -236,6 +236,15 @@ static class Tests
               "srcLang" : "zh-CN",
               "t" : 2.5,
               "voice" : 1
+            },
+            {
+              "dstLang" : "en",
+              "id" : "h1000001-1000001",
+              "speaker" : "them",
+              "src" : "对",
+              "srcLang" : "zh-CN",
+              "t" : 3,
+              "via" : "room"
             }
           ],
           "notes" : {
@@ -251,8 +260,10 @@ static class Tests
         }
         """;
         var s = Json.Read<Session>(mac)!;
-        Equal(1, s.Lines.Count, "lines");
+        Equal(2, s.Lines.Count, "lines");
         Equal(1, s.Lines[0].Voice, "voice");
+        Equal("room", s.Lines[1].Via, "via");
+        Equal(null, s.Lines[0].Via, "no via for the computer's audio");
         Equal("Emma", s.VoiceNames!["1"], "voice names");
         Equal(12.4, s.Notes!.Topics[0].PointTime(0), "point time");
         Equal(null, s.Notes!.Topics[0].PointTime(1), "missing point time");
