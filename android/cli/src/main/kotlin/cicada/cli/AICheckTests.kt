@@ -242,7 +242,7 @@ object AICheckTests {
         answer = { Transport.Response(429, "{}") }
         try { ling.chat("c", "i", Priority.Translate) } catch (_: LingException) {}
         answer = { reply("fine") }
-        ling.chat("c", "i", Priority.Translate)
+        ling.chat("c", "i", Priority.Notes) // waits out the pause after the 429
         equal(State.Ok::class, ling.aiCheck[StepID.Text]::class, "text proven")
         // The network goes in the middle of a meeting.
         answer = { throw java.io.IOException("down") }

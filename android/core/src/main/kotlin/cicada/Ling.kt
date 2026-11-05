@@ -83,13 +83,22 @@ enum class Priority { Speak, Translate, Notes }
 
 enum class KeyState { None, Unchecked, Checking, Ok, Invalid, Unreachable }
 
-class LingException(val kind: Kind, val status: Int = 0) : Exception(if (kind == Kind.Http) "http$status" else kind.name) {
+/// `retryAfter`: seconds the service asked us to wait (a 429's Retry-After), when it said.
+class LingException(val kind: Kind, val status: Int = 0, val retryAfter: Double? = null) : Exception(if (kind == Kind.Http) "http$status" else kind.name) {
     enum class Kind { NoKey, InvalidKey, RateLimited, Hijacked, Timeout, Http, Network, Parse }
+}
+
+/// Time for LingClient's start gate, in ms; tests hand in one that moves on by itself.
+open class GateClock {
+    open fun now(): Long = System.currentTimeMillis()
+    /// Waits on `lock` (held) for `ms`, or until notified; 0 is until notified.
+    open fun wait(lock: Object, ms: Long) = lock.wait(ms)
 }
 
 /// How requests leave the app: HttpURLConnection, or a fake in tests.
 interface Transport {
-    class Response(val status: Int, val body: String)
+    /// `retryAfter`: the Retry-After header, as sent.
+    class Response(val status: Int, val body: String, val retryAfter: String? = null)
     /// A reply read as it arrives (speech): its type and the open body, which the caller closes.
     class Stream(val status: Int, val contentType: String, val body: InputStream)
     /// Throws SocketTimeoutException on a timeout and IOException when the network fails.
@@ -113,7 +122,7 @@ object UrlTransport : Transport {
             val status = c.responseCode
             val stream = if (status in 200..299) c.inputStream else c.errorStream
             val text = stream?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-            return Transport.Response(status, text)
+            return Transport.Response(status, text, c.getHeaderField("Retry-After"))
         } finally { c.disconnect() }
     }
 
@@ -145,21 +154,38 @@ class LingClient(
     private val key: AIKey,
     private val transport: Transport = UrlTransport,
     val config: () -> AIConfig = { Providers.configFrom(AppSettings()) },
+    private val clock: GateClock = GateClock(),
 ) {
     companion object {
         val BASE = Providers.LING.base!!
         val DEFAULT_MODEL = Providers.LING.textModels[0].id
         val AUDIO_MODEL = Providers.LING.hearModels[0].id
 
-        /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times, heard
-        /// audio once; the rest fail fast so the caller can fall back. `patient` (the final notes) keeps
-        /// at it for about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra,
-        /// 2026-11) came back after ~15 s, and a meeting left without its notes is worse than notes a
-        /// little late.
+        /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times; the
+        /// rest fail fast so the caller can fall back, except heard audio. A meeting's: there a lost
+        /// reply loses the words, and Ling's 429s came in runs of up to ~10 s (two in a row lost a line
+        /// with one retry, about 2 a minute in 2026-11 testing), so it keeps at it for about 15 s. What
+        /// the user says (Speak) retries once: late is worse than a short "try again". `patient`
+        /// (the final notes) keeps at it for about a minute: a model limited upstream (OpenRouter's
+        /// Ling 3.1 by DeepInfra, 2026-11) came back after ~15 s, and a meeting left without its
+        /// notes is worse than notes a little late.
         fun retryWaits(priority: Priority, audio: Boolean = false, patient: Boolean = false): List<Double> = when {
             priority == Priority.Notes -> if (patient) listOf(1.0, 2.0, 4.0, 8.0, 16.0, 30.0) else listOf(1.0, 2.0, 4.0)
-            audio -> listOf(1.0)
+            audio -> if (priority == Priority.Translate) listOf(1.0, 2.0, 4.0, 8.0) else listOf(1.0)
             else -> emptyList()
+        }
+
+        /// Longest Retry-After worth waiting for; longer is an outage, not a busy moment.
+        const val MAX_PAUSE = 30.0
+
+        /// A Retry-After header in seconds: a number, or an HTTP date. Null when absent or unreadable.
+        fun retryAfterSeconds(value: String?, nowMs: Long = System.currentTimeMillis()): Double? {
+            val v = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            v.toDoubleOrNull()?.let { return maxOf(0.0, it) }
+            return try {
+                val at = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
+                maxOf(0.0, (at - nowMs) / 1000.0)
+            } catch (_: java.time.format.DateTimeParseException) { null }
         }
         /// Ming, Gemini TTS and Kokoro all speak 24 kHz mono 16-bit.
         const val TTS_RATE = 24000
@@ -434,9 +460,10 @@ class LingClient(
     }
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
-    /// message, `audio` (of `audioType`) goes before it for the hear model. Notes retry 429s with
-    /// backoff; heard audio gets one retry (a lost reply loses the words); the rest fail fast so
-    /// the caller can fall back. `patient` (the final notes) keeps retrying for about a minute (retryWaits).
+    /// message, `audio` (of `audioType`) goes before it for the hear model. Notes and heard audio
+    /// retry 429s with backoff (retryWaits); the rest fail fast so the caller can fall back.
+    /// `patient` (the final notes) keeps retrying for about a minute. A 429 holds every request
+    /// start for a while (rateLimited), and a retry keeps its place in the queue, so lines stay in order.
     fun chat(
         content: String, instruction: String, priority: Priority, json: Boolean = false,
         maxTokens: Int = 1024, timeout: Double = 30.0, model: String? = null, audio: ByteArray? = null,
@@ -459,8 +486,10 @@ class LingClient(
 
         val waits = retryWaits(priority, audio != null, patient)
         var attempt = 1
+        var ticket: Long? = null
         while (true) {
-            acquire(priority, c.provider.spacing)
+            // One that wouldn't retry fails at once while the service is cooling down: its caller falls back.
+            ticket = acquire(priority, c.provider.spacing, ticket, failIfPaused = waits.isEmpty())
             val started = System.nanoTime()
             try {
                 val root = post(base + "chat/completions", payload, k, timeout)
@@ -482,10 +511,9 @@ class LingClient(
                 // A reply we drop (a search essay) still proves the service answers.
                 observe(e.takeIf { it.kind != LingException.Kind.Hijacked }, audio = audio != null)
                 if (e.kind != LingException.Kind.RateLimited) throw e
-                if (attempt > waits.size) { rateLimitedAt = System.currentTimeMillis(); changed(); throw e }
-                val wait = waits[attempt - 1] + Math.random() * 0.5
+                val wait = rateLimited(if (waits.isEmpty()) 1.0 else waits[minOf(attempt, waits.size) - 1], e.retryAfter)
+                if (attempt > waits.size || wait == null) { rateLimitedAt = System.currentTimeMillis(); changed(); throw e }
                 Log.d("ling: $priority 429, retry in ${"%.1f".format(wait)} s")
-                Thread.sleep((wait * 1000).toLong())
                 attempt++
             }
         }
@@ -600,7 +628,7 @@ class LingClient(
                 if (keyState != KeyState.Invalid) { keyState = KeyState.Invalid; changed() }
                 throw LingException(LingException.Kind.InvalidKey)
             }
-            429 -> throw LingException(LingException.Kind.RateLimited)
+            429 -> throw LingException(LingException.Kind.RateLimited, 429, retryAfterSeconds(res.retryAfter))
             else -> {
                 Log.d("ling: HTTP ${res.status}")
                 throw LingException(LingException.Kind.Http, res.status)
@@ -609,34 +637,53 @@ class LingClient(
         return try { Json.parse(res.body).obj() } catch (_: Json.ParseException) { null } ?: throw LingException(LingException.Kind.Parse)
     }
 
-    // Start gate: request starts ≥ `spacing` apart, the most urgent waiting one first.
+    // Start gate: request starts ≥ `spacing` apart, the most urgent waiting one first, none while
+    // the service is cooling down after a 429.
 
     private class Ticket(val priority: Priority, val seq: Long)
     private val gate = Object()
     private val waiting = mutableListOf<Ticket>()
-    private var lastStart = 0L
+    private var lastStart = Long.MIN_VALUE / 2
+    private var pausedUntil = 0L
     private var seq = 0L
 
-    private fun acquire(priority: Priority, serviceSpacing: Double) {
+    /// Waits for this request's turn to start. `ticket` is a retry's first one, which keeps its
+    /// place ahead of requests queued after it. Returns the ticket.
+    private fun acquire(priority: Priority, serviceSpacing: Double, ticket: Long? = null, failIfPaused: Boolean = false): Long {
         val spacing = LingClient.spacing ?: serviceSpacing
         synchronized(gate) {
-            val me = Ticket(priority, ++seq)
+            if (failIfPaused && pausedUntil > clock.now()) throw LingException(LingException.Kind.RateLimited)
+            val me = Ticket(priority, ticket ?: ++seq)
             waiting.add(me)
             try {
                 while (true) {
                     val head = waiting.minWith(compareBy<Ticket>({ it.priority.ordinal }, { it.seq }))
-                    val wait = (spacing * 1000).toLong() - (System.currentTimeMillis() - lastStart)
+                    val now = clock.now()
+                    val wait = maxOf((spacing * 1000).toLong() - (now - lastStart), pausedUntil - now)
                     if (head === me && wait <= 0) {
                         waiting.remove(me)
-                        lastStart = System.currentTimeMillis()
+                        lastStart = now
                         gate.notifyAll()
-                        return
+                        return me.seq
                     }
-                    gate.wait(if (head === me) wait else 0)
+                    clock.wait(gate, if (head === me) wait else 0)
                 }
             } catch (e: InterruptedException) {
                 waiting.remove(me); gate.notifyAll(); throw e
             }
         }
+    }
+
+    /// After a 429: no request starts for `backoff` seconds, or as long as the service asked
+    /// (Retry-After; Ling sends none), plus a little jitter. The queue waits at the gate instead of
+    /// each request spending its retries on the same limit. Null when that is over MAX_PAUSE (the
+    /// gate still holds for MAX_PAUSE): an outage, not a busy moment.
+    private fun rateLimited(backoff: Double, retryAfter: Double?): Double? {
+        val wait = maxOf(backoff, retryAfter ?: 0.0) + Math.random() * 0.5
+        synchronized(gate) {
+            pausedUntil = maxOf(pausedUntil, clock.now() + (minOf(wait, MAX_PAUSE) * 1000).toLong())
+            gate.notifyAll()
+        }
+        return if (wait <= MAX_PAUSE) wait else null
     }
 }

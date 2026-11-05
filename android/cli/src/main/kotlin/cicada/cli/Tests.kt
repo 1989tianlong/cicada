@@ -64,7 +64,11 @@ object Tests {
             "keyFileIsPrivate" to ::keyFileIsPrivate,
             "lingRequestShape" to ::lingRequestShape,
             "lingDropsHijackedAndRefusedReplies" to ::lingDropsHijacked,
-            "lingRetriesAudioOnceWhenBusy" to ::lingRetriesAudioOnce,
+            "lingHeardAudioRidesOutARunOf429s" to ::lingRidesOut429s,
+            "lingHeardAudioIsLostOnlyAfterAnOutage" to ::lingLostOnlyAfterAnOutage,
+            "lingWaitsAsLongAsRetryAfterAsks" to ::lingRetryAfter,
+            "lingA429HoldsEveryStartWhileTheServiceCoolsDown" to ::lingPause,
+            "lingARetriedLineKeepsItsPlaceInTheQueue" to ::lingRetryKeepsItsPlace,
             "lingMarksABadKey" to ::lingMarksABadKey,
             "lingGateSpacesStartsAndServesPriorityFirst" to ::lingGate,
             "listenEngineEndToEndWithAFakeMing" to ::listenEndToEnd,
@@ -542,11 +546,25 @@ object Tests {
         "usage" to mapOf("prompt_tokens" to 1, "completion_tokens" to 1),
     ), pretty = false))
 
-    private fun client(fake: Fake): LingClient {
+    private fun client(fake: Fake, clock: GateClock = GateClock()): LingClient {
         val key = AIKey(PlainProtector)
         key.save("sk-test-0000000000")
-        return LingClient(key, fake)
+        return LingClient(key, fake, clock = clock)
     }
+
+    /// The start gate's time, moved on by each wait instead of waiting (one request at a time).
+    private class FakeClock : GateClock() {
+        val start = 1_000_000L
+        var t = start
+        val waits = mutableListOf<Double>()
+        override fun now() = t
+        override fun wait(lock: Object, ms: Long) {
+            check(ms > 0) { "would wait forever" }
+            waits.add(ms / 1000.0); t += ms
+        }
+    }
+
+    private fun busy(retryAfter: String? = null) = Transport.Response(429, "", retryAfter)
 
     private fun content(body: String, i: Int) = Json.parse(body).obj()!!["messages"].arr()[i].obj()!!["content"]
 
@@ -573,15 +591,79 @@ object Tests {
         }
     }
 
-    fun lingRetriesAudioOnce() {
+    fun lingRidesOut429s() {
+        // Ling's 429s come in runs (two in a row lost a line with one retry): heard audio backs off
+        // 1, 2, 4 s and gets through; text translation fails at once so the caller can fall back.
         val calls = AtomicInteger()
-        val ling = client(Fake { if (calls.incrementAndGet() == 1) Transport.Response(429, "") else reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。") })
+        val clock = FakeClock()
+        val ling = client(Fake { if (calls.incrementAndGet() <= 3) busy() else reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。") }, clock)
         val r = ling.chat("c", "i", Priority.Translate, model = LingClient.AUDIO_MODEL, audio = byteArrayOf(1))
-        check(r.contains("ORIGINAL: Hi."), "second attempt answered")
-        equal(2, calls.get(), "one retry")
-        val text = client(Fake { Transport.Response(429, "") })
+        check(r.contains("ORIGINAL: Hi."), "the fourth attempt answered")
+        equal(4, calls.get(), "three retries")
+        equal(3, clock.waits.size, "a wait before each")
+        for ((w, b) in clock.waits.zip(listOf(1.0, 2.0, 4.0))) check(w in b..b + 0.5, "backoff ${clock.waits}")
+        val text = client(Fake { busy() }, FakeClock())
         try { text.chat("c", "i", Priority.Translate); throw AssertionError("text translation retried") }
         catch (e: LingException) { equal(LingException.Kind.RateLimited, e.kind, "text fails fast") }
+    }
+
+    fun lingLostOnlyAfterAnOutage() {
+        val clock = FakeClock()
+        val fake = Fake { busy() }
+        val ling = client(fake, clock)
+        try { ling.chat("c", "i", Priority.Translate, model = LingClient.AUDIO_MODEL, audio = byteArrayOf(1)); throw AssertionError("no failure") }
+        catch (e: LingException) { equal(LingException.Kind.RateLimited, e.kind, "rate limited in the end") }
+        equal(5, fake.calls.size, "the first try and four retries")
+        check(clock.t - clock.start >= 15_000, "about 15 s of trying, got ${clock.t - clock.start} ms")
+        check(ling.rateLimitedAt != null, "reported busy")
+    }
+
+    fun lingRetryAfter() {
+        val calls = AtomicInteger()
+        val clock = FakeClock()
+        equal("ok", client(Fake { if (calls.incrementAndGet() == 1) busy("5") else reply("ok") }, clock).chat("c", "i", Priority.Notes), "answered after the wait")
+        check(clock.waits[0] in 5.0..5.5, "waited as asked, got ${clock.waits}")
+        // Asked to wait minutes: an outage, so the line goes now rather than after it.
+        val outage = Fake { busy("120") }
+        try { client(outage, FakeClock()).chat("c", "i", Priority.Translate, model = LingClient.AUDIO_MODEL, audio = byteArrayOf(1)); throw AssertionError("waited") }
+        catch (e: LingException) { equal(LingException.Kind.RateLimited, e.kind, "given up") }
+        equal(1, outage.calls.size, "no retry into an outage")
+        equal(3.0, LingClient.retryAfterSeconds("3"), "a delay")
+        val now = java.time.ZonedDateTime.parse("2026-11-05T12:00:00Z").toInstant().toEpochMilli()
+        equal(7.0, LingClient.retryAfterSeconds("Thu, 05 Nov 2026 12:00:07 GMT", now), "a date")
+        equal(null, LingClient.retryAfterSeconds("soon"), "unreadable")
+        equal(null, LingClient.retryAfterSeconds(null), "none")
+    }
+
+    fun lingPause() {
+        val calls = AtomicInteger()
+        val clock = FakeClock()
+        val fake = Fake { if (calls.incrementAndGet() == 1) busy() else reply("notes") }
+        val ling = client(fake, clock)
+        try { ling.chat("first", "i", Priority.Translate) } catch (_: LingException) {}
+        // A translation that wouldn't retry fails at once, without spending a request on the limit…
+        try { ling.chat("second", "i", Priority.Translate); throw AssertionError("sent during the pause") }
+        catch (e: LingException) { equal(LingException.Kind.RateLimited, e.kind, "busy") }
+        equal(1, fake.calls.size, "nothing sent")
+        // …and one that would waits at the gate until the pause is over, then goes.
+        equal("notes", ling.chat("notes", "i", Priority.Notes), "notes after the pause")
+        check(clock.waits.sum() in 1.0..1.5, "held for the pause, got ${clock.waits}")
+    }
+
+    fun lingRetryKeepsItsPlace() {
+        val old = LingClient.spacing
+        LingClient.spacing = 0.05
+        try {
+            val first = AtomicInteger()
+            val fake = Fake { b -> if (content(b, 0) == "a" && first.incrementAndGet() == 1) busy() else reply("ok") }
+            val ling = client(fake)
+            val a = thread { ling.chat("a", "i", Priority.Translate, model = LingClient.AUDIO_MODEL, audio = byteArrayOf(1)) }
+            Thread.sleep(200)
+            val b = thread { ling.chat("b", "i", Priority.Translate, model = LingClient.AUDIO_MODEL, audio = byteArrayOf(1)) }
+            a.join(); b.join()
+            equal(listOf<Any?>("a", "a", "b"), fake.calls.map { content(it.second, 0) }, "the retry goes first")
+            check(fake.calls[2].first - fake.calls[0].first >= 1000, "b waited out the pause")
+        } finally { LingClient.spacing = old }
     }
 
     fun lingMarksABadKey() {

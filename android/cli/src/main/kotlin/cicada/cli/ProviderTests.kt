@@ -280,7 +280,8 @@ object ProviderTests {
 
     fun finalNotesRetry() {
         check(LingClient.retryWaits(Priority.Translate).isEmpty(), "translation fails fast")
-        equal(listOf(1.0), LingClient.retryWaits(Priority.Translate, audio = true), "heard audio retries once")
+        equal(listOf(1.0, 2.0, 4.0, 8.0), LingClient.retryWaits(Priority.Translate, audio = true), "heard audio rides out about 15 s")
+        equal(listOf(1.0), LingClient.retryWaits(Priority.Speak, audio = true), "what I say retries once")
         equal(listOf(1.0, 2.0, 4.0), LingClient.retryWaits(Priority.Notes), "live notes as before")
         val sum = LingClient.retryWaits(Priority.Notes, patient = true).sum()
         check(sum in 50.0..70.0, "final notes wait about a minute ($sum s)")
