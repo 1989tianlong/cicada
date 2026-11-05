@@ -117,6 +117,12 @@ def word(seconds, amp):
     return array("h", (int(math.sin(2 * math.pi * 300 * i / 16000) * math.sin(math.pi * i / n) ** 2 * amp * 32767) for i in range(n)))
 
 
+def hz(freq, seconds, amp):
+    """A sine at `freq` that swells and fades four times a second like syllables."""
+    return array("h", (int(math.sin(2 * math.pi * freq * i / 16000) * (0.55 + 0.45 * math.sin(2 * math.pi * 4 * i / 16000)) * amp * 32767)
+                       for i in range(int(seconds * 16000))))
+
+
 def silence(seconds):
     return array("h", bytes(int(seconds * 16000) * 2))
 
@@ -462,6 +468,10 @@ class Segmenting(Base):
         # …a short hum in silence, which doesn't swell and fade, isn't; nor is a knock.
         self.assertEqual(0, len(cut(silence(1.0), tone(1.0, 0.03, syllables=False), silence(1.0))))
         self.assertEqual(0, len(cut(silence(1.0), word(0.15, 0.3), silence(1.0))))
+        # Rumble far under 100 Hz is no voice however it swells (Ming makes sentences of it); a
+        # voice as low as 100 Hz keeps half its energy over the high-pass and stays.
+        self.assertEqual(0, len(cut(silence(1.0), hz(12, 3.0, 0.1), silence(1.0))))
+        self.assertEqual(1, len(cut(silence(1.0), hz(100, 3.0, 0.3), silence(1.0))))
 
     def test_wav_round_trip(self):
         pcm = tone(0.5)

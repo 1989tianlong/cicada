@@ -4,6 +4,7 @@ runs to 8 s is cut at its quietest moment in the last 2 s, so a word is split as
 only. Same numbers as the Windows and Android Segmenters."""
 from __future__ import annotations
 
+import math
 from array import array
 from collections import deque
 
@@ -13,6 +14,8 @@ FRAME = 480  # 30 ms
 PRE_ROLL = 0.15
 TAIL = 0.15
 CUT_WINDOW = 2.0
+# A first-order high-pass at 100 Hz, for how much of a sound is above it (_rumble).
+HIGH_PASS = 1.0 / (1.0 + 2.0 * math.pi * 100.0 / RATE)
 
 
 class Segment:
@@ -41,11 +44,15 @@ class Segmenter:
     dips = 2.5  # …unless the median is this far over the 10th percentile, quiet ones held at gate / 8
     short = 2.0  # a sound up to this long, with real quiet (gate / 4) on both sides…
     swell = 10 ** (10 / 20)  # …that swells and fades by 10 dB is a word: see _isolated
+    above = 0.25  # under this share of its loud frames' energy over 100 Hz: rumble, not speech
 
     def __init__(self):
         self.pending = array("h")
         self.current = array("h")
         self.levels: list = []
+        self.highs: list = []  # per frame of `current`: its level over 100 Hz
+        self._hx = 0.0  # the high-pass's last input and output, carried from frame to frame
+        self._hy = 0.0
         self.before: deque = deque()
         self.idle: deque = deque(maxlen=int(self.pause * RATE / FRAME))  # levels of the last quiet frames
         self.lead = None  # the quietest of those when the open segment began (None: it didn't begin in quiet)
@@ -70,26 +77,29 @@ class Segmenter:
 
     def _step(self, frame: array) -> None:
         level = Wav.rms(frame)
+        high = self._high(frame)
         loud = level >= self.threshold
         now = self.consumed / RATE
         self.consumed += len(frame)
         if not len(self.current):
             if not loud:
                 self.idle.append(level)
-                self.before.append((frame, level))
+                self.before.append((frame, level, high))
                 while len(self.before) > PRE_ROLL * RATE / FRAME:
                     self.before.popleft()
                 return
             self.current_start = now - len(self.before) * FRAME / RATE
             self.lead = min(self.idle) if self.idle else None
             self.idle.clear()
-            for f, l in self.before:
+            for f, l, h in self.before:
                 self.current.extend(f)
                 self.levels.append(l)
+                self.highs.append(h)
             self.before.clear()
             self.quiet = self.loud = 0
         self.current.extend(frame)
         self.levels.append(level)
+        self.highs.append(high)
         if loud:
             self.quiet = 0
             self.loud += 1
@@ -152,12 +162,38 @@ class Segmenter:
         body = sorted(max(l, self.threshold / 8) for l in levels[sound[0]:sound[-1] + 1])
         return body[int(0.9 * (len(body) - 1))] >= self.swell * body[int(0.1 * (len(body) - 1))]
 
+    def _high(self, frame) -> float:
+        """The frame's level over 100 Hz (RMS after the high-pass), the filter running on across frames.
+        A plain loop, not sum(): every port adds in the same order and gets the same number."""
+        a, x0, y, total = HIGH_PASS, self._hx, self._hy, 0.0
+        for x in frame:
+            y = a * (y + x - x0)
+            x0 = x
+            total += y * y
+        self._hx, self._hy = float(x0), y
+        return math.sqrt(total / len(frame)) / 32768 if len(frame) else 0.0
+
+    def _rumble(self, levels, highs) -> bool:
+        """Rumble, not speech: under a quarter of the loud frames' energy is over 100 Hz. Speech keeps
+        nearly all of it there (-0.3 to -1 dB in testing, the low male voices included); brown noise
+        with almost nothing over 20 Hz keeps -20 to -28 dB, and Ming made a sentence of 15 of 17 such
+        segments ("I'm going to go ahead and start the meeting."), which the loudness rules can't
+        tell from a voice. Brown noise up to about 12 Hz keeps -10 dB and goes too; a 50 Hz hum or a
+        fan keeps about -5 dB and is left to the steady test."""
+        full = above = 0.0
+        for l, h in zip(levels, highs):
+            if l >= self.threshold:
+                full += l * l
+                above += h * h
+        return above < self.above * full
+
     def _close(self, end_at: int) -> None:
         """Emits current[:end] and keeps what follows as the start of the next segment."""
         end = max(0, min(end_at, len(self.current)))
         samples = self.current[:end]
         rest = self.current[end:]
         rest_levels = self.levels[min(len(self.levels), end // FRAME):]
+        rest_highs = self.highs[min(len(self.highs), end // FRAME):]
         start = self.current_start
         sent = self.levels[:end // FRAME]
         if self._isolated(self.levels):
@@ -165,8 +201,10 @@ class Segmenter:
             speech = sound * FRAME >= self.min_word * RATE
         else:
             speech = self.loud * FRAME >= self.min_speech * RATE and not self._steady(sent)
+        speech = speech and not self._rumble(sent, self.highs[:end // FRAME])
         self.current = array("h")
         self.levels = []
+        self.highs = []
         self.quiet = self.loud = 0
         if speech and self.on_segment:
             self.index += 1
@@ -179,6 +217,7 @@ class Segmenter:
             self.lead = None
             self.current.extend(rest)
             self.levels = list(rest_levels)
+            self.highs = list(rest_highs)
             trailing = 0
             for l in reversed(self.levels):
                 if l >= self.threshold:
