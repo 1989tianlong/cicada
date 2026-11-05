@@ -30,6 +30,10 @@ class AppSettings(
     var recordAudio: Boolean = true,
     /// 把我说的翻译给对方: 按住说话 in 面对面 (the Mac's 同声传译 switch).
     var speakBack: Boolean = true,
+    /// When GitHub Releases last answered an update check (epoch ms; UpdateChecker).
+    var updateLastChecked: Long? = null,
+    /// The newest version a notification was posted for, so each one is announced once.
+    var updateNotified: String? = null,
 ) {
     /// My language: the translate-to choice, or under "follow system" the Mac's myLanguage
     /// (Chinese when the system list has it, else the first). 我说, notes and the UI start from it.
@@ -46,6 +50,7 @@ class AppSettings(
         "showInCapture" to showInCapture, "onboarded" to onboarded, "uiLanguage" to uiLanguage,
         "source" to source, "overlay" to overlay, "silenceEnd" to silenceEnd, "silenceMinutes" to silenceMinutes,
         "speakerVoices" to speakerVoices, "recordAudio" to recordAudio, "speakBack" to speakBack,
+        "updateLastChecked" to updateLastChecked, "updateNotified" to updateNotified,
     )
 
     fun save() {
@@ -76,6 +81,7 @@ class AppSettings(
                             silenceMinutes = (o["silenceMinutes"] as? Number)?.toDouble() ?: d.silenceMinutes,
                             speakerVoices = o["speakerVoices"].bool() ?: true, recordAudio = o["recordAudio"].bool() ?: true,
                             speakBack = o["speakBack"].bool() ?: true,
+                            updateLastChecked = (o["updateLastChecked"] as? Number)?.toLong(), updateNotified = o["updateNotified"].str(),
                         )
                     }
                 }

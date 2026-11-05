@@ -46,7 +46,7 @@ class SettingsActivity : Activity() {
     private fun build() {
         val app = cicada
         val s = app.settings
-        val key = listOf(app.ling.keyState, app.key.read()?.takeLast(4), s.toJson(), app.canOverlay, Strings.language).joinToString("|")
+        val key = listOf(app.ling.keyState, app.key.read()?.takeLast(4), s.toJson(), app.canOverlay, Strings.language, app.updates.available?.version, app.updates.manual).joinToString("|")
         if (key == shown) return
         shown = key
         page.removeAllViews()
@@ -110,9 +110,22 @@ class SettingsActivity : Activity() {
             ui.listRow(L("导入录音或视频"), L("转成一场会议记录")) { startActivity(Intent(this, ImportActivity::class.java)) },
             ui.listRow(L("重看新手引导")) { startActivity(Intent(this, OnboardingActivity::class.java)) }) +
             // Android 13+ can add the tile from here; older versions edit Quick Settings by hand.
-            if (android.os.Build.VERSION.SDK_INT >= 33) listOf(ui.listRow(L("添加到快捷设置"), L("下拉通知栏，一键开始或结束听")) { addTile() }) else emptyList()))
+            (if (android.os.Build.VERSION.SDK_INT >= 33) listOf(ui.listRow(L("添加到快捷设置"), L("下拉通知栏，一键开始或结束听")) { addTile() }) else emptyList()) +
+            listOf(updateRow())))
         val version = packageManager.getPackageInfo(packageName, 0).versionName
         page.addView(ui.helper("${L("知了")} $version · Android").apply { gravity = Gravity.CENTER; setPadding(0, ui.dp(20), 0, 0) })
+    }
+
+    /// 检查更新: its answer on the right; with a new version found, tapping it downloads that.
+    private fun updateRow(): View {
+        val u = cicada.updates
+        val found = u.available
+        val trailing = when {
+            found != null -> ui.text(Strings.LF("有新版本 %@", found.version), 15f, Palette.link, bold = true, lines = 1)
+            u.manual != null -> value(u.manual!!)
+            else -> null
+        }
+        return ui.listRow(L("检查更新"), trailing = trailing, chevron = false) { if (found != null) u.download() else u.checkNow() }
     }
 
     private fun addTile() {

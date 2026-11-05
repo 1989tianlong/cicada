@@ -80,6 +80,14 @@ class DebugReceiver : BroadcastReceiver() {
             "clip" -> app.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("test", arg))
             "onboarded" -> { app.settings.onboarded = arg != "off"; app.saveSettings() }
             "key" -> { app.key.reload(); app.ling.keyChanged(); app.background.execute { app.ling.check() } }
+            // 检查更新 against a test feed: the dev build checks only once one is set.
+            "updatefeed" -> { app.updates.setFeed(if (arg.isEmpty() || arg.contains("://")) arg else File(app.filesDir, arg).path); app.updates.checkIfDue(0) }
+            "update" -> when (arg) {
+                "check" -> app.updates.checkNow()
+                "download" -> app.updates.download()
+                "job" -> app.background.execute { app.updates.checkInBackground() }
+                "notify" -> app.updates.available?.let { app.updates.notifyAbout(it) }
+            }
             "import" -> {
                 val s = Session.read(File(app.filesDir, arg).readText()) ?: return mapOf("error" to "unreadable")
                 app.store.import(s)
@@ -125,6 +133,9 @@ class DebugReceiver : BroadcastReceiver() {
                 "canOverlay" to app.canOverlay,
                 "sessions" to app.store.all().size,
                 "ui" to Strings.language,
+                "update" to mapOf("enabled" to app.updates.enabled, "current" to app.updates.checker.current, "available" to app.updates.available?.version,
+                                  "apk" to app.updates.available?.apk, "lastChecked" to app.updates.checker.lastChecked, "notified" to app.settings.updateNotified,
+                                  "manual" to app.updates.manual),
             )
         }
     }

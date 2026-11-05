@@ -40,6 +40,7 @@ class CicadaApp : Application() {
     lateinit var listen: ListenEngine
     lateinit var overlay: Overlay
     lateinit var voice: Voice
+    lateinit var updates: AppUpdates
     val main = Handler(Looper.getMainLooper())
     val background = Executors.newCachedThreadPool { r -> Thread(r, "App").apply { isDaemon = true } }
     private val observers = LinkedHashSet<() -> Unit>()
@@ -50,6 +51,8 @@ class CicadaApp : Application() {
     @Volatile var startProblem: String? = null
     /// Cicada's own screens in front: the floating window is for other apps, so it waits.
     private var resumed = 0
+    /// One of Cicada's screens is in front.
+    val foreground get() = resumed > 0
     /// Android silenced our recording: a phone call, or another app holding the microphone.
     @Volatile var micSilenced = false
     /// The user closed the floating window (×) for this meeting.
@@ -112,6 +115,8 @@ class CicadaApp : Application() {
         })
         Log.d("app: launch ${if (BuildConfig.DEBUG) "dev" else "release"} sdk=${Build.VERSION.SDK_INT}")
         if (ling.hasKey) background.execute { ling.check() }
+        updates = AppUpdates(this)
+        updates.start()
     }
 
     fun loadStrings() {

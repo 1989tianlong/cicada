@@ -15,6 +15,8 @@ import cicada.Languages
 import cicada.Session
 import cicada.SessionStore
 import cicada.Strings.L
+import cicada.Strings.LF
+import cicada.UpdateChecker
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -56,6 +58,7 @@ class MainActivity : Activity() {
         unobserve = cicada.observe(::render)
         shownTop = null; shownRecent = null
         render()
+        cicada.updates.checkIfDue(UpdateChecker.STALE)
         cicada.main.postDelayed(tick, 1000)
     }
 
@@ -73,7 +76,7 @@ class MainActivity : Activity() {
         val app = cicada
         val file = app.importing
         val key = listOf(NotesViews.liveKey(app), app.autoEnded, app.settings.source, app.settings.target, app.canOverlay, app.settings.overlay, micDenied, app.listen.spoken,
-                         app.startProblem, file?.done?.toInt()).joinToString("|")
+                         app.startProblem, file?.done?.toInt(), app.updates.available?.version).joinToString("|")
         if (key == shownTop) return
         shownTop = key
         top.removeAllViews()
@@ -84,6 +87,8 @@ class MainActivity : Activity() {
             else -> startCard()
         })
         if (app.settings.overlay && !app.canOverlay && file == null) column.addView(tipCard())
+        // A new version, under the start card; never while a meeting or a file is going on.
+        app.updates.available?.takeIf { file == null && !app.listen.listening }?.let { column.addView(updateCard(it)) }
         top.addView(column)
     }
 
@@ -172,6 +177,23 @@ class MainActivity : Activity() {
         addView(ui.textButton(L("去开启")) { OverlayGuideActivity.open(this@MainActivity, direct = true) })
     }
 
+    /// 有新版本: 更新 downloads the APK in the browser, the words open the release notes.
+    private fun updateCard(u: UpdateChecker.Update) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = ui.rounded(Palette.card, 22)
+        setPadding(ui.dp(16), ui.dp(12), ui.dp(8), ui.dp(12))
+        addView(ui.tile(R.drawable.i_update, 40, Palette.accentPale, Palette.link).apply { background = ui.rounded(Palette.accentPale, 20) })
+        // The words open the release notes (a bigger target than the grey line alone).
+        val texts = ui.stack(2, ui.text(LF("有新版本 %@", u.version), 15f, Palette.ink, medium = true), ui.helper(L("更新说明"))).apply {
+            setPadding(ui.dp(6), ui.dp(4), ui.dp(6), ui.dp(4))
+            contentDescription = LF("有新版本 %@", u.version) + "，" + L("更新说明")
+            ui.tappable(this, 12) { cicada.updates.openNotes() }
+        }
+        addView(texts, ui.weight().apply { leftMargin = ui.dp(6) })
+        addView(ui.textButton(L("更新")) { cicada.updates.download() })
+    }
+
     /// The meetings, newest first, under 今天 / 昨天 / the date (the last 60; search finds the rest).
     private fun renderRecent() {
         val app = cicada
@@ -234,7 +256,7 @@ class MainActivity : Activity() {
             val meta = if (live) "${time(s.startedAt)} · ${Languages.clock(s.durationSeconds)}"
                        else listOfNotNull("${time(s.startedAt)}", Languages.clock(s.durationSeconds), "${s.lines.size} ${L("句")}", from).joinToString(" · ")
             val todos = s.notes?.todos?.size ?: 0
-            val trailing = if (todos > 0) ui.badge(cicada.Strings.LF("%@ 个待办", todos), Palette.body, Palette.ground) else null
+            val trailing = if (todos > 0) ui.badge(LF("%@ 个待办", todos), Palette.body, Palette.ground) else null
             return ui.listRow(title, meta, trailing = trailing, titleView = titleView) {
                 activity.startActivity(Intent(activity, if (live) ListeningActivity::class.java else RecordActivity::class.java).putExtra("id", s.id))
             }

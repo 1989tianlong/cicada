@@ -6,6 +6,7 @@ Cicada 的 Android 版：把手机里播放的声音（或面对面时麦克风�
 - 识别：Ming（`Ming-3.0-audio-flash`）分段识别，一次请求返回语言、原文和译文；需要 Ling key。和 Windows 版同一套做法。
 - 悬浮窗：纪要或字幕条，`FLAG_NOT_FOCUSABLE` 不抢输入，`FLAG_SECURE` 默认不出现在截图和录屏里；打开“共享屏幕时让对方看到”后显示“对方可见”。
 - 纪要、记录格式（逐字节和 Mac 一致）、提示词、文案都和 Mac 版一致；英日韩翻译直接用 `Resources/*.lproj/Localizable.strings`，Android 独有的在 `app/src/main/strings/`。
+- 检查更新：每天在后台查一次 GitHub Releases，有新版本时在首页、设置和通知里提示，点“更新”用浏览器下载 APK，由系统安装器覆盖安装（签名一致才行），不需要安装权限。
 - 只用 Kotlin 标准库和 Android 框架，不用 AndroidX、Compose 或其他库。
 
 ## 目录
@@ -43,7 +44,7 @@ scripts/shot.sh                     # 截图：悬浮窗应是黑块；capture o
 scripts/tap.sh "开始听"             # 按屏幕上的文字点（系统对话框也行），用来走真实界面
 ```
 
-`cicadactl.sh` 的命令见 `app/src/main/kotlin/com/wquguru/cicada/DebugReceiver.kt`（state、start、stop、feed、sample、view、capture、overlay show|hide|collapse|expand、target、ui、show main|live|records|record|settings|onboarding、import）。只有开发版有，且只接受 adb。
+`cicadactl.sh` 的命令见 `app/src/main/kotlin/com/wquguru/cicada/DebugReceiver.kt`（state、start、stop、feed、sample、view、capture、overlay show|hide|collapse|expand、target、ui、show main|live|records|record|settings|onboarding、import、updatefeed、update check|download|job|notify）。只有开发版有，且只接受 adb。开发版默认不检查更新（点设置里的“检查更新”或用下面的命令后才查）：`cicadactl.sh push feed.json && cicadactl.sh updatefeed feed.json` 指向一份测试用的 release JSON（不带参数就是 GitHub），`adb shell cmd jobscheduler run -f com.wquguru.cicada.dev 7` 立刻跑一次后台检查。
 
 界面按 claude.ai 上的设计画布实现：首页、正在听、悬浮窗（纪要卡片 / 字幕条 / 小圆点）、三步引导、会议记录、会议详情、设置。文案用 Gemini（`google/gemini-4-argon`）审过一遍，与 Mac 共用的文案沿用 Mac 的译法。
 

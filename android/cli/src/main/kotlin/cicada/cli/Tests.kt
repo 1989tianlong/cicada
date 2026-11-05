@@ -24,6 +24,8 @@ object Tests {
             "readsAMacRecordAndWritesItBackByteForByte" to ::readsAMacRecord,
             "keepsTheMacsImportAndRoomFields" to ::keepsTheMacsImportAndRoomFields,
             "jsonEdgeCases" to ::jsonEdgeCases,
+            "findsTheNewestAndroidRelease" to ::findsTheNewestAndroidRelease,
+            "updateCheckIsSilentAndDue" to ::updateCheckIsSilentAndDue,
             "renamesLikeTheMac" to ::renamesLikeTheMac,
             "theLiveMeetingCantBeDeleted" to ::theLiveMeetingCantBeDeleted,
             "followSystemLikeTheMac" to ::followSystemLikeTheMac,
@@ -820,5 +822,70 @@ object Tests {
         store.end(s.id, java.time.Instant.parse("2026-11-04T10:00:06Z"))
         equal(java.time.Instant.parse("2026-11-04T10:00:06Z"), store.get(s.id)?.endedAt, "endedAt")
         equal("已经 10 分钟没人说话", Strings.LF("已经 %lld 分钟没人说话", 10), "number placeholder")
+    }
+
+    private fun release(tag: String, vararg assets: String, draft: Boolean = false, pre: Boolean = false) = mapOf(
+        "tag_name" to tag, "html_url" to "https://github.com/wquguru/cicada/releases/tag/$tag", "draft" to draft, "prerelease" to pre,
+        "assets" to assets.map { mapOf("name" to it, "browser_download_url" to "https://github.com/dl/$it", "size" to 1234L) })
+
+    fun findsTheNewestAndroidRelease() {
+        val feed = Json.write(listOf(
+            release("v1.10.0", "Cicada-1.10.0.dmg"),                                   // Mac only: skipped
+            release("v1.11.0", "Cicada-1.11.0-Android.apk", draft = true),
+            release("v1.12.0", "Cicada-1.12.0-Android.apk", pre = true),
+            release("v1.9.2", "Cicada-1.9.2-Windows-x64.zip", "Cicada-1.9.2-Android.apk"),
+            release("v1.9.10", "Cicada-1.9.10-Android.apk"),
+        ), pretty = false)
+        val u = UpdateChecker.newestAndroid(UpdateChecker.decode(feed)!!)
+        equal("1.9.10", u?.version, "newest with an APK")
+        equal("https://github.com/dl/Cicada-1.9.10-Android.apk", u?.apk, "apk url")
+        equal(1234L, u?.size, "size")
+        equal("1.9.2", UpdateChecker.newestAndroid(UpdateChecker.decode(Json.write(release("v1.9.2", "Cicada-1.9.2-Android.apk")))!!)?.version, "one release")
+        equal(null, UpdateChecker.decode("{\"message\":\"Not Found\"}"), "an error object")
+        equal(null, UpdateChecker.decode("<html>"), "not JSON")
+        check(UpdateChecker.isNewer("2.10.0", "2.9.1"), "2.10 > 2.9")
+        check(!UpdateChecker.isNewer("1.4.0", "1.4.0-dev"), "suffix ignored")
+        check(!UpdateChecker.isNewer("1.4", "1.4.0"), "missing part is 0")
+        check(UpdateChecker.isNewer("1.4.1", "1.4"), "patch")
+    }
+
+    fun updateCheckIsSilentAndDue() {
+        val ok = object : Transport {
+            var calls = 0
+            override fun send(url: String, method: String, body: String?, headers: Map<String, String>, timeoutMs: Int): Transport.Response {
+                calls++
+                check(headers["User-Agent"] != null, "User-Agent sent")
+                return Transport.Response(200, Json.write(listOf(release("v2.0.0", "Cicada-2.0.0-Android.apk"))))
+            }
+        }
+        val c = UpdateChecker("1.9.0", null, ok)
+        var told = 0
+        c.onChange { told++ }
+        check(c.check(), "reached")
+        equal("2.0.0", c.available?.version, "newer found")
+        equal(1, told, "listeners told")
+        check(c.lastChecked != null, "remembers when")
+        check(c.checkIfDue(UpdateChecker.STALE), "not due is fine")
+        equal(1, ok.calls, "not due: no request")
+        equal(null, UpdateChecker("2.0.0", null, ok).apply { check() }.available, "same version: nothing")
+        val down = UpdateChecker("1.9.0", null, object : Transport {
+            override fun send(url: String, method: String, body: String?, headers: Map<String, String>, timeoutMs: Int) = Transport.Response(403, "{}")
+        })
+        check(!down.check(), "rate-limited is a failure")
+        equal(null, down.lastChecked, "and not remembered")
+        val day = 24 * 3600_000L
+        val now = 10 * day
+        check(UpdateChecker.due(null, now, day), "never checked")
+        check(!UpdateChecker.due(now - 1000, now, day), "just checked")
+        check(UpdateChecker.due(now - day, now, day), "old enough")
+        check(UpdateChecker.due(now + 1000, now, day), "clock set back")
+        val file = File(Paths.root, "feed.json").apply { writeText(Json.write(release("v3.0.0", "Cicada-3.0.0-Android.apk"))) }
+        equal("3.0.0", UpdateChecker("1.0.0").apply { feed = file.path; check() }.available?.version, "a file feed")
+        equal("3.0.0", UpdateChecker("1.0.0").apply { feed = file.toURI().toString(); check() }.available?.version, "a file:// feed")
+        val s = AppSettings(updateLastChecked = 1_762_000_000_123L, updateNotified = "2.0.0")
+        s.save()
+        val back = AppSettings.load()
+        equal(1_762_000_000_123L, back.updateLastChecked, "lastChecked kept")
+        equal("2.0.0", back.updateNotified, "notified kept")
     }
 }

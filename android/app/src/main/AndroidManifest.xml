@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The floating notes window / subtitle bar. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- The daily update check: waits for a network, and keeps its schedule across a restart. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".CicadaApp"
@@ -53,6 +56,7 @@
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
             <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
         </service>
+        <service android:name=".UpdateJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <service android:name=".ListenService" android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone|dataSync" />
     </application>
