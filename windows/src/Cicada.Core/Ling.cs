@@ -103,12 +103,21 @@ public enum Priority { Speak = 0, Translate = 1, Notes = 2 }
 
 public enum KeyState { None, Unchecked, Checking, Ok, Invalid, Unreachable }
 
-public sealed class LingException(LingException.Kind kind, int status = 0) : Exception(kind == Kind.Http ? $"http{status}" : kind.ToString())
+public sealed class LingException(LingException.Kind kind, int status = 0, double? retryAfter = null) : Exception(kind == Kind.Http ? $"http{status}" : kind.ToString())
 {
     public enum Kind { NoKey, InvalidKey, RateLimited, Hijacked, Timeout, Http, Network, Parse }
     public Kind Failure { get; } = kind;
     /// The HTTP status for Kind.Http.
     public int Status { get; } = status;
+    /// Seconds the service asked us to wait (a 429's Retry-After), when it said.
+    public double? RetryAfter { get; } = retryAfter;
+}
+
+/// Time for LingClient's start gate; tests hand in one that moves on by itself.
+public class GateClock
+{
+    public virtual DateTime UtcNow => DateTime.UtcNow;
+    public virtual Task Delay(TimeSpan wait) => Task.Delay(wait);
 }
 
 /// The AI service: Ling (ant-ling.com) by default, or another OpenAI-compatible one (AIProviders.cs),
@@ -165,9 +174,10 @@ public sealed class LingClient
     public double? SimulateBalance { get; set; }
     public event Action? Changed;
 
-    public LingClient(AIKey key, HttpMessageHandler? handler = null, Func<AIConfig>? config = null)
+    public LingClient(AIKey key, HttpMessageHandler? handler = null, Func<AIConfig>? config = null, GateClock? clock = null)
     {
         this.key = key;
+        this.clock = clock ?? new GateClock();
         this.config = config ?? (() => AIConfig.Default);
         http = handler is null ? new HttpClient() : new HttpClient(handler);
         http.Timeout = Timeout.InfiniteTimeSpan; // per request below
@@ -426,9 +436,11 @@ public sealed class LingClient
     }
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
-    /// message, `audio` (a WAV) goes before it for the hear model. Notes retry 429s with backoff;
-    /// the rest fail fast so the caller can fall back. `model` defaults to the service's text model.
-    /// `patient` (the final notes) keeps retrying for about a minute (RetryWaits).
+    /// message, `audio` (a WAV) goes before it for the hear model. Notes and heard audio retry 429s
+    /// with backoff (RetryWaits); the rest fail fast so the caller can fall back. `model` defaults to
+    /// the service's text model. `patient` (the final notes) keeps retrying for about a minute. A 429
+    /// holds every request start for a while (RateLimited), and a retry keeps its place in the
+    /// queue, so lines stay in order.
     public async Task<string> Chat(string content, string instruction, Priority priority, bool json = false,
         int maxTokens = 1024, double timeout = 30, string? model = null, byte[]? audio = null, bool patient = false,
         CancellationToken cancel = default)
@@ -453,10 +465,12 @@ public sealed class LingClient
         var url = new Uri(new Uri(c.Base), "chat/completions");
 
         var waits = RetryWaits(priority, audio is not null, patient);
+        long? ticket = null;
         for (int attempt = 1; ; attempt++)
         {
             var queued = DateTime.UtcNow;
-            await Acquire(priority, c.Provider.Spacing, cancel);
+            // One that wouldn't retry fails at once while the service is cooling down: its caller falls back.
+            ticket = await Acquire(priority, c.Provider.Spacing, cancel, ticket, failIfPaused: waits.Length == 0);
             var started = DateTime.UtcNow;
             if ((started - queued).TotalSeconds > 1) Log.Debug($"ling: {priority} waited {(started - queued).TotalMilliseconds:F0} ms at the gate");
             try
@@ -482,21 +496,48 @@ public sealed class LingClient
             {
                 Observe(e, 0, audio is not null);
                 if (e.Failure != LingException.Kind.RateLimited) throw;
-                if (attempt > waits.Length) { RateLimitedAt = DateTimeOffset.Now; Changed?.Invoke(); throw; }
-                var wait = waits[attempt - 1] + Random.Shared.NextDouble() * 0.5;
+                var wait = RateLimited(waits.Length > 0 ? waits[Math.Min(attempt, waits.Length) - 1] : 1, e.RetryAfter);
+                if (attempt > waits.Length || wait is null) { RateLimitedAt = DateTimeOffset.Now; Changed?.Invoke(); throw; }
                 Log.Debug($"ling: {priority} 429, retry in {wait:F1} s");
-                await Task.Delay(TimeSpan.FromSeconds(wait), cancel);
             }
         }
     }
 
-    /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes can wait; heard audio gets
-    /// one retry, since on Windows a lost reply loses the words (on the Mac recognition is local and
-    /// only the translation is lost); the rest fail fast. `patient` (the final notes) keeps at it for
-    /// about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra, 2026-11) came
-    /// back after ~15 s, and a meeting left without its notes is worse than notes a little late.
+    /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes can wait; the rest fail
+    /// fast, except heard audio. A meeting's: on Windows a lost reply loses the words (on the Mac
+    /// recognition is local and only the translation is lost), and Ling's 429s came in runs of up to
+    /// ~10 s (two in a row lost about 2 lines a minute with one retry, 2026-11), so it keeps at it for
+    /// about 15 s. What the user says (Speak) retries once: late into the room is worse than "try again".
+    /// `patient` (the final notes) keeps at it for about a minute: a model limited upstream
+    /// (OpenRouter's Ling 3.1 by DeepInfra, 2026-11) came back after ~15 s, and a meeting left
+    /// without its notes is worse than notes a little late.
     public static double[] RetryWaits(Priority priority, bool audio = false, bool patient = false) =>
-        priority == Priority.Notes ? (patient ? [1, 2, 4, 8, 16, 30] : [1, 2, 4]) : audio ? [1] : [];
+        priority == Priority.Notes ? (patient ? [1, 2, 4, 8, 16, 30] : [1, 2, 4])
+        : audio ? (priority == Priority.Translate ? [1, 2, 4, 8] : [1]) : [];
+
+    /// Longest Retry-After worth waiting for; longer is an outage, not a busy moment.
+    public const double MaxPause = 30;
+
+    /// After a 429: no request starts for `backoff` seconds, or as long as the service asked
+    /// (Retry-After; Ling sends none), plus a little jitter. The queue waits at the gate instead of
+    /// each request spending its retries on the same limit. Null when that is over MaxPause (the
+    /// gate still holds for MaxPause).
+    double? RateLimited(double backoff, double? retryAfter)
+    {
+        var wait = Math.Max(backoff, retryAfter ?? 0) + Random.Shared.NextDouble() * 0.5;
+        lock (gate)
+        {
+            var until = clock.UtcNow.AddSeconds(Math.Min(wait, MaxPause));
+            if (until > pausedUntil) pausedUntil = until;
+        }
+        return wait <= MaxPause ? wait : null;
+    }
+
+    /// A Retry-After header in seconds: a delay or a date. Null when there is none.
+    public static double? RetryAfterSeconds(System.Net.Http.Headers.RetryConditionHeaderValue? value, DateTimeOffset now) =>
+        value?.Delta is { } d ? Math.Max(0, d.TotalSeconds)
+        : value?.Date is { } at ? Math.Max(0, (at - now).TotalSeconds)
+        : null;
 
     /// The service's voice for `text`: raw 24 kHz mono 16-bit PCM, chunk by chunk as it arrives.
     /// On Ling, `voice` is Ming's and `languageId` its `language_id`, needed for ja, ko, de, fr and
@@ -655,7 +696,8 @@ public sealed class LingClient
                 case HttpStatusCode.OK: break;
                 // Chat reports it to the check (Observe), which stops every request after it.
                 case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden: throw new LingException(LingException.Kind.InvalidKey);
-                case HttpStatusCode.TooManyRequests: throw new LingException(LingException.Kind.RateLimited);
+                case HttpStatusCode.TooManyRequests:
+                    throw new LingException(LingException.Kind.RateLimited, 429, RetryAfterSeconds(res.Headers.RetryAfter, DateTimeOffset.UtcNow));
                 default:
                     Log.Debug($"ling: HTTP {(int)res.StatusCode}");
                     throw new LingException(LingException.Kind.Http, (int)res.StatusCode);
@@ -670,49 +712,68 @@ public sealed class LingClient
         }
     }
 
-    // Start gate: request starts ≥ the service's spacing apart, the most urgent waiting one first.
+    // Start gate: request starts ≥ the service's spacing apart, the most urgent waiting one first,
+    // none while the service is cooling down after a 429.
 
     /// Tests only: overrides the service's spacing.
     public static double? Spacing { get; set; }
+    readonly GateClock clock;
     readonly object gate = new();
     DateTime lastStart = DateTime.MinValue;
+    DateTime pausedUntil = DateTime.MinValue;
     readonly List<(Priority priority, long seq, TaskCompletionSource ready)> waiting = [];
     long seq;
     bool pumping;
     double spacing = 0.6;
 
-    Task Acquire(Priority priority, double serviceSpacing, CancellationToken cancel)
+    /// Waits for this request's turn to start. `ticket` is a retry's first one, which keeps its
+    /// place ahead of requests queued after it. Returns the ticket.
+    Task<long> Acquire(Priority priority, double serviceSpacing, CancellationToken cancel, long? ticket = null, bool failIfPaused = false)
     {
         lock (gate)
         {
             spacing = Spacing ?? serviceSpacing;
-            if (waiting.Count == 0 && (DateTime.UtcNow - lastStart).TotalSeconds >= spacing)
+            var now = clock.UtcNow;
+            if (failIfPaused && pausedUntil > now) throw new LingException(LingException.Kind.RateLimited);
+            var me = ticket ?? ++seq;
+            if (waiting.Count == 0 && !pumping && Wait(now) <= Slack)
             {
-                lastStart = DateTime.UtcNow;
-                return Task.CompletedTask;
+                lastStart = now;
+                return Task.FromResult(me);
             }
             var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            waiting.Add((priority, ++seq, ready));
+            waiting.Add((priority, me, ready));
             if (!pumping) { pumping = true; _ = Pump(); }
-            return ready.Task.WaitAsync(cancel);
+            return ready.Task.WaitAsync(cancel).ContinueWith(t => { t.GetAwaiter().GetResult(); return me; }, TaskScheduler.Default);
         }
     }
+
+    /// Close enough to go: a wait comes back a tick short (TimeSpan rounding).
+    const double Slack = 0.001;
+
+    /// Seconds until the next start may go (gate held).
+    double Wait(DateTime now) => Math.Max(spacing - (now - lastStart).TotalSeconds, (pausedUntil - now).TotalSeconds);
 
     async Task Pump()
     {
         while (true)
         {
             double wait;
-            lock (gate) wait = Math.Max(0, spacing - (DateTime.UtcNow - lastStart).TotalSeconds);
-            if (wait > 0) await Task.Delay(TimeSpan.FromSeconds(wait));
             lock (gate)
             {
                 if (waiting.Count == 0) { pumping = false; return; }
-                var next = waiting.MinBy(w => ((int)w.priority, w.seq));
-                waiting.Remove(next);
-                lastStart = DateTime.UtcNow;
-                next.ready.TrySetResult();
+                var now = clock.UtcNow;
+                wait = Wait(now);
+                if (wait <= Slack)
+                {
+                    var next = waiting.MinBy(w => ((int)w.priority, w.seq));
+                    waiting.Remove(next);
+                    lastStart = now;
+                    next.ready.TrySetResult();
+                    continue;
+                }
             }
+            await clock.Delay(TimeSpan.FromSeconds(wait));
         }
     }
 }

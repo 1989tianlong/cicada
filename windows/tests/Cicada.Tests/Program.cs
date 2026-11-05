@@ -643,11 +643,28 @@ static class Tests
         }.ToJsonString()),
     };
 
-    static LingClient Client(Fake fake)
+    static LingClient Client(Fake fake, GateClock? clock = null)
     {
         var key = new AIKey(new PlainProtector());
         key.Save("sk-test-0000000000");
-        return new LingClient(key, fake);
+        return new LingClient(key, fake, clock: clock);
+    }
+
+    /// The start gate's time, moved on by each wait instead of waiting (one request at a time).
+    sealed class FakeClock : GateClock
+    {
+        public DateTime Now = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
+        public readonly DateTime Start = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
+        public readonly List<double> Waits = [];
+        public override DateTime UtcNow => Now;
+        public override Task Delay(TimeSpan wait) { Waits.Add(wait.TotalSeconds); Now += wait; return Task.CompletedTask; }
+    }
+
+    static HttpResponseMessage Busy(string? retryAfter = null)
+    {
+        var r = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        if (retryAfter is not null) r.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
+        return r;
     }
 
     public static async Task LingRequestShape()
@@ -674,17 +691,87 @@ static class Tests
         }
     }
 
-    public static async Task LingRetriesAudioOnceWhenBusy()
+    public static async Task LingHeardAudioRidesOutARunOf429s()
     {
+        // Ling's 429s come in runs (two in a row lost a line with one retry): heard audio backs off
+        // 1, 2, 4 s and gets through; text translation fails at once so the caller can fall back.
         int calls = 0;
-        var fake = new Fake(_ => Interlocked.Increment(ref calls) == 1 ? new HttpResponseMessage(HttpStatusCode.TooManyRequests) : Reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。"));
-        var ling = Client(fake);
-        var reply = await ling.Chat("c", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]);
-        Check(reply.Contains("ORIGINAL: Hi."), "second attempt answered");
-        Equal(2, calls, "one retry");
-        var text = Client(new Fake(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)));
+        var clock = new FakeClock();
+        var fake = new Fake(_ => Interlocked.Increment(ref calls) <= 3 ? Busy() : Reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。"));
+        var reply = await Client(fake, clock).Chat("c", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]);
+        Check(reply.Contains("ORIGINAL: Hi."), "the fourth attempt answered");
+        Equal(4, calls, "three retries");
+        Equal(3, clock.Waits.Count, "a wait before each");
+        double[] backoff = [1, 2, 4];
+        for (int i = 0; i < 3; i++) Check(clock.Waits[i] >= backoff[i] && clock.Waits[i] <= backoff[i] + 0.5, $"backoff {string.Join(",", clock.Waits)}");
+        var text = Client(new Fake(_ => Busy()), new FakeClock());
         try { await text.Chat("c", "i", Priority.Translate); throw new Exception("text translation retried"); }
         catch (LingException e) { Equal(LingException.Kind.RateLimited, e.Failure, "text fails fast"); }
+    }
+
+    public static async Task LingHeardAudioIsLostOnlyAfterAnOutage()
+    {
+        var clock = new FakeClock();
+        var fake = new Fake(_ => Busy());
+        var ling = Client(fake, clock);
+        try { await ling.Chat("c", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]); throw new Exception("no failure"); }
+        catch (LingException e) { Equal(LingException.Kind.RateLimited, e.Failure, "rate limited in the end"); }
+        Equal(5, fake.Calls.Count, "the first try and four retries");
+        Check((clock.Now - clock.Start).TotalSeconds >= 15, $"about 15 s of trying, got {(clock.Now - clock.Start).TotalSeconds}");
+        Check(ling.RateLimitedAt is not null, "reported busy");
+    }
+
+    public static async Task LingWaitsAsLongAsRetryAfterAsks()
+    {
+        int calls = 0;
+        var clock = new FakeClock();
+        var fake = new Fake(_ => Interlocked.Increment(ref calls) == 1 ? Busy("5") : Reply("ok"));
+        Equal("ok", await Client(fake, clock).Chat("c", "i", Priority.Notes), "answered after the wait");
+        Check(clock.Waits[0] is >= 5 and <= 5.5, $"waited as asked, got {clock.Waits[0]}");
+        // Asked to wait minutes: an outage, so the line goes now rather than after it.
+        var outage = new Fake(_ => Busy("120"));
+        try { await Client(outage, new FakeClock()).Chat("c", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]); throw new Exception("waited"); }
+        catch (LingException e) { Equal(LingException.Kind.RateLimited, e.Failure, "given up"); }
+        Equal(1, outage.Calls.Count, "no retry into an outage");
+        var now = new DateTimeOffset(2026, 11, 5, 12, 0, 0, TimeSpan.Zero);
+        Equal(3.0, LingClient.RetryAfterSeconds(new(TimeSpan.FromSeconds(3)), now), "a delay");
+        Equal(7.0, LingClient.RetryAfterSeconds(new(now.AddSeconds(7)), now), "a date");
+        Equal(null, LingClient.RetryAfterSeconds(null, now), "none");
+    }
+
+    public static async Task LingA429HoldsEveryStartWhileTheServiceCoolsDown()
+    {
+        int calls = 0;
+        var clock = new FakeClock();
+        var fake = new Fake(_ => Interlocked.Increment(ref calls) == 1 ? Busy() : Reply("notes"));
+        var ling = Client(fake, clock);
+        try { await ling.Chat("first", "i", Priority.Translate); } catch (LingException) { }
+        // A translation that wouldn't retry fails at once, without spending a request on the limit…
+        try { await ling.Chat("second", "i", Priority.Translate); throw new Exception("sent during the pause"); }
+        catch (LingException e) { Equal(LingException.Kind.RateLimited, e.Failure, "busy"); }
+        Equal(1, fake.Calls.Count, "nothing sent");
+        // …and one that would waits at the gate until the pause is over, then goes.
+        Equal("notes", await ling.Chat("notes", "i", Priority.Notes), "notes after the pause");
+        Check(clock.Waits.Sum() is >= 1 and <= 1.5, $"held for the pause, got {string.Join(",", clock.Waits)}");
+    }
+
+    public static async Task LingARetriedLineKeepsItsPlaceInTheQueue()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0.05;
+        try
+        {
+            int first = 0;
+            var fake = new Fake(b => b.Contains("\"content\":\"a\"") && Interlocked.Increment(ref first) == 1 ? Busy() : Reply("ok"));
+            var ling = Client(fake);
+            var a = ling.Chat("a", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]);
+            await Task.Delay(200);
+            var b = ling.Chat("b", "i", Priority.Translate, model: LingClient.AudioModel, audio: [1]);
+            await Task.WhenAll(a, b);
+            var order = fake.Calls.Select(c => JsonNode.Parse(c.body)!["messages"]![0]!["content"]!.GetValue<string>()).ToList();
+            Equal("a,a,b", string.Join(",", order), "the retry goes first");
+            Check((fake.Calls[2].at - fake.Calls[0].at).TotalSeconds >= 1.0, "b waited out the pause");
+        }
+        finally { LingClient.Spacing = old; }
     }
 
     public static async Task LingMarksABadKey()
@@ -1696,7 +1783,8 @@ static class Tests
     public static void FinalNotesKeepRetryingForAboutAMinute()
     {
         Check(LingClient.RetryWaits(Priority.Translate).Length == 0, "translation fails fast");
-        Check(LingClient.RetryWaits(Priority.Translate, audio: true).SequenceEqual(new double[] { 1 }), "heard audio retries once");
+        Check(LingClient.RetryWaits(Priority.Translate, audio: true).SequenceEqual(new double[] { 1, 2, 4, 8 }), "heard audio rides out about 15 s");
+        Check(LingClient.RetryWaits(Priority.Speak, audio: true).SequenceEqual(new double[] { 1 }), "what I say retries once");
         Check(LingClient.RetryWaits(Priority.Notes).SequenceEqual(new double[] { 1, 2, 4 }), "live notes as before");
         var patient = LingClient.RetryWaits(Priority.Notes, patient: true).Sum();
         Check(patient is >= 50 and <= 70, $"final notes wait about a minute ({patient} s)");
