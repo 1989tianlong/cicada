@@ -1194,6 +1194,65 @@ static class Tests
         Check(!File.Exists(got), "left-over installer removed");
     }
 
+    /// A release served over HTTP: checksums.txt, then the installer through `body`.
+    sealed class Release(byte[] installer, Func<byte[], Stream> body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel)
+        {
+            var name = Path.GetFileName(request.RequestUri!.LocalPath);
+            HttpContent content = name == "checksums.txt"
+                ? new StringContent($"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(installer))}  Cicada-1.3.0-Windows-x64.exe\n")
+                : new StreamContent(body(installer));
+            if (name != "checksums.txt") content.Headers.ContentLength = installer.Length;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    /// Sends `data` in `chunk`-sized pieces, then (when `stallAt` is reached) nothing at all.
+    sealed class Trickle(byte[] data, int chunk, long stallAt = long.MaxValue) : Stream
+    {
+        long at;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancel = default)
+        {
+            if (at >= stallAt) { await Task.Delay(Timeout.Infinite, cancel); }
+            var n = (int)Math.Min(Math.Min(chunk, buffer.Length), data.Length - at);
+            data.AsMemory((int)at, n).CopyTo(buffer);
+            at += n;
+            await Task.Yield();
+            return n;
+        }
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+        public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => false;
+        public override long Length => data.Length; public override long Position { get => at; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long o, SeekOrigin s) => throw new NotSupportedException();
+        public override void SetLength(long v) => throw new NotSupportedException();
+        public override void Write(byte[] b, int o, int c) => throw new NotSupportedException();
+    }
+
+    /// A slow download keeps going and reports progress up to 100 %; one that stops sending fails
+    /// after the stall limit, not after a fixed total time.
+    public static async Task UpdateDownloadFailsOnAStallNotOnSlowness()
+    {
+        var installer = new byte[300_000];
+        Random.Shared.NextBytes(installer);
+        var u = new UpdateChecker.Update("1.3.0", "https://example.com", null, installer.Length,
+            "https://example.com/Cicada-1.3.0-Windows-x64.exe", "https://example.com/checksums.txt");
+        var progress = new List<double>();
+        var slow = new UpdateChecker(null, _ => { }, new Release(installer, d => new Trickle(d, 1000))) { Stall = TimeSpan.FromMilliseconds(500) };
+        var got = await slow.Download(u, progress.Add);
+        Check(File.ReadAllBytes(got).AsSpan().SequenceEqual(installer), "whole file written");
+        Equal(1.0, progress[^1], "progress reaches 100 %");
+        Check(progress.Count <= 101, "whole percents only");
+        UpdateChecker.CleanDownloads(Path.GetDirectoryName(Path.GetDirectoryName(got)));
+
+        var stuck = new UpdateChecker(null, _ => { }, new Release(installer, d => new Trickle(d, 1000, stallAt: 100_000))) { Stall = TimeSpan.FromMilliseconds(300) };
+        var t = DateTime.UtcNow;
+        try { await stuck.Download(u); throw new Exception("a stalled download succeeded"); }
+        catch (UpdateChecker.Failure f) { Equal("下载失败", f.Key, "stall reported as a failed download"); }
+        Check((DateTime.UtcNow - t).TotalSeconds < 5, "fails soon after the stall");
+    }
+
     public static void UpdateSkipsReleasesWithoutAWindowsZip()
     {
         var list = UpdateChecker.Decode($"[{Rel("v1.6.0", "Cicada-1.6.0-macOS-AppleSilicon.zip")},{Rel("v1.5.0", "Cicada-1.5.0-Windows-x64.zip", "Cicada-1.5.0-Windows-ARM64.zip")}]")!;
