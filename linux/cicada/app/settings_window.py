@@ -66,10 +66,23 @@ def set_autostart(on: bool, launcher: str) -> None:
             pass
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    # --background: a login start stays in the top bar; opening 知了 by hand shows its window.
     with open(path, "w", encoding="utf-8") as f:
         f.write("[Desktop Entry]\nType=Application\nName=Cicada\nName[zh_CN]=知了\n"
-                "Exec=%s%s\nIcon=cicada\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
+                "Exec=%s%s --background\nIcon=cicada\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
                 % (launcher, " --dev" if Paths.dev else ""))
+
+
+def refresh_autostart(launcher: str) -> None:
+    """An autostart file from before --background (or from another install place) is rewritten."""
+    path = autostart_path()
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return
+    if "--background" not in text or ("Exec=%s " % launcher) not in text:
+        set_autostart(True, launcher)
 
 
 # GNOME custom keyboard shortcuts: `cicada --toggle` (开始 / 结束听) and `cicada --speak` (开始 / 停止说).

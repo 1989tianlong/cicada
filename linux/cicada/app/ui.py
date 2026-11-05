@@ -254,6 +254,29 @@ entry.keyentry { border-radius: 10px; min-height: 34px; }
 .midcard { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 12px; }
 .tipcard { background-color: #FFFFFF; border-radius: 14px; }
 .hair { background-color: #E4E6EA; min-height: 1px; }
+.srccard { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 14px; }
+.srccard.on { border: 2px solid #15171C; }
+.srcbadge { background-color: #F3F4F6; border-radius: 5px; padding: 0 6px; }
+.srcbadge label { color: #5A5F6B; }
+.srcstep { background-color: #F3F4F6; border-radius: 6px; padding: 1px 7px 2px 7px; }
+.srcstep label { color: #15171C; }
+.srcstep.on { background-color: #15171C; }
+.srcstep.on label { color: #FFFFFF; }
+.srccard flowbox, .srccard flowboxchild { padding: 0; background: none; }
+button.quietbtn.greytext label { color: #5A5F6B; }
+button.ctapill { background-image: none; background-color: #15171C; border: none; box-shadow: none; border-radius: 22px; min-height: 44px; padding: 0 22px; }
+button.ctapill:hover { background-color: #2A2D34; }
+button.ctapill label { color: #FFFFFF; }
+.ctakeys { border: 1px solid rgba(255,255,255,0.35); border-radius: 5px; }
+.ctakeys label { color: #BDC0C7; }
+.setupcard { background-color: #F7F8FA; border-radius: 16px; }
+.setupdisc { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 13px; }
+.setupdisc label { color: #3A3E48; }
+.setupdisc.done { background-color: #15171C; border-color: #15171C; }
+.setupdisc.done image { color: #FFFFFF; }
+.setupdisc.now { background-color: #E8552B; border-color: #E8552B; }
+.setupdisc.now label { color: #FFFFFF; }
+.setuptag { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 9px; padding: 0 7px; }
 .stepnum { background-color: #15171C; border-radius: 12px; min-width: 24px; min-height: 24px; }
 .stepnum label { color: #FFFFFF; }
 button.bigbtn { background-image: none; background-color: #15171C; color: #FFFFFF; border: none; box-shadow: none; border-radius: 12px; min-height: 44px; padding: 0 28px; font-size: 14px; font-weight: 700; }

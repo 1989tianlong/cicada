@@ -259,7 +259,7 @@ def command(app, line: str) -> dict:
     if cmd == "onboarding-step":
         app.show_onboarding()
         app.onboarding.go(int(arg))
-        return {"ok": True, "step": app.onboarding.step}
+        return {"ok": True, "step": app.onboarding.step if app.onboarding is not None else "done"}
     if cmd == "quit":
         app.quit()
         return {"ok": True}

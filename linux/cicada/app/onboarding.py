@@ -5,15 +5,18 @@ works without the Ling key, and 接 Ling comes first (the Mac puts it third). So
 (no permission on Linux) → sample meeting → 同声传译, if wanted → where Cicada lives."""
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import threading
 from collections import deque
 
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 from ..core import ling as lingmod
-from ..core.audio import Wav
+from ..core.audio import Wav, sink_description
 from ..core.strings import L, LF
-from ..core.support import TARGETS
+from ..core.support import TARGETS, Log
 from . import ui
 from .capture import SystemAudio
 from .settings_window import LING_PLATFORM, SHORTCUTS, choice, gnome_shortcut, open_uri, set_gnome_shortcut, target_options
@@ -23,7 +26,7 @@ STEPS = 4
 
 
 class Onboarding(Gtk.Window):
-    def __init__(self, app):
+    def __init__(self, app, step: int | None = None):
         super().__init__(title=L("知了"))
         self.app = app
         # Fixed at the Mac's 860 x 640. Not set_resizable(False): GTK then sizes the window to its
@@ -40,6 +43,9 @@ class Onboarding(Gtk.Window):
         self.set_titlebar(bar)
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         ui.pad(outer, 6, 64, 36, 64)
+        # The page's real width as its minimum: GTK 3 sizes a window for its content at the content's
+        # minimum width, where every wrapped line wraps most, so the fixed 640 would be outgrown.
+        outer.set_size_request(860 - 128, -1)
         self.head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         outer.pack_start(self.head, False, False, 0)
         self.page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -55,7 +61,10 @@ class Onboarding(Gtk.Window):
         self.speak_setup = None  # 同声传译: None until chosen here (then True / False)
         self.connect("destroy", lambda *_: self._stop_tap())
         self.connect("key-press-event", self._key)
-        self.step = AUDIO if app.ling.has_key else KEY
+        self.step = step if step is not None and (step == KEY or app.ling.has_key) else AUDIO if app.ling.has_key else KEY
+        self.testing = None   # 放一段测试声音: the player while it plays
+        self.tested = False   # a test sound played and nothing was heard
+        self.device = None    # the default output's name, once pactl has said it
         self.render()
 
     def _key(self, _w, event) -> bool:
@@ -285,7 +294,9 @@ class Onboarding(Gtk.Window):
     # 2. System audio
 
     def _audio_step(self) -> None:
-        self._title(L("让知了听到电脑里的声音"), L("知了听的是电脑播放出来的声音，不用麦克风，也不用授权。"))
+        self._title(L("让知了听到电脑里的声音"), L("会议里对方说的话从电脑放出来，字幕和纪要都从这里来。不用麦克风，也不用授权。"))
+        if self.device is None:
+            threading.Thread(target=self._find_device, daemon=True).start()
         if self.tap is None:
             self.tap = SystemAudio()
 
@@ -307,9 +318,31 @@ class Onboarding(Gtk.Window):
             self.bars.append(b)
         self.heard_row = ui.hbox(6)
         trailing = ui.hbox(12, meter, self.heard_row)
-        self._card(self._row("audio-speakers-symbolic", L("听电脑里的声音"), L("只听声音，不录屏幕画面"), trailing))
+        source = self._row("audio-speakers-symbolic", L("电脑播放的声音"), self._device_line(), trailing)
+        self.device_label = source.get_children()[1].get_children()[1]  # the row's detail line
+        test = ui.button(L("正在播放…") if self.testing else L("放一段测试声音"), self._play_test, "accentbtn midbtn",
+                         "media-playback-start-symbolic")
+        test.set_sensitive(self.testing is None)
+        self.test_button = test
+        test_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        test_row.pack_start(ui.vbox(2, ui.text(L("没有声音在放？"), 14, "ink", wrap=False),
+                                    ui.text(L("放 3 秒测试声音，从同一个设备出来"), 13, "secondary", wrap=False)), True, True, 0)
+        test.set_valign(Gtk.Align.CENTER)
+        test_row.pack_end(test, False, False, 0)
+        self._card(source, ui.pad(test_row, 16, 22))
+        # The two sounds side by side: people try speaking first, but this step hears the computer.
+        sources = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, homogeneous=True)
+        sources.pack_start(self._source(L("对方的声音"), L("这一步"), [L("会议软件"), L("扬声器"), L("知了：字幕和纪要")], True), True, True, 0)
+        sources.pack_start(self._source(L("你的声音 · 麦克风"), L("第 4 步再用"), [L("麦克风"), L("同声传译"), L("对方听到译文")], False), True, True, 0)
+        self.page.pack_start(ui.gap(sources, 12), False, False, 0)
+        self.sources = sources
+        sources.set_no_show_all(True)  # _fill_silent decides, not the window's show_all
+        # Played and still nothing: most likely the sound goes to another output (an HDMI screen).
+        self.silent = Gtk.Box()
+        self.page.pack_start(ui.gap(self.silent, 12), False, False, 0)
+        self._fill_silent()
         self._back()
-        self.audio_hint = ui.text(L("音量条没动？放段视频或音乐试试"), 13, "secondary", wrap=False)
+        self.audio_hint = Gtk.Box()  # 放一段测试声音 says what the old 音量条没动？ hint said
         self.footer.pack_start(self.audio_hint, True, True, 0)
         self.audio_next = Gtk.Box()
         self.footer.pack_end(self.audio_next, False, False, 0)
@@ -326,8 +359,122 @@ class Onboarding(Gtk.Window):
         self._update_heard()
         return True
 
+    def _source(self, title: str, badge: str, flow: list, on: bool) -> Gtk.Widget:
+        """One of the two sounds and where it goes, outlined in ink when it is this step's."""
+        head = ui.hbox(8, ui.text(title, 14, "ink", bold=True, wrap=False),
+                       ui.panel(ui.text(badge, 11, "", bold=on, wrap=False, ellipsize=False), "badge" if on else "srcbadge"))
+        # One wrapping label, each step on a tinted ground (the last in ink when it is this step's):
+        # GTK 3 sizes a FlowBox for its narrowest layout, which would stretch the fixed-size window.
+        words = []
+        for i, word in enumerate(flow):
+            last = on and i == len(flow) - 1
+            words.append('<span background="%s" foreground="%s">\u00a0%s\u00a0</span>'
+                         % ("#15171C" if last else "#F3F4F6", "#FFFFFF" if last else "#15171C",
+                            GLib.markup_escape_text(word).replace(" ", "\u00a0")))  # breaks only between steps
+        path = ui.text("", 12, "", width_chars=36)
+        path.set_markup('<span size="%d">%s</span>' % (round(12 * 768), '  <span foreground="#5A5F6B">→</span>  '.join(words)))
+        # Whole words only: WORD_CHAR's one-character minimum width makes GTK 3 ask for a window as
+        # tall as the text would be one letter wide.
+        path.set_line_wrap_mode(Pango.WrapMode.WORD)
+        return ui.panel(ui.pad(ui.vbox(8, head, path), 12, 16, 10, 16), "srccard", "on" if on else "")
+
+    def _device_line(self) -> str:
+        return LF("%@ · 只听声音，不录屏幕画面", self.device) if self.device else L("只听声音，不录屏幕画面")
+
+    def _find_device(self) -> None:
+        """The default output's name ("内置音频 模拟立体声") through pactl, off the main loop; none
+        without pactl (the row then says only what it hears)."""
+        name = None
+        if shutil.which("pactl"):
+            env = dict(os.environ, LC_ALL="C")
+            try:
+                sink = subprocess.run(["pactl", "get-default-sink"], capture_output=True, text=True, timeout=3, env=env).stdout.strip()
+                # Descriptions in the desktop's language: pactl translates them under LANG.
+                sinks = subprocess.run(["pactl", "list", "sinks"], capture_output=True, text=True, timeout=3,
+                                       env=dict(os.environ, LC_MESSAGES="C")).stdout
+                name = sink_description(sinks, sink)
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+        def show():
+            self.device = name or ""
+            if self.step == AUDIO and hasattr(self, "device_label"):
+                ui.retext(self.device_label, self._device_line())
+            return False
+        GLib.idle_add(show)
+
+    def _play_test(self) -> None:
+        """放一段测试声音: the sample's first 3 s through the default output, the device Cicada hears:
+        the bars move only if the sound really reaches the monitor."""
+        from .main import sample_path
+        path = sample_path()
+        player = next((p for p in ("pw-play", "paplay", "aplay") if shutil.which(p)), None)
+        if self.testing is not None or path is None or player is None:
+            return
+        try:
+            self.testing = subprocess.Popen([player, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            Log.d("onboarding: test sound failed %s" % type(e).__name__)
+            return
+        Log.d("onboarding: test sound (%s)" % player)
+        self.tested = False
+        self._fill_silent()
+        self.test_button.get_child().get_children()[-1].set_text(L("正在播放…"))
+        self.test_button.set_sensitive(False)
+        GLib.timeout_add(3000, self._test_ended)
+
+    def _test_ended(self) -> bool:
+        self._stop_test()
+        if self.step != AUDIO:
+            return False
+
+        def settle():  # the last buffers arrive a moment after the player stops
+            if self.step != AUDIO:
+                return False
+            self.tested = self.peak < 0.01
+            Log.d("onboarding: test sound %s" % ("not heard" if self.tested else "heard"))
+            self.test_button.get_child().get_children()[-1].set_text(L("放一段测试声音"))
+            self.test_button.set_sensitive(True)
+            self._fill_silent()
+            return False
+        GLib.timeout_add(400, settle)
+        return False
+
+    def _fill_silent(self) -> None:
+        """The warning takes the two sounds' place, so the window keeps its fixed size."""
+        ui.clear(self.silent)
+        if self.tested:
+            self.sources.hide()
+        else:
+            for child in self.sources.get_children():  # show_all() skips a no_show_all widget
+                child.show_all()
+            self.sources.show()
+        if not self.tested:
+            self.silent.hide()
+            return
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.pack_start(ui.icon("dialog-warning-symbolic", 16), False, False, 0)
+        row.get_children()[0].set_valign(Gtk.Align.START)
+        ui.classes(row.get_children()[0], "link")
+        row.pack_start(ui.vbox(2, ui.text(L("测试声音放了，但知了没听到"), 14, "ink", bold=True, wrap=False),
+                               ui.text(L("看看声音是不是从别的设备出来（比如 HDMI 显示器），或被静音了。"), 13, "ink", width_chars=50)),
+                       True, True, 0)
+        # GNOME's own sound page; other desktops differ, so only there.
+        if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper() and shutil.which("gnome-control-center"):
+            b = ui.button(L("打开声音设置"), lambda: subprocess.Popen(["gnome-control-center", "sound"]), "outline")
+            b.set_valign(Gtk.Align.CENTER)
+            row.pack_end(b, False, False, 0)
+        strip = ui.panel(ui.pad(row, 12, 16), "endingstrip")
+        self.silent.pack_start(strip, True, True, 0)
+        self.silent.show_all()
+
     def _update_heard(self) -> None:
         heard = self.peak >= 0.01
+        if heard:
+            self.app.setup_step_done("heardSystemAudio")
+            if self.tested:
+                self.tested = False
+                self._fill_silent()
         if self._heard_shown == heard:
             return
         self._heard_shown = heard
@@ -418,6 +565,8 @@ class Onboarding(Gtk.Window):
 
     def _play(self) -> None:
         self.app.play_sample()
+        if self.app.listen.listening:
+            self.app.setup_step_done("sampleSeen")
         self._fill_sample()
 
     # 4. 同声传译
@@ -553,7 +702,14 @@ class Onboarding(Gtk.Window):
         below.pack_end(arrow, False, False, 0)
         return ui.panel(ui.vbox(0, top, below), "bigcard", "clip")
 
+    def _stop_test(self) -> None:
+        if self.testing is not None:
+            player, self.testing = self.testing, None
+            player.terminate()
+            threading.Thread(target=player.wait, daemon=True).start()  # reaped, not left a zombie
+
     def _stop_tap(self) -> None:
+        self._stop_test()
         if self.meter is not None:
             GLib.source_remove(self.meter)
             self.meter = None

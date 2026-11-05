@@ -17,6 +17,11 @@ class AppSettings:
         "view": "notes",             # "notes" (the notes window, default) or "subtitles" (the subtitle bar)
         "showInCapture": False,      # 共享屏幕时让对方看到 (Linux can't hide it; see NotesWindow)
         "onboarded": False,
+        # The setup checklist (会议记录 › 还差几步): the onboarding heard the computer's sound / played the sample.
+        "heardSystemAudio": False,
+        "sampleSeen": False,
+        "speakLater": False,         # 还差几步 › 同声传译 › 以后再说
+        "trayHintShown": False,      # 知了还在顶栏, said once after the records window is first closed
         "uiLanguage": "system",      # "system", "zh-Hans", "en", "ja" or "ko"
         # 同声传译: what I say is interpreted and spoken into 知了 麦克风 (the Mac's speakEnabled etc.).
         "speakerVoices": True,       # 说话人识别: tell the other side's voices apart (说话人 1、2…), as on the Mac

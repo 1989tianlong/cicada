@@ -30,7 +30,7 @@ class RecordsWindow(Gtk.Window):
         self.set_size_request(720, 480)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_wmclass("cicada", "Cicada")
-        self.connect("delete-event", lambda *_: self.hide() or True)
+        self.connect("delete-event", lambda *_: self.hide() or self.app.records_closed() or True)
         self.selected = None
         self.pending_delete = None  # a record deleted but still undoable
         self.query = ""
@@ -56,6 +56,7 @@ class RecordsWindow(Gtk.Window):
         self.bar_side = ui.panel(ui.pad(ui.text(L("会议记录"), 13, "heading", bold=True, wrap=False), 0, 0, 0, 18), "sidebar-top")
         self.bar_side.set_size_request(260, -1)
         self.bar_side.get_child().set_valign(Gtk.Align.CENTER)
+        self.bar_side.set_no_show_all(True)  # with the sidebar: hidden while there are no meetings
         bar.pack_start(self.bar_side)
         bar.pack_end(self._app_menu())
         self.set_titlebar(bar)
@@ -152,8 +153,9 @@ class RecordsWindow(Gtk.Window):
         if listen.listening:
             state = "ending" if app.ending is not None else "live"
         else:
-            state = "auto" if app.auto_ended else "idle"
-        key = (state, app.ending.reason.kind + app.ending.reason.name if state == "ending" else "")
+            state = "auto" if app.auto_ended else "setup" if app.setup_left else "idle"
+        key = (state, app.ending.reason.kind + app.ending.reason.name if state == "ending" else
+               str(app.setup_left) if state == "setup" else "")
         if key != getattr(self, "_pill_state", None):
             first = getattr(self, "_pill_state", None) is None
             self._pill_state = key
@@ -162,7 +164,22 @@ class RecordsWindow(Gtk.Window):
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
             box.set_valign(Gtk.Align.CENTER)
             box.set_halign(Gtk.Align.CENTER)
-            if state in ("idle", "auto"):
+            if state == "setup":
+                # Not set up yet: the capsule says how much is left and opens the onboarding there.
+                b = Gtk.Button()
+                inner = ui.hbox(9, self._logo(22), ui.text(L("知了"), 13, "ink", bold=True, wrap=False, ellipsize=False),
+                                ui.panel(Gtk.Box(), "pillsep"),
+                                ui.text(LF("还差 %@ 步", app.setup_left), 13, "link", bold=True, wrap=False, ellipsize=False),
+                                ui.text(L("继续设置"), 11, "secondary", wrap=False, ellipsize=False))
+                sep = inner.get_children()[2]
+                sep.set_size_request(1, 14)
+                sep.set_valign(Gtk.Align.CENTER)
+                b.add(inner)
+                ui.classes(b, "listenpill")
+                b.connect("clicked", lambda *_: self.app.show_onboarding())
+                b.get_accessible().set_name(L("继续设置"))
+                box.pack_start(b, False, False, 0)
+            elif state in ("idle", "auto"):
                 b = Gtk.Button()
                 inner = ui.hbox(9, self._logo(22), ui.text(L("知了"), 13, "ink", bold=True, wrap=False, ellipsize=False),
                                 ui.panel(Gtk.Box(), "pillsep"),
@@ -366,6 +383,8 @@ class RecordsWindow(Gtk.Window):
             self.list.add(row)
         self.list.show_all()
         self.sidebar.set_visible(bool(everything))
+        self.bar_side.set_visible(bool(everything))
+        self.bar_side.get_child().show_all()
         if not sessions:
             self.selected = None if not everything else self.selected
         elif self.selected not in [s.id for s in sessions]:
@@ -396,6 +415,112 @@ class RecordsWindow(Gtk.Window):
             if self.columns.get_orientation() != want:
                 self.columns.set_orientation(want)
                 self.columns.set_homogeneous(want == Gtk.Orientation.HORIZONTAL)
+
+    def _setup_page(self) -> Gtk.Widget:
+        """No meetings and not set up yet (Windows' Welcome › Checklist): what is left, ticked by what
+        really happened, each step opening the onboarding where it is. 同声传译 is optional."""
+        app = self.app
+        key, audio, sample = app.setup_done
+        first = 0 if not key else 1 if not audio else 2 if not sample else 3
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        page.set_halign(Gtk.Align.CENTER)
+        page.set_valign(Gtk.Align.CENTER)
+        page.set_vexpand(True)
+        mark = self._logo(72)
+        mark.set_halign(Gtk.Align.CENTER)
+        page.pack_start(mark, False, False, 0)
+        t = ui.text(LF("还差 %@ 步就能用", app.setup_left), 26, "heading", bold=True, wrap=False)
+        t.set_halign(Gtk.Align.CENTER)
+        page.pack_start(ui.gap(t, 26), False, False, 0)
+        line = ui.text(L("知了把电脑里放出来的会议声音变成字幕和纪要。"), 15, "secondary", wrap=False)
+        line.set_halign(Gtk.Align.CENTER)
+        page.pack_start(ui.gap(line, 8), False, False, 0)
+        from .settings_window import SHORTCUTS, gnome_shortcut
+        speak = (LF("按 %@ 说话，对方听到翻译后的声音", SHORTCUTS["speak"][2].replace(" + Shift + ", " ⇧ "))
+                 if gnome_shortcut("speak") else L("点纪要窗的麦克风说话，对方听到翻译后的声音"))
+        steps = ((L("接上 Ling"), L("只存在这台电脑上（只有你的账户能读）") if key else L("识别、翻译和纪要都靠它，约 1 分钟"), key),
+                 (L("听一下电脑里的声音"), L("放一段测试声音，看音量条动起来"), audio),
+                 (L("看看效果"), L("一段 9 秒的英文会议，字幕和纪要一句句出来"), sample),
+                 (L("同声传译"), L("以后在设置 › 同声传译里打开") if app.settings.speakLater and not app.settings.speakEnabled
+                  else speak, app.settings.speakEnabled))
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        for i, (title, detail, done) in enumerate(steps):
+            if i:
+                sep = ui.panel(Gtk.Box(), "hair")
+                sep.set_size_request(-1, 1)
+                rows.pack_start(sep, False, False, 0)
+            now = i == first
+            disc = ui.panel(ui.icon("object-select-symbolic", 13) if done else
+                            ui.text(str(i + 1), 12, "", bold=True, wrap=False, ellipsize=False),
+                            "setupdisc", "done" if done else "now" if now else "")
+            disc.set_size_request(26, 26)
+            disc.get_child().set_halign(Gtk.Align.CENTER)
+            disc.get_child().set_valign(Gtk.Align.CENTER)
+            disc.set_valign(Gtk.Align.CENTER)
+            head = ui.hbox(8, ui.text(title, 14, "secondary" if done else "ink", bold=not done, wrap=False))
+            head.set_halign(Gtk.Align.START)
+            if i == 3:
+                head.pack_start(ui.panel(ui.text(L("可选"), 11, "secondary", wrap=False, ellipsize=False), "setuptag"), False, False, 0)
+            sub = ui.text(detail, 12, "secondary", width_chars=40)
+            sub.set_halign(Gtk.Align.START)
+            sub.set_xalign(0)
+            texts = ui.vbox(1, head, sub)
+            texts.set_valign(Gtk.Align.CENTER)
+            row = ui.hbox(14, disc)
+            row.pack_start(texts, True, True, 0)  # filled, so the words start at the left of every row
+            action = None
+            if now:
+                action = ui.button(L("继续设置"), lambda n=i: app.show_onboarding(n), "darkbtn")
+            elif i == 3 and not done and not app.settings.speakLater:
+                action = ui.button(L("以后再说"), self._speak_later, "outline")
+            if action is not None:
+                action.set_valign(Gtk.Align.CENTER)
+                row.pack_end(action, False, False, 0)
+            rows.pack_start(ui.pad(row, 14, 0), False, False, 0)
+        card = ui.panel(ui.pad(rows, 2, 18), "setupcard")
+        card.set_size_request(460, -1)
+        page.pack_start(ui.gap(card, 28), False, False, 0)
+        page.set_margin_bottom(40)
+        return page
+
+    def _speak_later(self) -> None:
+        self.app.settings.speakLater = True
+        self.app.settings.save()
+        self.app.changed()
+
+    def _welcome_page(self) -> Gtk.Widget:
+        """No meetings yet, set up (Views.swift › welcome): the logo, one line, 开始听 and the sample."""
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        page.set_halign(Gtk.Align.CENTER)
+        page.set_valign(Gtk.Align.CENTER)
+        page.set_vexpand(True)
+        mark = self._logo(72)
+        mark.set_halign(Gtk.Align.CENTER)
+        page.pack_start(mark, False, False, 0)
+        t = ui.text(L("还没有会议"), 26, "heading", bold=True, wrap=False)
+        t.set_halign(Gtk.Align.CENTER)
+        page.pack_start(ui.gap(t, 26), False, False, 0)
+        line = ui.text(L("打开会议或视频，开始听后，每一场都会存在这里。"), 15, "secondary", wrap=False)
+        line.set_halign(Gtk.Align.CENTER)
+        page.pack_start(ui.gap(line, 8), False, False, 0)
+        inner = ui.hbox(10, ui.dot(True), ui.text(L("开始听"), 15, "", bold=True, wrap=False, ellipsize=False))
+        keys = self._shortcut_hint()
+        if keys:
+            cap = ui.panel(ui.pad(ui.text(keys, 12, "", wrap=False, ellipsize=False), 0, 6, 1, 6), "ctakeys")
+            cap.set_valign(Gtk.Align.CENTER)
+            inner.pack_start(cap, False, False, 0)
+        start = Gtk.Button()
+        start.add(inner)
+        ui.classes(start, "ctapill")
+        start.connect("clicked", lambda *_: self.app.toggle_listening())
+        start.get_accessible().set_name(L("开始听"))
+        start.set_halign(Gtk.Align.CENTER)
+        page.pack_start(ui.gap(start, 30), False, False, 0)
+        sample = ui.button(L("先听一段示例"), self.app.play_sample, "quietbtn greytext")
+        sample.set_halign(Gtk.Align.CENTER)
+        page.pack_start(ui.gap(sample, 10), False, False, 0)
+        page.set_margin_bottom(40)
+        return page
 
     def _status_page(self, icon_name, title, body, actions) -> Gtk.Widget:
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -429,11 +554,16 @@ class RecordsWindow(Gtk.Window):
             ui.clear(d)
             self.columns = None
             self._built_key = None
+        if empty and self.app.setup_left:
+            d.pack_start(self._setup_page(), True, True, 0)
+            d.show_all()
+            return
         if empty:
-            d.pack_start(self._status_page("audio-speakers-symbolic", L("还没有会议记录"),
-                                           L("点“开始听”，将电脑播放的声音转为双语字幕和纪要"),
-                                           [ui.button(L("开始听"), self.app.toggle_listening, "accentbtn pill"),
-                                            ui.button(L("播放示例会议"), self.app.play_sample, "outline pill")]), True, True, 0)
+            d.pack_start(self._welcome_page(), True, True, 0)
+            if self.app.tray is not None:  # where 知了 is once this window is closed
+                hint = ui.text(L("关掉窗口后，知了在顶栏右上角"), 12, "secondary", wrap=False)
+                hint.set_halign(Gtk.Align.END)
+                d.pack_end(ui.pad(hint, 0, 18, 14, 0), False, False, 0)
             d.show_all()
             return
         if no_match:

@@ -121,7 +121,7 @@ class Controller:
             self.tray.tick()
         return True
 
-    def launch(self, speak: bool = False) -> None:
+    def launch(self, speak: bool = False, background: bool = False) -> None:
         ui.install_css()
         lang = strings.language
         ui.DEFAULT_LANG = ui.pango_lang({"zh-Hans": "zh-CN"}.get(lang, lang)) if lang != "en" else ui.pango_lang(self.settings.notes_code)
@@ -146,14 +146,17 @@ class Controller:
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, self._signalled, sig)
         if Paths.dev:
             debug.start(self)
+        from .settings_window import refresh_autostart
+        refresh_autostart(self.launcher)
+        if self.settings.onboarded and self.ling.has_key:
+            threading.Thread(target=self.ling.check, daemon=True).start()
+        # Opened by hand, 知了 shows its window: a top-bar icon alone looks like nothing happened, and
+        # plain GNOME has no top bar icon at all. Only a login start (--background) with an icon to be
+        # reached through, set up already, stays out of the way. Not set up: the onboarding on top.
+        if not background or self.tray is None or not self.settings.onboarded:
+            self.show_records()
         if not self.settings.onboarded:
-            self.show_onboarding()
-        else:
-            if self.ling.has_key:
-                threading.Thread(target=self.ling.check, daemon=True).start()
-            # Without a tray (plain GNOME has none) the records window is how the app is reached.
-            if self.tray is None:
-                self.show_records()
+            GLib.timeout_add(500, lambda: self.show_onboarding() and False)
         reopened = self.updates.reopened()
         if reopened and self.settings.onboarded:
             self.show_records()  # where 已更新到 … is said, once
@@ -209,21 +212,65 @@ class Controller:
         self.settings_window.show_all()
         self.settings_window.present()
 
-    def show_onboarding(self) -> None:
+    # Setup (会议记录 › 还差几步 and the capsule)
+
+    @property
+    def setup_done(self) -> tuple:
+        """The setup steps as the onboarding numbers them (key, computer sound, sample): done by what
+        really happened, not by "the onboarding was finished" (Windows' SetupDone)."""
+        s = self.settings
+        return self.ling.has_key, s.heardSystemAudio or s.onboarded, s.sampleSeen or s.onboarded
+
+    @property
+    def setup_left(self) -> int:
+        """Steps left before listening works; 0 once set up. 同声传译 is optional and never counted."""
+        key, audio, sample = self.setup_done
+        if self.settings.onboarded and key:
+            return 0
+        return (not key) + (not audio) + (not sample)
+
+    def setup_step_done(self, name: str) -> None:
+        """The onboarding heard the computer (heardSystemAudio) or played the sample (sampleSeen)."""
+        if not getattr(self.settings, name):
+            setattr(self.settings, name, True)
+            self.settings.save()
+            self.changed()
+
+    def show_onboarding(self, step: int | None = None) -> None:
+        """The onboarding at `step`, or at the first step not done, over the records window."""
+        from .onboarding import AUDIO, KEY, SAMPLE, Onboarding
+        key, audio, _ = self.setup_done
+        at = step if step is not None else KEY if not key else AUDIO if not audio else SAMPLE
         if self.onboarding is not None:
+            if step is not None and self.onboarding.step != step:
+                self.onboarding.go(step)
             self.onboarding.present()
             return
-        from .onboarding import Onboarding
-        self.onboarding = Onboarding(self)
+        self.onboarding = Onboarding(self, at)
         self.application.add_window(self.onboarding)
+        # Over the records window, so closing it leaves a window to click, not an empty screen.
+        if self.records_window is not None and self.records_window.get_visible():
+            self.onboarding.set_transient_for(self.records_window)
+            self.onboarding.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
 
         def closed(*_):
             self.onboarding = None
-            if self.tray is None and self.settings.onboarded:
+            if self.tray is None and (self.records_window is None or not self.records_window.get_visible()):
                 self.show_records()
+            self.changed()
         self.onboarding.connect("destroy", closed)
         self.onboarding.show_all()
         self.onboarding.present()
+
+    def records_closed(self) -> None:
+        """The records window was closed: once, say 知了 is still in the top bar (it keeps running)."""
+        if self.tray is None or self.settings.trayHintShown:
+            return
+        self.settings.trayHintShown = True
+        self.settings.save()
+        n = Gio.Notification.new(L("知了还在顶栏"))
+        n.set_body(L("从右上角的知了图标打开会议记录，或开始听。"))
+        self.application.send_notification("still-here", n)
 
     def set_view(self, view: str) -> None:
         if view not in ("notes", "subtitles") or view == self.settings.view:
@@ -600,14 +647,17 @@ class App(Gtk.Application):
             a.connect("activate", lambda _a, _p, f=action: f())
             self.add_action(a)
             self.set_accels_for_action("app." + name, keys)
-        self.controller.launch(speak=getattr(self, "speak_at_start", False))
+        self.controller.launch(speak=getattr(self, "speak_at_start", False), background=getattr(self, "background", False))
         if getattr(self, "toggle_at_start", False):
             GLib.idle_add(lambda: self.controller.toggle_listening() and False)
 
     def do_activate(self):
-        # A second launch lands here in the running instance: open the records.
-        if self.controller is not None and self.controller.settings.onboarded and getattr(self, "_activated", False):
+        # A second launch lands here in the running instance: the records, and the onboarding on top
+        # while not set up (closed with ✕ earlier, it would otherwise never come back).
+        if self.controller is not None and getattr(self, "_activated", False):
             self.controller.show_records()
+            if not self.controller.settings.onboarded:
+                self.controller.show_onboarding()
         self._activated = True
 
 
@@ -618,6 +668,9 @@ def main(argv=None) -> int:
         argv.remove("--dev")
     GLib.set_prgname("cicada")
     app = App()
+    if "--background" in argv:  # 登录时启动: stay in the top bar
+        argv.remove("--background")
+        app.background = True
     for flag, action in (("--toggle", "toggle"), ("--speak", "speak")):
         if flag in argv:
             argv.remove(flag)

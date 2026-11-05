@@ -368,6 +368,27 @@ class Hearing(Base):
         self.assertEqual("a b", join("a ", " b", "en"))
 
 
+class FirstRun(Base):
+    def test_setup_facts_are_kept(self):
+        s = AppSettings()
+        self.assertEqual((False, False, False), (s.heardSystemAudio, s.sampleSeen, s.trayHintShown))
+        s.heardSystemAudio = s.sampleSeen = True
+        s.save()
+        back = AppSettings.load()
+        self.assertEqual((True, True, False), (back.heardSystemAudio, back.sampleSeen, back.trayHintShown))
+
+    def test_default_output_is_named_by_its_description(self):
+        from cicada.core.audio import sink_description
+        sinks = ("Sink #48\n\tState: SUSPENDED\n\tName: alsa_output.hdmi-stereo\n\tDescription: HDMI / DisplayPort\n"
+                 "\tDriver: PipeWire\n\nSink #51\n\tState: RUNNING\n\tName: alsa_output.pci-0000_00_1f.3.analog-stereo\n"
+                 "\tDescription: 内置音频 模拟立体声\n\tMonitor Source: alsa_output.pci-0000_00_1f.3.analog-stereo.monitor\n")
+        self.assertEqual("内置音频 模拟立体声", sink_description(sinks, "alsa_output.pci-0000_00_1f.3.analog-stereo"))
+        self.assertEqual("HDMI / DisplayPort", sink_description(sinks, "alsa_output.hdmi-stereo"))
+        self.assertIsNone(sink_description(sinks, "missing"))
+        self.assertIsNone(sink_description(sinks, ""))
+        self.assertIsNone(sink_description("", "alsa_output.hdmi-stereo"))
+
+
 class Segmenting(Base):
     def test_segments_on_pauses(self):
         got = cut(silence(0.5), tone(2.0), silence(1.0), tone(1.5), silence(1.0))

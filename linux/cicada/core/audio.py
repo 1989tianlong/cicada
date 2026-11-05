@@ -140,3 +140,18 @@ class Wav:
         if not len(buf):
             return 0.0
         return math.sqrt(sum(x * x for x in buf) / len(buf)) / 32768
+
+
+def sink_description(pactl_sinks: str, name: str) -> str | None:
+    """The description of sink `name` in `pactl list sinks` output (the onboarding shows the default
+    output by it). The field names are English under LC_MESSAGES=C; the description stays translated."""
+    if not name:
+        return None
+    current = None
+    for line in pactl_sinks.splitlines():
+        field, _, value = line.strip().partition(":")
+        if field == "Name":
+            current = value.strip()
+        elif field == "Description" and current == name:
+            return value.strip() or None
+    return None
