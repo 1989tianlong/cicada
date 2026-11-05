@@ -103,8 +103,10 @@ MAC = """{
 }"""
 
 
-def tone(seconds, amp=0.3):
-    return array("h", (int(math.sin(2 * math.pi * 300 * i / 16000) * amp * 32767) for i in range(int(seconds * 16000))))
+def tone(seconds, amp=0.3, syllables=True):
+    """A 300 Hz tone that swells and fades four times a second like syllables; steady when not."""
+    env = (lambda i: 0.55 + 0.45 * math.sin(2 * math.pi * 4 * i / 16000)) if syllables else (lambda i: 1.0)
+    return array("h", (int(math.sin(2 * math.pi * 300 * i / 16000) * env(i) * amp * 32767) for i in range(int(seconds * 16000))))
 
 
 def silence(seconds):
@@ -411,6 +413,9 @@ class Segmenting(Base):
     def test_ignores_clicks(self):
         self.assertEqual(0, len(cut(silence(1.0), tone(0.1), silence(1.0))))
         self.assertEqual(0, len(cut(tone(3.0, 0.002))))
+        # A steady hum over the gate isn't speech: Ming would make up a sentence for it.
+        self.assertEqual(0, len(cut(tone(3.0, 0.02, syllables=False), silence(1.0))))
+        self.assertEqual(1, len(cut(tone(3.0), silence(1.0))))
 
     def test_wav_round_trip(self):
         pcm = tone(0.5)

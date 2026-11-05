@@ -34,6 +34,7 @@ class Segmenter:
     pause = 0.6
     max_length = 8.0
     min_speech = 0.25
+    steady = 2.0  # loud frames' 90th / 10th percentile below this: not speech
 
     def __init__(self):
         self.pending = array("h")
@@ -94,6 +95,17 @@ class Segmenter:
                     cut = i
             self._close(cut * FRAME)
 
+    @classmethod
+    def _steady(cls, levels) -> bool:
+        """Steady sound just over the gate (a fan, hum, hiss) isn't speech: its loud frames barely vary
+        (90th / 10th percentile about 1.1; speech, even over such a floor, 3 and up). Given one, Ming
+        writes a stock sentence in the hint's language ("I'm going to show you a couple of things").
+        Speech buried under steady noise goes too; system audio rarely carries it."""
+        loud = sorted(l for l in levels if l >= cls.threshold)
+        if len(loud) < 2:
+            return False
+        return loud[int(0.9 * (len(loud) - 1))] < cls.steady * loud[int(0.1 * (len(loud) - 1))]
+
     def _close(self, end_at: int) -> None:
         """Emits current[:end] and keeps what follows as the start of the next segment."""
         end = max(0, min(end_at, len(self.current)))
@@ -101,7 +113,7 @@ class Segmenter:
         rest = self.current[end:]
         rest_levels = self.levels[min(len(self.levels), end // FRAME):]
         start = self.current_start
-        speech = self.loud * FRAME >= self.min_speech * RATE
+        speech = self.loud * FRAME >= self.min_speech * RATE and not self._steady(self.levels[:end // FRAME])
         self.current = array("h")
         self.levels = []
         self.quiet = self.loud = 0
