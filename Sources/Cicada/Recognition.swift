@@ -26,6 +26,11 @@ enum Recognition {
         #endif
     }
 
+    /// The user chose to have the meeting recognized by their own service (Settings › AI 服务 ›
+    /// 语音识别 › 自建服务), set by the app. Unlike `cloudOnly` this Mac still has its engines: they
+    /// stay ready, and listening falls back to them when the service stops answering.
+    nonisolated(unsafe) static var serverPreferred = false
+
     /// `cloudOnly`: what the service heard in one stretch of `locale` (nil: any language), set by the
     /// app. The live meeting goes through `ListenEngine.startCloud`; this serves imports and clips.
     nonisolated(unsafe) static var cloudHear: (@MainActor @Sendable (_ wav: Data, _ seconds: Double, _ locale: String?) async -> CloudHeard?)?

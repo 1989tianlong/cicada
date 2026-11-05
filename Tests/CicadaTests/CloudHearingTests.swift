@@ -82,4 +82,20 @@ struct CloudHearingTests {
         #expect(cut(tone(3.0, 0.02, syllables: false), silence(1.0)).isEmpty)
         #expect(cut(tone(3.0), silence(1.0)).count == 1)
     }
+
+    @Test func aTranscriptKeepsItsLanguageAndLeavesTranslationToText() {
+        let zh = CloudHearing.transcript("这个 feature 我们下个 sprint 再做。", reported: nil, hint: "en", target: "en", seconds: 3)
+        #expect(zh?.lang == "zh-CN" && zh?.translation == nil)
+        let en = CloudHearing.transcript("We ship on Friday.", reported: nil, hint: "zh-CN", target: "zh-CN", seconds: 2)
+        #expect(en?.lang == "en" && en?.translation == nil)
+        #expect(CloudHearing.transcript("会議は金曜日です。", reported: nil, hint: nil, target: "zh-CN", seconds: 2)?.lang == "ja")
+        #expect(CloudHearing.transcript("회의는 금요일입니다.", reported: nil, hint: nil, target: "zh-CN", seconds: 2)?.lang == "ko")
+        #expect(CloudHearing.transcript("Hola a todos.", reported: "spanish", hint: nil, target: "zh-CN", seconds: 2)?.lang == "es")
+        #expect(CloudHearing.transcript("Bonjour.", reported: "fr", hint: nil, target: "zh-CN", seconds: 2)?.lang == "fr")
+        // Already in the language it's translated into: shown as it is.
+        let same = CloudHearing.transcript("周五发布。", reported: "zh", hint: nil, target: "zh-CN", seconds: 2)
+        #expect(same?.translation == "周五发布。")
+        #expect(CloudHearing.transcript("  ", reported: nil, hint: nil, target: "en", seconds: 1) == nil)
+        #expect(CloudHearing.transcript("嗯。", reported: nil, hint: nil, target: "en", seconds: 1) == nil)
+    }
 }

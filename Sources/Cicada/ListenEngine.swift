@@ -82,11 +82,18 @@ final class ListenEngine {
     /// The language the service says is spoken.
     private var cloudLang: Lang?
     private var cloudFailures = 0
+    /// The user's own service stopped answering in this meeting: listening went back to this Mac.
+    private var serverFellBack = false
+    /// The meeting is recognized by the user's own service (`Recognition.serverPreferred`).
+    var serverHears: Bool {
+        Recognition.serverPreferred && !serverFellBack && translator?.ling.transcribes == true
+    }
     /// Back on this Mac after the service listened (its name), shown for a few seconds.
     private(set) var cloudBack: (name: String, at: Date)?
-    /// The service that can hear audio (only Ling's Ming today); nil when there is none.
+    /// The service that can hear audio (Ling's Ming, or a custom service's speech model); nil when
+    /// there is none.
     var cloudService: String? {
-        guard let ling = translator?.ling, ling.hearsAudio else { return nil }
+        guard let ling = translator?.ling, ling.hearsAudio || ling.transcribes else { return nil }
         return ling.config().provider.name
     }
     /// 先用○○听 is offered: a model listening needs has been downloading a while, or couldn't be had.
@@ -334,6 +341,7 @@ final class ListenEngine {
         mismatch = false
         resetCloud()
         cloudBack = nil
+        serverFellBack = false
         startedAt = Date()
         macSilent = false
         updateHold()
@@ -604,7 +612,7 @@ final class ListenEngine {
     private func switchTranscriber(to lang: Lang, replaySeconds: Double = 0) async {
         // No models to switch between: the service hears every language, and a language picked in
         // settings only becomes its hint (`cloudHint`).
-        if Recognition.cloudOnly {
+        if Recognition.cloudOnly || serverHears {
             guard isRunning else { return }
             if case .fixed = settings.sourceMode { activeLang = lang } else if activeLang == nil { activeLang = lang }
             if !cloudListening { startCloud() }
@@ -1129,7 +1137,14 @@ final class ListenEngine {
                 self.cloudFailures += 1
                 // The service is down or the key stopped working: listening shouldn't go quiet with it.
                 if self.cloudFailures >= 3 {
-                    if !Recognition.cloudOnly { self.stopCloud() }
+                    if self.serverHears, !Recognition.cloudOnly {
+                        // The user's own service is down: this Mac recognizes the rest of the meeting.
+                        debugLog("cloud: own service failed 3 times, back to this Mac for this meeting")
+                        self.serverFellBack = true
+                        if self.cloudReplaced?.lang == nil { self.cloudReplaced = (self.activeLang, false) }
+                        self.stopCloud()
+                        self.setStatus(L("\(self.cloudService ?? "AI") 暂时连不上，先用本机识别"))
+                    } else if !Recognition.cloudOnly { self.stopCloud() }
                     // Nothing to go back to on an Intel Mac: say why it's quiet, and keep trying.
                     else if case LingClient.Failure.invalidKey = error { self.setStatus(L("key 已失效，到设置 › AI 服务里重填")) }
                     else if case LingClient.Failure.noKey = error { self.setStatus(L("请先在设置 › AI 服务里填入 Ling key")) }
@@ -1193,6 +1208,8 @@ final class ListenEngine {
 
     /// A model came in while the service listened: the awaited one goes back to listening on the Mac.
     private func cloudModelArrived() {
+        // The user chose their service: a model arriving is only the fallback getting ready.
+        guard !serverHears else { return }
         guard let awaiting = cloudAwaiting, installedLocales.contains(awaiting.locale) else { return }
         let want: Lang
         if case .fixed(let lang) = settings.sourceMode {

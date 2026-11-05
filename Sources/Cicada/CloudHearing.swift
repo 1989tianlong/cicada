@@ -69,6 +69,30 @@ enum CloudHearing {
         return CloudHeard(lang: code, original: o, translation: t)
     }
 
+    /// What a speech model (`/audio/transcriptions`) heard: the text, in the language the server
+    /// reports ("zh", "chinese"), else the one its script shows, else the meeting's. No translation:
+    /// the text translator does that, as for the Mac's own recognition. nil for nothing or noise.
+    static func transcript(_ text: String, reported: String?, hint: String?, target: String, seconds: Double) -> CloudHeard? {
+        let o = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !o.isEmpty, o.contains(where: { $0.isLetter || $0.isNumber }), !isNoise(o, seconds: seconds) else { return nil }
+        let names = ["chinese": "zh-CN", "mandarin": "zh-CN", "cantonese": "zh-CN", "english": "en", "japanese": "ja",
+                     "korean": "ko", "french": "fr", "german": "de", "spanish": "es", "portuguese": "pt", "russian": "ru",
+                     "italian": "it"]
+        var code: String
+        if let r = reported?.trimmingCharacters(in: .whitespaces).lowercased(), let named = names[r] {
+            code = named
+        } else if let reported, !reported.isEmpty, normalize(reported, fallback: "") != "" {
+            code = normalize(reported, fallback: "")
+        } else {
+            let scalars = o.unicodeScalars
+            if scalars.contains(where: { (0x3040...0x30FF).contains($0.value) }) { code = "ja" }
+            else if scalars.contains(where: { (0xAC00...0xD7AF).contains($0.value) }) { code = "ko" }
+            else if scalars.contains(where: { (0x4E00...0x9FFF).contains($0.value) }) { code = hint?.hasPrefix("zh") == true ? hint! : "zh-CN" }
+            else { code = hint.map { $0.hasPrefix("zh") || $0 == "ja" || $0 == "ko" ? "en" : $0 } ?? "en" }
+        }
+        return CloudHeard(lang: code, original: o, translation: code == target ? o : nil)
+    }
+
     /// What Ming says the language is ("zh", "zh-Hans", "cmn") as a source code.
     static func normalize(_ reported: String?, fallback: String) -> String {
         guard let reported, !reported.trimmingCharacters(in: .whitespaces).isEmpty else { return fallback }
