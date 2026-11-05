@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import shutil
 import stat
 import sys
@@ -574,8 +575,146 @@ class Notes(Base):
         self.assertTrue(p.endswith("No markdown, no text outside the JSON."))
         f = notesmod.prompt(MeetingNotes(), lines, 0, "English", final=True)
         self.assertIn("This meeting ran 01:04: use at most 1 topic.", f)
+        self.assertIn("at most 8 in total", p, "nothing frozen yet: the Mac's wording")
+        self.assertIn("at most 8 in total", f)
+        self.assertIn("never append to it", p, "topic summaries stay one sentence")
+        log = "对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。" + "最新对方又补充了一些内容，" * 20
+        self.assertEqual("对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。", notesmod.shortened(log))
+        self.assertEqual(notesmod.TOPIC_SUMMARY_LIMIT + 1, len(notesmod.shortened("长" * 200)))
         self.assertTrue(notesmod.written(MeetingNotes(summary="讨论发布 Stripe"), "Simplified Chinese"))
         self.assertFalse(notesmod.written(MeetingNotes(summary="We talked"), "Simplified Chinese"))
+
+    # Live notes rewrite only their last topics, so a long meeting's reply stays small (NotesTests.swift).
+
+    @staticmethod
+    def _topic(start, title, points=("p",), times=None):
+        return NoteTopic(start=float(start), title=title, summary="s", points=list(points), pointTimes=times)
+
+    @staticmethod
+    def _lines(n):
+        return [TranscriptLine(id="l%d" % i, t=float(i * 10), src="line %d" % i, srcLang="zh-CN", dstLang="en") for i in range(n)]
+
+    def test_keeps_frozen_topics_and_takes_the_replys_tail(self):
+        old = [self._topic(i * 100, "t%d" % i) for i in range(5)]
+        # The model echoed everything, renamed the current topic and added one.
+        reply = [self._topic(0, "t0"), self._topic(100, "t1 改"), self._topic(300, "t3"), self._topic(400, "t4 改"), self._topic(500, "t5")]
+        self.assertEqual(["t0", "t1", "t2", "t3", "t4 改", "t5"], [t.title for t in notesmod.merge(old, 3, reply)])
+
+    def test_nothing_frozen_keeps_every_topic(self):
+        # The first update over many lines: nothing to echo, so every topic is the model's own.
+        reply = [self._topic(i * 100, "t%d" % i) for i in range(5)]
+        self.assertEqual(reply, notesmod.merge([], 0, reply))
+        self.assertEqual(reply, notesmod.merge([self._topic(0, "t0")], 0, reply))
+
+    def test_empty_reply_keeps_the_topics(self):
+        old = [self._topic(0, "a"), self._topic(100, "b"), self._topic(200, "c")]
+        self.assertEqual(old, notesmod.merge(old, 1, []))
+        self.assertEqual(old, notesmod.merge(old, 1, [self._topic(0, "a")]))
+
+    def test_full_live_notes_join_the_shortest_settled_pair(self):
+        # Twelve topics, t3 and t4 the shortest neighbours (t3 to t5 is 100 s): a new topic still
+        # starts, and those two become one.
+        starts = [0, 100, 200, 300, 330, 400, 600, 700, 800, 900, 1000, 1100]
+        old = [self._topic(x, "t%d" % i, ["a%d" % i, "b%d" % i, "c%d" % i]) for i, x in enumerate(starts)]
+        reply = [self._topic(1000, "t10"), self._topic(1100, "t11"), self._topic(1200, "t12")]
+        merged = notesmod.merge(old, 10, reply)
+        self.assertEqual(notesmod.LIVE_MAX_TOPICS, len(merged))
+        self.assertEqual("t12", merged[-1].title)
+        self.assertEqual("t3 / t4", merged[3].title)
+        self.assertEqual(300, merged[3].start)
+        self.assertEqual(["a3", "b3", "a4", "b4"], merged[3].points)
+        self.assertEqual("s s", merged[3].summary)
+
+    def test_runaway_topic_summary_is_cut_to_its_first_sentence(self):
+        t = self._topic(0, "t0")
+        t.summary = "对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。" + "最新对方又补充了一些内容，" * 20
+        self.assertEqual("对方展示AI眼镜后觉得是完全新的体验，提议可以出发回去。", notesmod.merge([], 0, [t])[0].summary)
+        self.assertEqual("short", notesmod.shortened("short"))
+
+    def test_live_prompt_sends_only_the_latest_topics(self):
+        notes = MeetingNotes(summary="summary", covered=20,
+                             topics=[self._topic(0, "最早的话题"), self._topic(100, "第二个话题"), self._topic(200, "当前话题")])
+        p = notesmod.prompt(notes, self._lines(24), 20, "Simplified Chinese", False, frozen=1)
+        json = p.split("Current notes")[1].split("\n\n")[0]
+        self.assertIn("Earlier topics", p)
+        self.assertIn("- 00:00 最早的话题: s", p)
+        self.assertNotIn("最早的话题", json)
+        self.assertTrue("第二个话题" in json and "当前话题" in json)
+        self.assertIn("returning only the topics in the current notes and at most one new one after them", p)
+        self.assertNotIn("in total. A topic", p)
+        # A full rewrite has nothing frozen.
+        self.assertNotIn("Earlier topics", notesmod.prompt(notes, self._lines(24), 20, "Simplified Chinese", False))
+
+    def test_live_prompt_asks_for_one_sentence_summaries(self):
+        notes = MeetingNotes(summary="summary", covered=20, topics=[self._topic(i * 10, "t%d" % i) for i in range(8)])
+        p = notesmod.prompt(notes, self._lines(24), 20, "English", False, frozen=6)
+        self.assertNotIn("do not start a new topic", p)
+        self.assertIn("never append to it", p)
+
+    def test_long_meetings_split_by_time(self):
+        # A line every 10 s: 90 min stays whole, 4 h becomes four parts of an hour.
+        self.assertEqual([range(0, 540)], notesmod.parts(self._lines(540)))
+        four = notesmod.parts(self._lines(1440))
+        self.assertEqual(4, len(four))
+        self.assertEqual((0, 1440), (four[0].start, four[-1].stop))
+        self.assertTrue(all(a.stop == b.start for a, b in zip(four, four[1:])))
+        self.assertEqual([], notesmod.parts([]))
+
+    def test_part_prompt_keeps_line_numbers(self):
+        every = self._lines(720)
+        p = notesmod.prompt(MeetingNotes(), every[:480], 240, "English", True, part=(2, 3))
+        self.assertIn("part 2 of 3", p)
+        self.assertIn("[L241 40:00 对方] line 240", p)
+        self.assertNotIn("[L238 ", p)
+        self.assertIn("This part ran 39:50", p)
+        merge = notesmod.merge_prompt(['{"summary":"a"}', '{"summary":"b"}'], every, "English", False)
+        self.assertIn('Part 2 of 2:\n{"summary":"b"}', merge)
+        self.assertIn("Return the full notes as one JSON object", merge)
+        self.assertIn('"topics": []', merge)
+        # Each of three parts gets two of the eight topics.
+        self.assertIn("use at most 2 topics", p)
+
+    def test_topic_starts_when_its_lines_were_said(self):
+        times = [float(i * 60) for i in range(100)]
+        raw = """{"summary": "s", "topics": [
+          {"start": 1380, "title": "late", "summary": "s", "points": [{"text": "a", "evidence": ["L86"]}, {"text": "b", "evidence": ["L52"]}], "evidence": ["L60"]},
+          {"start": 300, "title": "no evidence", "summary": "s", "points": ["c"]}]}"""
+        self.assertEqual([51 * 60, 300], [t.start for t in notesmod.parse(raw, times, 0.0).topics])
+
+    def test_part_topics_spread_over_the_part(self):
+        ten = [self._topic(i * 300, "t%d" % i) for i in range(10)]
+        self.assertEqual(["t0", "t3", "t6", "t9"], [t.title for t in notesmod.spread(ten, 4)])
+        self.assertEqual(["t0"], [t.title for t in notesmod.spread(ten, 1)])
+        self.assertEqual(3, len(notesmod.spread(ten[:3], 4)))
+
+    def test_long_final_in_parts_then_merged(self):
+        # Four hours: four part calls at once, then one merge; topics come from the parts.
+        store = SessionStore()
+        s = store.begin()
+        for l in self._lines(1440):
+            store.append(s.id, l)
+        asked = []
+
+        def respond(body):
+            sys_msg = content(body, 0)
+            asked.append(sys_msg)
+            if "noted in parts" in sys_msg:
+                k = int(re.search(r"part (\d) of 4", sys_msg).group(1))
+                first = (k - 1) * 360 + 1
+                return reply(jsonfmt.write({"summary": "第%d部分" % k, "topics": [
+                    {"title": "话题%d-%d" % (k, j), "summary": "s", "evidence": ["L%d" % (first + j * 100)]} for j in range(3)]}, pretty=False))
+            return reply(jsonfmt.write({"title": "长会", "summary": "全程讨论", "topics": [{"title": "丢掉", "summary": "x"}]}, pretty=False))
+        LingClient.spacing = 0
+        notes = NotesEngine(client(Fake(respond)), store)
+        notes.generate(s.id)
+        notes._work.shutdown(wait=True)
+        n = store.get(s.id).notes
+        self.assertEqual(5, len(asked))
+        self.assertIn("Part 4 of 4:", asked[-1])
+        self.assertNotIn("话题1-0", asked[-1], "the parts go to the merge without their topics")
+        self.assertEqual("全程讨论", n.summary)
+        self.assertEqual(["话题%d-%d" % (k, j) for k in range(1, 5) for j in (0, 2)], [t.title for t in n.topics])
+        self.assertTrue(n.final)
 
     def test_notes_prompt_matches_the_android_port(self):
         """The same prompt text as android/core Notes.kt, checked against its source so a change
@@ -587,6 +726,8 @@ class Notes(Base):
             kt = f.read()
         p = notesmod.prompt(MeetingNotes(), [TranscriptLine(t=1.0, src="x")], 0, "English", final=True)
         for rule in [l for l in p.split("\n") if l.startswith("- ")]:
+            # The topic limit is filled in (live and final differ): check the rule from after it.
+            rule = rule.split("in total. ", 1)[-1] if rule.startswith("- Topics in time order") else rule
             probe = rule.replace('"', '\\"')[:60]
             self.assertIn(probe, kt, rule)
 
