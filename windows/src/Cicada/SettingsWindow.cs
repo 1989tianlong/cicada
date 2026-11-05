@@ -17,7 +17,12 @@ sealed class SettingsWindow : Window
     readonly Dictionary<string, FrameworkElement> sections = [];
     readonly PasswordBox keyBox = new();
     bool editingKey;
-    string current = "ling";
+    string current = "ai";
+    // AI 服务: 自己选模型 unfolded, and a model being typed by hand ("hear", "text", "voice").
+    bool modelsOpen;
+    string? typing;
+    // A custom service's address and models as typed, kept across re-renders until 保存并检查.
+    readonly Dictionary<string, TextBox> customFields = [];
 
     public SettingsWindow(Controller app)
     {
@@ -26,7 +31,7 @@ sealed class SettingsWindow : Window
         Width = 1000; Height = Math.Min(780, SystemParameters.WorkArea.Height - 24); MinWidth = 760; MinHeight = 480;
         Background = Palette.Page; FontFamily = Palette.Font; Icon = AppIcon.Image;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        System.Windows.Automation.AutomationProperties.SetName(keyBox, L("Ling key"));
+        System.Windows.Automation.AutomationProperties.SetName(keyBox, L("API key"));
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -45,8 +50,7 @@ sealed class SettingsWindow : Window
         var offset = scroll.VerticalOffset;
         sections.Clear();
         var page = new StackPanel { MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
-        Section(page, "ling", L("Ling"), KeyCard(), Group(Card(Icons.Notes, L("纪要和翻译用的模型"), L("3.1 更准；3.0 更快、更省。语音识别固定用 Ming。"),
-            Ui.Choice([("Ling-3.1-flash", "Ling-3.1-flash"), ("Ling-3.0-flash", "Ling-3.0-flash")], app.Settings.Model, v => { app.Settings.Model = v; app.Ling.Model = v; Save(); }))));
+        Section(page, "ai", L("AI 服务"), AICards().ToArray());
         Section(page, "lang", L("语言"), Group(
             Card(Icons.Globe, L("翻译成"), null, Ui.Choice(Ui.TargetOptions(), app.Settings.Target, app.SetTarget)),
             Card(null, L("纪要语言"), null, Ui.Choice([("system", L("和字幕一样")), .. Languages.Targets.Select(t => (t.Code, t.Name))], app.Settings.NotesLanguage, v => { app.Settings.NotesLanguage = v; Save(); })),
@@ -87,8 +91,15 @@ sealed class SettingsWindow : Window
 
     static FrameworkElement Credit() { var t = Ui.Helper(L("说话人识别用 WeSpeaker 的声纹模型（CC BY 4.0）")); t.Margin = new Thickness(6, 0, 0, 0); return t; }
 
-    /// Opens one category's page (the debug pipe's `show settings about`).
-    public void Show(string id) { current = id; Render(); }
+    /// Opens one category's page (the debug pipe's `show settings about`; `ai models` unfolds
+    /// 自己选模型; the old `ling` is AI 服务).
+    public void Show(string id)
+    {
+        var parts = id.Split(' ');
+        current = parts[0] == "ling" ? "ai" : parts[0];
+        if (current == "ai") modelsOpen = parts.Contains("models");
+        Render();
+    }
 
     /// An update was found or a check finished: only 关于 shows it.
     public void UpdatesChanged() { if (current == "about") Render(); }
@@ -124,7 +135,7 @@ sealed class SettingsWindow : Window
         nav.Children.Clear();
         (string id, string icon, string label)[] items =
         [
-            ("ling", Icons.Key, L("Ling")), ("lang", Icons.Globe, L("语言")), ("listen", Icons.Wave, L("听的时候")),
+            ("ai", Icons.Key, L("AI 服务")), ("lang", Icons.Globe, L("语言")), ("listen", Icons.Wave, L("听的时候")),
             ("speak", Icons.Mic, L("同声传译")), ("end", Icons.Stop, L("结束会议")), ("privacy", Icons.Shield, L("隐私与启动")), ("about", Icons.Info, L("关于")),
         ];
         foreach (var (id, icon, label) in items)
@@ -168,6 +179,9 @@ sealed class SettingsWindow : Window
         if (id != current) return;
         FrameworkElement h = Ui.Text(title, 28, Palette.Ink, FontWeights.Bold);
         if (id == "speak") h = Ui.Spread(h, Ui.Switch(app.Settings.Speak, v => { app.Settings.Speak = v; Save(); }, L("同声传译")));
+        // The service menu in the page's header, Ling first and recommended.
+        if (id == "ai") h = Ui.Spread(h, Ui.Choice(AIProvider.All.Select(p => (p.Id, p.Id == "ling" ? "Ling" + L("（推荐）") : L(p.Name))), app.Settings.AiProvider,
+            v => { editingKey = false; typing = null; customFields.Clear(); app.SetAIProvider(v); }, 220));
         h.Margin = new Thickness(0, 0, 0, 20);
         sections[id] = h;
         page.Children.Add(h);
@@ -232,8 +246,10 @@ sealed class SettingsWindow : Window
             : cableProgress is { } busy ? Ui.Text(busy, 13, Palette.Secondary, wrap: false)
             : Ui.Button(L("安装"), () => _ = InstallCable(), Ui.Kind.Primary, height: 32);
         var target = app.Speak.Target;
-        var voices = VoiceCatalog.Options(target, app.WindowsVoice.Has(target)).Select(v => (v.Id, v.Id == VoiceCatalog.SystemId ? L("Windows 自带") : $"{v.Name} · {string.Join(" · ", v.Tags.Split(" · ").Select(L))}")).ToList();
-        var chosen = s.SpeakVoices.TryGetValue(VoiceCatalog.Key(target), out var c) ? c : VoiceCatalog.DefaultId(target, app.Ling.HasKey);
+        var config = app.Ling.Config;
+        var voices = VoiceCatalog.Options(target, config, app.WindowsVoice.Has(target))
+            .Select(v => (v.Id, v.Id == VoiceCatalog.SystemId ? L("Windows 自带") : v.Tags.Length == 0 ? v.Name : $"{v.Name} · {string.Join(" · ", v.Tags.Split(" · ").Select(L))}")).ToList();
+        var chosen = VoiceCatalog.Chosen(s, target, config, app.Ling.Speaks);
         var voice = Ui.Row(8,
             Ui.Choice(voices, chosen, v => { s.SpeakVoices[VoiceCatalog.Key(target)] = v; Save(); }, 280),
             Ui.Button(L("试听"), () => _ = app.Preview(target), height: 32));
@@ -266,44 +282,203 @@ sealed class SettingsWindow : Window
             });
     }
 
+    /// AI 服务 (the Mac's AISettings): a custom service's address and models, the key, what works
+    /// with this service, its models folded away (the recommended ones are already chosen), and
+    /// what is sent where. The service menu is in the page's header.
+    IEnumerable<FrameworkElement> AICards()
+    {
+        var c = app.Ling.Config;
+        var p = c.Provider;
+        var s = app.Settings;
+        if (p.Id == "custom")
+            yield return Group(
+                Card(null, L("地址"), null, CustomField("base", s.AiCustomBase, "https://api.example.com/v1")),
+                Card(null, L("文字模型"), L("纪要和整句翻译"), CustomField("text", s.AiModels.GetValueOrDefault("custom", ""), L("例如 qwen3:14b"))),
+                Card(null, L("听的模型"), L("要能输入音频：听对方和“我说”都用它"), CustomField("hear", s.AiHearModels.GetValueOrDefault("custom", ""), L("例如 qwen3-omni"))));
+        yield return KeyCard();
+        var host = (c.Base ?? "").Split("//")[^1].Split('/')[0];
+        if (host.Length == 0) host = L("你填的地址");
+        var lockLine = Ui.Helper(p.Id == "ling" ? L("仅保存在本机当前账户下，仅发送至 Ling（ant-ling.com）")
+            : p.Id == "custom" ? LF("仅保存在本机当前账户下，仅发送至 %@", host) : LF("仅保存在本机当前账户下，仅发送至 %@（%@）", c.Name, host));
+        lockLine.Margin = new Thickness(6, -4, 0, 0);
+        yield return lockLine;
+        yield return Label(L("现在能用的"));
+        yield return Group(UsesRows().ToArray());
+        var fold = Ui.LinkText(L("自己选模型") + (modelsOpen ? " ⌄" : " ›"), () => { modelsOpen = !modelsOpen; Render(); });
+        fold.Foreground = Palette.Secondary;
+        fold.Margin = new Thickness(6, 4, 0, 0);
+        yield return fold;
+        if (modelsOpen) yield return Group(ModelRows().ToArray());
+        var sent = p.Id == "custom" ? host : c.Name;
+        var foot = Ui.Helper(p.Id == "ling" ? LF("听的时候，电脑里的声音会发给 %@。", sent) : L("按所选模型计费。") + LF("听的时候，电脑里的声音会发给 %@。", sent));
+        foot.Margin = new Thickness(6, 0, 0, 0);
+        yield return foot;
+    }
+
+    /// 现在能用的 (AISettings.swift › usage), with 听对方 first: on the ports the service hears.
+    /// Windows has no voice of the user's own on any service, so that row isn't here.
+    IEnumerable<FrameworkElement> UsesRows()
+    {
+        var ling = app.Ling;
+        var c = ling.Config;
+        var on = ling.Usable;
+        var uses = LF("用 %@", c.Name);
+        FrameworkElement Row(string title, string tag, string style, string note)
+        {
+            var (bg, fg) = style switch
+            {
+                "ok" => ((Brush)new SolidColorBrush(Color.FromRgb(0xE3, 0xF1, 0xE8)), (Brush)Palette.Success),
+                "local" => (Palette.Mica, Palette.Body),
+                _ => (Palette.Subtle, Palette.Tertiary),
+            };
+            return Card(null, title, note, Ui.Badge(tag, bg, fg));
+        }
+        var needKey = (L("需要 key"), "off", L("填好 key 后可用"));
+        var hear = !on ? needKey
+            : ling.Hears == false ? (L("还不能用"), "off", L("这个模型听不了声音，换一个支持音频输入的"))
+            : c.IsLing ? (uses, "ok", L("Ming 一次识别并翻译"))
+            : (uses, "ok", c.HearModel + " · " + L("比 Ling 晚 1–2 秒出字"));
+        yield return Row(L("听对方"), hear.Item1, hear.Item2, hear.Item3);
+        yield return on ? Row(L("实时纪要"), uses, "ok", L("会中每 45 秒更新")) : Row(L("实时纪要"), needKey.Item1, needKey.Item2, needKey.Item3);
+        yield return on ? Row(L("翻译"), uses, "ok", L("整句用它；不行时换 Google")) : Row(L("翻译"), "Google", "off", L("没有 key 时照常可用"));
+        // Windows speaks when the service can't, as the Mac does with its own voice.
+        yield return ling.Speaks ? Row(L("同传声音"), uses, "ok", c.IsLing ? L("Ming 的声音") : c.VoiceModel!)
+            : on ? Row(L("同传声音"), L("本机"), "local", L("没填声音模型，用 Windows 的声音"))
+            : Row(L("同传声音"), L("本机"), "local", L("填好 key 前用 Windows 的声音"));
+    }
+
+    /// 自己选模型: what hears, what writes, what speaks for this service.
+    IEnumerable<FrameworkElement> ModelRows()
+    {
+        var c = app.Ling.Config;
+        var p = c.Provider;
+        if (p.Id == "ling")
+        {
+            yield return Card(null, L("文字模型"), L("3.1 更准；3.0 更快、更省"), Ui.Choice(p.TextModels.Select(m => (m.Id, m.Id)), c.TextModel, v => app.SetAIModel("text", v), 280));
+            yield return Card(null, L("听的模型"), L("Ming 一次识别并翻译"), Ui.Text(c.HearModel, 13, Palette.Tertiary, wrap: false));
+            yield break;
+        }
+        if (p.Id == "custom")
+        {
+            var s = app.Settings;
+            yield return Card(null, L("声音模型"), L("需支持 /audio/speech；不填则同传用 Windows 的声音"), CustomField("voice", s.AiVoiceModels.GetValueOrDefault("custom", ""), L("例如 kokoro")));
+            yield return Card(null, L("声音"), null, CustomField("voiceName", s.AiCustomVoice, L("例如 af_heart")));
+            yield return Card(null, L("地址"), null, CustomField("voiceBase", s.AiCustomVoiceBase, L("跟上面一样")));
+            yield return Card(null, "", null, Ui.Button(L("保存并检查"), () => _ = SaveKey(), Ui.Kind.Primary, height: 32));
+            yield break;
+        }
+        yield return Card(null, L("听的模型"), L("听对方和“我说”都用它"), ModelMenu("hear", c.HearModel, p.HearModels, app.Ling.HearCatalog));
+        yield return Card(null, L("文字模型"), L("纪要和整句翻译"), ModelMenu("text", c.TextModel, p.TextModels, app.Ling.TextCatalog));
+        if (p.HasVoices) yield return Card(null, L("声音模型"), L("同传念给对方"), ModelMenu("voice", c.VoiceModel ?? "", p.VoiceModels, []));
+    }
+
+    /// Recommended models first, with why, then everything the service lists that fits; or a
+    /// name typed by hand.
+    FrameworkElement ModelMenu(string kind, string current, AIModel[] recommended, IReadOnlyList<string> listed)
+    {
+        if (typing == kind)
+        {
+            var box = new TextBox { Text = current };
+            var field = Ui.Field(box); field.Width = 240; field.Height = 34;
+            void Done() { typing = null; app.SetAIModel(kind, box.Text.Trim()); Render(); }
+            box.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) Done(); };
+            Dispatcher.BeginInvoke(() => box.Focus());
+            return Ui.Row(8, field, Ui.Button(L("保存"), Done, Ui.Kind.Primary, height: 34), Ui.Button(L("取消"), () => { typing = null; Render(); }, height: 34));
+        }
+        var options = recommended.Select(m => (m.Id, m.Note.Length > 0 ? $"{m.Id} · {L(m.Note)}" : m.Id)).ToList();
+        foreach (var id in listed.Append(current))
+            if (id.Length > 0 && !options.Any(o => o.Item1 == id)) options.Add((id, id));
+        options.Add(("", L("手动填写…")));
+        var menu = Ui.Choice(options, current, v => { if (v.Length == 0) { typing = kind; Render(); } else if (v != current) app.SetAIModel(kind, v); }, 280);
+        // The button shows the id alone; the menu says why.
+        if (menu.Content is DockPanel d && d.Children.OfType<TextBlock>().FirstOrDefault() is { } label) { label.Text = current; label.TextTrimming = TextTrimming.CharacterEllipsis; }
+        return menu;
+    }
+
+    /// One of a custom service's fields, with a grey hint while empty.
+    FrameworkElement CustomField(string name, string value, string hint)
+    {
+        if (!customFields.TryGetValue(name, out var box)) customFields[name] = box = new TextBox { Text = value };
+        if (box.Parent is Grid old) old.Children.Remove(box);
+        var hintText = Ui.Text(hint, 14, Palette.Tertiary, wrap: false);
+        hintText.IsHitTestVisible = false; hintText.VerticalAlignment = VerticalAlignment.Center;
+        void Hint() => hintText.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        box.TextChanged += (_, _) => Hint();
+        Hint();
+        Ui.StyleField(box);
+        var frame = Ui.FieldFrame(new Grid { Children = { box, hintText } }, box);
+        frame.Width = 260; frame.Height = 34;
+        return frame;
+    }
+
     FrameworkElement KeyCard()
     {
-        var state = app.Ling.KeyState;
-        var key = app.Key.Read();
-        string desc = state switch
+        var ling = app.Ling;
+        var c = ling.Config;
+        var p = c.Provider;
+        var state = ling.KeyState;
+        var key = ling.CurrentKey();
+        var problem = ling.Problem is { } why ? LF(why.Key, why.Args.Select(a => a is string s ? L(s) : a).ToArray()) : null;
+        var title = key is { Length: > 0 } ? AIKey.Masked(key) : key is not null ? L("本机服务，不用 key") : p.Id == "custom" ? L("还没填好") : L("还没填 API key");
+        string? desc = state switch
         {
-            KeyState.None => L("还没填 key"),
+            KeyState.None or KeyState.Unchecked => null,
             KeyState.Checking => L("正在检查…"),
-            KeyState.Invalid => L("这个 key 不能用，检查是否复制完整，或重新创建一个"),
-            KeyState.Unreachable => L("连不上 Ling，检查网络"),
-            _ => $"{AIKey.Masked(key ?? "")} · {L("可以用 · 只加密存在这台电脑上")}",
+            KeyState.Invalid => LF("%@ 提示 key 无效，请检查是否复制完整，或重新创建一个", c.Name),
+            KeyState.Unreachable => problem ?? LF("连不上 %@，请检查网络或代理", c.Name),
+            _ => problem ?? L("已连接") + " · " + LF("%@ · 响应约 %@ 秒", c.TextModel, (ling.Seconds ?? 0).ToString("0.0")),
         };
         FrameworkElement control;
-        if (editingKey)
+        if (editingKey || key is null || state == KeyState.Invalid)
         {
-            if (keyBox.Parent is Panel p) p.Children.Remove(keyBox);
-            if (keyBox.Parent is Border old) old.Child = null;
-            var field = Ui.Field(keyBox); field.Width = 300; field.Height = 34;
-            control = Ui.Row(8, field, Ui.Button(L("保存"), () => _ = SaveKey(), Ui.Kind.Primary, height: 34), Ui.Button(L("取消"), () => { editingKey = false; Render(); }, height: 34));
+            if (keyBox.Parent is Panel old) old.Children.Remove(keyBox);
+            if (keyBox.Parent is Border oldBorder) oldBorder.Child = null;
+            var field = Ui.Field(keyBox); field.Width = 260; field.Height = 34;
+            var buttons = new List<UIElement> { field, Ui.Button(L("保存并检查"), () => _ = SaveKey(), Ui.Kind.Primary, height: 34) };
+            if (editingKey) buttons.Add(Ui.Button(L("取消"), () => { editingKey = false; Render(); }, height: 34));
+            control = Ui.Row(8, [.. buttons]);
         }
         else
         {
-            var change = Ui.Button(key is null ? L("填写") : L("更换"), () => { editingKey = true; keyBox.Clear(); Render(); keyBox.Focus(); }, height: 32);
-            control = key is null ? change : Ui.Row(8, change, Ui.Button(L("删除"), () => { app.Key.Remove(); app.Ling.KeyChanged(); }, height: 32));
+            var change = Ui.Button(L("更换"), () => { editingKey = true; keyBox.Clear(); Render(); keyBox.Focus(); }, height: 32);
+            control = key.Length == 0 ? change : Ui.Row(8, change, Ui.Button(L("删除"), () => { app.Key.Remove(); app.AIChanged(); }, height: 32));
         }
-        var card = Card(Icons.Key, L("Ling key"), desc, control);
+        var card = Card(Icons.Key, title, desc, control);
+        if (desc is not null && card is DockPanel dock && dock.Children.OfType<StackPanel>().LastOrDefault() is { Children.Count: > 1 } text && text.Children[1] is TextBlock line)
+            line.Foreground = state == KeyState.Ok && problem is null ? Palette.Success : state is KeyState.Checking ? Palette.Secondary : Palette.Danger;
+        // Where to get one, while there is none.
+        if (p.Site is { } site && key is null)
+            return Group(card, Card(null, LF("打开 %@", c.Name), new Uri(site).Host, Ui.IconButton(Icons.OpenExternal, LF("打开 %@", c.Name), () => Process.Start(new ProcessStartInfo(site) { UseShellExecute = true }), Palette.Secondary, 32, 16)));
         return Group(card);
     }
 
     async Task SaveKey()
     {
+        var s = app.Settings;
+        if (s.AiProvider == "custom")
+        {
+            // The address and models typed so far, kept even before a key.
+            string F(string name, string fallback) => customFields.TryGetValue(name, out var b) ? b.Text.Trim() : fallback;
+            s.AiCustomBase = F("base", s.AiCustomBase);
+            s.AiModels["custom"] = F("text", s.AiModels.GetValueOrDefault("custom", ""));
+            s.AiHearModels["custom"] = F("hear", s.AiHearModels.GetValueOrDefault("custom", ""));
+            s.AiVoiceModels["custom"] = F("voice", s.AiVoiceModels.GetValueOrDefault("custom", ""));
+            s.AiCustomVoice = F("voiceName", s.AiCustomVoice);
+            s.AiCustomVoiceBase = F("voiceBase", s.AiCustomVoiceBase);
+            s.Save();
+        }
         var text = keyBox.Password.Trim();
-        if (!text.StartsWith("sk-")) return;
-        if (!app.Key.Save(text)) return;
+        // Ling's and the aggregators' keys start with sk-; a company gateway's may not.
+        if (text.Length > 0 && (s.AiProvider == "custom" || text.StartsWith("sk-")))
+        {
+            if (!app.Key.Save(text)) return;
+            keyBox.Clear();
+        }
+        else if (text.Length > 0) return;
         editingKey = false;
-        app.Ling.KeyChanged();
+        app.AIChanged();
         Render();
-        await app.Ling.Check();
+        await Task.CompletedTask;
     }
 
     static FrameworkElement Keys(string combo)

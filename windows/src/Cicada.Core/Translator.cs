@@ -2,13 +2,14 @@ using System.Text.Json;
 
 namespace Cicada;
 
-/// What Ming heard in one stretch of audio.
+/// What the hear model (Ming on Ling) heard in one stretch of audio.
 public sealed record Heard(string Lang, string Original, string? Translation);
 
 /// Translation and recognition through the cloud, in place of the Mac's on-device recognizer and
-/// Apple translation. Listening sends each stretch of audio to Ming's audio model, which returns
-/// the language, the original and the translation in one call (as the Mac's speak-back does).
-/// Text translation is Ling first, then Google; Google is also the only one that sees drafts.
+/// Apple translation. Listening sends each stretch of audio to the AI service's hear model (Ming on
+/// Ling), which returns the language, the original and the translation in one call (as the Mac's
+/// speak-back does). Text translation is the AI service first, then Google; Google is also the only
+/// one that sees drafts.
 public sealed class Translator(LingClient ling, HttpMessageHandler? google = null)
 {
     static readonly HttpClient Shared = MakeHttp(null);
@@ -38,10 +39,15 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
         // 16 kHz mono 16-bit after the 44-byte header: the length caps the reply and catches a runaway one.
         var seconds = Math.Max(0, wav.Length - 44) / 32000.0;
         var prompt = HearPrompt(target, hint, Glossary());
-        var reply = await ling.Chat(prompt, HearInstruction(target), priority, maxTokens: HearTokens(seconds), timeout: 12,
-                                    model: LingClient.AudioModel, audio: wav, cancel: cancel);
+        var config = ling.Config;
+        var reply = await ling.Chat(prompt, HearInstruction(target), priority, maxTokens: HearTokens(seconds), timeout: HearTimeout(config),
+                                    model: config.HearModel, audio: wav, cancel: cancel);
         return ParseHeard(reply, target, hint, seconds);
     }
+
+    /// Ming answers in ~2 s; the other services' hear models in 3–4 s, but now and then over 12 s
+    /// (Qwen on ZenMux, 2026-11), and a stretch given up on is words lost.
+    public static double HearTimeout(AIConfig config) => config.IsLing ? 12 : 20;
 
     /// Room for a reply to `seconds` of audio: a fast talker's original and translation fit; a
     /// reply that runs on repeating itself ("滴答" ×800 from typing) stops early. 0: unknown.
@@ -56,6 +62,8 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
     {
         var text = Annotation.Replace(original.ToLowerInvariant(), " ");
         if (NoSpeech.Any(text.Contains)) return true;
+        // A clock instead of words ("00:00"): what some of the other services' models write for a beep.
+        if (Clock.IsMatch(text.Trim())) return true;
         var words = new List<string>();
         var word = new System.Text.StringBuilder();
         foreach (var c in text)
@@ -77,6 +85,7 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
     /// Ming describing the audio instead of transcribing it: "（无语音内容）", "[Music]", "这段音频是一段
     /// 旋律，没有说话声。". A bracketed note beside real words ("（笑）好的") keeps the words.
     static readonly System.Text.RegularExpressions.Regex Annotation = new("[(（\\[【][^)）\\]】]*[)）\\]】]|♪");
+    static readonly System.Text.RegularExpressions.Regex Clock = new(@"^\d{1,2}(:\d{2}){1,2}[.。]?$");
     static readonly string[] NoSpeech = [
         "没有说话", "无语音", "没有语音", "没有人声", "无人声", "没有人说话", "无人说话",
         "no speech", "no spoken", "no one is speaking", "nobody is speaking", "no audible speech", "no dialogue",
@@ -155,7 +164,7 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
 
     public enum Kind { Draft, Sentence }
 
-    /// Ling (finished sentences only) → Google. Null when both fail.
+    /// The AI service (finished sentences only) → Google. Null when both fail.
     public async Task<string?> Translate(string text, string source, string target, Kind kind, Priority priority = Priority.Translate)
     {
         if (source == target) return text;

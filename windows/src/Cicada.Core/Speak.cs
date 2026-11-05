@@ -12,7 +12,7 @@ public interface ISpeechSink
     Task End();
 }
 
-/// Windows' own voice, for when Ming's can't speak: 16-bit mono PCM, or null.
+/// Windows' own voice, for when the AI service's can't speak: 16-bit mono PCM, or null.
 public interface ISystemVoice
 {
     Task<(byte[] pcm, int rate)?> Speak(string text, string language);
@@ -20,19 +20,26 @@ public interface ISystemVoice
     bool Has(string language);
 }
 
-/// A voice the room can hear: one of Ming's (through the Ling key) or Windows' own.
+/// A voice the room can hear: one of Ming's ("ming:…", through the Ling key), one of another
+/// service's speech model ("cloud:…"), or Windows' own.
 public sealed record VoiceOption(string Id, string Name, string Tags);
 
-/// Which voices to offer for each language the room may hear: Ming's hand-picked natural ones, as
-/// on the Mac (Voices.swift › VoiceCatalog), then Windows' voice so there is always one.
+/// Which voices to offer for each language the room may hear, by the AI service in use: on Ling
+/// Ming's hand-picked natural ones, as on the Mac (Voices.swift › VoiceCatalog); on another service
+/// its speech model's voices, the same in every language, or none without a speech model; then
+/// Windows' voice so there is always one.
 public static class VoiceCatalog
 {
-    public const string SystemId = "system";
+    public const string SystemId = "system", MingPrefix = "ming:", CloudPrefix = "cloud:";
 
     public static string Key(string code) { var b = code.Split('-')[0]; return b.Length == 0 ? "en" : b; }
 
     /// Ming's `language_id` for languages that need it (zh and en work without).
     public static string? MingLanguage(string code) => Key(code) is "ja" or "ko" or "de" or "fr" or "es" ? Key(code) : null;
+
+    /// The service's own voices for a language (Ming's on Ling).
+    public static IReadOnlyList<VoiceOption> Cloud(string language, AIConfig config) =>
+        config.IsLing ? Ming(language) : config.Voices.Select(v => new VoiceOption(CloudPrefix + v.Id, v.Id, v.Gender)).ToList();
 
     public static IReadOnlyList<VoiceOption> Ming(string language) => Key(language) switch
     {
@@ -42,11 +49,17 @@ public static class VoiceCatalog
         _ => [],
     };
 
-    public static IReadOnlyList<VoiceOption> Options(string language, bool windowsHasIt = true) =>
-        windowsHasIt ? [.. Ming(language), new(SystemId, "Windows", "本机")] : Ming(language);
+    public static IReadOnlyList<VoiceOption> Options(string language, AIConfig config, bool windowsHasIt = true) =>
+        windowsHasIt ? [.. Cloud(language, config), new(SystemId, "Windows", "本机")] : Cloud(language, config);
 
-    /// What a language uses until the user picks: Ming's first voice with a key, else Windows'.
-    public static string DefaultId(string language, bool hasKey) => hasKey && Ming(language).Count > 0 ? Ming(language)[0].Id : SystemId;
+    /// What a language uses until the user picks: the service's first voice once it can speak,
+    /// else Windows'.
+    public static string DefaultId(string language, AIConfig config, bool speaks) => speaks && Cloud(language, config) is [var first, ..] ? first.Id : SystemId;
+
+    /// The voice chosen for a language, if this service still offers it: a Ming voice saved
+    /// before switching to ZenMux is not sent there.
+    public static string Chosen(AppSettings settings, string language, AIConfig config, bool speaks) =>
+        settings.SpeakVoices.TryGetValue(Key(language), out var id) && Options(language, config).Any(v => v.Id == id) ? id : DefaultId(language, config, speaks);
 
     /// A short line to try a voice with, in the language it will speak.
     public static string Sample(string language) => Key(language) switch
@@ -62,8 +75,8 @@ public static class VoiceCatalog
     };
 }
 
-/// Hold to talk, the Mac's SpeakEngine: what I said (a 16 kHz WAV) → Ming hears and translates it in
-/// one call → a voice speaks the translation into the virtual mic, so the meeting hears it in the
+/// Hold to talk, the Mac's SpeakEngine: what I said (a 16 kHz WAV) → the AI service's hear model
+/// (Ming on Ling) hears and translates it in one call → a voice speaks the translation into the virtual mic, so the meeting hears it in the
 /// room's language. Never speaks anything untranslated: no translation, no sound.
 public sealed class SpeakEngine
 {
@@ -84,7 +97,7 @@ public sealed class SpeakEngine
     public string? Said { get; private set; }
     public string? Heard { get; private set; }
     public string? Problem { get; private set; }
-    /// "ming" or "system": how the last sentence was voiced.
+    /// "ming", "cloud" (another service's speech model) or "system": how the last sentence was voiced.
     public string? LastVoice { get; private set; }
     public event Action? Changed;
 
@@ -135,7 +148,7 @@ public sealed class SpeakEngine
             Changed?.Invoke();
             Heard? heard = null;
             try { heard = await translator.Hear(wav, to, MyLanguage, Priority.Speak); }
-            catch (LingException e) { Log.Debug($"speak: hear failed {e.Message}"); return Fail(e.Failure is LingException.Kind.Network or LingException.Kind.Timeout ? Strings.L("连不上 Ling，没有发出去") : Strings.L("没翻译成功，没有发出去")); }
+            catch (LingException e) { Log.Debug($"speak: hear failed {e.Message}"); return Fail(e.Failure is LingException.Kind.Network or LingException.Kind.Timeout ? (ling.Config.IsLing ? Strings.L("连不上 Ling，没有发出去") : Strings.LF("连不上 %@，没有发出去", ling.Config.Name)) : Strings.L("没翻译成功，没有发出去")); }
             if (heard is null) return Fail(Strings.L("没听清，没有发出去"));
             Said = heard.Original;
             var text = heard.Translation;
@@ -182,23 +195,25 @@ public sealed class SpeakEngine
         store.Append(m.id, line);
     }
 
-    /// Ming's voice, else Windows'. True once some sound went out.
+    /// The service's voice (Ming's on Ling), else Windows'. True once some sound went out.
     public async Task<bool> Voice(string text, string language, ISpeechSink sink)
     {
-        var id = settings.SpeakVoices.TryGetValue(VoiceCatalog.Key(language), out var chosen) ? chosen : VoiceCatalog.DefaultId(language, ling.HasKey);
-        if (id.StartsWith("ming:") && ling.HasKey)
+        var config = ling.Config;
+        var id = VoiceCatalog.Chosen(settings, language, config, ling.Speaks);
+        var prefix = config.IsLing ? VoiceCatalog.MingPrefix : VoiceCatalog.CloudPrefix;
+        if (id.StartsWith(prefix) && ling.Speaks)
         {
             int chunks = 0;
             try
             {
-                await foreach (var pcm in ling.Speech(text, id["ming:".Length..], VoiceCatalog.MingLanguage(language)))
+                await foreach (var pcm in ling.Speech(text, id[prefix.Length..], config.IsLing ? VoiceCatalog.MingLanguage(language) : null))
                 {
                     if (chunks++ == 0) sink.Begin(24000);
                     sink.Write(pcm);
                 }
             }
-            catch (LingException e) { Log.Debug($"speak: ming voice failed {e.Message}"); }
-            if (chunks > 0) { await sink.End(); LastVoice = "ming"; return true; }
+            catch (LingException e) { Log.Debug($"speak: {config.Provider.Id} voice failed {e.Message}"); }
+            if (chunks > 0) { await sink.End(); LastVoice = config.IsLing ? "ming" : "cloud"; return true; }
         }
         var own = await systemVoice.Speak(text, language);
         if (own is not { } v || v.pcm.Length == 0) { LastVoice = null; return false; }

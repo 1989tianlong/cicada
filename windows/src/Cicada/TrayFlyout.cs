@@ -71,7 +71,7 @@ sealed class TrayFlyout : Window
                 ? Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("会议已自动结束"), 13, Palette.Secondary, wrap: false))
             : app.Ling.HasKey
                 ? Ui.Row(6, Ui.Dot(Palette.Toggle, 6), Ui.Text(L("没在听"), 13, Palette.Secondary, wrap: false))
-                : Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(L("还没接上 Ling"), 13, Palette.Secondary, wrap: false));
+                : Ui.Row(6, Ui.Dot(Palette.Tertiary, 6), Ui.Text(app.Ling.Config.IsLing ? L("还没接上 Ling") : LF("还没接上 %@", app.Ling.Config.Name), 13, Palette.Secondary, wrap: false));
         var title = Ui.Row(12, AppIcon.Small(40), Ui.Stack(1, Ui.Text(L("知了"), 17, Palette.Ink, Palette.Strong, wrap: false), status));
         var head = Ui.Spread(title, Ui.IconButton(Icons.Gear, L("打开设置"), () => Do(app.ShowSettings), Palette.Body, 36, 18));
         stack.Children.Add(head);

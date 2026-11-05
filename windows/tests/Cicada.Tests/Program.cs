@@ -1002,4 +1002,305 @@ static class Tests
         }
         finally { File.Delete(file); }
     }
+
+    // MARK: AI 服务 (other services than Ling: linux/tests/test_providers.py, case for case)
+
+    /// Answers every request with `respond(url, body)` and records where each went.
+    sealed class Service(Func<string, string, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public readonly List<(string url, string body)> Sent = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel)
+        {
+            var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancel);
+            var url = request.RequestUri!.ToString();
+            lock (Sent) Sent.Add((url, body));
+            return respond(url, body);
+        }
+    }
+
+    static (LingClient ling, AppSettings settings) Using(Service fake, string provider = "zenmux", string? key = "sk-test-0000000000", AppSettings? s = null)
+    {
+        s ??= new AppSettings();
+        s.AiProvider = provider;
+        var k = new AIKey(new PlainProtector(), service: () => s.AiProvider);
+        k.Remove();
+        if (key is not null) k.Save(key);
+        return (new LingClient(k, fake, s.AIConfig), s);
+    }
+
+    static HttpResponseMessage Status(int code, string body = "{}") => new((HttpStatusCode)code) { Content = new StringContent(body) };
+
+    public static void ServicesDefaultToTheirRecommendedModels()
+    {
+        var c = new AppSettings { AiProvider = "zenmux" }.AIConfig();
+        Equal("https://zenmux.ai/api/v1/", c.Base, "base");
+        Equal("qwen/qwen3.8-omni-flash", c.HearModel, "hear");
+        Equal("inclusionai/ling-3.0-flash", c.TextModel, "text");
+        Equal("google/gemini-3.8-flash-tts", c.VoiceModel, "voice");
+        var ling = new AppSettings().AIConfig();
+        Equal(("Ming-3.0-audio-flash", "Ling-3.1-flash"), (ling.HearModel, ling.TextModel), "Ling");
+        Equal("Ling-3.0-flash", new AppSettings { Model = "Ling-3.0-flash" }.AIConfig().TextModel, "Ling keeps its own key");
+        Equal("ling", AIProvider.Named("openai").Id, "OpenAI isn't offered: Ling");
+        Equal(0.6, AIProvider.Ling.Spacing, "Ling's gate");
+        Equal(0.1, AIProvider.ZenMux.Spacing, "the aggregators'");
+    }
+
+    public static void ChosenModelsAndACustomService()
+    {
+        var s = new AppSettings { AiProvider = "openrouter", AiHearModels = { ["openrouter"] = "google/gemini-3.1-flash-lite" } };
+        Equal("google/gemini-3.1-flash-lite", s.AIConfig().HearModel, "chosen hear model");
+        s = new AppSettings { AiProvider = "custom", AiCustomBase = "localhost:11434/v1", AiModels = { ["custom"] = "qwen3:14b" } };
+        var c = s.AIConfig();
+        Equal("http://localhost:11434/v1/", c.Base, "local address");
+        Equal("", c.HearModel, "no hear model yet");
+        Check(!c.HasVoices, "no voices without a speech model");
+        s.AiVoiceModels["custom"] = "kokoro"; s.AiCustomVoice = "af_heart";
+        Equal(("kokoro", "http://localhost:11434/v1/"), (s.AIConfig().VoiceModel, s.AIConfig().VoiceBase), "speech model on the same address");
+        Equal("af_heart", s.AIConfig().Voices.Single().Id, "the one voice named");
+    }
+
+    public static void CustomAddress()
+    {
+        Equal("https://api.example.com/v1/", AIProvider.CustomBase("api.example.com/v1"), "https by default");
+        Equal("http://127.0.0.1:1234/v1/", AIProvider.CustomBase("127.0.0.1:1234/v1"), "http on this computer");
+        Equal(null, AIProvider.CustomBase("http://api.example.com/v1"), "http only on this computer");
+        Equal(null, AIProvider.CustomBase(" "), "nothing");
+    }
+
+    public static void SettingsKeepTheServiceAcrossARestart()
+    {
+        new AppSettings { AiProvider = "zenmux", AiHearModels = { ["zenmux"] = "bytedance/doubao-seed-2.0-mini" } }.Save();
+        var back = AppSettings.Load();
+        Equal("zenmux", back.AiProvider, "service");
+        Equal("bytedance/doubao-seed-2.0-mini", back.AIConfig().HearModel, "hear model");
+        var json = File.ReadAllText(Paths.Settings);
+        Check(json.Contains("\"aiProvider\"") && json.Contains("\"aiHearModels\""), "the Mac's key names");
+        File.Delete(Paths.Settings);
+    }
+
+    public static void EachServiceTurnsThinkingOffItsOwnWay()
+    {
+        foreach (var (id, key, value) in new[] { ("ling", "thinking", "{\"type\":\"disabled\"}"), ("zenmux", "reasoning", "{\"enabled\":false}"), ("openrouter", "reasoning", "{\"enabled\":false}") })
+        {
+            var body = new JsonObject();
+            new AppSettings { AiProvider = id }.AIConfig().Shape(body, 100);
+            Equal(value, body[key]!.ToJsonString(), id);
+            Equal(100, body["max_tokens"]!.GetValue<int>(), "max_tokens");
+        }
+        var custom = new JsonObject();
+        new AppSettings { AiProvider = "custom", AiCustomBase = "https://x.example/v1" }.AIConfig().Shape(custom, 5);
+        Check(custom["reasoning"] is null && custom["thinking"] is null && custom["temperature"]!.GetValue<double>() == 0.2, "custom: neither");
+    }
+
+    public static void AudioGoesInTheFormEachModelTakes()
+    {
+        byte[] wav = [1, 2, 3];
+        Equal("{\"type\":\"audio_url\",\"audio_url\":{\"url\":\"data:audio/wav;base64,AQID\"}}", new AppSettings().AIConfig().AudioPart(wav, "Ming-3.0-audio-flash").ToJsonString(), "Ming");
+        var zen = new AppSettings { AiProvider = "zenmux" }.AIConfig();
+        Equal("{\"type\":\"input_audio\",\"input_audio\":{\"data\":\"AQID\",\"format\":\"wav\"}}", zen.AudioPart(wav, "google/gemini-3.1-flash-lite").ToJsonString(), "input_audio");
+        Equal("data:audio/wav;base64,AQID", zen.AudioPart(wav, "qwen/qwen3.8-omni-flash")["input_audio"]!["data"]!.GetValue<string>(), "Qwen wants a data URL");
+    }
+
+    public static void CatalogListsChatModelsAndThoseThatHear()
+    {
+        const string data = """
+        {"data": [
+          {"id": "qwen/qwen3.8-omni-flash", "input_modalities": ["text", "image", "audio", "video"], "output_modalities": ["text"]},
+          {"id": "x/asr-only", "input_modalities": ["audio"], "output_modalities": ["text"]},
+          {"id": "x/text-model", "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]}},
+          {"id": "x/tts", "input_modalities": ["text"], "output_modalities": ["audio"]},
+          {"id": "x/embed-1"},
+          {"id": "google/gemini-3.1-flash-lite:batch", "input_modalities": ["audio", "text"], "output_modalities": ["text"]}
+        ]}
+        """;
+        Equal("rec/one,qwen/qwen3.8-omni-flash", string.Join(",", AIProvider.Catalog(data, ["rec/one"], hears: true)), "hear");
+        Equal("qwen/qwen3.8-omni-flash,x/text-model", string.Join(",", AIProvider.Catalog(data, [], hears: false)), "text");
+        Equal(0, AIProvider.Catalog("not json", [], hears: false).Count, "no /models");
+    }
+
+    public static void OneKeyFilePerService()
+    {
+        var s = new AppSettings();
+        var k = new AIKey(new PlainProtector(), service: () => s.AiProvider);
+        k.Save("sk-ling-000000000");
+        s.AiProvider = "zenmux";
+        Equal(null, k.Read(), "ZenMux has none yet");
+        k.Save("sk-zen-0000000000");
+        Check(k.File_.EndsWith("ai-key-zenmux"), "named as on the Mac");
+        if (!OperatingSystem.IsWindows()) Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(k.File_), "0600");
+        s.AiProvider = "ling";
+        Equal("sk-ling-000000000", k.Read(), "switching back keeps Ling's");
+        s.Save();
+        Check(!File.ReadAllText(Paths.Settings).Contains("sk-"), "never in settings");
+        k.Remove(); s.AiProvider = "zenmux"; k.Remove(); File.Delete(Paths.Settings);
+    }
+
+    public static void ALocalCustomServiceNeedsNoKey()
+    {
+        var (ling, s) = Using(new Service((_, _) => Reply("ok")), "custom", key: null,
+            new AppSettings { AiCustomBase = "localhost:11434/v1", AiModels = { ["custom"] = "qwen3:14b" } });
+        Equal("", ling.CurrentKey(), "no key needed");
+        Check(ling.HasKey, "has one, in effect");
+        s.AiCustomBase = "https://api.example.com/v1";
+        Check(!ling.HasKey, "a remote one needs a key");
+    }
+
+    public static async Task RequestsGoToTheServiceInItsShape()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var fake = new Service((_, _) => Reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。", finish: null));
+            var (ling, _) = Using(fake);
+            // No finish reason: Ling's search essays come without one, other services may just omit it.
+            var r = await ling.Chat("c", "i", Priority.Translate, model: "qwen/qwen3.8-omni-flash", audio: [1]);
+            Check(r.Contains("ORIGINAL: Hi."), "kept without a finish reason");
+            Equal("https://zenmux.ai/api/v1/chat/completions", fake.Sent[0].url, "the service's address");
+            var b = JsonNode.Parse(fake.Sent[0].body)!;
+            Equal(false, b["reasoning"]!["enabled"]!.GetValue<bool>(), "reasoning off");
+            Check(b["thinking"] is null, "no Ling-only fields");
+            Equal("input_audio", b["messages"]![1]!["content"]![0]!["type"]!.GetValue<string>(), "input_audio");
+            await ling.Chat("c", "i", Priority.Translate);
+            Equal("inclusionai/ling-3.0-flash", JsonNode.Parse(fake.Sent[1].body)!["model"]!.GetValue<string>(), "text calls use the text model");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task CheckFindsAHearModelThatRefusesAudio()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var (ling, s) = Using(new Service((url, body) =>
+                url.EndsWith("models") ? Status(200, "{\"data\":[{\"id\":\"a/b\",\"input_modalities\":[\"text\"],\"output_modalities\":[\"text\"]}]}")
+                : body.Contains("input_audio") ? Status(400) : Reply("OK")),
+                s: new AppSettings { AiHearModels = { ["zenmux"] = "x/text-only" } });
+            var (state, _) = await ling.Check();
+            Equal(KeyState.Ok, state, "the key is good");
+            Equal(false, ling.Hears, "but the model can't hear");
+            Check(!ling.CanHear && ling.Usable, "notes and translation still work");
+            Check(ling.TextCatalog.Contains("a/b"), "catalog fetched after a good check");
+            s.AiHearModels.Clear();
+            ling.KeyChanged();
+            Equal(null, ling.Hears, "a new model is asked again");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task CheckSaysWhy()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var (ling, _) = Using(new Service((_, _) => Status(401)));
+            Equal(KeyState.Invalid, (await ling.Check()).state, "401");
+            (ling, _) = Using(new Service((_, _) => Status(404)));
+            await ling.Check();
+            Equal("%@ 拒绝了请求（HTTP %lld），请检查模型名 ZenMux 404", $"{ling.Problem?.Key} {string.Join(" ", ling.Problem?.Args ?? [])}", "404 names the service and the status");
+            (ling, _) = Using(new Service((_, _) => Reply("ok")), "openrouter", key: null);
+            Equal(KeyState.None, ling.KeyState, "no key");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    static async Task<string> Joined(IAsyncEnumerable<byte[]> chunks)
+    {
+        var all = new List<byte>();
+        await foreach (var c in chunks) all.AddRange(c);
+        return string.Join(",", all);
+    }
+
+    public static async Task SpeechFromEachService()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            // ZenMux: server-sent base64, with `stream`.
+            var sse = new Service((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("data: {\"audio\":\"AQACAA==\"}\n\ndata: {\"type\":\"speech.audio.done\"}\n\n", System.Text.Encoding.UTF8, "text/event-stream"),
+            });
+            var (ling, _) = Using(sse);
+            Equal("1,0,2,0", await Joined(ling.Speech("Hello", "Puck", "ja")), "SSE chunks");
+            var b = JsonNode.Parse(sse.Sent[0].body)!;
+            Equal("https://zenmux.ai/api/v1/audio/speech", sse.Sent[0].url, "speech address");
+            Equal(("google/gemini-3.8-flash-tts", "Puck", true), (b["model"]!.GetValue<string>(), b["voice"]!.GetValue<string>(), b["stream"]!.GetValue<bool>()), "body");
+            Check(b["language_id"] is null, "language_id is Ming's only");
+            // A voice that isn't this service's (a Ming name left in settings) becomes its first one.
+            await Joined(ling.Speech("Hello", "US_Emma"));
+            Equal("Kore", JsonNode.Parse(sse.Sent[1].body)!["voice"]!.GetValue<string>(), "first voice");
+            // OpenRouter streams the PCM bytes themselves, without `stream`.
+            var raw = new Service((_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([5, 0, 6, 0]) { Headers = { ContentType = new("audio/pcm") } } });
+            (ling, _) = Using(raw, "openrouter");
+            Equal("5,0,6,0", await Joined(ling.Speech("Hi", null)), "raw PCM");
+            Check(JsonNode.Parse(raw.Sent[0].body)!["stream"] is null, "no stream for OpenRouter");
+            // One JSON with a WAV in it.
+            var wav = Wav.Bytes([7, 8], 24000);
+            var one = new Service((_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{{\"audio\":\"{Convert.ToBase64String(wav)}\"}}", System.Text.Encoding.UTF8, "application/json") });
+            (ling, _) = Using(one, "custom", s: new AppSettings { AiCustomBase = "https://x.example/v1", AiModels = { ["custom"] = "m" }, AiVoiceModels = { ["custom"] = "kokoro" }, AiCustomVoice = "af_heart" });
+            Equal("7,0,8,0", await Joined(ling.Speech("Hi", "af_heart")), "JSON WAV");
+            Equal("7,0,8,0", string.Join(",", LingClient.PcmFromWav(wav)), "the data chunk");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task NoVoiceModelMeansWindowsSpeaks()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var settings = new AppSettings { AiCustomBase = "https://x.example/v1", AiModels = { ["custom"] = "m" }, SpeakVoices = { ["en"] = "ming:US_Emma" } };
+            var fake = new Service((_, _) => Reply("ok"));
+            var (ling, _) = Using(fake, "custom", s: settings);
+            Check(!ling.Speaks, "no speech model, no service voice");
+            var voice = new NoVoice();
+            var engine = new SpeakEngine(ling, new Translator(ling), new SessionStore(), settings, () => "en", () => null, voice);
+            Check(await engine.Voice("Hello", "en", new Sink()), "something was said");
+            Equal("system", engine.LastVoice, "by Windows");
+            Check(fake.Sent.Count == 0, "the old Ming voice went nowhere");
+            Equal(VoiceCatalog.SystemId, VoiceCatalog.Options("en", ling.Config).Single().Id, "Windows is the only choice");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static void VoicesFollowTheService()
+    {
+        var zen = new AppSettings { AiProvider = "zenmux" }.AIConfig();
+        Equal("cloud:Kore,cloud:Aoede,cloud:Charon,cloud:Puck,system", string.Join(",", VoiceCatalog.Options("ja", zen).Select(v => v.Id)), "Gemini's voices in every language, then Windows'");
+        Equal("cloud:Kore", VoiceCatalog.DefaultId("en", zen, speaks: true), "the service's first");
+        Equal("system", VoiceCatalog.DefaultId("en", zen, speaks: false), "Windows' until it can speak");
+        var settings = new AppSettings { SpeakVoices = { ["en"] = "ming:US_Emma" } };
+        Equal("cloud:Kore", VoiceCatalog.Chosen(settings, "en", zen, true), "a Ming voice isn't sent to ZenMux");
+        Equal("ming:US_Emma", VoiceCatalog.Chosen(settings, "en", new AppSettings().AIConfig(), true), "and is used again on Ling");
+    }
+
+    public static async Task HearingGoesToTheChosenHearModel()
+    {
+        Equal(12.0, Translator.HearTimeout(new AppSettings().AIConfig()), "Ming's timeout");
+        Equal(20.0, Translator.HearTimeout(new AppSettings { AiProvider = "zenmux" }.AIConfig()), "the others'");
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var fake = new Service((_, _) => Reply("LANG: en\nORIGINAL: We ship on Friday.\nTRANSLATION: 我们周五发布。"));
+            var (ling, _) = Using(fake, s: new AppSettings { AiHearModels = { ["zenmux"] = "bytedance/doubao-seed-2.0-mini" } });
+            var heard = await new Translator(ling).Hear(Wav.Bytes(Tone(1)), "zh-CN", null);
+            Equal("我们周五发布。", heard?.Translation, "heard");
+            Equal("bytedance/doubao-seed-2.0-mini", JsonNode.Parse(fake.Sent[0].body)!["model"]!.GetValue<string>(), "model");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static void ProblemsNameTheService()
+    {
+        Check(ListenEngine.Words(LingException.Kind.Http, 400, "ZenMux").Settings, "a hear model that refuses audio is fixed in settings");
+        Check(ListenEngine.Words(LingException.Kind.Network, 0, "ZenMux").Title!.Contains("ZenMux"), "named");
+        Equal("连不上 Ling", ListenEngine.Words(LingException.Kind.Timeout, 0, "Ling").Title, "Ling keeps its words");
+        Check(!ListenEngine.Words(LingException.Kind.Http, 400, "Ling").Settings, "Ling's 400 is the network bar");
+    }
+
+    public static void AClockIsNotSpeech()
+    {
+        foreach (var madeUp in new[] { "00:00", "00:00.", "1:02:03" }) Check(Translator.IsNoise(madeUp, 1.2), madeUp);
+        foreach (var said in new[] { "Hello.", "3 点", "15%", "好的" }) Check(!Translator.IsNoise(said, 1.2), said);
+    }
 }

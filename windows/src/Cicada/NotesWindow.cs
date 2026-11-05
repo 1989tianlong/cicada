@@ -256,23 +256,17 @@ sealed class NotesWindow : Window
         return row;
     }
 
-    /// What needs the user: Ling failing, or the window being visible to others.
+    /// What needs the user: the AI service failing, or the window being visible to others.
     FrameworkElement Bars()
     {
         var stack = new StackPanel { Margin = new Thickness(12, 0, 12, 0) };
         void Add(FrameworkElement bar) { bar.Margin = new Thickness(0, 0, 0, 8); stack.Children.Add(bar); }
-        switch (app.Listen.Problem)
+        if (app.Listen.Problem is { } problem)
         {
-            case LingException.Kind.Network or LingException.Kind.Timeout or LingException.Kind.Http:
-                Add(Ui.InfoBar(Ui.Severity.Error, L("连不上 Ling"), L("这段时间的话没能识别。检查网络后点重试。"),
-                    Ui.Button(L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); }, height: 32)));
-                break;
-            case LingException.Kind.RateLimited:
-                Add(Ui.InfoBar(Ui.Severity.Warning, L("Ling 太忙"), L("稍后会自动重试。")));
-                break;
-            case LingException.Kind.InvalidKey or LingException.Kind.NoKey:
-                Add(Ui.InfoBar(Ui.Severity.Error, L("Ling key 无效"), L("去设置里换一个 key。"), Ui.Button(L("打开设置"), app.ShowSettings, height: 32)));
-                break;
+            var (title, body, settings) = ListenEngine.Words(problem, app.Listen.ProblemStatus, app.Ling.Config.Name);
+            if (problem == LingException.Kind.RateLimited) Add(Ui.InfoBar(Ui.Severity.Warning, title, body));
+            else if (settings) Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("打开设置"), app.ShowSettings, height: 32)));
+            else Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); }, height: 32)));
         }
         // The notes' own trouble (NotesWindow.swift › banner): the last round didn't land.
         if (app.Listen.Listening)

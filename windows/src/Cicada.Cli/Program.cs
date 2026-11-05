@@ -4,11 +4,14 @@
 //       Plays the file into ListenEngine as if the PC were playing it, prints each line as it is
 //       recorded, then the record's folder. --speed 0 feeds it as fast as it can; --notes waits
 //       for the final notes and prints them.
+//   cicada-cli check                     the AI service's key check: state, hears, catalog sizes
+//   cicada-cli speak <text> <out.wav>    the service's voice for <text>, as a 24 kHz WAV
 //   cicada-cli segments <file.wav>       where the segmenter cuts (compare with ming_asr.py)
 //   cicada-cli roundtrip <session.json>…  reads and writes records, says if anything changed
 //
-// Records go to CICADA_HOME (default: a temp folder). The key comes from CICADA_KEY_FILE, else
-// the Mac app's dev or release key file; it is never printed.
+// --provider ling|openrouter|zenmux|custom (default ling) and --hear / --text <model> pick the AI
+// service. Records go to CICADA_HOME (default: a temp folder). The key comes from CICADA_KEY_FILE,
+// else the Mac app's dev or release key file for that service; it is never printed.
 using System.Text.Json.Nodes;
 using Cicada;
 
@@ -16,6 +19,14 @@ var args_ = args.ToList();
 if (args_.Count == 0) { Console.WriteLine("usage: cicada-cli listen|segments|roundtrip …"); return 2; }
 string Opt(string name, string fallback) { int i = args_.IndexOf(name); return i >= 0 && i + 1 < args_.Count ? args_[i + 1] : fallback; }
 Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), Opt("--ui", "zh-Hans"));
+var provider = Opt("--provider", "ling");
+var cliSettings = new AppSettings { Target = Opt("--target", "zh-CN"), AiProvider = provider };
+if (Opt("--hear", "") is { Length: > 0 } hearModel) cliSettings.AiHearModels[provider] = hearModel;
+if (Opt("--text", "") is { Length: > 0 } textModel) cliSettings.AiModels[provider] = textModel;
+var keyFile = Environment.GetEnvironmentVariable("CICADA_KEY_FILE")
+    ?? new[] { "LiveSubs Dev", "LiveSubs" }.Select(d => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support", d,
+        provider == "ling" ? "ling-api-key" : "ai-key-" + provider)).FirstOrDefault(File.Exists);
+LingClient Client() => new(new AIKey(new PlainProtector(), keyFile), config: cliSettings.AIConfig);
 
 switch (args_[0])
 {
@@ -46,15 +57,33 @@ switch (args_[0])
         }
         return changed == 0 ? 0 : 1;
     }
+    case "check":
+    {
+        var ling = Client();
+        var (state, seconds) = await ling.Check();
+        var problem = ling.Problem is { } p ? Strings.LF(p.Key, p.Args) : "-";
+        Console.WriteLine($"{provider}: {state} in {seconds:F1} s, text {ling.Config.TextModel} {ling.Seconds:F1} s, hears={ling.Hears?.ToString() ?? "?"} ({ling.Config.HearModel}), catalog {ling.TextCatalog.Count}/{ling.HearCatalog.Count}, problem {problem}");
+        return state == KeyState.Ok ? 0 : 1;
+    }
+    case "speak":
+    {
+        var ling = Client();
+        var pcm = new List<byte>();
+        var started = DateTime.UtcNow;
+        await foreach (var chunk in ling.Speech(args_[1], Opt("--voice", "") is { Length: > 0 } v ? v : null)) pcm.AddRange(chunk);
+        var samples = new short[pcm.Count / 2];
+        Buffer.BlockCopy(pcm.ToArray(), 0, samples, 0, samples.Length * 2);
+        File.WriteAllBytes(args_[2], Wav.Bytes(samples, 24000));
+        Console.WriteLine($"{provider}: {ling.Config.VoiceModel} {samples.Length / 24000.0:F1} s of audio in {(DateTime.UtcNow - started).TotalSeconds:F1} s");
+        return samples.Length > 0 ? 0 : 1;
+    }
     case "hear":
     {
-        // One file to Ming, raw reply printed: for checking the prompt.
-        var keyFile = Environment.GetEnvironmentVariable("CICADA_KEY_FILE")
-            ?? new[] { "LiveSubs Dev", "LiveSubs" }.Select(d => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support", d, "ling-api-key")).FirstOrDefault(File.Exists);
-        var ling = new LingClient(new AIKey(new PlainProtector(), keyFile));
+        // One file to the hear model (Ming on Ling), raw reply printed: for checking the prompt.
+        var ling = Client();
         var target = Opt("--target", "zh-CN");
         var reply = await ling.Chat(Translator.HearPrompt(target, null, []), Translator.HearInstruction(target), Priority.Translate,
-                                    maxTokens: 800, timeout: 20, model: LingClient.AudioModel, audio: Wav.Bytes(Wav.Read(args_[1])));
+                                    maxTokens: 800, timeout: 20, model: ling.Config.HearModel, audio: Wav.Bytes(Wav.Read(args_[1])));
         Console.WriteLine(reply);
         Console.WriteLine($"-> {Translator.ParseHeard(reply, target, null)}");
         return 0;
@@ -64,12 +93,10 @@ switch (args_[0])
         if (Environment.GetEnvironmentVariable("CICADA_HOME") is null)
             Environment.SetEnvironmentVariable("CICADA_HOME", Path.Combine(Path.GetTempPath(), "cicada-cli"));
         Log.Echo = args_.Contains("--log");
-        var keyFile = Environment.GetEnvironmentVariable("CICADA_KEY_FILE")
-            ?? new[] { "LiveSubs Dev", "LiveSubs" }.Select(d => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support", d, "ling-api-key")).FirstOrDefault(File.Exists);
-        var key = new AIKey(new PlainProtector(), keyFile);
-        if (key.Read() is null) { Console.WriteLine("no Ling key (set CICADA_KEY_FILE)"); return 2; }
-        var settings = new AppSettings { Target = Opt("--target", "zh-CN") };
-        var ling = new LingClient(key);
+        var settings = cliSettings;
+        var ling = Client();
+        if (!ling.HasKey) { Console.WriteLine($"no {provider} key (set CICADA_KEY_FILE)"); return 2; }
+        Console.WriteLine($"{provider}: hear {ling.Config.HearModel}, text {ling.Config.TextModel}");
         var store = new SessionStore();
         var notes = new NotesEngine(ling, store);
         var engine = new ListenEngine(ling, new Translator(ling), store, notes, settings);

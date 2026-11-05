@@ -3,7 +3,7 @@
 Cicada 的 Windows 版：把电脑播放的声音变成双语字幕和实时纪要，存成和 Mac 版同一格式的会议记录；同声传译（按住右 Ctrl 说话，翻译后的声音经 VB-Cable 虚拟麦克风进会议）；说话人识别（按声音标出说话人 1、2…，声纹模型是 WeSpeaker ResNet34-LM，CC BY 4.0，用 `scripts/compress-voiceprint.py` 压成 int8，6.7 MB，由系统自带的 Windows ML 在本机运行）。方案和取舍见 [docs/windows-plan.md](../docs/windows-plan.md)。
 
 - 抓声音：WASAPI 进程回环，排除知了自己（Windows 10 2004 起）。
-- 识别：Ming（`Ming-3.0-audio-flash`）分段识别，一次请求同时返回语言、原文和译文；需要 Ling key。
+- 识别：Ming（`Ming-3.0-audio-flash`）分段识别，一次请求同时返回语言、原文和译文；需要 Ling key。用不了 Ling 的可以在 设置 › AI 服务 换成 OpenRouter、ZenMux 或兼容 OpenAI 的地址：听交给它能输入音频的模型（同样的提示词，字幕晚 1–2 秒），纪要和翻译用它的文字模型，同传声音用它的声音模型，没有时用 Windows 的声音。
 - 纪要、记录格式、提示词、多语言文案都和 Mac 版一致；文案的英日韩翻译直接用 `Resources/*.lproj/Localizable.strings`，Windows 独有的在 `src/Cicada/Strings/`。
 - 新版本：启动时和每 4 小时查一次 GitHub Releases（`UpdateChecker`），只认带 Windows 安装包的发布；有新版本时托盘图标出现红点、每个版本发一次通知（正在听时等会议结束），托盘面板和设置 › 关于也会提示。点“安装”由知了自己下载这台电脑对应架构的 `Cicada-<版本>-Windows-x64.exe` / `-ARM64.exe`（1.1.0 只认 `Cicada-Setup.exe` 这两个旧名字，发布时一并附上）、对照 `checksums.txt` 校验后安装并重新打开，不经过浏览器，所以 SmartScreen 不拦。开发版只在设了 `CICADA_UPDATE_FEED` 或用 `updatefeed` 调试命令时才查。
 
@@ -34,7 +34,7 @@ DOTNET_ROOT=~/.dotnet build/cli/cicada-cli listen spike/clips/en.wav --target zh
 DOTNET_ROOT=~/.dotnet build/cli/cicada-cli roundtrip ~/Library/Application\ Support/LiveSubs/Sessions/*/session.json
 ```
 
-先 `scripts/dotnet.sh build src/Cicada.Cli -o build/cli` 编译命令行工具；它读 Mac 版的 key 文件，不打印 key。
+先 `scripts/dotnet.sh build src/Cicada.Cli -o build/cli` 编译命令行工具；它读 Mac 版的 key 文件，不打印 key。`--provider zenmux`（或 openrouter）换服务，`check` 检查 key 和听的模型，`speak <文字> <out.wav>` 试声音模型。
 
 ## 在 Windows 里验证
 

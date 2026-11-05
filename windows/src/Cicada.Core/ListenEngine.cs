@@ -2,8 +2,8 @@ using System.Threading.Channels;
 
 namespace Cicada;
 
-/// Listening end to end: system audio → segments → Ming (language, original, translation in one
-/// call) → lines in the record, plus live notes. UI-free; the app shows `Lines` and listens to
+/// Listening end to end: system audio → segments → the AI service's hear model (Ming on Ling:
+/// language, original, translation in one call) → lines in the record, plus live notes. UI-free; the app shows `Lines` and listens to
 /// `Changed` (raised on worker threads: marshal to the UI thread).
 ///
 /// Ming takes ~2.2 s whatever the segment's length, so segments overlap in flight: request starts
@@ -43,14 +43,40 @@ public sealed class ListenEngine
     /// Segments sent and not yet back: the UI shows "…" while this is above zero.
     public int Pending { get { lock (gate) return segments.Count; } }
     /// The last error worth showing ("key 无效", "网络不通"), cleared by the next good reply.
-    /// What last went wrong talking to Ling (null once a segment gets through); the windows word it.
+    /// What last went wrong talking to the AI service (null once a segment gets through); the
+    /// windows word it with Words().
     public LingException.Kind? Problem { get; private set; }
+    /// The HTTP status behind Problem == Http.
+    public int ProblemStatus { get; private set; }
+
+    /// A stretch that couldn't be heard, in words: (title, what to do, whether 设置 fixes it). Ling
+    /// keeps its own words; another service is named. A hear model that refuses audio (400 / 404)
+    /// is a settings problem, not the network.
+    public static (string? Title, string Body, bool Settings) Words(LingException.Kind kind, int status, string service)
+    {
+        var ling = service == "Ling";
+        if (kind == LingException.Kind.Http && status is 400 or 404 && !ling)
+            return (Strings.L("这个模型听不了声音，换一个支持音频输入的"), Strings.L("在 设置 › AI 服务 里换一个"), true);
+        return kind switch
+        {
+            LingException.Kind.RateLimited => ling ? (Strings.L("Ling 太忙"), Strings.L("稍后会自动重试。"), false) : (null, Strings.LF("%@ 太忙，稍后再试", service), false),
+            LingException.Kind.InvalidKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("%@ 的 key 无效", service), Strings.L("去设置里换一个 key。"), true),
+            LingException.Kind.NoKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("需要 %@ 的 key 才能听", service), Strings.L("去设置里换一个 key。"), true),
+            _ => (ling ? Strings.L("连不上 Ling") : Strings.LF("连不上 %@", service), Strings.L("这段时间的话没能识别。检查网络后点重试。"), false),
+        };
+    }
 
     /// The user pressed 重试: hide the bar until the next failure says otherwise.
     public void ClearProblem() { Problem = null; Changed?.Invoke(); }
 
     /// Debug pipe only: show a failure's bar without breaking the network ("network", "ratelimited"…).
-    public void SimulateProblem(string kind) { Problem = Enum.TryParse<LingException.Kind>(kind, true, out var k) ? k : null; Changed?.Invoke(); }
+    public void SimulateProblem(string kind)
+    {
+        var parts = kind.Split(' ');
+        Problem = Enum.TryParse<LingException.Kind>(parts[0], true, out var k) ? k : null;
+        ProblemStatus = parts.Length > 1 && int.TryParse(parts[1], out var s) ? s : 0;
+        Changed?.Invoke();
+    }
     public double Level { get; private set; }
     public event Action? Changed;
 
@@ -149,6 +175,7 @@ public sealed class ListenEngine
             catch (LingException e)
             {
                 Problem = e.Failure is LingException.Kind.Hijacked or LingException.Kind.Parse ? null : e.Failure;
+                ProblemStatus = e.Status;
                 Log.Debug($"listen: segment {seg.Index} failed {e.Message}");
             }
             Log.Debug($"listen: segment {seg.Index} {seg.Seconds:F1}s -> {(heard is null ? "nothing" : heard.Lang)} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");

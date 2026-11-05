@@ -3,14 +3,24 @@ using System.Text.Json.Serialization;
 
 namespace Cicada;
 
-/// The app's settings, in settings.json beside the records (never the Ling key: that has its own file).
+/// The app's settings, in settings.json beside the records (never an AI key: each has its own file).
 public sealed class AppSettings
 {
     /// What subtitles translate into; "system" follows the Windows display language.
     [JsonPropertyName("target")] public string Target { get; set; } = "system";
     /// 纪要语言: the notes' language code; "system" is the same as the subtitles'.
     [JsonPropertyName("notesLanguage")] public string NotesLanguage { get; set; } = "system";
+    /// Ling's text model (the other services' are in AiModels).
     [JsonPropertyName("model")] public string Model { get; set; } = LingClient.DefaultModel;
+    /// AI 服务 (the Mac's keys): the service, and per service the models chosen over its recommended
+    /// ones. aiHearModels is the ports' own: what hears the audio (Ming on Ling).
+    [JsonPropertyName("aiProvider")] public string AiProvider { get; set; } = "ling";
+    [JsonPropertyName("aiModels")] public Dictionary<string, string> AiModels { get; set; } = [];
+    [JsonPropertyName("aiHearModels")] public Dictionary<string, string> AiHearModels { get; set; } = [];
+    [JsonPropertyName("aiVoiceModels")] public Dictionary<string, string> AiVoiceModels { get; set; } = [];
+    [JsonPropertyName("aiCustomBase")] public string AiCustomBase { get; set; } = "";
+    [JsonPropertyName("aiCustomVoiceBase")] public string AiCustomVoiceBase { get; set; } = "";
+    [JsonPropertyName("aiCustomVoice")] public string AiCustomVoice { get; set; } = "";
     /// "notes" (the notes window, default) or "subtitles" (the subtitle bar).
     [JsonPropertyName("view")] public string View { get; set; } = "notes";
     /// Whether 知了还在任务栏右下角 was shown, after the first × on a window.
@@ -48,6 +58,8 @@ public sealed class AppSettings
     [JsonPropertyName("updateNotified")] public string? UpdateNotified { get; set; }
 
     [JsonIgnore] public string TargetCode => Target == "system" ? Languages.FromSystem(CultureInfo.CurrentUICulture.Name) : Target;
+    /// The AI service in use, its address and models (what LingClient calls with).
+    public AIConfig AIConfig() => Cicada.AIConfig.From(this);
     [JsonIgnore] public string NotesCode => NotesLanguage == "system" ? TargetCode : NotesLanguage;
 
     public static AppSettings Load()

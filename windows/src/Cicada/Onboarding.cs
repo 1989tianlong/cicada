@@ -10,8 +10,9 @@ namespace Cicada.App;
 
 /// First run, as the Mac's setup window without Windows' title bar: the logo and a bar per step
 /// along the top, a big heading with one grey line, the task in white cards, Back / Continue at the
-/// bottom. Windows needs no permission for system audio and listening needs the Ling key
-/// (recognition is Ming's), so: 接 Ling → 听声音 → 看效果 → 同声传译, then where the tray icon lives.
+/// bottom. Windows needs no permission for system audio and listening needs an AI key (recognition
+/// is Ming's, or another service's hear model behind 用不了 Ling？), so: 接 Ling → 听声音 → 看效果 →
+/// 同声传译, then where the tray icon lives.
 sealed class Onboarding : Window
 {
     readonly Controller app;
@@ -53,8 +54,8 @@ sealed class Onboarding : Window
         meter.Tick += (_, _) => { if (step == 1) Meter(); };
         app.Speak.Changed += SpeakChanged;
         Closed += (_, _) => { StopTap(); app.Speak.Changed -= SpeakChanged; LeaveSpeak(keep: false); };
-        System.Windows.Automation.AutomationProperties.SetName(keyBox, L("Ling key"));
-        System.Windows.Automation.AutomationProperties.SetName(keyText, L("Ling key"));
+        System.Windows.Automation.AutomationProperties.SetName(keyBox, L("API key"));
+        System.Windows.Automation.AutomationProperties.SetName(keyText, L("API key"));
         keyBox.PasswordChanged += (_, _) => { if (keyText.Text != keyBox.Password) keyText.Text = keyBox.Password; };
         keyText.TextChanged += (_, _) => { if (keyBox.Password != keyText.Text) keyBox.Password = keyText.Text; };
         step = app.Ling.HasKey ? 1 : 0;
@@ -91,10 +92,14 @@ sealed class Onboarding : Window
         speakBefore = null;
     }
 
+    // The service the key page was last shown for: another one's status and key don't carry over.
+    string? shownProvider;
+
     void Render()
     {
+        if (shownProvider != app.Settings.AiProvider) { shownProvider = app.Settings.AiProvider; keyBox.Clear(); keyStatus.Content = null; }
         stepper.Content = Stepper();
-        page.Content = step switch { 0 => KeyStep(), 1 => AudioStep(), 2 => SampleStep(), 3 => SpeakStep(), _ => DoneStep() };
+        page.Content = step switch { 0 => Other ? OtherStep() : KeyStep(), 1 => AudioStep(), 2 => SampleStep(), 3 => SpeakStep(), _ => DoneStep() };
         footer.Content = Footer();
     }
 
@@ -108,7 +113,7 @@ sealed class Onboarding : Window
         logo.Margin = new Thickness(0, 0, 14, 0); logo.VerticalAlignment = VerticalAlignment.Top;
         grid.Children.Add(logo);
         if (step >= Steps) return grid;
-        string[] names = [L("接 Ling"), L("听声音"), L("看效果"), L("同声传译")];
+        string[] names = [Other ? L("接 AI 服务") : L("接 Ling"), L("听声音"), L("看效果"), L("同声传译")];
         for (int i = 0; i < names.Length; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
         for (int i = 0; i < names.Length; i++)
         {
@@ -195,8 +200,19 @@ sealed class Onboarding : Window
         back.MinWidth = 0; back.HorizontalAlignment = HorizontalAlignment.Left; back.Padding = new Thickness(0);
         ((TextBlock)((StackPanel)back.Content).Children[0]).Foreground = Palette.Secondary;
         UIElement left = back;
-        if (step == 0)
-            left = Ui.Row(8, Ui.Icon(Icons.Lock, 14, Palette.Secondary), Ui.Text(L("key 加密存在这台电脑上，只发给 Ling"), 13, Palette.Secondary, wrap: false));
+        if (step == 0 && Other)
+        {
+            var ling = Ui.LinkText(L("‹ 还是用 Ling"), () => Switch("ling"));
+            ling.Foreground = Palette.Secondary;
+            left = Ui.Row(16, ling, Ui.Row(8, Ui.Icon(Icons.Lock, 14, Palette.Secondary), Ui.Text(LF("仅保存在本机当前账户下，仅发送至 %@", app.Ling.Config.Name), 13, Palette.Secondary, wrap: false)));
+        }
+        else if (step == 0)
+        {
+            // A grey link, as on the Mac: Ling stays first and recommended.
+            var other = Ui.LinkText(L("用不了 Ling？"), () => Switch("openrouter"));
+            other.Foreground = Palette.Secondary;
+            left = Ui.Row(16, Ui.Row(8, Ui.Icon(Icons.Lock, 14, Palette.Secondary), Ui.Text(L("key 加密存在这台电脑上，只发给 Ling"), 13, Palette.Secondary, wrap: false)), other);
+        }
         var next = step switch
         {
             0 => Ui.Button(L("继续"), () => _ = SaveKey(), Ui.Kind.Primary, Icons.Arrow, height: 44, iconAfter: true),
@@ -225,35 +241,8 @@ sealed class Onboarding : Window
     {
         var open = Ui.Button(L("打开"), () => Process.Start(new ProcessStartInfo("https://chat.ant-ling.com/platform/api") { UseShellExecute = true }), icon: Icons.OpenExternal, height: 36, iconAfter: true);
         open.MinWidth = 0;
-        var reveal = Ui.IconButton(Icons.Eye, L("显示 key"), () =>
-        {
-            var show = keyText.Visibility != Visibility.Visible;
-            keyText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            keyBox.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
-        }, Palette.Secondary, 32, 16);
-        Detach(keyBox); Detach(keyText); Detach(keyStatus);
-        var hint = Ui.Text("sk-…", 14, Palette.Tertiary, wrap: false);
-        hint.IsHitTestVisible = false; hint.VerticalAlignment = VerticalAlignment.Center;
-        void Hint() => hint.Visibility = keyBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        keyBox.PasswordChanged += (_, _) => Hint();
-        Hint();
-        var boxes = new Grid { Children = { keyBox, keyText, hint } };
-        var inner = new DockPanel();
-        DockPanel.SetDock(reveal, Dock.Right);
-        inner.Children.Add(reveal); inner.Children.Add(boxes);
-        Ui.StyleField(keyBox); Ui.StyleField(keyText);
-        var field = Ui.FieldFrame(inner, keyBox);
-        field.Padding = new Thickness(12, 0, 4, 0);
-        var paste = Ui.Button(L("粘贴并检查"), () =>
-        {
-            try { if (Clipboard.ContainsText()) keyText.Text = Clipboard.GetText().Trim(); } catch { }
-            _ = SaveKey();
-        }, Ui.Kind.Primary, height: 40);
-        var row = new DockPanel();
-        DockPanel.SetDock(paste, Dock.Right);
-        paste.Margin = new Thickness(8, 0, 0, 0);
-        row.Children.Add(paste); row.Children.Add(field);
-        if (app.Ling.HasKey && keyBox.Password.Length == 0 && keyStatus.Content is null) Status(true, AIKey.Masked(app.Key.Read() ?? "") + " · " + L("已连接，可以用了"));
+        var row = KeyRow("sk-…");
+        if (app.Ling.HasKey && keyBox.Password.Length == 0 && keyStatus.Content is null) Status(true, AIKey.Masked(app.Ling.CurrentKey() ?? "") + " · " + L("已连接，可以用了"));
         keyStatus.Margin = new Thickness(0, 12, 0, 0);
         var second = new StackPanel { Children = { row, keyStatus } };
         var card = StepCard(new StackPanel
@@ -281,6 +270,75 @@ sealed class Onboarding : Window
         return Page(L("接上 Ling"), L("识别、翻译和纪要都靠它，约 1 分钟。"), Columns(card, side));
     }
 
+    // MARK: 1 · 用其他服务 (OnboardingKey.swift › otherEntry)
+
+    /// Another service than Ling is chosen (用不了 Ling？): step 1 asks for its key instead.
+    bool Other => app.Settings.AiProvider != "ling";
+    /// What the page offers; a custom address is set up in 设置 › AI 服务.
+    static readonly string[] Others = ["openrouter", "zenmux"];
+
+    void Switch(string provider)
+    {
+        keyBox.Clear(); keyStatus.Content = null;
+        app.SetAIProvider(provider);
+        Render();
+    }
+
+    FrameworkElement OtherStep()
+    {
+        var p = app.Ling.Provider;
+        var choices = Ui.Segmented(Others.Select(id => (id, AIProvider.Named(id).Name)), Others.Contains(p.Id) ? p.Id : Others[0],
+            v => { if (v != app.Settings.AiProvider) Switch(v); });
+        UIElement top = choices;
+        if (p.Site is { } site)
+        {
+            var open = Ui.Button(LF("打开 %@", app.Ling.Config.Name), () => Process.Start(new ProcessStartInfo(site) { UseShellExecute = true }), icon: Icons.OpenExternal, height: 36, iconAfter: true);
+            open.MinWidth = 0;
+            top = Ui.Spread(choices, open);
+        }
+        if (app.Ling.HasKey && app.Ling.KeyState == KeyState.Ok && keyBox.Password.Length == 0 && keyStatus.Content is null)
+            Status(true, AIKey.Masked(app.Ling.CurrentKey() ?? "") + " · " + L("已连接") + " · " + L("现在可以用了"));
+        var row = KeyRow(LF("粘贴 %@ 的 key", app.Ling.Config.Name));
+        keyStatus.Margin = new Thickness(0, 12, 0, 0);
+        row.Margin = new Thickness(0, 18, 0, 0);
+        var card = StepCard(new StackPanel { Children = { top, row, keyStatus } });
+        return Page(L("用其他服务"), L("听、纪要和翻译都能用，模型已经选好。"), card);
+    }
+
+    /// The key field with its reveal button, and 粘贴并检查.
+    DockPanel KeyRow(string placeholder)
+    {
+        var reveal = Ui.IconButton(Icons.Eye, L("显示 key"), () =>
+        {
+            var show = keyText.Visibility != Visibility.Visible;
+            keyText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            keyBox.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+        }, Palette.Secondary, 32, 16);
+        Detach(keyBox); Detach(keyText); Detach(keyStatus);
+        var hint = Ui.Text(placeholder, 14, Palette.Tertiary, wrap: false);
+        hint.IsHitTestVisible = false; hint.VerticalAlignment = VerticalAlignment.Center;
+        void Hint() => hint.Visibility = keyBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        keyBox.PasswordChanged += (_, _) => Hint();
+        Hint();
+        var boxes = new Grid { Children = { keyBox, keyText, hint } };
+        var inner = new DockPanel();
+        DockPanel.SetDock(reveal, Dock.Right);
+        inner.Children.Add(reveal); inner.Children.Add(boxes);
+        Ui.StyleField(keyBox); Ui.StyleField(keyText);
+        var field = Ui.FieldFrame(inner, keyBox);
+        field.Padding = new Thickness(12, 0, 4, 0);
+        var paste = Ui.Button(L("粘贴并检查"), () =>
+        {
+            try { if (Clipboard.ContainsText()) keyText.Text = Clipboard.GetText().Trim(); } catch { }
+            _ = SaveKey();
+        }, Ui.Kind.Primary, height: 40);
+        var row = new DockPanel();
+        DockPanel.SetDock(paste, Dock.Right);
+        paste.Margin = new Thickness(8, 0, 0, 0);
+        row.Children.Add(paste); row.Children.Add(field);
+        return row;
+    }
+
     static FrameworkElement Gap(FrameworkElement e, double top) { e.Margin = new Thickness(0, top, 0, 0); return e; }
 
     static void Detach(FrameworkElement e) { if (e.Parent is Panel p) p.Children.Remove(e); else if (e.Parent is ContentControl c) c.Content = null; else if (e.Parent is Decorator d) d.Child = null; }
@@ -303,6 +361,8 @@ sealed class Onboarding : Window
         app.Ling.KeyChanged();
         var (state, _) = await app.Ling.Check();
         checking = false; footer.Content = Footer();
+        // The key is good but the chosen model can't hear: listening would show nothing, so say so here.
+        if (state == KeyState.Ok && app.Ling.Hears == false) { Status(false, L("这个模型听不了声音，换一个支持音频输入的")); return; }
         if (state == KeyState.Ok) { Status(true, L("已连接，可以用了")); await Task.Delay(600); Go(1); return; }
         // A key Ling turned down isn't kept: the one that worked before, if any, comes back.
         if (state == KeyState.Invalid)
@@ -310,7 +370,9 @@ sealed class Onboarding : Window
             if (previous is not null) app.Key.Save(previous); else app.Key.Remove();
             app.Ling.KeyChanged();
         }
-        Status(false, state == KeyState.Invalid ? L("这个 key 不能用，检查是否复制完整，或重新创建一个") : L("连不上 Ling，检查网络"));
+        var name = app.Ling.Config.Name;
+        Status(false, state == KeyState.Invalid ? L("这个 key 不能用，检查是否复制完整，或重新创建一个")
+            : app.Ling.Config.IsLing ? L("连不上 Ling，检查网络") : app.Ling.Problem is { } why ? LF(why.Key, why.Args) : LF("连不上 %@，请检查网络或代理", name));
     }
 
     // MARK: 2 · System audio

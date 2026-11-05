@@ -49,7 +49,8 @@ sealed class Controller
 {
     readonly Application application;
     public readonly AppSettings Settings = AppSettings.Load();
-    public readonly AIKey Key = new(new DpapiProtector());
+    /// The key of the AI service in use (one file per service).
+    public readonly AIKey Key;
     public readonly LingClient Ling;
     public readonly SessionStore Store = new();
     public readonly NotesEngine Notes;
@@ -104,7 +105,8 @@ sealed class Controller
         this.application = application;
         var ui = Settings.UiLanguage == "system" ? null : Settings.UiLanguage;
         Strings.Load(Bundled.Strings, ui);
-        Ling = new LingClient(Key) { Model = Settings.Model };
+        Key = new AIKey(new DpapiProtector(), service: () => Settings.AiProvider);
+        Ling = new LingClient(Key, config: Settings.AIConfig);
         SpeakerLabels.Voices = Settings.SpeakerVoices;
         Notes = new NotesEngine(Ling, Store);
         Translator = new Translator(Ling);
@@ -496,7 +498,7 @@ sealed class Controller
     void PressBegan()
     {
         if (!Settings.Speak || Speak.State is SpeakEngine.Phase.Recording or SpeakEngine.Phase.Translating) return;
-        if (!Ling.HasKey) { Speak.Report(L("需要 Ling key 才能说")); return; }
+        if (!Ling.HasKey) { Speak.Report(Ling.Config.IsLing ? L("需要 Ling key 才能说") : LF("需要 %@ 的 key 才能说", Ling.Config.Name)); return; }
         if (Endpoints.Cable() is null) { Speak.Report(L("还没装虚拟麦克风，去设置里装一下")); return; }
         if (fakeMic is null)
         {
@@ -601,6 +603,53 @@ sealed class Controller
     }
 
     public void SettingsPage(string id) => settingsWindow?.Show(id);
+
+    // MARK: AI 服务
+
+    /// 设置 › AI 服务: another service, with its own key file and models; checked again.
+    public void SetAIProvider(string provider)
+    {
+        if (AIProvider.Named(provider).Id != provider || provider == Settings.AiProvider) return;
+        Settings.AiProvider = provider;
+        Settings.Save();
+        AIChanged();
+    }
+
+    /// A model chosen over the recommended one ("text", "hear" or "voice"; "" goes back to it).
+    public void SetAIModel(string kind, string model)
+    {
+        var p = Settings.AiProvider;
+        if (kind == "text" && p == "ling") Settings.Model = model.Length > 0 ? model : LingClient.DefaultModel;
+        else
+        {
+            var table = kind switch { "text" => Settings.AiModels, "hear" => Settings.AiHearModels, "voice" => Settings.AiVoiceModels, _ => null };
+            if (table is null) return;
+            if (model.Length > 0) table[p] = model; else table.Remove(p);
+        }
+        Settings.Save();
+        AIChanged();
+    }
+
+    /// The service, its address, models or key changed: forget the old check and check again.
+    public void AIChanged()
+    {
+        Ling.KeyChanged();
+        if (Ling.HasKey) _ = Ling.Check();
+        Changed();
+    }
+
+    /// For the debug pipe: the AI service in use and what its last check found (never the key).
+    public JsonObject AIState()
+    {
+        var c = Ling.Config;
+        return new JsonObject
+        {
+            ["provider"] = c.Provider.Id, ["base"] = c.Base, ["text"] = c.TextModel, ["hear"] = c.HearModel, ["voice"] = c.VoiceModel,
+            ["state"] = Ling.KeyState.ToString(), ["hears"] = Ling.Hears, ["seconds"] = Ling.Seconds is { } s ? Math.Round(s, 1) : null,
+            ["problem"] = Ling.Problem is { } p ? LF(p.Key, p.Args) : null,
+            ["catalog"] = new JsonArray(Ling.TextCatalog.Count, Ling.HearCatalog.Count), ["keyFile"] = Path.GetFileName(Key.File_),
+        };
+    }
 
     public void SetView(string view)
     {
@@ -717,6 +766,7 @@ sealed class Controller
         ["notes"] = Notes.Status.ToString(),
         ["topics"] = Notes.Notes.Topics.Count,
         ["key"] = Ling.KeyState.ToString(),
+        ["ai"] = AIState(),
         ["view"] = Settings.View,
         ["showInCapture"] = Settings.ShowInCapture,
         ["sessions"] = Store.All().Count,
@@ -747,6 +797,7 @@ sealed class Controller
 ///   show notes|records|settings [page]|flyout|menu | quit
 ///   updatefeed <url or file> | checkupdate
 ///   calls <program=name,…>|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
+///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; no id: the recommended)
 static class DebugServer
 {
     static string Pipe => Paths.Dev ? "cicada-dev" : "cicada";
@@ -817,6 +868,13 @@ static class DebugServer
                 if (arg == "on" || arg == "off") { app.Settings.Speak = arg == "on"; app.Settings.Save(); app.SettingsChanged(); }
                 else _ = app.Speak.Speak(Wav.Bytes(Wav.Read(arg)), new DeviceSpeaker(Endpoints.Cable));
                 break;
+            case "provider": app.SetAIProvider(arg); break;
+            case "ai-model":
+            {
+                var kv = arg.Split(' ', 2);
+                app.SetAIModel(kv[0], kv.Length > 1 ? kv[1].Trim() : "");
+                break;
+            }
             case "speakers": app.Settings.SpeakerVoices = arg == "on"; app.Settings.Save(); app.SettingsChanged(); break;
             case "fakemic": app.SetFakeMic(arg == "off" ? null : arg); break;
             case "record": _ = app.RecordCable(arg); break;
