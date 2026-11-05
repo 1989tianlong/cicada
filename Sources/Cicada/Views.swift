@@ -1316,8 +1316,10 @@ struct SessionNotesView: View {
                 if let notes, !notes.isEmpty {
                     NotesContentView(notes: SpeakerLabels.named(notes, SpeakerLabels.names(session)), fresh: live ? engine.fresh : [], live: live, document: true,
                                      endedAt: session.lines.last?.t, onJump: onJump)
-                } else if generating || (live && ling.hasKey && !session.lines.isEmpty) {
+                } else if generating || (live && ling.hasKey && !session.lines.isEmpty && engine.state == .updating) {
                     NotesGeneratingView(heard: session.lines.count)
+                } else if live && ling.hasKey {
+                    NotesListeningView(heard: session.lines.count)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(generating ? L("正在整理纪要…") : live ? L("纪要会在会议进行中自动生成") : L("这场会议还没有纪要"))

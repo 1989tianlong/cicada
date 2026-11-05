@@ -787,13 +787,16 @@ struct NotesWindowView: View {
             notesScroll
         } else if engine.state == .noKey || engine.state == .invalidKey {
             Spacer()
-        } else if live && heard == 0 {
-            ScrollView {
-                NotesListeningView().padding(.horizontal, 24).padding(.vertical, 12)
-            }
-        } else if live || (session != nil && engine.generatingID == session?.id) {  // nil == nil is not "generating"
+        } else if (live && heard > 0 && engine.state == .updating)
+                    || (session != nil && engine.generatingID == session?.id) {  // nil == nil is not "generating"
             ScrollView {
                 NotesGeneratingView(heard: heard).padding(.horizontal, 24).padding(.vertical, 12)
+            }
+        } else if live {
+            // Until a request is actually out: the first one waits for a few lines or 20 s, and
+            // audio already playing at the start brings a line within seconds.
+            ScrollView {
+                NotesListeningView(heard: heard).padding(.horizontal, 24).padding(.vertical, 12)
             }
         } else {
             VStack {

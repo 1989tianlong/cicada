@@ -1189,15 +1189,21 @@ struct SkeletonBar: View {
     }
 }
 
-/// Listening, nothing said yet: one quiet status row, then the notes' own shape waiting to be
+/// Listening, no notes asked for yet: one quiet status row, then the notes' own shape waiting to be
 /// filled, so the first version lands where the reader is already looking.
 struct NotesListeningView: View {
+    /// Lines heard so far; the first notes request waits for a few of them.
+    var heard = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 12) {
                 SoundBars()
                 Text("有人开口后，约半分钟出第一版").font(.system(size: 13)).foregroundStyle(Palette.ink)
                 Spacer(minLength: 0)
+                if heard > 0 {
+                    Text("已听到 \(heard) 句").font(.system(size: 12)).foregroundStyle(Palette.tertiary).fixedSize()
+                }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale.opacity(0.7)))
