@@ -468,6 +468,12 @@ static class Tests
             * (syllables ? 0.55 + 0.45 * Math.Sin(2 * Math.PI * 4 * i / 16000) : 1 + wobble * Math.Sin(2 * Math.PI * 0.5 * i / 16000))
             * amp * 32767)).ToArray();
     static short[] Silence(double seconds) => new short[(int)(seconds * 16000)];
+    /// One word on its own ("Thanks."): a 300 Hz tone that swells from nothing and fades back.
+    static short[] Word(double seconds, double amp)
+    {
+        int n = (int)(seconds * 16000);
+        return Enumerable.Range(0, n).Select(i => (short)(Math.Sin(2 * Math.PI * 300 * i / 16000) * Math.Pow(Math.Sin(Math.PI * i / n), 2) * amp * 32767)).ToArray();
+    }
 
     static List<Segment> Cut(params short[][] parts)
     {
@@ -507,6 +513,10 @@ static class Tests
         Equal(1, Cut(Tone(3, 0.03), Silence(1)).Count, "quiet speech, whose dips fall below the gate, is too");
         Equal(1, Cut(Tone(3, 0.022), Silence(1)).Count, "a voice whose loudest frames barely clear the gate dips far between syllables");
         Equal(0, Cut(Tone(4, 0.016, syllables: false, wobble: 0.3), Silence(1)).Count, "a hum at the gate that slowly rises and falls doesn't");
+        Equal(1, Cut(Silence(1), Word(0.4, 0.028), Silence(1)).Count, "a quiet word on its own, 0.2 s over the gate");
+        Equal(1, Cut(Silence(1), Word(1.2, 0.022), Silence(1)).Count, "one smooth run of voice on its own, no dips inside");
+        Equal(0, Cut(Silence(1), Tone(1, 0.03, syllables: false), Silence(1)).Count, "a short hum in silence doesn't swell and fade");
+        Equal(0, Cut(Silence(1), Word(0.15, 0.3), Silence(1)).Count, "nor is a knock a word");
     }
 
     public static void WavRoundTrip()

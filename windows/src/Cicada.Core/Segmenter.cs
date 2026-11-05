@@ -17,14 +17,19 @@ public sealed class Segmenter
     const int Frame = 480;                       // 30 ms
     public static double Threshold = 0.01;       // the Mac AudioRouter's gate (about -40 dBFS)
     public static double Pause = 0.6, MaxLength = 8.0, MinSpeech = 0.25;
+    public static double MinWord = 0.2;          // a word on its own (IsWord): this much over gate / 4
     public static double Steady = 2.0;           // frames' 90th / 10th percentile below this: not speech…
     public static double Dips = 2.5;             // …unless the median is this far over the 10th, quiet ones held at gate / 8
+    public static double Short = 2.0;            // a sound up to this long, with real quiet (gate / 4) on both sides…
+    public static double Swell = Math.Pow(10, 10 / 20.0); // …that swells and fades by 10 dB is a word: see IsWord
     const double PreRoll = 0.15, Tail = 0.15, CutWindow = 2.0;
 
     readonly List<short> pending = [];           // samples not yet a whole frame
     readonly List<short> current = [];           // the open segment
     readonly List<double> levels = [];           // per frame of `current`
-    readonly Queue<short[]> before = new();      // recent quiet frames, for the pre-roll
+    readonly Queue<(short[] frame, double level)> before = new(); // recent quiet frames, for the pre-roll
+    readonly Queue<double> idle = new();         // levels of the last 0.6 s of quiet frames
+    double? lead;                                // the quietest of those when the open segment began
     long consumed;                               // samples seen, for timestamps
     double currentStart;
     int quietFrames, loudFrames, index;
@@ -79,12 +84,16 @@ public sealed class Segmenter
         {
             if (!loud)
             {
-                before.Enqueue(frame);
+                idle.Enqueue(level);
+                while (idle.Count > (int)(Pause * Rate / Frame)) idle.Dequeue();
+                before.Enqueue((frame, level));
                 while (before.Count > PreRoll * Rate / Frame) before.Dequeue();
                 return;
             }
             currentStart = now - before.Count * Frame / (double)Rate;
-            foreach (var f in before) { current.AddRange(f); levels.Add(0); }
+            lead = idle.Count > 0 ? idle.Min() : null;
+            idle.Clear();
+            foreach (var (f, l) in before) { current.AddRange(f); levels.Add(l); }
             before.Clear();
             quietFrames = 0; loudFrames = 0;
         }
@@ -133,6 +142,27 @@ public sealed class Segmenter
         return low[(int)(0.5 * (low.Count - 1))] < Dips * low[(int)(0.1 * (low.Count - 1))];
     }
 
+    /// A short word on its own: a sound up to `Short` that rises out of real quiet and falls back
+    /// into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after), and
+    /// that swells and fades by 10 dB or more (90th / 10th percentile of its frames over gate / 4).
+    /// Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run of voiced
+    /// ones, so the steady test, which looks for dips inside, dropped it even at -26 dBFS; and a
+    /// quiet one ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it needs `MinWord` over
+    /// gate / 4 instead (a knock with a 150 ms tail has 0.15 s). A fan, hum or hiss is there on
+    /// both sides; a short burst of one in silence stays within about 9 dB (brown noise), 5 dB (the
+    /// rest), and Ming makes up a sentence for a hum or fan burst. Not for a forced cut, whose end
+    /// isn't a pause.
+    internal bool IsWord(List<double> frameLevels, double gate)
+    {
+        int first = frameLevels.FindIndex(l => l >= gate), last = frameLevels.FindLastIndex(l => l >= gate);
+        if (first < 0 || (last - first + 1) * Frame > Short * Rate) return false;
+        double quiet = gate / 4;
+        if (lead is not { } q || q > quiet || last + 1 >= frameLevels.Count || frameLevels.Skip(last + 1).Min() > quiet) return false;
+        int from = frameLevels.FindIndex(l => l >= quiet), to = frameLevels.FindLastIndex(l => l >= quiet);
+        var body = frameLevels.GetRange(from, to - from + 1).Select(l => Math.Max(l, gate / 8)).Order().ToList();
+        return body[(int)(0.9 * (body.Count - 1))] >= Swell * body[(int)(0.1 * (body.Count - 1))];
+    }
+
     /// Emits `current[..end]` and keeps what follows as the start of the next segment.
     void Close(int end)
     {
@@ -141,7 +171,10 @@ public sealed class Segmenter
         var rest = current.GetRange(end, current.Count - end);
         var restLevels = levels.GetRange(end / Frame, levels.Count - end / Frame);
         double start = currentStart;
-        bool speech = loudFrames * Frame >= MinSpeech * Rate && !IsSteady(levels.GetRange(0, Math.Min(levels.Count, end / Frame)), line);
+        var sent = levels.GetRange(0, Math.Min(levels.Count, end / Frame));
+        bool speech = IsWord(levels, line)
+            ? sent.Count(l => l >= line / 4) * Frame >= MinWord * Rate
+            : loudFrames * Frame >= MinSpeech * Rate && !IsSteady(sent, line);
         current.Clear(); levels.Clear();
         quietFrames = 0; loudFrames = 0;
         if (speech) Emitted?.Invoke(new Segment(++index, Math.Round(start, 3), samples));
@@ -150,6 +183,7 @@ public sealed class Segmenter
         if (restLevels.Any(l => l >= line))
         {
             currentStart = start + end / (double)Rate;
+            lead = null;
             current.AddRange(rest);
             levels.AddRange(restLevels);
             int trailing = 0;
