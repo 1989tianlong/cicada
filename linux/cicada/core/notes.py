@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import jsonfmt, speakers
 from .jsonfmt import arr, num, obj
-from .ling import NOTES, LingError
+from .ling import CHECKING, INVALID, NOTES, LingError
 from .models import Fishbone, FishboneBranch, MeetingNotes, NoteItem, NoteTerm, NoteTopic, now
 from .support import Log, clock, written_in
 
@@ -61,6 +61,7 @@ class NotesEngine:
             s = self.store.get(sid)
             self.notes = (s.notes if s else None) or MeetingNotes()
             self.status = IDLE if self.ling.has_key else NO_KEY
+            self._sync_key()
             self._last_attempt = time.time()
             self._stop_ticker()
             stop = threading.Event()
@@ -104,10 +105,21 @@ class NotesEngine:
         """Notes for a finished meeting that has none (runs in the background)."""
         self._work.submit(self._update, sid, True)
 
+    def _sync_key(self) -> None:
+        """The status follows the key, as on the Mac (`NotesEngine.tick`)."""
+        ling = self.ling
+        # A key was added or replaced since the last failure.
+        if self.status in (NO_KEY, INVALID_KEY) and ling.usable and ling.key_state != CHECKING:
+            self.status = IDLE
+        if self.status == IDLE and not ling.has_key:
+            self.status = NO_KEY
+        # A key that was just checked and refused says so, rather than asking for a key again.
+        if self.status in (NO_KEY, IDLE) and ling.has_key and ling.key_state == INVALID:
+            self.status = INVALID_KEY
+
     def _tick(self) -> None:
         with self._gate:
-            if self.status == NO_KEY and self.ling.usable:
-                self.status = IDLE
+            self._sync_key()
             sid = self._session_id
             if sid is None or self._in_flight:
                 return

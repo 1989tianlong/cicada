@@ -482,6 +482,23 @@ class Segmenting(Base):
 
 
 class Notes(Base):
+    def test_status_follows_the_key_as_on_the_mac(self):
+        # A key the check refused is "invalid", not "no key"; a fixed key goes back to idle.
+        from cicada.core import ling as lingmod
+        store = SessionStore()
+        ling = client(Fake(lambda body: reply("{}")))
+        notes = NotesEngine(ling, store)
+        ling.key_state = lingmod.INVALID
+        notes.status = notesmod.IDLE
+        notes._sync_key()
+        self.assertEqual(notesmod.INVALID_KEY, notes.status)
+        ling.key_state = lingmod.CHECKING
+        notes._sync_key()
+        self.assertEqual(notesmod.INVALID_KEY, notes.status, "still checking")
+        ling.key_state = lingmod.OK
+        notes._sync_key()
+        self.assertEqual(notesmod.IDLE, notes.status)
+
     def test_notes_language_as_on_the_mac(self):
         # "mine" or "source"; one meeting's choice over the setting; a change while live rewrites.
         store = SessionStore()
