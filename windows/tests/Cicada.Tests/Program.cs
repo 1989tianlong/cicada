@@ -772,6 +772,7 @@ static class Tests
         Equal("x\ny", t["a \"b\""], "escapes");
         Equal("%@ min", t["%@ 分钟"], "placeholders kept");
         Equal("3 分钟", Strings.LF("%@ 分钟", 3), "LF fills %@");
+        Equal("正在下载 1.3.0：59%", Strings.LF("正在下载 %@：%lld%%", "1.3.0", 59), "%% is one percent sign");
     }
 
     // MARK: Ling

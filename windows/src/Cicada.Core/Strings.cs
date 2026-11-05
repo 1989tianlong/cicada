@@ -63,6 +63,8 @@ public static class Strings
                 b.Append(n >= 0 && n < args.Length ? args[n] : "");
                 i += 3;
             }
+            // A percent sign, written %% in a format ("正在下载 %@：%lld%%").
+            else if (text[i] == '%' && i + 1 < text.Length && text[i + 1] == '%') { b.Append('%'); i++; }
             else b.Append(text[i]);
         }
         return b.ToString();
