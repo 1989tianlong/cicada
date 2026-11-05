@@ -5,6 +5,14 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes and ships only the platforms in
 it. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
+## 1.1.1 — 2026-11-04
+
+### Android
+
+#### Fixed
+
+- Show the first-run setup screens again; they opened blank with only the Continue button ([c5acd7d](https://github.com/wquguru/cicada/commit/c5acd7da6c129baedc84eeff925ca2194b13a19c))
+
 ## 1.1.0 — 2026-11-04
 
 ### Mac
