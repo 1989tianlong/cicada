@@ -146,13 +146,18 @@ enum BrandImage {
 
     /// The glyph with an orange dot top right, while an update is available. A coloured dot
     /// can't be part of a template image, so the glyph is filled with the label colour instead.
+    /// The dot is cut out of the glyph with a clear ring, so it reads as a badge, not part of the logo.
     private static func withBadge(_ glyph: NSImage) -> NSImage {
         let image = NSImage(size: glyph.size, flipped: false) { rect in
             glyph.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             NSColor.labelColor.setFill()
             rect.fill(using: .sourceIn)
+            let dot = NSRect(x: rect.maxX - 7.5, y: rect.maxY - 7.5, width: 7.5, height: 7.5)
+            NSGraphicsContext.current?.compositingOperation = .clear
+            NSBezierPath(ovalIn: dot.insetBy(dx: -1.5, dy: -1.5)).fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
             NSColor(red: 0xE8 / 255, green: 0x55 / 255, blue: 0x2B / 255, alpha: 1).setFill()
-            NSBezierPath(ovalIn: NSRect(x: rect.maxX - 6, y: rect.maxY - 6, width: 5.5, height: 5.5)).fill()
+            NSBezierPath(ovalIn: dot).fill()
             return true
         }
         image.accessibilityDescription = L("\(appDisplayName)（有新版本）")

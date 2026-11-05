@@ -844,6 +844,8 @@
 "正在下载 %@：%lld%%" = "Downloading %@: %lld%%";
 "没能自动更新：%@" = "Couldn’t update automatically: %@";
 "有新版本 %@" = "Version %@ is available";
+"知了有新版本 %@" = "Cicada %@ is available";
+"点按安装，完成后自动重新打开" = "Click to install. Cicada reopens when it's done.";
 "已是最新版本" = "You’re up to date";
 "连不上 GitHub，请稍后再试" = "GitHub can’t be reached; try again later";
 "上次检查 %@" = "Last checked %@";

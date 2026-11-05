@@ -188,6 +188,8 @@ struct MenuPanelView: View {
             // In subtitle-bar mode this is where the bar sends you to pick.
             if model.running { LanguageNotice(model: model) }
             if model.roomPrompt { roomPromptStrip }
+            // Right under the header: below the settings it was easy to miss.
+            UpdateBanner(updates: model.updates, model: model)
 
             VStack(spacing: 6) {
                 ChoiceRow(label: L("听哪里"), value: settings.listensToRoom ? L("会议室") : L("电脑声音"),
@@ -245,8 +247,6 @@ struct MenuPanelView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 if settings.displayMode != "notes" || !model.ling.hasKey { displayCard }
             }
-
-            UpdateBanner(updates: model.updates, model: model)
 
             Divider()
 

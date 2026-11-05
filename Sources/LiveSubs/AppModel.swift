@@ -137,6 +137,8 @@ final class AppModel: ObservableObject {
     private var heldJoin: (seg: Segment, t: Double, translation: String?)?
 
     init() {
+        // A meeting or speaking holds the update notification until it ends (see stop()).
+        updates.busy = { [weak self] in guard let self else { return false }; return self.running || self.speak.phase != .idle }
         listen.onSubtitle = { [weak self] src, dst in
             // Someone is speaking either way; only the wrong model's words aren't shown.
             let visible = self?.listen.hidesSource == true ? "" : src
@@ -520,6 +522,7 @@ final class AppModel: ObservableObject {
         notes.finish()
         overlay.hide()
         refresh()
+        updates.notifyIfDue()  // held while the meeting was on
     }
 
     func setRunning(_ on: Bool) { on ? start() : requestStop() }
@@ -1650,6 +1653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         model.openOnboarding = { [weak self] in self?.showOnboarding() }
         runningObserver = model.$running.combineLatest(model.updates.$update).sink { [weak self] live, update in
             self?.statusItem.button?.image = BrandImage.menuBar(live: live, badge: update != nil)
+            self?.statusItem.button?.toolTip = update.map { L("有新版本 \($0.version)") }
         }
         let poll = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.model.refreshPermissions() }
@@ -1682,8 +1686,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let id = response.notification.request.content.userInfo["session"] as? String
+        let info = response.notification.request.content.userInfo
+        let id = info["session"] as? String
+        let update = info["update"] as? String
         await MainActor.run {
+            // "有新版本": the panel shows the download, and install asks first if a meeting is on.
+            if update != nil {
+                if !popover.isShown { togglePopover() }
+                model.updates.install(model: model)
+                return
+            }
             showMainWindow()
             if let id { model.mainShow = id }
         }

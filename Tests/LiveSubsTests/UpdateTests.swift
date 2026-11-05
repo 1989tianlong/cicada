@@ -76,6 +76,14 @@ import Testing
         #expect(Updates.checkedAgo(now.addingTimeInterval(-2 * 3600 - 59), now: now) == L("2 小时前查过"))
         #expect(Updates.checkedAgo(now.addingTimeInterval(-3 * 86_400), now: now) == L("3 天前查过"))
     }
+
+    /// One notification per version, and none while a meeting or speaking is on.
+    @Test func notifiesOncePerVersionWhenIdle() {
+        #expect(Updates.shouldNotify("1.1.0", notified: nil, busy: false))
+        #expect(Updates.shouldNotify("1.2.0", notified: "1.1.0", busy: false))
+        #expect(!Updates.shouldNotify("1.1.0", notified: "1.1.0", busy: false))
+        #expect(!Updates.shouldNotify("1.1.0", notified: nil, busy: true))
+    }
 }
 
 @Suite struct UpdateMinimumSystemTests {
