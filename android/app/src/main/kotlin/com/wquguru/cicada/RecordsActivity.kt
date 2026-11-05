@@ -126,6 +126,12 @@ class RecordActivity : Activity() {
     private lateinit var header: FrameLayout
     private lateinit var footer: FrameLayout
     private lateinit var playerHost: FrameLayout
+    // Once the big title scrolls away: the title in the top bar (a tap goes back up) and the
+    // tabs pinned under it, as the Mac's pinned bar.
+    private lateinit var barTitle: TextView
+    private lateinit var pinnedTabs: FrameLayout
+    private var headTitle: View? = null
+    private var headTabs: View? = null
     private val adapter = LinesAdapter()
     private var tab = 0
     private var shown: String? = null
@@ -155,14 +161,49 @@ class RecordActivity : Activity() {
             addFooterView(footer, null, false)
             adapter = this@RecordActivity.adapter
             setOnItemClickListener { _, _, pos, _ -> (pos - headerViewsCount).takeIf { it >= 0 }?.let { seekTo(it) } }
+            setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
+                override fun onScrollStateChanged(v: android.widget.AbsListView, state: Int) {}
+                override fun onScroll(v: android.widget.AbsListView, first: Int, visible: Int, total: Int) = pin()
+            })
         }
-        setContentView(ui.screen(this, null, back = true, ground = Palette.card, body = list, scroll = false, bottom = playerHost.takeIf { audio().isFile }, actions = listOf(
+        barTitle = ui.text("", 17f, Palette.ink, bold = true, lines = 1).apply {
+            alpha = 0f
+            setPadding(ui.dp(8), 0, ui.dp(8), 0)
+            setOnClickListener { list.setSelection(0) }
+            isClickable = false
+        }
+        pinnedTabs = FrameLayout(this).apply {
+            setBackgroundColor(Palette.card)
+            setPadding(ui.dp(20), ui.dp(6), ui.dp(20), ui.dp(10))
+            visibility = View.GONE
+            isClickable = true // taps on its edges don't reach the lines under it
+        }
+        val body = FrameLayout(this).apply {
+            addView(list, FrameLayout.LayoutParams(-1, -1))
+            addView(pinnedTabs, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.TOP))
+        }
+        setContentView(ui.screen(this, null, back = true, ground = Palette.card, body = body, scroll = false, center = barTitle, bottom = playerHost.takeIf { audio().isFile }, actions = listOf(
             ui.roundButton(R.drawable.i_share, L("分享"), onWhite = true) { cicada.store.get(id)?.let(::share) },
             ui.roundButton(R.drawable.i_more, L("更多"), onWhite = true) { more() })))
         if (audio().isFile) buildPlayer()
     }
 
     private fun audio() = cicada.store.audioFile(id)
+
+    /// The title moves into the top bar once the big one is out of sight, and the tabs pin once
+    /// theirs scroll under the top edge (the header leaves the list entirely far down a transcript).
+    private fun pin() {
+        // The list reports a scroll as soon as the listener is set, before the views below exist.
+        if (!::list.isInitialized || !::barTitle.isInitialized || !::pinnedTabs.isInitialized) return
+        val gone = list.firstVisiblePosition > 0
+        val top = header.top
+        fun above(v: View?) = gone || (v != null && top + (v.parent as View).top + v.bottom <= 0)
+        val titleAway = above(headTitle)
+        if (titleAway != barTitle.isClickable) barTitle.animate().alpha(if (titleAway) 1f else 0f).setDuration(150).start()
+        barTitle.isClickable = titleAway
+        barTitle.contentDescription = if (titleAway) L("回到顶部") else null
+        pinnedTabs.visibility = if (above(headTabs)) View.VISIBLE else View.GONE
+    }
 
     override fun onResume() { super.onResume(); unobserve = cicada.observe(::render); shown = null; render() }
     override fun onPause() { super.onPause(); unobserve?.invoke(); unobserve = null; player?.pause(); updatePlayer() }
@@ -177,15 +218,23 @@ class RecordActivity : Activity() {
         if (key == shown) return
         shown = key
         val top = ui.stack(0).apply { setPadding(ui.dp(20), ui.dp(4), ui.dp(20), ui.dp(6)) }
-        top.addView(ui.title(SessionStore.displayTitle(s), 28f).apply { leading(1.2f) })
+        val title = ui.title(SessionStore.displayTitle(s), 28f).apply { leading(1.2f) }
+        top.addView(title)
+        headTitle = title
+        barTitle.text = SessionStore.displayTitle(s)
         val first = s.lines.firstOrNull()
         val meta = listOfNotNull("${MainActivity.day(s.startedAt)} ${MainActivity.time(s.startedAt)}", Languages.clock(s.durationSeconds),
                                  first?.let { "${NotesViews.languageName(it.srcLang)} → ${NotesViews.languageName(it.dstLang)}" },
                                  s.sourceFile?.let { L("导入") }).joinToString(" · ")
         top.addView(ui.text(meta, 13f, Palette.secondary), ui.lp(top = 6))
         speakerChips(s)?.let { top.addView(it, ui.lp(top = 14)) }
-        top.addView(ui.tabs(listOf(L("纪要"), "${L("文字记录")} · ${s.lines.size} ${L("句")}"), tab) { tab = it; render() }, ui.lp(top = 18))
+        val tabLabels = listOf(L("纪要"), "${L("文字记录")} · ${s.lines.size} ${L("句")}")
+        val tabs = ui.tabs(tabLabels, tab) { tab = it; render() }
+        top.addView(tabs, ui.lp(top = 18))
+        headTabs = tabs
         header.removeAllViews(); header.addView(top)
+        pinnedTabs.removeAllViews()
+        pinnedTabs.addView(ui.tabs(tabLabels, tab) { tab = it; render() })
 
         val bottom = ui.stack(0).apply { setPadding(ui.dp(20), 0, ui.dp(20), 0) }
         if (tab == 0) {
