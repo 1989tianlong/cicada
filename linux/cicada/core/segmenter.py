@@ -36,14 +36,19 @@ class Segmenter:
     pause = 0.6
     max_length = 8.0
     min_speech = 0.25
+    min_word = 0.2  # a word on its own (_isolated): this much over gate / 4 ("Thanks." at -36 dBFS: 0.21 s)
     steady = 2.0  # frames' 90th / 10th percentile below this: not speech…
     dips = 2.5  # …unless the median is this far over the 10th percentile, quiet ones held at gate / 8
+    short = 2.0  # a sound up to this long, with real quiet (gate / 4) on both sides…
+    swell = 10 ** (10 / 20)  # …that swells and fades by 10 dB is a word: see _isolated
 
     def __init__(self):
         self.pending = array("h")
         self.current = array("h")
         self.levels: list = []
         self.before: deque = deque()
+        self.idle: deque = deque(maxlen=int(self.pause * RATE / FRAME))  # levels of the last quiet frames
+        self.lead = None  # the quietest of those when the open segment began (None: it didn't begin in quiet)
         self.consumed = 0
         self.current_start = 0.0
         self.quiet = 0
@@ -70,14 +75,17 @@ class Segmenter:
         self.consumed += len(frame)
         if not len(self.current):
             if not loud:
-                self.before.append(frame)
+                self.idle.append(level)
+                self.before.append((frame, level))
                 while len(self.before) > PRE_ROLL * RATE / FRAME:
                     self.before.popleft()
                 return
             self.current_start = now - len(self.before) * FRAME / RATE
-            for f in self.before:
+            self.lead = min(self.idle) if self.idle else None
+            self.idle.clear()
+            for f, l in self.before:
                 self.current.extend(f)
-                self.levels.append(0.0)
+                self.levels.append(l)
             self.before.clear()
             self.quiet = self.loud = 0
         self.current.extend(frame)
@@ -122,6 +130,28 @@ class Segmenter:
         low = sorted(max(l, self.threshold / 8) for l in body)
         return low[int(0.5 * (len(low) - 1))] < self.dips * low[int(0.1 * (len(low) - 1))]
 
+    def _isolated(self, levels) -> bool:
+        """A short word on its own: a sound up to `short` that rises out of real quiet and falls back
+        into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after),
+        and that swells and fades by 10 dB or more (90th / 10th percentile of its frames over
+        gate / 4). Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run
+        of voiced ones, so the steady test, which looks for dips inside, dropped it even at
+        -26 dBFS; and a quiet one ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it
+        needs `min_word` over gate / 4 instead (a knock with a 150 ms tail has 0.15 s). A fan,
+        hum or hiss is there on both sides; a short burst of one in silence stays within about
+        9 dB (brown noise), 5 dB (the rest), and Ming makes up a sentence for a hum or fan burst.
+        Not for a forced cut, whose end isn't a pause."""
+        loud = [i for i, l in enumerate(levels) if l >= self.threshold]
+        if not loud or (loud[-1] - loud[0] + 1) * FRAME > self.short * RATE:
+            return False
+        quiet = self.threshold / 4
+        after = levels[loud[-1] + 1:]
+        if self.lead is None or self.lead > quiet or not after or min(after) > quiet:
+            return False
+        sound = [i for i, l in enumerate(levels) if l >= quiet]
+        body = sorted(max(l, self.threshold / 8) for l in levels[sound[0]:sound[-1] + 1])
+        return body[int(0.9 * (len(body) - 1))] >= self.swell * body[int(0.1 * (len(body) - 1))]
+
     def _close(self, end_at: int) -> None:
         """Emits current[:end] and keeps what follows as the start of the next segment."""
         end = max(0, min(end_at, len(self.current)))
@@ -129,7 +159,12 @@ class Segmenter:
         rest = self.current[end:]
         rest_levels = self.levels[min(len(self.levels), end // FRAME):]
         start = self.current_start
-        speech = self.loud * FRAME >= self.min_speech * RATE and not self._steady(self.levels[:end // FRAME])
+        sent = self.levels[:end // FRAME]
+        if self._isolated(self.levels):
+            sound = sum(1 for l in sent if l >= self.threshold / 4)
+            speech = sound * FRAME >= self.min_word * RATE
+        else:
+            speech = self.loud * FRAME >= self.min_speech * RATE and not self._steady(sent)
         self.current = array("h")
         self.levels = []
         self.quiet = self.loud = 0
@@ -141,6 +176,7 @@ class Segmenter:
         # A forced cut carries on with the remainder; after a pause the remainder is silence.
         if any(l >= self.threshold for l in rest_levels):
             self.current_start = start + end / RATE
+            self.lead = None
             self.current.extend(rest)
             self.levels = list(rest_levels)
             trailing = 0

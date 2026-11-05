@@ -111,6 +111,12 @@ def tone(seconds, amp=0.3, syllables=True, wobble=0.0):
     return array("h", (int(math.sin(2 * math.pi * 300 * i / 16000) * env(i) * amp * 32767) for i in range(int(seconds * 16000))))
 
 
+def word(seconds, amp):
+    """One word on its own ("Thanks."): a 300 Hz tone that swells from nothing and fades back."""
+    n = int(seconds * 16000)
+    return array("h", (int(math.sin(2 * math.pi * 300 * i / 16000) * math.sin(math.pi * i / n) ** 2 * amp * 32767) for i in range(n)))
+
+
 def silence(seconds):
     return array("h", bytes(int(seconds * 16000) * 2))
 
@@ -449,6 +455,13 @@ class Segmenting(Base):
         self.assertEqual(1, len(cut(tone(3.0, 0.022), silence(1.0))))
         # …a hum at the gate that slowly rises and falls doesn't.
         self.assertEqual(0, len(cut(tone(4.0, 0.016, syllables=False, wobble=0.3), silence(1.0))))
+        # A word on its own, out of quiet and back: quiet ("Thanks.", 0.2 s over the gate) or one
+        # smooth run of voice ("Good morning everyone,", no dips inside) is still a word…
+        self.assertEqual(1, len(cut(silence(1.0), word(0.4, 0.028), silence(1.0))))
+        self.assertEqual(1, len(cut(silence(1.0), word(1.2, 0.022), silence(1.0))))
+        # …a short hum in silence, which doesn't swell and fade, isn't; nor is a knock.
+        self.assertEqual(0, len(cut(silence(1.0), tone(1.0, 0.03, syllables=False), silence(1.0))))
+        self.assertEqual(0, len(cut(silence(1.0), word(0.15, 0.3), silence(1.0))))
 
     def test_wav_round_trip(self):
         pcm = tone(0.5)
