@@ -157,10 +157,26 @@ def reply(content, finish="stop"):
                                         "usage": {"prompt_tokens": 1, "completion_tokens": 1}}, pretty=False))
 
 
-def client(fake):
+def client(fake, clock=None):
     key = AIKey()
     key.save("sk-test-0000000000")
-    return LingClient(key, fake)
+    return LingClient(key, fake, clock=clock)
+
+
+class FakeClock:
+    """The start gate's time, moved on by each wait instead of waiting (one thread only)."""
+
+    def __init__(self):
+        self.start = self.t = 1000.0
+        self.waits = []
+
+    def now(self):
+        return self.t
+
+    def wait(self, condition, seconds):
+        assert seconds is not None, "would wait forever"
+        self.waits.append(seconds)
+        self.t += seconds
 
 
 def content(body, i):
@@ -579,18 +595,89 @@ class Ling(Base):
                 ling.chat("c", "i", TRANSLATE)
             self.assertEqual(LingError.HIJACKED, e.exception.kind)
 
-    def test_retries_audio_once_when_busy(self):
-        n = [0]
+    def test_heard_audio_rides_out_a_run_of_429s(self):
+        # Ling's 429s come in runs (two in a row lost a line with one retry): heard audio backs off
+        # 1, 2, 4 s and gets through; text translation fails at once so the caller can fall back.
+        clock = FakeClock()
+        replies = [Response(429, "")] * 3 + [reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。")]
+        fake = Fake(lambda b: replies.pop(0))
+        r = client(fake, clock).chat("c", "i", TRANSLATE, model=AUDIO_MODEL, audio=bytes([1]))
+        self.assertIn("ORIGINAL: Hi.", r)
+        self.assertEqual(4, len(fake.calls))
+        self.assertEqual(3, len(clock.waits))
+        for wait, backoff in zip(clock.waits, (1, 2, 4)):
+            self.assertTrue(backoff <= wait <= backoff + 0.5, clock.waits)
+        with self.assertRaises(LingError) as e:
+            client(Fake(lambda b: Response(429, "")), FakeClock()).chat("c", "i", TRANSLATE)
+        self.assertEqual(LingError.RATE_LIMITED, e.exception.kind)
+
+    def test_heard_audio_is_lost_only_after_an_outage(self):
+        clock = FakeClock()
+        fake = Fake(lambda b: Response(429, ""))
+        ling = client(fake, clock)
+        with self.assertRaises(LingError) as e:
+            ling.chat("c", "i", TRANSLATE, model=AUDIO_MODEL, audio=bytes([1]))
+        self.assertEqual(LingError.RATE_LIMITED, e.exception.kind)
+        self.assertEqual(5, len(fake.calls))
+        self.assertGreaterEqual(clock.t - clock.start, 15)
+        self.assertIsNotNone(ling.rate_limited_at)
+
+    def test_waits_as_long_as_retry_after_asks(self):
+        from cicada.core.ling import retry_after_seconds
+        clock = FakeClock()
+        replies = [Response(429, "", retry_after="5"), reply("ok")]
+        self.assertEqual("ok", client(Fake(lambda b: replies.pop(0)), clock).chat("c", "i", NOTES))
+        self.assertTrue(5 <= clock.waits[0] <= 5.5, clock.waits)
+        # Asked to wait minutes: an outage, so the line goes now rather than after it.
+        fake = Fake(lambda b: Response(429, "", retry_after="120"))
+        with self.assertRaises(LingError):
+            client(fake, FakeClock()).chat("c", "i", TRANSLATE, model=AUDIO_MODEL, audio=bytes([1]))
+        self.assertEqual(1, len(fake.calls))
+        self.assertEqual(3.0, retry_after_seconds("3"))
+        self.assertAlmostEqual(7.0, retry_after_seconds("Thu, 05 Nov 2026 12:00:07 GMT",
+                                                        now=datetime(2026, 11, 5, 12, 0, tzinfo=timezone.utc).timestamp()))
+        self.assertIsNone(retry_after_seconds("soon"))
+        self.assertIsNone(retry_after_seconds(None))
+
+    def test_a_429_holds_every_start_while_the_service_cools_down(self):
+        clock = FakeClock()
+        replies = [Response(429, ""), reply("notes")]
+        fake = Fake(lambda b: replies.pop(0))
+        ling = client(fake, clock)
+        with self.assertRaises(LingError):
+            ling.chat("first", "i", TRANSLATE)
+        # A translation that wouldn't retry fails at once, without spending a request on the limit...
+        with self.assertRaises(LingError) as e:
+            ling.chat("second", "i", TRANSLATE)
+        self.assertEqual(LingError.RATE_LIMITED, e.exception.kind)
+        self.assertEqual(1, len(fake.calls))
+        # ...and one that would waits at the gate until the pause is over, then goes.
+        self.assertEqual("notes", ling.chat("notes", "i", NOTES))
+        self.assertEqual(2, len(fake.calls))
+        self.assertTrue(1 <= clock.waits[0] <= 1.5, clock.waits)
+
+    def test_a_retried_line_keeps_its_place_in_the_queue(self):
+        LingClient.spacing = 0.05
+        first = [True]
 
         def respond(b):
-            n[0] += 1
-            return Response(429, "") if n[0] == 1 else reply("LANG: en\nORIGINAL: Hi.\nTRANSLATION: 嗨。")
-        r = client(Fake(respond)).chat("c", "i", TRANSLATE, model=AUDIO_MODEL, audio=bytes([1]))
-        self.assertIn("ORIGINAL: Hi.", r)
-        self.assertEqual(2, n[0])
-        with self.assertRaises(LingError) as e:
-            client(Fake(lambda b: Response(429, ""))).chat("c", "i", TRANSLATE)
-        self.assertEqual(LingError.RATE_LIMITED, e.exception.kind)
+            if content(b, 0) == "a" and first[0]:
+                first[0] = False
+                return Response(429, "")
+            return reply("ok")
+        fake = Fake(respond)
+        ling = client(fake)
+        hear = {"model": AUDIO_MODEL, "audio": bytes([1])}
+        a = threading.Thread(target=ling.chat, args=("a", "i", TRANSLATE), kwargs=hear)
+        a.start()
+        time.sleep(0.2)
+        b = threading.Thread(target=ling.chat, args=("b", "i", TRANSLATE), kwargs=hear)
+        b.start()
+        for t in (a, b):
+            t.join()
+        self.assertEqual(["a", "a", "b"], [content(x[1], 0) for x in fake.calls])
+        # b, queued during the pause, didn't start until it was over.
+        self.assertGreaterEqual(fake.calls[2][0] - fake.calls[0][0], 1.0)
 
     def test_marks_a_bad_key(self):
         ling = client(Fake(lambda b: Response(401, "")))

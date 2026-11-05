@@ -267,7 +267,9 @@ class Words(Base):
     def test_final_notes_keep_retrying_for_about_a_minute(self):
         from cicada.core.ling import NOTES, retry_waits
         self.assertEqual([], retry_waits(TRANSLATE))
-        self.assertEqual([1], retry_waits(TRANSLATE, audio=True))
+        self.assertEqual([1, 2, 4, 8], retry_waits(TRANSLATE, audio=True))
+        from cicada.core.ling import SPEAK
+        self.assertEqual([1], retry_waits(SPEAK, audio=True))
         self.assertEqual([1, 2, 4], retry_waits(NOTES))
         self.assertTrue(50 <= sum(retry_waits(NOTES, patient=True)) <= 70)
 

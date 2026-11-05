@@ -96,16 +96,48 @@ class LingError(Exception):
     NO_KEY, INVALID_KEY, RATE_LIMITED, HIJACKED, TIMEOUT, HTTP, NETWORK, PARSE = (
         "NoKey", "InvalidKey", "RateLimited", "Hijacked", "Timeout", "Http", "Network", "Parse")
 
-    def __init__(self, kind: str, status: int = 0):
+    def __init__(self, kind: str, status: int = 0, retry_after: float | None = None):
         super().__init__("http%d" % status if kind == self.HTTP else kind)
         self.kind = kind
         self.status = status
+        self.retry_after = retry_after  # seconds the service asked us to wait (a 429's Retry-After)
 
 
 class Response:
-    def __init__(self, status: int, body: str):
+    def __init__(self, status: int, body: str, retry_after: str | None = None):
         self.status = status
         self.body = body
+        self.retry_after = retry_after  # the Retry-After header, as sent
+
+
+def retry_after_seconds(value: str | None, now: float | None = None) -> float | None:
+    """A Retry-After header in seconds: a number, or an HTTP date. None when absent or unreadable."""
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value.strip()))
+    except ValueError:
+        pass
+    try:
+        import email.utils
+        when = email.utils.parsedate_to_datetime(value.strip())
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when is None:
+        return None
+    return max(0.0, when.timestamp() - (time.time() if now is None else now))
+
+
+class Clock:
+    """Time for the start gate and its waits; tests hand in a fake that moves on by itself."""
+
+    @staticmethod
+    def now() -> float:
+        return time.monotonic()
+
+    @staticmethod
+    def wait(condition: threading.Condition, seconds: float | None) -> None:
+        condition.wait(seconds)
 
 
 class StreamResponse:
@@ -129,7 +161,8 @@ class UrlTransport:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return Response(r.status, r.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
-            return Response(e.code, e.read().decode("utf-8", "replace") if e.fp else "")
+            return Response(e.code, e.read().decode("utf-8", "replace") if e.fp else "",
+                            e.headers.get("Retry-After") if e.headers else None)
         except socket.timeout as e:
             raise TimeoutError() from e
         except urllib.error.URLError as e:
@@ -199,9 +232,10 @@ class LingClient:
     UI thread."""
     spacing: float | None = None  # tests only: overrides the service's
 
-    def __init__(self, key: AIKey, transport=UrlTransport, config=None):
+    def __init__(self, key: AIKey, transport=UrlTransport, config=None, clock=None):
         self.key = key
         self.transport = transport
+        self.clock = clock or Clock()
         self.config = config or _ling_config
         self.key_state = NONE if self.current_key() is None else UNCHECKED
         # Step by step, where the service stands (aicheck.py); `key_state` is its short form.
@@ -222,7 +256,8 @@ class LingClient:
         self._listeners = []
         self._gate = threading.Condition()
         self._waiting = []
-        self._last_start = 0.0
+        self._last_start = -1e9
+        self._paused_until = 0.0  # after a 429 no request starts before this (clock time)
         self._seq = 0
         self._check_lock = threading.Lock()
         self._check_seq = 0
@@ -535,9 +570,10 @@ class LingClient:
     def chat(self, content: str, instruction: str, priority: int, json: bool = False, max_tokens: int = 1024,
              timeout: float = 30.0, model: str | None = None, audio: bytes | None = None, patient: bool = False) -> str:
         """One chat completion. `content` goes in the system message, `instruction` is the fixed user
-        message, `audio` (a WAV) goes before it for the hear model. Notes retry 429s with backoff;
-        heard audio gets one retry (a lost reply loses the words); the rest fail fast so the caller
-        can fall back. `patient` (the final notes) keeps retrying for about a minute (retry_waits)."""
+        message, `audio` (a WAV) goes before it for the hear model. Notes and heard audio retry 429s
+        with backoff (retry_waits); the rest fail fast so the caller can fall back. `patient` (the
+        final notes) keeps retrying for about a minute. A 429 holds every request start for a while
+        (_rate_limited), and a retry keeps its place in the queue, so lines stay in order."""
         k = self.current_key()
         if k is None:
             raise LingError(LingError.NO_KEY)
@@ -558,8 +594,10 @@ class LingClient:
         waits = retry_waits(priority, audio is not None, patient)
         attempt = 1
         name = PRIORITY_NAMES[priority]
+        ticket = None
         while True:
-            self._acquire(priority, c.provider.spacing)
+            # One that wouldn't retry fails at once while the service is cooling down: its caller falls back.
+            ticket = self._acquire(priority, c.provider.spacing, ticket, fail_if_paused=not waits)
             started = time.monotonic()
             try:
                 root = self._post(c.base + "chat/completions", payload, k, timeout)
@@ -586,13 +624,12 @@ class LingClient:
                 self.observe(e, audio=audio is not None)
                 if e.kind != LingError.RATE_LIMITED:
                     raise
-                if attempt > len(waits):
+                wait = self._rate_limited(waits[min(attempt, len(waits)) - 1] if waits else 1.0, e.retry_after)
+                if attempt > len(waits) or wait is None:
                     self.rate_limited_at = time.time()
                     self._changed()
                     raise
-                wait = waits[attempt - 1] + random.random() * 0.5
                 Log.d("ling: %s 429, retry in %.1f s" % (name, wait))
-                time.sleep(wait)
                 attempt += 1
 
     def speech(self, text: str, voice: str | None = "UK_Charlotte", language: str | None = None, timeout: float = 20.0):
@@ -689,7 +726,7 @@ class LingClient:
                 self._changed()
             raise LingError(LingError.INVALID_KEY)
         if res.status == 429:
-            raise LingError(LingError.RATE_LIMITED)
+            raise LingError(LingError.RATE_LIMITED, retry_after=retry_after_seconds(getattr(res, "retry_after", None)))
         if res.status != 200:
             Log.d("ling: HTTP %d" % res.status)
             raise LingError(LingError.HTTP, res.status)
@@ -698,39 +735,67 @@ class LingClient:
             raise LingError(LingError.PARSE)
         return root
 
-    # Start gate: request starts ≥ `spacing` apart, the most urgent waiting one first.
+    # Start gate: request starts ≥ `spacing` apart, the most urgent waiting one first, none while
+    # the service is cooling down after a 429.
 
-    def _acquire(self, priority: int, spacing: float = 0.6) -> None:
+    def _acquire(self, priority: int, spacing: float = 0.6, ticket: int | None = None,
+                 fail_if_paused: bool = False) -> int:
+        """Waits for this request's turn to start. `ticket` is a retry's first one, which keeps its
+        place ahead of requests queued after it. Returns the ticket."""
         spacing = LingClient.spacing if LingClient.spacing is not None else spacing
         with self._gate:
-            self._seq += 1
-            me = (priority, self._seq)
+            if fail_if_paused and self._paused_until > self.clock.now():
+                raise LingError(LingError.RATE_LIMITED)
+            if ticket is None:
+                self._seq += 1
+                ticket = self._seq
+            me = (priority, ticket)
             self._waiting.append(me)
             try:
                 while True:
                     head = min(self._waiting)
-                    wait = spacing - (time.monotonic() - self._last_start)
+                    now = self.clock.now()
+                    wait = max(spacing - (now - self._last_start), self._paused_until - now)
                     if head == me and wait <= 0:
                         self._waiting.remove(me)
-                        self._last_start = time.monotonic()
+                        self._last_start = now
                         self._gate.notify_all()
-                        return
-                    self._gate.wait(wait if head == me else None)
+                        return ticket
+                    self.clock.wait(self._gate, wait if head == me else None)
             except BaseException:
                 if me in self._waiting:
                     self._waiting.remove(me)
                 self._gate.notify_all()
                 raise
 
+    def _rate_limited(self, backoff: float, retry_after: float | None) -> float | None:
+        """After a 429: no request starts for `backoff` seconds, or as long as the service asked
+        (Retry-After; Ling sends none), plus a little jitter. The queue waits at the gate instead of
+        each request spending its retries on the same limit. None when the service asks for longer
+        than MAX_PAUSE: that is an outage, not a busy moment (the gate still holds for MAX_PAUSE)."""
+        wait = max(backoff, retry_after or 0.0) + random.random() * 0.5
+        with self._gate:
+            self._paused_until = max(self._paused_until, self.clock.now() + min(wait, MAX_PAUSE))
+            self._gate.notify_all()
+        return wait if wait <= MAX_PAUSE else None
+
+
+MAX_PAUSE = 30.0
+
 
 def retry_waits(priority: int, audio: bool = False, patient: bool = False) -> list:
-    """Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times, heard
-    audio once; the rest fail fast so the caller can fall back. `patient` (the final notes) keeps at
-    it for about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra, 2026-11)
-    came back after ~15 s, and a meeting left without its notes is worse than notes a little late."""
+    """Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times; the
+    rest fail fast so the caller can fall back, except heard audio. A meeting's: there a lost reply
+    loses the words, and Ling's 429s came in runs of up to ~10 s (two in a row lost a line with one
+    retry, about 2 a minute in 2026-11 testing), so it keeps at it for about 15 s. What the user says
+    (SPEAK) retries once: late into the room is worse than a short "try again". `patient` (the final notes)
+    keeps at it for about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra,
+    2026-11) came back after ~15 s, and a meeting left without its notes is worse than notes a little late."""
     if priority == NOTES:
         return [1, 2, 4, 8, 16, 30] if patient else [1, 2, 4]
-    return [1] if audio else []
+    if audio:
+        return [1, 2, 4, 8] if priority == TRANSLATE else [1]
+    return []
 
 
 def _b64(s: str) -> bytes:
