@@ -40,6 +40,7 @@ sealed class SettingsWindow : Window
         Grid.SetColumn(scroll, 1);
         grid.Children.Add(nav); grid.Children.Add(scroll);
         Content = Ui.Frameless(this, grid);
+        scroll.ScrollChanged += (_, e) => { if (e.ViewportWidthChange != 0 && scroll.Content is FrameworkElement p) p.Width = PageWidth(); };
         app.Ling.Changed += OnLingChanged;
         Closed += (_, _) => app.Ling.Changed -= OnLingChanged;
         Render();
@@ -51,7 +52,7 @@ sealed class SettingsWindow : Window
     {
         var offset = scroll.VerticalOffset;
         sections.Clear();
-        var page = new StackPanel { MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
+        var page = new StackPanel { Width = PageWidth(), HorizontalAlignment = HorizontalAlignment.Left };
         Section(page, "ai", L("AI 服务"), AICards().ToArray());
         Section(page, "lang", L("语言"), Group(
             Card(Icons.Globe, L("翻译成"), null, Ui.Choice(Ui.TargetOptions(), app.Settings.Target, app.SetTarget)),
@@ -87,6 +88,10 @@ sealed class SettingsWindow : Window
     }
 
     string? shownPage;
+
+    /// The page column is one width whatever it shows (a check running, failed or passed): 640, or
+    /// less in a narrow window. Sized by its content it jumped between states.
+    double PageWidth() => scroll.ViewportWidth > 0 ? Math.Min(640, scroll.ViewportWidth) : 640;
 
     /// What to do with the download: the installer upgrades itself; an older release has only the zip.
     public static string UpdateHint(UpdateChecker.Update u) => u.Setup is not null ? L("安装后自动重新打开") : L("下载后解压，替换旧的知了");
