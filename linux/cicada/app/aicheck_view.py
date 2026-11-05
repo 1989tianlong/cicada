@@ -163,6 +163,13 @@ def blocking(app) -> str | None:
     return problem.title(ling.check_result.reason, ling.service_name, c.text_model, c.hear_model)
 
 
+def blocking_detail(app) -> str:
+    """The line under blocking(): why, unless that only says the title again (余额不足, 听不了声音,
+    找不到模型), then where it's fixed."""
+    why = app.ling.message() or ""
+    return why if why and why != blocking(app) else L("在 设置 › AI 服务 里换一个")
+
+
 def key_hint(app, key: str):
     """A pasted key that belongs elsewhere: (what it is, the service it fits or None), else None.
     A management key can't call models; another service's key goes there with one click."""

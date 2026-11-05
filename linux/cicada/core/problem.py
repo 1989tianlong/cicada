@@ -34,7 +34,7 @@ def title(reason: str | None, service: str, text_model: str, hear_model: str) ->
             aicheck.MGMT_KEY: lambda: LF("%@ 的 key 用不了", service),
             aicheck.NO_CREDIT: lambda: LF("%@ 账户余额不足。", service),
             aicheck.NO_MODEL: lambda: LF("%@ 上找不到 %@ 这个模型。", service, text_model),
-            aicheck.DEAF: lambda: LF("%@ 听不了声音。", hear_model)}.get(reason, lambda: L("AI 服务的设置要改一下"))()
+            aicheck.DEAF: lambda: LF("%@ 听不了声音。", hear_model or service)}.get(reason, lambda: L("AI 服务的设置要改一下"))()
 
 
 class Notices:

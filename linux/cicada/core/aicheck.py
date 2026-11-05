@@ -175,7 +175,7 @@ class AICheck:
             NO_CREDIT: lambda: LF("%@ 账户余额不足。", service),
             NO_MODEL: lambda: LF("%@ 上找不到 %@ 这个模型。", service, text_model),
             NO_JSON: lambda: L("这个服务不支持 JSON，纪要写不了；翻译照常。"),
-            DEAF: lambda: LF("%@ 听不了声音。", hear_model),
+            DEAF: lambda: LF("%@ 听不了声音。", hear_model or service),  # no hear model yet: the service
             BUSY: lambda: LF("%@ 现在很忙，key 没问题。开会时会自动重试。", service),
             SERVER_ERROR: lambda: LF("%@ 暂时出错（HTTP %lld），稍后再试。", service, code or 0),
         }[reason]()

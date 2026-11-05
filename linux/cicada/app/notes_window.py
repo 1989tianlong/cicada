@@ -777,8 +777,8 @@ class NotesWindow(Gtk.Window):
         elif problem.stops_hearing(self._reason()) and kind not in ("network", "busy"):
             # Nothing is heard until it's fixed (no credit, a bad address…): said where the subtitles
             # would be, with the way to fix it, not "等有人说话".
-            from .aicheck_view import blocking
-            self._state_card(box, "dialog-warning-symbolic", "warn", blocking(self.app), self.app.ling.message() or "",
+            from .aicheck_view import blocking, blocking_detail
+            self._state_card(box, "dialog-warning-symbolic", "warn", blocking(self.app), blocking_detail(self.app),
                              L("设置"), lambda: self.app.show_settings(ai=True))
         elif line is None:
             if listen.listening:
@@ -872,10 +872,10 @@ class NotesWindow(Gtk.Window):
             tone = "error"
         elif problem.blocking(reason) and (reason in problem.NOTES_ONLY or not self.live_box.get_visible()):
             # Only the user can fix it (the live card says it too, when it shows): what, and 打开设置.
-            from .aicheck_view import blocking
+            from .aicheck_view import blocking, blocking_detail
             row = ui.hbox(10)
             row.pack_start(ui.vbox(2, ui.text(blocking(self.app), 12, "ink", bold=True, width_chars=24),
-                                   ui.text(self.app.ling.message() or "", 12, "secondary", width_chars=24)), True, True, 0)
+                                   ui.text(blocking_detail(self.app), 12, "secondary", width_chars=24)), True, True, 0)
             b = ui.button(L("打开设置"), lambda: self.app.show_settings(ai=True), "darkbtn")
             b.set_can_focus(False)
             b.set_valign(Gtk.Align.CENTER)

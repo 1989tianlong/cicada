@@ -116,6 +116,14 @@ class Shape(unittest.TestCase):
         r.fail("text", aicheck.NO_JSON)
         self.assertFalse(r.slow)
 
+    def test_no_hear_model_yet_names_the_service(self):
+        from cicada.core import problem
+        r = aicheck.AICheck()
+        r.fail("hear", aicheck.DEAF)
+        self.assertEqual("这个服务 听不了声音。", r.message("这个服务", "10.0.2.2", "qwen3-8b", ""))
+        self.assertEqual("这个服务 听不了声音。", problem.title(aicheck.DEAF, "这个服务", "qwen3-8b", ""))
+        self.assertEqual("qwen3-omni 听不了声音。", r.message("这个服务", "10.0.2.2", "qwen3-8b", "qwen3-omni"))
+
 
 class TemplateKwargs(Base):
     def test_a_server_that_refuses_it_is_asked_again_without(self):

@@ -143,11 +143,11 @@ class Controller:
         shown = w is not None and w.get_visible() and w.shows_problem(reason)
         kind = self.notices.tick(time.time(), self.listen.listening, reason, shown)
         if kind is not None:
-            from .aicheck_view import blocking
+            from .aicheck_view import blocking, blocking_detail
             name = self.ling.service_name
             title = blocking(self) if kind == "blocking" else LF("连不上 %@", name)
             n = Gio.Notification.new(title or L("AI 服务的设置要改一下"))
-            n.set_body(self.ling.message() or "")
+            n.set_body(blocking_detail(self) if kind == "blocking" else self.ling.message() or "")
             n.set_default_action("app.ai-settings")
             n.add_button(L("打开设置"), "app.ai-settings")
             self.application.send_notification("problem", n)
