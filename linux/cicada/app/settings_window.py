@@ -606,7 +606,9 @@ class SettingsWindow(Gtk.Window):
         self.custom_change = ui.button(L("更换"), self._custom_change_key, "outline")
         self.custom_remove = ui.button(L("移除 key"), self.remove_key, "dangertext")
         self.custom_save = ui.button(L("保存并检查"), self.save_key, "darkbtn")
-        key_row = ui.hbox(8, self._label("key"), self.custom_key_line, self.custom_key)
+        key_row = ui.hbox(8, self._label("key"), self.custom_key_line)
+        # Up to 保存并检查: "Optional on this computer or your local network" doesn't fit 26 characters.
+        key_row.pack_start(self.custom_key, True, True, 0)
         for b in (self.custom_change, self.custom_remove, self.custom_save):
             b.set_valign(Gtk.Align.CENTER)
             key_row.pack_end(b, False, False, 0)
