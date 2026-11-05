@@ -383,6 +383,9 @@ object Tests {
         equal("Hello", Translator.cleanTranslation("Here is the translation:\nHello", "en"), "remark line dropped")
         equal(null, Translator.cleanTranslation("请提供需要翻译的字幕内容", "en"), "a request for input is not a translation")
         equal(null, Translator.cleanTranslation("Hello", "zh-CN"), "wrong script")
+        equal(null, Translator.cleanTranslation("翻译。", "zh-CN"), "the instruction translated, not the subtitle")
+        equal(null, Translator.cleanTranslation("Translate.", "en"), "the instruction translated, in English")
+        equal("好的，翻译。", Translator.cleanTranslation("好的，翻译。", "zh-CN"), "a sentence about translating is kept")
         equal("Done.", Translator.cleanTranslation("<think>x</think>Done.", "en"), "leaked reasoning")
     }
 

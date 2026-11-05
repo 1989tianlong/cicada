@@ -163,6 +163,12 @@ class Translator(private val ling: LingClient, private val transport: Transport 
         private fun take(line: String, label: String) =
             if (line.startsWith(label, ignoreCase = true)) line.substring(label.length).trim() else null
 
+        /// "Translate." in each target language, letters only and lowercased. Port of instructionEchoes.
+        private val instructionEchoes = setOf(
+            "翻译", "翻譯", "translate", "翻訳", "翻訳して", "翻訳する", "翻訳してください", "번역", "번역해", "번역하세요", "번역해주세요",
+            "traducir", "traduce", "traduzca", "traduire", "traduisez", "traduis", "übersetzen", "übersetze", "traduzir", "traduza",
+        )
+
         /// Ling sometimes comments on a garbled subtitle instead of translating it ("The subtitle
         /// appears to be…"). Remark lines go, a "Translation:" label is stripped, and what is left must
         /// be in the target's script; null lets the next provider try. Port of cleanTranslation.
@@ -193,6 +199,9 @@ class Translator(private val ling: LingClient, private val transport: Transport 
             }
             output = output.trim()
             if (output.isEmpty()) return null
+            // Ling translated the fixed "Translate." instruction instead of the subtitle ("翻译。" for an empty
+            // subtitle, or for "Translate this into Chinese please."); the next provider translates it.
+            if (output.lowercase().filter { it.isLetter() } in instructionEchoes) return null
             return if (Languages.inScript(output, target)) output else null
         }
     }
