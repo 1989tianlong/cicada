@@ -545,6 +545,17 @@
         ],
         "title": "Android 引导里“面对面”的说明也改成“有人在线上就把会议 app 开外放”，和首页一致。",
         "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac",
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "交给 AI 服务听时，译文开头不再多出一句“会议主要使用英语。”。",
+        "text": ""
       }
     ]
   },
