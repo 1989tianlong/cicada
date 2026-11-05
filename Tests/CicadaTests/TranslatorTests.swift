@@ -16,6 +16,16 @@ import Testing
         #expect(TranslationService.cleanTranslation("“我们周五发布。”", target: "zh-CN") == "我们周五发布。")
     }
 
+    @Test func translatedInstructionIsDropped() {
+        // Ling answered "Translate this into Chinese please." and an empty subtitle with "翻译。":
+        // the fixed "Translate." instruction, translated.
+        #expect(TranslationService.cleanTranslation("翻译。", target: "zh-CN") == nil)
+        #expect(TranslationService.cleanTranslation("Translate.", target: "en-US") == nil)
+        #expect(TranslationService.cleanTranslation("翻訳してください。", target: "ja") == nil)
+        #expect(TranslationService.cleanTranslation("好的，翻译。", target: "zh-CN") == "好的，翻译。")
+        #expect(TranslationService.cleanTranslation("请翻译以下幻灯片。", target: "zh-CN") == "请翻译以下幻灯片。")
+    }
+
     @Test func ordinaryTranslationsAreKept() {
         #expect(TranslationService.cleanTranslation("The text is due on Friday.", target: "en-US") == "The text is due on Friday.")
         #expect(TranslationService.cleanTranslation("There are three points:", target: "en-US") == "There are three points:")

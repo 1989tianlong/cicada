@@ -209,6 +209,12 @@ final class TranslationService {
         return (o, t)
     }
 
+    /// "Translate." in each target language, letters only and lowercased.
+    nonisolated static let instructionEchoes: Set<String> = [
+        "翻译", "翻譯", "translate", "翻訳", "翻訳して", "翻訳する", "翻訳してください", "번역", "번역해", "번역하세요", "번역해주세요",
+        "traducir", "traduce", "traduzca", "traduire", "traduisez", "traduis", "übersetzen", "übersetze", "traduzir", "traduza",
+    ]
+
     /// Ling sometimes comments on a garbled subtitle ("The subtitle appears to be… Here is the
     /// best-effort translation:") instead of translating it, and that would land in the subtitles and
     /// the record. Remark lines are dropped, a "Translation:" label is stripped, and what is left must
@@ -248,6 +254,10 @@ final class TranslationService {
         }
         out = out.trimmingCharacters(in: .whitespaces)
         guard !out.isEmpty else { return nil }
+        // Ling translated the fixed "Translate." instruction instead of the subtitle ("翻译。" for an
+        // empty subtitle, or for "Translate this into Chinese please."). A subtitle that really is
+        // just "翻译一下" loses Ling's answer too, and the next provider translates it.
+        if Self.instructionEchoes.contains(String(out.lowercased().unicodeScalars.filter { $0.properties.isAlphabetic })) { return nil }
         let letters = out.unicodeScalars.filter { $0.properties.isAlphabetic }
         let cjk = letters.filter { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) }.count
         let wantsCJK = ["zh", "ja", "ko"].contains(where: { target.hasPrefix($0) })
