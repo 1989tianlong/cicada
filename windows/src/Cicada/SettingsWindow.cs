@@ -531,9 +531,18 @@ sealed class SettingsWindow : Window
             model = ModelMenu("text", c.TextModel, [], ling.TextCatalog);
         }
         else model = CustomField("text", s.AiModels.GetValueOrDefault("custom", ""), L("例如 qwen3:14b"));
+        var address = CustomField("base", s.AiCustomBase, "http://192.168.1.20:8000/v1");
+        // As typed (AISettings.swift › textSection): an http address out on the internet is refused,
+        // and without a key no check runs to say so.
+        var badAddress = Line(L("地址要用 https；这台电脑和局域网里的服务可以用 http。"), Palette.Danger);
+        var baseBox = customFields["base"];
+        void Bad() => badAddress.Visibility = baseBox.Text.Trim().Length > 0 && AIProvider.CustomBase(baseBox.Text) is null ? Visibility.Visible : Visibility.Collapsed;
+        baseBox.TextChanged += (_, _) => Bad();
+        Bad();
         var parts = new List<FrameworkElement>
         {
-            Card(null, L("地址"), null, CustomField("base", s.AiCustomBase, "http://192.168.1.20:8000/v1")),
+            Card(null, L("地址"), null, address),
+            badAddress,
             Card(null, L("模型"), null, model),
             Card(null, "key", null, CustomKey()),
         };
