@@ -20,7 +20,8 @@ class Segmenter {
         @Volatile var pause = 0.6
         @Volatile var maxLength = 8.0
         @Volatile var minSpeech = 0.25
-        @Volatile var steady = 2.0 // frames' 90th / 10th percentile below this: not speech
+        @Volatile var steady = 2.0 // frames' 90th / 10th percentile below this: not speech…
+        @Volatile var dips = 2.5 // …unless the median is this far over the 10th, quiet ones held at gate / 8
         private const val PRE_ROLL = 0.15
         private const val TAIL = 0.15
         private const val CUT_WINDOW = 2.0
@@ -90,12 +91,22 @@ class Segmenter {
     /// Speech buried under steady noise goes too; system audio rarely carries it. Every frame from
     /// the first loud one to the last counts, the quiet ones held at the gate: counting only the
     /// loud ones dropped quiet speech (under about -30 dBFS), whose dips fall below the gate.
+    /// A voice so quiet that its loudest frames barely clear the gate (about -38 dBFS: 6 of 6 lines
+    /// lost in testing) still pauses between syllables, its quietest tenth of frames far under its
+    /// median (8 dB and more); noise near the gate stays within about 6 dB of its median. So a flat
+    /// top is steady only when it has no such dips, measured with quiet frames held at gate / 8.
+    /// Very low rumble (brown noise with almost nothing over 20 Hz) can look like that and gets
+    /// through more often than before (about 1 in 3 segments, was 1 in 5); what Ming makes of it
+    /// still meets the hear filter (Translator.isNoise).
     internal fun isSteady(frameLevels: List<Double>): Boolean {
         val first = frameLevels.indexOfFirst { it >= threshold }
         val last = frameLevels.indexOfLast { it >= threshold }
         if (first < 0 || last <= first) return false
-        val body = frameLevels.subList(first, last + 1).map { maxOf(it, threshold) }.sorted()
-        return body[(0.9 * (body.size - 1)).toInt()] < steady * body[(0.1 * (body.size - 1)).toInt()]
+        val body = frameLevels.subList(first, last + 1)
+        val top = body.map { maxOf(it, threshold) }.sorted()
+        if (top[(0.9 * (top.size - 1)).toInt()] >= steady * top[(0.1 * (top.size - 1)).toInt()]) return false
+        val low = body.map { maxOf(it, threshold / 8) }.sorted()
+        return low[(0.5 * (low.size - 1)).toInt()] < dips * low[(0.1 * (low.size - 1)).toInt()]
     }
 
     /// Emits `current[0 until end]` and keeps what follows as the start of the next segment.

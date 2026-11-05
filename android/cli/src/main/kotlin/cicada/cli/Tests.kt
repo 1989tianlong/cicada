@@ -403,9 +403,11 @@ object Tests {
 
     // MARK: Segmenter
 
-    /// A 300 Hz tone that swells and fades four times a second like syllables; steady when not.
-    private fun tone(seconds: Double, amp: Double = 0.3, syllables: Boolean = true) = ShortArray((seconds * 16000).toInt()) {
-        (sin(2 * PI * 300 * it / 16000) * (if (syllables) 0.55 + 0.45 * sin(2 * PI * 4 * it / 16000) else 1.0) * amp * 32767).toInt().toShort()
+    /// A 300 Hz tone that swells and fades four times a second like syllables; steady when not, or
+    /// rising and falling by `wobble` twice a second like a fan.
+    private fun tone(seconds: Double, amp: Double = 0.3, syllables: Boolean = true, wobble: Double = 0.0) = ShortArray((seconds * 16000).toInt()) {
+        val env = if (syllables) 0.55 + 0.45 * sin(2 * PI * 4 * it / 16000) else 1.0 + wobble * sin(2 * PI * 0.5 * it / 16000)
+        (sin(2 * PI * 300 * it / 16000) * env * amp * 32767).toInt().toShort()
     }
     private fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
     private fun concat(vararg parts: ShortArray): ShortArray = parts.fold(ShortArray(0)) { a, b -> a + b }
@@ -442,6 +444,8 @@ object Tests {
         equal(0, cut(tone(3.0, 0.02, syllables = false), silence(1.0)).size, "a steady hum over the gate is not speech")
         equal(1, cut(tone(3.0), silence(1.0)).size, "speech, which rises and falls, is")
         equal(1, cut(tone(3.0, 0.03), silence(1.0)).size, "quiet speech, whose dips fall below the gate, is too")
+        equal(1, cut(tone(3.0, 0.022), silence(1.0)).size, "a voice whose loudest frames barely clear the gate dips far between syllables")
+        equal(0, cut(tone(4.0, 0.016, syllables = false, wobble = 0.3), silence(1.0)).size, "a hum at the gate that slowly rises and falls doesn't")
     }
 
     fun wavRoundTrip() {
