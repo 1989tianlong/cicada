@@ -422,7 +422,58 @@ sealed class MainWindow : Window
         top.Children.Add(titleRow);
 
         // 纪要 / 文字记录 on the left, what to do with it on the right, one hairline under both.
-        var tabs = Ui.Tabs([("notes", L("纪要")), ("transcript", s.Lines.Count > 0 ? $"{L("文字记录")} {s.Lines.Count}" : L("文字记录"))], tab, t => { tab = t; ShowDetail(); }, 15);
+        FrameworkElement Tabs(double size) => Ui.Tabs([("notes", L("纪要")), ("transcript", s.Lines.Count > 0 ? $"{L("文字记录")} {s.Lines.Count}" : L("文字记录"))], tab, t => { tab = t; ShowDetail(); }, size);
+        var tabs = Tabs(15);
+        var tools = Tools(s, live);
+        var bar = Ui.Spread(tabs, tools);
+        bar.Margin = new Thickness(0, 18, 0, 0);
+        top.Children.Add(bar);
+        top.Children.Add(new Border { Height = 1, Background = Palette.Line });
+
+        // One centred column, like a page: content runs into the old title bar's height.
+        var page = new StackPanel { MaxWidth = 700, Margin = new Thickness(48, 56, 48, 48) };
+        page.Children.Add(top);
+        var body = tab == "transcript" ? Transcript(s) : Notes(s, live);
+        body.Margin = new Thickness(0, 28, 0, 0);
+        page.Children.Add(body);
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = page };
+
+        // Once the title block scrolls away, a slim bar on top keeps the title (a click goes back
+        // up), the tabs and the tools in view: the Mac's pinned bar.
+        var pinnedTitle = Ui.Text(SessionStore.DisplayTitle(s), 14, Palette.Ink, FontWeights.Bold, wrap: false);
+        pinnedTitle.TextTrimming = TextTrimming.CharacterEllipsis;
+        pinnedTitle.VerticalAlignment = VerticalAlignment.Center;
+        pinnedTitle.Cursor = System.Windows.Input.Cursors.Hand;
+        pinnedTitle.ToolTip = L("回到顶部");
+        pinnedTitle.MouseLeftButtonUp += (_, _) => scroll.ScrollToTop();
+        var pinnedTabs = Tabs(14);
+        pinnedTabs.Margin = new Thickness(18, -6, 0, 0);
+        pinnedTabs.VerticalAlignment = VerticalAlignment.Center;
+        var pinnedTools = Tools(s, live);
+        pinnedTools.VerticalAlignment = VerticalAlignment.Center;
+        var pinnedRow = new DockPanel { MaxWidth = 700, Margin = new Thickness(48, 0, 48, 0), Height = 48, LastChildFill = true };
+        DockPanel.SetDock(pinnedTools, Dock.Right); DockPanel.SetDock(pinnedTabs, Dock.Right);
+        pinnedRow.Children.Add(pinnedTools); pinnedRow.Children.Add(pinnedTabs); pinnedRow.Children.Add(pinnedTitle);
+        var pinned = new Border
+        {
+            Background = Palette.Surface, BorderBrush = Palette.Line, BorderThickness = new Thickness(0, 0, 0, 1),
+            VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed, Child = pinnedRow,
+            // Under the 44 px caption strip (the pill and window buttons), which it paints white so
+            // the lines don't scroll behind the pill.
+            Padding = new Thickness(0, 44, 0, 0), Margin = new Thickness(0, 0, SystemParameters.VerticalScrollBarWidth, 0),
+        };
+        scroll.ScrollChanged += (_, _) =>
+        {
+            var below = top.TranslatePoint(new Point(0, top.ActualHeight), scroll).Y;
+            pinned.Visibility = below < 0 ? Visibility.Visible : Visibility.Collapsed;
+        };
+        if (pendingJump is { } jump) { pendingJump = null; jump(scroll); }
+        detail.Content = new Grid { Children = { scroll, pinned } };
+    }
+
+    /// 生成纪要 or 复制纪要, 导出… and ···, beside the tabs (and again in the pinned bar).
+    StackPanel Tools(Session s, bool live)
+    {
         var tools = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         var hasNotes = s.Notes is { IsEmpty: false };
         if (!hasNotes && !live) tools.Children.Add(Small(Ui.Button(L("生成纪要"), () => _ = app.Notes.Generate(s.Id), Ui.Kind.Primary, height: 32)));
@@ -448,20 +499,7 @@ sealed class MainWindow : Window
         }, Ui.Kind.Standard, height: 32);
         more.MinWidth = 0; more.Width = 36; more.Padding = new Thickness(0);
         tools.Children.Add(Spaced(more, 8));
-        var bar = Ui.Spread(tabs, tools);
-        bar.Margin = new Thickness(0, 18, 0, 0);
-        top.Children.Add(bar);
-        top.Children.Add(new Border { Height = 1, Background = Palette.Line });
-
-        // One centred column, like a page: content runs into the old title bar's height.
-        var page = new StackPanel { MaxWidth = 700, Margin = new Thickness(48, 56, 48, 48) };
-        page.Children.Add(top);
-        var body = tab == "transcript" ? Transcript(s) : Notes(s, live);
-        body.Margin = new Thickness(0, 28, 0, 0);
-        page.Children.Add(body);
-        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = page };
-        if (pendingJump is { } jump) { pendingJump = null; jump(scroll); }
-        detail.Content = scroll;
+        return tools;
     }
 
     static Button Small(Button b) { b.MinWidth = 0; b.Padding = new Thickness(12, 0, 12, 0); return b; }
