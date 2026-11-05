@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.2.1",
+    "date": null,
+    "title": "小声说话也能出字幕",
+    "summary": "修复 Windows、Linux、Android 上，会议里说话声音较小时被当成底噪、不出字幕的问题。",
+    "image": null,
+    "items": [
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "Windows、Linux、Android 上，会议里小声说话不再被当成风扇声丢掉、不出字幕。",
+        "text": "过滤底噪时把字与字之间的停顿也算进去，小声的人声不再显得“平稳”而被误删；风扇声、电流声照样过滤。"
+      }
+    ]
+  },
+  {
     "version": "1.2.0",
     "date": null,
     "title": "用不了 Ling 时换一家 AI 服务，出问题时说清怎么修",
