@@ -387,7 +387,7 @@ sealed class MainWindow : Window
 
     /// What the open page shows; a store change that leaves it the same doesn't redraw it.
     string? PageKey() => selected is not null && app.Store.Get(selected) is { } cur
-        ? $"{selected}|{tab}|{SessionStore.DisplayTitle(cur)}|{cur.Lines.Count}|{cur.Notes?.Covered}|{cur.Notes?.Final}|{app.Listen.Listening}"
+        ? $"{selected}|{tab}|{SessionStore.DisplayTitle(cur)}|{cur.Lines.Count}|{cur.Notes?.Covered}|{cur.Notes?.Final}|{app.Listen.Listening}|{app.Notes.GeneratingId == selected}"
         : null;
 
     void ShowDetail()
@@ -476,7 +476,13 @@ sealed class MainWindow : Window
     {
         var tools = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         var hasNotes = s.Notes is { IsEmpty: false };
-        if (!hasNotes && !live) tools.Children.Add(Small(Ui.Button(L("生成纪要"), () => _ = app.Notes.Generate(s.Id), Ui.Kind.Primary, height: 32)));
+        if (!hasNotes && !live)
+        {
+            var generating = app.Notes.GeneratingId == s.Id;
+            var make = Small(Ui.Button(generating ? L("正在生成…") : L("生成纪要"), () => _ = app.Notes.Generate(s.Id), Ui.Kind.Primary, height: 32));
+            make.IsEnabled = !generating;
+            tools.Children.Add(make);
+        }
         else
         {
             Button? copy = null;
@@ -511,7 +517,7 @@ sealed class MainWindow : Window
     FrameworkElement Notes(Session s, bool live)
     {
         if (s.Notes is not { IsEmpty: false } n)
-            return Empty(live ? L("纪要会在会议进行中自动生成") : L("生成纪要"), "");
+            return Empty(app.Notes.GeneratingId == s.Id ? L("正在整理纪要…") : live ? L("纪要会在会议进行中自动生成") : L("这场会议还没有纪要"), "");
         var article = new StackPanel();
         void Jump(double t) { tab = "transcript"; jumpTo = t; ShowDetail(); }
 

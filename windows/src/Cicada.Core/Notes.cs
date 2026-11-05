@@ -77,8 +77,22 @@ public sealed class NotesEngine
         Changed?.Invoke();
     }
 
+    /// The finished meeting whose notes 生成纪要 is writing now (Notes.swift › generatingID): its
+    /// page says so and the button waits, as a long meeting's notes take half a minute and more.
+    public string? GeneratingId { get; private set; }
+
     /// Notes for a finished meeting that has none.
-    public Task Generate(string id) => Update(id, final: true);
+    public async Task Generate(string id)
+    {
+        lock (gate) { if (GeneratingId is not null) return; GeneratingId = id; }
+        Changed?.Invoke();
+        try { await Update(id, final: true); }
+        finally
+        {
+            lock (gate) GeneratingId = null;
+            Changed?.Invoke();
+        }
+    }
 
     void Tick()
     {
