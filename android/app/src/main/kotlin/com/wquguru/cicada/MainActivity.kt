@@ -151,7 +151,7 @@ class MainActivity : Activity() {
             addView(ui.logo(44))
             addView(ui.stack(2,
                 ui.text(if (pb) L("视频、直播、网课里的声音") else L("用麦克风听身边的人"), 17f, Palette.ink, bold = true),
-                ui.helper(if (pb) L("通话和会议 app 的声音系统不让录，改用“面对面”") else L("线下开会，或会议 app 开外放"))), ui.weight().apply { leftMargin = ui.dp(12) })
+                ui.helper(if (pb) L("通话和会议 app 的声音系统不让录，改用“面对面”") else L("线下开会；有人在线上就把会议 app 开外放"))), ui.weight().apply { leftMargin = ui.dp(12) })
         }
         card.addView(desc, ui.lp(top = 16))
         // The language pair: what is heard (found by itself) → what subtitles read in.

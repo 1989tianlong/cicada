@@ -15,7 +15,7 @@
 "视频、直播、网课里的声音" = "Videos, streams, and online classes";
 "用麦克风听身边的人" = "Hear people around you with the mic";
 "通话和会议 app 的声音系统不让录，改用“面对面”" = "Call and meeting apps block audio capture. Use In person instead.";
-"线下开会，或会议 app 开外放" = "In-person meetings, or meeting apps on speaker";
+"线下开会；有人在线上就把会议 app 开外放" = "In-person meetings; anyone online, put the meeting app on speaker";
 "去系统设置开启麦克风权限" = "Allow microphone in system settings";
 "最近的会议" = "Recent meetings";
 "全部" = "See all";
