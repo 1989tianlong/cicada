@@ -9,7 +9,9 @@ namespace Cicada;
 /// notes. The prompt and parsing are the Mac's (Notes.swift), so both write the same notes.
 public sealed class NotesEngine
 {
-    public enum State { Idle, Updating, NoKey, InvalidKey, RateLimited, Failed }
+    /// Unreachable: the notes' own request couldn't reach the service (network, proxy, timeout);
+    /// another request failing, such as naming speakers, never sets it.
+    public enum State { Idle, Updating, NoKey, InvalidKey, RateLimited, Unreachable, Failed }
 
     public const double Interval = 45;
     readonly LingClient ling;
@@ -66,7 +68,12 @@ public sealed class NotesEngine
 
     public void Show(string id)
     {
-        lock (gate) { ShownId = id; Notes = store.Get(id)?.Notes ?? new MeetingNotes(); }
+        lock (gate)
+        {
+            ShownId = id; Notes = store.Get(id)?.Notes ?? new MeetingNotes();
+            // A round that failed belongs to the meeting it ran for, not to the record opened now.
+            if (sessionId is null && Status is State.Failed or State.Unreachable or State.RateLimited) Status = State.Idle;
+        }
         Changed?.Invoke();
     }
 
@@ -79,6 +86,9 @@ public sealed class NotesEngine
         lock (gate)
         {
             if (Status == State.NoKey && ling.Usable) Status = State.Idle;
+            // The service answers again (the check after a network change, or any other request): the
+            // banner goes now, not after the next round, which runs on its usual 45 s.
+            if (Status == State.Unreachable && ling.Health.Failure?.Why != AICheck.Reason.Unreachable) Status = State.Idle;
             id = sessionId;
             if (id is null || inFlight) return;
             var s = store.Get(id);
@@ -156,6 +166,7 @@ public sealed class NotesEngine
                 LingException.Kind.InvalidKey => State.InvalidKey,
                 LingException.Kind.RateLimited => State.RateLimited,
                 LingException.Kind.NoKey => State.NoKey,
+                LingException.Kind.Network or LingException.Kind.Timeout => State.Unreachable,
                 _ => State.Failed,
             };
             Log.Debug($"notes: update failed {e.Message}");

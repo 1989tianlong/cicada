@@ -182,7 +182,7 @@ sealed class NotesWindow : Window
         if (Subtitles) { live.Content = SubtitleLine(); return; }
         var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : app.OnlinePrompt is { } o ? "online " + o : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
-        var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Ling.Health.Proxy}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
+        var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited or NotesEngine.State.Unreachable ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Ling.Health.Proxy}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
         live.Content = LiveCard();
         var count = app.Listen.SessionId is { } sid ? app.Store.Get(sid)?.Lines.Count ?? 0 : 0;
@@ -284,14 +284,21 @@ sealed class NotesWindow : Window
             switch (app.Notes.Status)
             {
                 case NotesEngine.State.RateLimited:
-                    Add(Ui.InfoBar(Ui.Severity.Warning, null, LF("%@ 很忙，纪要稍后补上。字幕照常。", app.Ling.ServiceName)));
+                    Add(Ui.InfoBar(Ui.Severity.Warning, null, LF("%@ 很忙，纪要稍后补上。字幕照常。", ServiceLabel())));
                     break;
                 // The network or the proxy, not the notes: say which, and that it picks up by itself.
+                // Both: the notes' own request failed, and the service doesn't answer anything; notes that
+                // only timed out while translations still came back retry on the next round.
                 // (When hearing failed too, its bar above says so already.)
-                case NotesEngine.State.Failed when app.Ling.Health.Failure?.Why == AICheck.Reason.Unreachable:
+                case NotesEngine.State.Unreachable when app.Ling.Health.Failure?.Why == AICheck.Reason.Unreachable:
                     if (app.Listen.Problem is not (LingException.Kind.Network or LingException.Kind.Timeout))
-                        Add(Ui.InfoBar(Ui.Severity.Error, null, LF("连不上 %@，这段时间的纪要先停在 %@。网络恢复后自动继续。", app.Ling.ServiceName, NotesCoveredUntil()),
+                    {
+                        var until = NotesCoveredUntil();
+                        Add(Ui.InfoBar(Ui.Severity.Error, null,
+                            until > 0 ? LF("连不上 %@，纪要暂停在 %@，连上后自动继续。", ServiceLabel(), Languages.Clock(until))
+                                      : LF("连不上 %@，连上后开始写纪要。", ServiceLabel()),
                             Ui.Button(L("设置"), app.ShowAISettings, height: 32)));
+                    }
                     break;
                 case NotesEngine.State.Failed:
                     Add(Ui.InfoBar(Ui.Severity.Warning, null, L("这轮没整理好，下一轮会自动重试。")));
@@ -303,12 +310,15 @@ sealed class NotesWindow : Window
         return stack;
     }
 
-    /// When the last line the notes cover was said, as mm:ss.
-    string NotesCoveredUntil()
+    /// Who the banners name: a custom service by its address, which says more than 这个服务.
+    string ServiceLabel() => app.Ling.Config.Provider.Id == "custom" && app.Ling.ServiceHost.Length > 0 ? app.Ling.ServiceHost : app.Ling.ServiceName;
+
+    /// When the last line the notes cover was said (0: nothing covered yet).
+    double NotesCoveredUntil()
     {
         var lines = app.Listen.SessionId is { } id ? app.Store.Get(id)?.Lines : null;
         var covered = app.Notes.Notes.Covered;
-        return Languages.Clock(lines is not null && covered > 0 && covered <= lines.Count ? lines[covered - 1].T : 0);
+        return lines is not null && covered > 0 && covered <= lines.Count ? lines[covered - 1].T : 0;
     }
 
     /// The newest line on the Mac's dark card: who in their colour and 正在说 while Ming works on the
