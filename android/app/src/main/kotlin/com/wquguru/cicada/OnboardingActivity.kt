@@ -176,7 +176,7 @@ class OnboardingActivity : Activity() {
             field.background = ui.rounded(Palette.card, 16, if (problem) Palette.link else Palette.outline, 2)
             if (problem) status.announceForAccessibility(text)
         }
-        showStatus(L("加密存在本机，只发给 Ling"), false)
+        showStatus(LF("加密存在这台手机上，只发给 %@", app.ling.serviceName), false)
         // When the keyboard opens the page shrinks: once it has (the IME inset arrives), scroll to
         // the end so the field and the line under it sit above the pinned button.
         var imeShown = false
@@ -197,7 +197,7 @@ class OnboardingActivity : Activity() {
         checkShown = {
             if (step == 0 && tried && app.ling.hasKey) {
                 if (showCheck(steps)) { tried = false; checkShown = null; next() }
-                else if (!app.ling.aiCheck.running) showStatus(L("加密存在本机，只发给 Ling").let { if (app.ling.provider.id == "ling") it else LF("加密存在这台手机上，只发给 %@", app.ling.serviceName) }, false)
+                else if (!app.ling.aiCheck.running) showStatus(LF("加密存在这台手机上，只发给 %@", app.ling.serviceName), false)
             }
         }
         submit = submit@{
