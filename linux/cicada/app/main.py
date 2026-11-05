@@ -641,6 +641,12 @@ class App(Gtk.Application):
         speak = Gio.SimpleAction.new("speak", None)  # `cicada --speak`: 开始 / 停止说
         speak.connect("activate", lambda *_: self.controller.toggle_speaking())
         self.add_action(speak)
+        # The update notification's click and its 更新说明 button.
+        for name, action in (("install-update", lambda: self.controller.updates.install()),
+                             ("update-notes", lambda: self.controller.updates.open_notes())):
+            a = Gio.SimpleAction.new(name, None)
+            a.connect("activate", lambda _a, _p, f=action: f())
+            self.add_action(a)
         for name, action, keys in (("quit", self.controller.quit, ["<Control>q"]),
                                    ("settings", self.controller.show_settings, ["<Control>comma"])):
             a = Gio.SimpleAction.new(name, None)

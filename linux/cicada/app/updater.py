@@ -74,6 +74,7 @@ class Updates:
                     if u != self.update:
                         self.failure = None
                     self.update = u
+                    self.notify_if_due()
                 if manual:
                     self.check = ("upToDate" if u is None else "idle") if ok else "failed"
                 self.app.changed()
@@ -138,7 +139,34 @@ class Updates:
         except GLib.Error:
             pass
 
+    def notify_if_due(self) -> None:
+        """One desktop notification per version, for people who never open the tray menu; a click
+        installs (会后安装 while a meeting is on). Held while listening or speaking: meeting_ended
+        tells. Withdrawn once there's nothing newer (installed, or the release was pulled)."""
+        u = self.update
+        if u is None:
+            self.app.application.withdraw_notification("update")
+            return
+        busy = self.app.listen.listening or self.app.speak.active
+        if not updates.should_notify(u.version, updates.notified(), busy):
+            return
+        updates.remember_notified(u.version)
+        n = Gio.Notification.new(LF("知了有新版本 %@", u.version))
+        n.set_body(L("点按安装，完成后自动重新打开"))
+        n.set_default_action("app.install-update")
+        n.add_button(L("更新说明"), "app.update-notes")
+        self.app.application.send_notification("update", n)
+        Log.d("update: notified %s" % u.version)
+
+    def open_notes(self) -> None:
+        if self.update is not None:
+            try:
+                Gio.AppInfo.launch_default_for_uri(self.update.url, None)
+            except GLib.Error:
+                pass
+
     def meeting_ended(self) -> None:
+        self.notify_if_due()
         if self.after_meeting and not self.app.listen.listening:
             self.after_meeting = False
             self.install()

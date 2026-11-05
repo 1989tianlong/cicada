@@ -97,6 +97,11 @@ def _speakers(app, s) -> dict:
     return out
 
 
+def updates_notified():
+    from ..core import updates
+    return updates.notified()
+
+
 def command(app, line: str) -> dict:
     parts = line.split(" ", 1)
     cmd, arg = parts[0], (parts[1] if len(parts) > 1 else "")
@@ -128,6 +133,13 @@ def command(app, line: str) -> dict:
     if cmd == "stop":
         app.stop_listening()
         return {"ok": True}
+    if cmd == "updatecheck":  # the Mac's updateCheck: check the feed now (CICADA_UPDATE_FEED in a dev build)
+        app.updates.check_now()
+        return {"ok": True}
+    if cmd == "updatestate":
+        u = app.updates
+        return {"update": u.update.version if u.update else None, "notified": updates_notified(),
+                "afterMeeting": u.after_meeting, "failure": u.failure}
     if cmd == "feed":
         if not os.path.isfile(arg):
             return {"ok": False, "error": "no such file"}

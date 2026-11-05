@@ -174,5 +174,27 @@ class Install(unittest.TestCase):
         self.assertIsNone(updates.install_root(), "a checkout is not ~/.local/lib/cicada")
 
 
+class Notify(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        Paths.home_override = os.path.join(self.dir, "home")
+
+    def tearDown(self):
+        Paths.home_override = None
+
+    def test_once_per_version_and_not_while_busy(self):
+        self.assertTrue(updates.should_notify("1.1.0", None, False))
+        self.assertTrue(updates.should_notify("1.2.0", "1.1.0", False))
+        self.assertFalse(updates.should_notify("1.1.0", "1.1.0", False))
+        self.assertFalse(updates.should_notify("1.1.0", None, True))
+
+    def test_notified_is_kept_beside_last_checked(self):
+        updates._remember(NOW)
+        updates.remember_notified("1.1.0")
+        updates._remember(NOW + 1)
+        self.assertEqual(updates.notified(), "1.1.0")
+        self.assertEqual(updates.last_checked(), NOW + 1)
+
+
 if __name__ == "__main__":
     unittest.main()

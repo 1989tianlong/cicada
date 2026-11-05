@@ -125,19 +125,48 @@ def _state_file() -> str:
     return os.path.join(Paths.data(), "updates.json")
 
 
-def last_checked() -> float | None:
+def _state() -> dict:
     try:
         with open(_state_file(), encoding="utf-8") as f:
-            v = json.load(f).get("lastChecked")
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save(**changes) -> None:
+    state = _state()
+    state.update(changes)
+    os.makedirs(Paths.data(), exist_ok=True)
+    with open(_state_file(), "w", encoding="utf-8") as f:
+        f.write(jsonfmt.write(state))
+
+
+def last_checked() -> float | None:
+    v = _state().get("lastChecked")
+    try:
         return float(v) if v is not None else None
-    except (OSError, ValueError, AttributeError):
+    except (TypeError, ValueError):
         return None
 
 
 def _remember(when: float) -> None:
-    os.makedirs(Paths.data(), exist_ok=True)
-    with open(_state_file(), "w", encoding="utf-8") as f:
-        f.write(jsonfmt.write({"lastChecked": when}))
+    _save(lastChecked=when)
+
+
+def notified() -> str | None:
+    """The version the update notification was last shown for: one per version."""
+    v = _state().get("notified")
+    return v if isinstance(v, str) else None
+
+
+def remember_notified(version: str) -> None:
+    _save(notified=version)
+
+
+def should_notify(version: str, told: str | None, busy: bool) -> bool:
+    """A notification per version, none while listening or speaking (the meeting's end tells)."""
+    return not busy and version != told
 
 
 def _get(url: str, timeout: float = 20):

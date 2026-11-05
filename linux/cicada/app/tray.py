@@ -7,7 +7,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 
-from ..core.strings import L
+from ..core.strings import L, LF
 from ..core.support import Log
 
 
@@ -47,7 +47,10 @@ class Tray:
         lib.app_indicator_set_menu.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         lib.app_indicator_set_title.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.app_indicator_set_label.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+        lib.app_indicator_set_icon_full.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
         self.lib = lib
+        self.icon = icon or "cicada"
+        self.badged = False
         # An absolute path works as the icon "name", so no icon theme install is needed.
         self.ind = lib.app_indicator_new(b"cicada", (icon or "cicada").encode(), self.CATEGORY_APPLICATION_STATUS)
         lib.app_indicator_set_status(self.ind, self.STATUS_ACTIVE)
@@ -94,6 +97,19 @@ class Tray:
         self.lib.app_indicator_set_menu(self.ind, _gpointer(menu))
         self.menu = menu  # the indicator holds a ref too; keep ours so Python doesn't free it early
         self.lib.app_indicator_set_label(self.ind, (self._clock() if listening else "").encode(), b"")
+        self._badge(self.app.updates.update)
+
+    def _badge(self, update) -> None:
+        """The Mac's update dot on the top-bar icon: the same icon with an orange dot top right."""
+        on = update is not None
+        if on == self.badged:
+            return
+        path = badged_icon(self.icon) if on else self.icon
+        if path is None:
+            return
+        desc = L("知了") + (" · " + LF("有新版本 %@", update.version) if on else "")
+        self.lib.app_indicator_set_icon_full(self.ind, path.encode(), desc.encode())
+        self.badged = on
 
     def _clock(self) -> str:
         from datetime import datetime, timezone
@@ -119,3 +135,28 @@ class Tray:
         if self.detail_item is not None:
             self.detail_item.set_label(self._detail())
         self.lib.app_indicator_set_label(self.ind, self._clock().encode(), b"")
+
+
+def badged_icon(icon: str) -> str | None:
+    """A copy of the app icon (an SVG, 100 units square) with the accent dot over its top right
+    corner and a white ring around it, written once under the data folder. The logo itself stays
+    in one place (site/icon.svg); this only adds the dot."""
+    try:
+        with open(icon, encoding="utf-8") as f:
+            svg = f.read()
+    except OSError:
+        return None
+    end = svg.rfind("</svg>")
+    if end < 0 or 'viewBox="0 0 100 100"' not in svg:
+        return None
+    dot = '<circle cx="80" cy="20" r="20" fill="#fff"/><circle cx="80" cy="20" r="13" fill="#E8552B"/>'
+    from ..core.support import Paths
+    import os
+    out = os.path.join(Paths.data(), "tray-update.svg")
+    try:
+        os.makedirs(Paths.data(), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(svg[:end] + dot + svg[end:])
+    except OSError:
+        return None
+    return out
