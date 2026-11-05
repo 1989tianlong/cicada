@@ -28,19 +28,22 @@ class TranscriptLine(
     var dstLang: String = "",
     /// Experimental voice id on the Mac; Android doesn't tell voices apart yet.
     var voice: Int? = null,
+    /// "room": heard by the Mac's room microphone in a 电脑和会议室 meeting; kept so a Mac record
+    /// opened here keeps its 现场 / 线上.
+    var via: String? = null,
 ) {
-    fun copy() = TranscriptLine(id, t, speaker, src, dst, srcLang, dstLang, voice)
+    fun copy() = TranscriptLine(id, t, speaker, src, dst, srcLang, dstLang, voice, via)
 
     fun toJson(): Map<String, Any?> = mapOf(
         "id" to id, "t" to t, "speaker" to speaker, "src" to src, "dst" to dst,
-        "srcLang" to srcLang, "dstLang" to dstLang, "voice" to voice,
+        "srcLang" to srcLang, "dstLang" to dstLang, "voice" to voice, "via" to via,
     )
 
     companion object {
         fun from(o: Map<String, Any?>) = TranscriptLine(
             id = o["id"].str() ?: "", t = o["t"].num() ?: 0.0, speaker = o["speaker"].str() ?: "them",
             src = o["src"].str() ?: "", dst = o["dst"].str(), srcLang = o["srcLang"].str() ?: "",
-            dstLang = o["dstLang"].str() ?: "", voice = o["voice"].int(),
+            dstLang = o["dstLang"].str() ?: "", voice = o["voice"].int(), via = o["via"].str(),
         )
     }
 }

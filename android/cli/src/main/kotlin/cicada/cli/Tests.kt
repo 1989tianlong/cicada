@@ -109,6 +109,7 @@ object Tests {
       "src" : "你好",
       "srcLang" : "zh-CN",
       "t" : 2.5,
+      "via" : "room",
       "voice" : 1
     }
   ],
@@ -165,6 +166,7 @@ object Tests {
         val s = Session.read(MAC)!!
         equal(1, s.lines.size, "lines")
         equal(1, s.lines[0].voice, "voice")
+        equal("room", s.lines[0].via, "heard in the room")
         equal("Hello / \"hi\"", s.lines[0].dst, "escapes read")
         equal("Emma", s.voiceNames!!["1"], "voice names")
         equal(12.4, s.notes!!.topics[0].pointTime(0), "point time")
