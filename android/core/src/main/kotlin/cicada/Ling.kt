@@ -150,6 +150,17 @@ class LingClient(
         val BASE = Providers.LING.base!!
         val DEFAULT_MODEL = Providers.LING.textModels[0].id
         val AUDIO_MODEL = Providers.LING.hearModels[0].id
+
+        /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times, heard
+        /// audio once; the rest fail fast so the caller can fall back. `patient` (the final notes) keeps
+        /// at it for about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra,
+        /// 2026-11) came back after ~15 s, and a meeting left without its notes is worse than notes a
+        /// little late.
+        fun retryWaits(priority: Priority, audio: Boolean = false, patient: Boolean = false): List<Double> = when {
+            priority == Priority.Notes -> if (patient) listOf(1.0, 2.0, 4.0, 8.0, 16.0, 30.0) else listOf(1.0, 2.0, 4.0)
+            audio -> listOf(1.0)
+            else -> emptyList()
+        }
         /// Ming, Gemini TTS and Kokoro all speak 24 kHz mono 16-bit.
         const val TTS_RATE = 24000
         // Search essays (Ling.swift), and the canned refusal some audio prompts get.
@@ -300,11 +311,11 @@ class LingClient(
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
     /// message, `audio` (of `audioType`) goes before it for the hear model. Notes retry 429s with
     /// backoff; heard audio gets one retry (a lost reply loses the words); the rest fail fast so
-    /// the caller can fall back.
+    /// the caller can fall back. `patient` (the final notes) keeps retrying for about a minute (retryWaits).
     fun chat(
         content: String, instruction: String, priority: Priority, json: Boolean = false,
         maxTokens: Int = 1024, timeout: Double = 30.0, model: String? = null, audio: ByteArray? = null,
-        audioType: String = "audio/wav",
+        audioType: String = "audio/wav", patient: Boolean = false,
     ): String {
         val k = currentKey() ?: throw LingException(LingException.Kind.NoKey)
         if (keyState == KeyState.Invalid) throw LingException(LingException.Kind.InvalidKey)
@@ -321,8 +332,7 @@ class LingClient(
         if (json) body["response_format"] = mapOf("type" to "json_object")
         val payload = Json.write(body, pretty = false)
 
-        val attempts = if (priority == Priority.Notes) 4 else if (audio != null) 2 else 1
-        var delay = 1.0
+        val waits = retryWaits(priority, audio != null, patient)
         var attempt = 1
         while (true) {
             acquire(priority, c.provider.spacing)
@@ -344,11 +354,10 @@ class LingClient(
                 return trimmed
             } catch (e: LingException) {
                 if (e.kind != LingException.Kind.RateLimited) throw e
-                if (attempt >= attempts) { rateLimitedAt = System.currentTimeMillis(); changed(); throw e }
-                val wait = delay + Math.random() * 0.5
+                if (attempt > waits.size) { rateLimitedAt = System.currentTimeMillis(); changed(); throw e }
+                val wait = waits[attempt - 1] + Math.random() * 0.5
                 Log.d("ling: $priority 429, retry in ${"%.1f".format(wait)} s")
                 Thread.sleep((wait * 1000).toLong())
-                delay *= 2
                 attempt++
             }
         }

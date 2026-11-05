@@ -150,7 +150,8 @@ class NotesEngine:
             p = prompt(base, lines, frm, lang, final, shown, self.voices())
             nxt = None
             for attempt in range(1, 3 if final else 2):
-                raw = self.ling.chat(p, "Update the notes. Write them in %s." % lang, NOTES, json=True, max_tokens=6000, timeout=90.0)
+                raw = self.ling.chat(p, "Update the notes. Write them in %s." % lang, NOTES, json=True, max_tokens=6000, timeout=90.0,
+                                     patient=final)
                 parsed = parse(raw, [l.t for l in lines], lines[0].t if lines else 0.0)
                 if parsed is None:
                     break

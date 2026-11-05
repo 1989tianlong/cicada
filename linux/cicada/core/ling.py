@@ -347,11 +347,11 @@ class LingClient:
         self._changed()
 
     def chat(self, content: str, instruction: str, priority: int, json: bool = False, max_tokens: int = 1024,
-             timeout: float = 30.0, model: str | None = None, audio: bytes | None = None) -> str:
+             timeout: float = 30.0, model: str | None = None, audio: bytes | None = None, patient: bool = False) -> str:
         """One chat completion. `content` goes in the system message, `instruction` is the fixed user
         message, `audio` (a WAV) goes before it for the hear model. Notes retry 429s with backoff;
         heard audio gets one retry (a lost reply loses the words); the rest fail fast so the caller
-        can fall back."""
+        can fall back. `patient` (the final notes) keeps retrying for about a minute (retry_waits)."""
         k = self.current_key()
         if k is None:
             raise LingError(LingError.NO_KEY)
@@ -369,8 +369,7 @@ class LingClient:
         if json:
             body["response_format"] = {"type": "json_object"}
         payload = jsonfmt.write(body, pretty=False)
-        attempts = 4 if priority == NOTES else 2 if audio is not None else 1
-        delay = 1.0
+        waits = retry_waits(priority, audio is not None, patient)
         attempt = 1
         name = PRIORITY_NAMES[priority]
         while True:
@@ -399,14 +398,13 @@ class LingClient:
             except LingError as e:
                 if e.kind != LingError.RATE_LIMITED:
                     raise
-                if attempt >= attempts:
+                if attempt > len(waits):
                     self.rate_limited_at = time.time()
                     self._changed()
                     raise
-                wait = delay + random.random() * 0.5
+                wait = waits[attempt - 1] + random.random() * 0.5
                 Log.d("ling: %s 429, retry in %.1f s" % (name, wait))
                 time.sleep(wait)
-                delay *= 2
                 attempt += 1
 
     def speech(self, text: str, voice: str | None = "UK_Charlotte", language: str | None = None, timeout: float = 20.0):
@@ -523,6 +521,16 @@ class LingClient:
                     self._waiting.remove(me)
                 self._gate.notify_all()
                 raise
+
+
+def retry_waits(priority: int, audio: bool = False, patient: bool = False) -> list:
+    """Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times, heard
+    audio once; the rest fail fast so the caller can fall back. `patient` (the final notes) keeps at
+    it for about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra, 2026-11)
+    came back after ~15 s, and a meeting left without its notes is worse than notes a little late."""
+    if priority == NOTES:
+        return [1, 2, 4, 8, 16, 30] if patient else [1, 2, 4]
+    return [1] if audio else []
 
 
 def _b64(s: str) -> bytes:

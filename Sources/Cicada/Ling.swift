@@ -285,7 +285,7 @@ final class LingClient: ObservableObject {
     /// instruction, for Ming's audio model (Ling only: `hearsAudio`).
     func chat(content: String, instruction: String, priority: Priority, json: Bool = false,
               maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil, audio: Data? = nil,
-              role: String? = nil, onQueued: ((Double) -> Void)? = nil) async throws -> String {
+              role: String? = nil, patient: Bool = false, onQueued: ((Double) -> Void)? = nil) async throws -> String {
         guard let key else { throw Failure.noKey }
         guard keyState != .invalid else { throw Failure.invalidKey }
         if let simulate {
@@ -308,9 +308,8 @@ final class LingClient: ObservableObject {
         ]
         c.shape(&body, maxTokens: maxTokens)
         if json { body["response_format"] = ["type": "json_object"] }
-        let attempts = priority == .notes ? 4 : 1
-        var delay = 1.0
-        for attempt in 1...attempts {
+        let waits = Self.retryWaits(priority, patient: patient)
+        for attempt in 1...(waits.count + 1) {
             let asked = Date()
             await acquire(priority)
             let queued = Date().timeIntervalSince(asked)
@@ -337,17 +336,25 @@ final class LingClient: ObservableObject {
             } catch let failure as Failure {
                 report(call, priority, at: started, queued: queued, outcome: Self.name(failure))
                 guard failure == .rateLimited else { throw failure }
-                guard attempt < attempts else {
+                guard attempt <= waits.count else {
                     rateLimitedAt = Date()
                     throw failure
                 }
-                let wait = delay + Double.random(in: 0...0.5)
+                let wait = waits[attempt - 1] + Double.random(in: 0...0.5)
                 debugLog("ling: \(priority) 429, retry in \(String(format: "%.1f", wait)) s")
                 try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
-                delay *= 2
             }
         }
         throw Failure.rateLimited
+    }
+
+    /// Seconds to wait before each retry of a 429. Notes retry a few times; translation and
+    /// speak-back fail fast so the caller can fall back. `patient` (the final notes) keeps at it for
+    /// about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra, 2026-11) came
+    /// back after ~15 s, and a meeting left without its notes is worse than notes a little late.
+    nonisolated static func retryWaits(_ priority: Priority, patient: Bool = false) -> [Double] {
+        guard priority == .notes else { return [] }
+        return patient ? [1, 2, 4, 8, 16, 30] : [1, 2, 4]
     }
 
     /// Every request, for diagnostics (timings and token counts only).

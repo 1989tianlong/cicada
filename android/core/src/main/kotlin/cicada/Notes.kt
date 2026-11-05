@@ -116,7 +116,7 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
             val prompt = prompt(base, lines, from, lang, final)
             var next: MeetingNotes? = null
             for (attempt in 1..(if (final) 2 else 1)) {
-                val raw = ling.chat(prompt, "Update the notes. Write them in $lang.", Priority.Notes, json = true, maxTokens = 6000, timeout = 90.0)
+                val raw = ling.chat(prompt, "Update the notes. Write them in $lang.", Priority.Notes, json = true, maxTokens = 6000, timeout = 90.0, patient = final)
                 val parsed = parse(raw, lines.map { it.t }, lines.firstOrNull()?.t ?: 0.0) ?: break
                 if (written(parsed, lang)) { next = parsed; break }
                 Log.d("notes: ${if (final) "final" else "live"} reply not in $lang (attempt $attempt), dropped")

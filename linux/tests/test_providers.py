@@ -263,6 +263,13 @@ class Words(Base):
         self.assertEqual(("network", "连不上 Ling"), problem(LingError(LingError.TIMEOUT), "Ling"))
         self.assertIsNone(problem(LingError(LingError.HTTP, 400), "Ling")[0])
 
+    def test_final_notes_keep_retrying_for_about_a_minute(self):
+        from cicada.core.ling import NOTES, retry_waits
+        self.assertEqual([], retry_waits(TRANSLATE))
+        self.assertEqual([1], retry_waits(TRANSLATE, audio=True))
+        self.assertEqual([1, 2, 4], retry_waits(NOTES))
+        self.assertTrue(50 <= sum(retry_waits(NOTES, patient=True)) <= 70)
+
     def test_a_clock_is_not_speech(self):
         for made_up in ("00:00", "00:00.", "1:02:03"):
             self.assertTrue(is_noise(made_up, 1.2), made_up)

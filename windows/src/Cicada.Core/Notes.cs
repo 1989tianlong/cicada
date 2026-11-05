@@ -119,7 +119,7 @@ public sealed class NotesEngine
             MeetingNotes? next = null;
             for (int attempt = 1; attempt <= (final ? 2 : 1); attempt++)
             {
-                var raw = await ling.Chat(prompt, $"Update the notes. Write them in {lang}.", Priority.Notes, json: true, maxTokens: 6000, timeout: 90);
+                var raw = await ling.Chat(prompt, $"Update the notes. Write them in {lang}.", Priority.Notes, json: true, maxTokens: 6000, timeout: 90, patient: final);
                 var parsed = Parse(raw, lines.Select(l => l.T).ToList(), lines.FirstOrDefault()?.T ?? 0);
                 if (parsed is null) break;
                 if (Written(parsed, lang)) { next = parsed; break; }

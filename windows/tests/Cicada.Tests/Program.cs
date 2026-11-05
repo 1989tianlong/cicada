@@ -1298,6 +1298,15 @@ static class Tests
         Check(!ListenEngine.Words(LingException.Kind.Http, 400, "Ling").Settings, "Ling's 400 is the network bar");
     }
 
+    public static void FinalNotesKeepRetryingForAboutAMinute()
+    {
+        Check(LingClient.RetryWaits(Priority.Translate).Length == 0, "translation fails fast");
+        Check(LingClient.RetryWaits(Priority.Translate, audio: true).SequenceEqual(new double[] { 1 }), "heard audio retries once");
+        Check(LingClient.RetryWaits(Priority.Notes).SequenceEqual(new double[] { 1, 2, 4 }), "live notes as before");
+        var patient = LingClient.RetryWaits(Priority.Notes, patient: true).Sum();
+        Check(patient is >= 50 and <= 70, $"final notes wait about a minute ({patient} s)");
+    }
+
     public static void AClockIsNotSpeech()
     {
         foreach (var madeUp in new[] { "00:00", "00:00.", "1:02:03" }) Check(Translator.IsNoise(madeUp, 1.2), madeUp);

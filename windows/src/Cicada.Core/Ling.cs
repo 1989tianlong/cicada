@@ -277,8 +277,10 @@ public sealed class LingClient
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
     /// message, `audio` (a WAV) goes before it for the hear model. Notes retry 429s with backoff;
     /// the rest fail fast so the caller can fall back. `model` defaults to the service's text model.
+    /// `patient` (the final notes) keeps retrying for about a minute (RetryWaits).
     public async Task<string> Chat(string content, string instruction, Priority priority, bool json = false,
-        int maxTokens = 1024, double timeout = 30, string? model = null, byte[]? audio = null, CancellationToken cancel = default)
+        int maxTokens = 1024, double timeout = 30, string? model = null, byte[]? audio = null, bool patient = false,
+        CancellationToken cancel = default)
     {
         var k = CurrentKey() ?? throw new LingException(LingException.Kind.NoKey);
         if (KeyState == KeyState.Invalid) throw new LingException(LingException.Kind.InvalidKey);
@@ -299,10 +301,7 @@ public sealed class LingClient
         var payload = body.ToJsonString();
         var url = new Uri(new Uri(c.Base), "chat/completions");
 
-        // Notes can wait; heard audio gets one retry, since on Windows a lost reply loses the words
-        // (on the Mac recognition is local and only the translation is lost); the rest fail fast.
-        int attempts = priority == Priority.Notes ? 4 : audio is not null ? 2 : 1;
-        double delay = 1;
+        var waits = RetryWaits(priority, audio is not null, patient);
         for (int attempt = 1; ; attempt++)
         {
             var queued = DateTime.UtcNow;
@@ -329,14 +328,21 @@ public sealed class LingClient
             }
             catch (LingException e) when (e.Failure == LingException.Kind.RateLimited)
             {
-                if (attempt >= attempts) { RateLimitedAt = DateTimeOffset.Now; Changed?.Invoke(); throw; }
-                var wait = delay + Random.Shared.NextDouble() * 0.5;
+                if (attempt > waits.Length) { RateLimitedAt = DateTimeOffset.Now; Changed?.Invoke(); throw; }
+                var wait = waits[attempt - 1] + Random.Shared.NextDouble() * 0.5;
                 Log.Debug($"ling: {priority} 429, retry in {wait:F1} s");
                 await Task.Delay(TimeSpan.FromSeconds(wait), cancel);
-                delay *= 2;
             }
         }
     }
+
+    /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes can wait; heard audio gets
+    /// one retry, since on Windows a lost reply loses the words (on the Mac recognition is local and
+    /// only the translation is lost); the rest fail fast. `patient` (the final notes) keeps at it for
+    /// about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra, 2026-11) came
+    /// back after ~15 s, and a meeting left without its notes is worse than notes a little late.
+    public static double[] RetryWaits(Priority priority, bool audio = false, bool patient = false) =>
+        priority == Priority.Notes ? (patient ? [1, 2, 4, 8, 16, 30] : [1, 2, 4]) : audio ? [1] : [];
 
     /// The service's voice for `text`: raw 24 kHz mono 16-bit PCM, chunk by chunk as it arrives.
     /// On Ling, `voice` is Ming's and `languageId` its `language_id`, needed for ja, ko, de, fr and

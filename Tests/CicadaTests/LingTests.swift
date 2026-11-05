@@ -58,6 +58,17 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         return ling
     }
 
+    // MARK: Retries
+
+    @Test func finalNotesKeepRetryingForAboutAMinute() {
+        #expect(LingClient.retryWaits(.translate).isEmpty)
+        #expect(LingClient.retryWaits(.speak, patient: true).isEmpty)
+        #expect(LingClient.retryWaits(.notes) == [1, 2, 4])
+        let patient = LingClient.retryWaits(.notes, patient: true)
+        #expect(patient.count == 6)
+        #expect((50...70).contains(patient.reduce(0, +)))
+    }
+
     // MARK: Key file
 
     @Test func keyFileIsOnlyForThisUser() throws {

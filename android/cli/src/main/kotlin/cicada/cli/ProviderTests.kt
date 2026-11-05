@@ -26,6 +26,7 @@ object ProviderTests {
         "aiHearingUsesTheHearModel" to ::hearingUsesHearModel,
         "aiProblemsNameTheService" to ::problemsNameTheService,
         "aiAClockIsNotSpeech" to ::clockIsNotSpeech,
+        "aiFinalNotesKeepRetryingForAboutAMinute" to ::finalNotesRetry,
     )
 
     private fun check(ok: Boolean, what: String) { if (!ok) throw AssertionError(what) }
@@ -271,6 +272,14 @@ object ProviderTests {
         check(ListenEngine.problem(LingException(LingException.Kind.Network), "ZenMux").second!!.contains("ZenMux"), "named")
         equal("network" to "连不上 Ling，检查网络", ListenEngine.problem(LingException(LingException.Kind.Timeout), "Ling"), "Ling's own words")
         equal(null, ListenEngine.problem(LingException(LingException.Kind.Http, 400), "Ling").first, "Ling's 400 is not the model")
+    }
+
+    fun finalNotesRetry() {
+        check(LingClient.retryWaits(Priority.Translate).isEmpty(), "translation fails fast")
+        equal(listOf(1.0), LingClient.retryWaits(Priority.Translate, audio = true), "heard audio retries once")
+        equal(listOf(1.0, 2.0, 4.0), LingClient.retryWaits(Priority.Notes), "live notes as before")
+        val sum = LingClient.retryWaits(Priority.Notes, patient = true).sum()
+        check(sum in 50.0..70.0, "final notes wait about a minute ($sum s)")
     }
 
     fun clockIsNotSpeech() {

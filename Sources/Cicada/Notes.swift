@@ -254,7 +254,7 @@ final class NotesEngine: ObservableObject {
             var next: MeetingNotes?
             for attempt in 1...(final || fresh ? 2 : 1) {
                 let raw = try await ling.chat(content: prompt, instruction: "Update the notes. Write them in \(lang).",
-                                              priority: .notes, json: true, maxTokens: 6000, timeout: 90)
+                                              priority: .notes, json: true, maxTokens: 6000, timeout: 90, patient: final)
                 guard let parsed = Self.parse(raw, times: lines.map(\.t), startedAt: session.lines.first?.t ?? 0) else { break }
                 if Self.written(parsed, in: lang) { next = parsed; break }
                 debugLog("notes: \(final ? "final" : "live") reply not in \(lang) (attempt \(attempt)), dropped")
