@@ -9,11 +9,11 @@ namespace Cicada;
 /// UpdateChecker: at launch, then whenever the last answer is 4 hours old (a 15-minute tick, so a
 /// laptop that sleeps a lot still checks), and when the tray panel opens once it is an hour old.
 /// Failures (offline, rate-limited, the repository not public: 404) are silent. This only finds
-/// the update; the app offers Cicada-Setup.exe for download, which upgrades the installed copy
-/// when opened (older releases only have the zip).
+/// the update; the app offers the release's installer (Cicada-<v>-Windows-<arch>.exe) for download,
+/// which upgrades the installed copy when opened.
 public sealed class UpdateChecker
 {
-    /// `Setup` is this PC's Cicada-Setup exe when the release has one; `Size` is the download's;
+    /// `Setup` is this PC's installer when the release has one; `Size` is the download's;
     /// `Checksums` the release's checksums.txt, which the in-app download is checked against.
     public sealed record Update(string Version, string Page, string? Zip, long Size, string? Setup = null, string? Checksums = null)
     {
@@ -124,7 +124,7 @@ public sealed class UpdateChecker
         {
             if (r.Draft || r.Prerelease || r.Assets is null) continue;
             var zip = r.Assets.FirstOrDefault(a => IsZip(a.Name, arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => IsZip(a.Name, "x64")));
-            var setup = r.Assets.FirstOrDefault(a => a.Name == SetupName(arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => a.Name == SetupName("x64")));
+            var setup = r.Assets.FirstOrDefault(a => IsSetup(a.Name, arch)) ?? (arch == "x64" ? null : r.Assets.FirstOrDefault(a => IsSetup(a.Name, "x64")));
             if (zip is null && setup is null) continue;
             var sums = r.Assets.FirstOrDefault(a => a.Name == "checksums.txt");
             var u = new Update(r.TagName.TrimStart('v'), r.HtmlUrl, zip?.Url, (setup ?? zip)!.Size, setup?.Url, sums?.Url);
@@ -134,8 +134,12 @@ public sealed class UpdateChecker
         static bool IsZip(string name, string arch) => name.StartsWith("Cicada-") && name.EndsWith($"-Windows-{arch}.zip");
     }
 
-    /// The installer's release asset: no version in the name, so the site's link never goes stale.
-    public static string SetupName(string arch) => arch == "ARM64" ? "Cicada-Setup-arm64.exe" : "Cicada-Setup.exe";
+    /// The installer's release asset, named like every platform's file: Cicada-1.2.0-Windows-x64.exe.
+    /// 1.1.0 named it Cicada-Setup.exe / Cicada-Setup-arm64.exe and only finds those, so releases
+    /// still carry copies under the old names (release.yml) and this accepts both.
+    public static bool IsSetup(string name, string arch) =>
+        (name.StartsWith("Cicada-") && name.EndsWith($"-Windows-{arch}.exe")) || name == LegacySetupName(arch);
+    public static string LegacySetupName(string arch) => arch == "ARM64" ? "Cicada-Setup-arm64.exe" : "Cicada-Setup.exe";
 
     /// One notification per version (the version last told is kept in settings), and none while
     /// listening: the next stop tells. Full screen and screen sharing are Windows' Do Not Disturb.

@@ -35,12 +35,12 @@ static class Tests
         if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"{what}: expected «{expected}», got «{actual}»");
     }
 
-    // MARK: Cicada-Setup.exe
+    // MARK: the installer
 
     public static void SetupDecidesFromWhereItRuns()
     {
         const string home = @"C:\Users\a\AppData\Local\Programs\Cicada\Cicada.exe";
-        const string download = @"C:\Users\a\Downloads\Cicada-Setup.exe";
+        const string download = @"C:\Users\a\Downloads\Cicada-1.1.0-Windows-x64.exe";
         Equal(SetupPlan.Step.Run, SetupPlan.Decide(false, home, home, "1.4.0", "1.4.0"), "the installed copy just runs");
         Equal(SetupPlan.Step.Run, SetupPlan.Decide(false, @"c:\users\A\appdata\local\programs\cicada\CICADA.EXE", home, "1.4.0", "1.4.0"), "paths compare without case");
         Equal(SetupPlan.Step.Run, SetupPlan.Decide(true, download, home, null, "1.4.0"), "a dev build never installs");
@@ -903,24 +903,24 @@ static class Tests
         Check(UpdateChecker.ShouldNotify("1.2.0", "1.1.0", false), "a newer version");
         Check(!UpdateChecker.ShouldNotify("1.1.0", "1.1.0", false), "already told");
         Check(!UpdateChecker.ShouldNotify("1.1.0", null, true), "held while listening");
-        Equal("ab12", UpdateChecker.ChecksumFor("ff00  Cicada-1.1.0-Windows-x64.zip\nAB12 *Cicada-Setup.exe\n", "Cicada-Setup.exe"), "sha256sum line");
-        Equal(null, UpdateChecker.ChecksumFor("ff00  Cicada-Setup-arm64.exe", "Cicada-Setup.exe"), "other file");
+        Equal("ab12", UpdateChecker.ChecksumFor("ff00  Cicada-1.1.0-Windows-ARM64.exe\nAB12 *Cicada-1.1.0-Windows-x64.exe\n", "Cicada-1.1.0-Windows-x64.exe"), "sha256sum line");
+        Equal(null, UpdateChecker.ChecksumFor("ff00  Cicada-1.1.0-Windows-ARM64.exe", "Cicada-1.1.0-Windows-x64.exe"), "other file");
     }
 
     /// The in-app download: the installer is kept only when it matches checksums.txt.
     public static async Task UpdateDownloadChecksTheInstaller()
     {
         var dir = Directory.CreateTempSubdirectory("cicada-upd-").FullName;
-        var exe = Path.Combine(dir, "Cicada-Setup.exe");
+        var exe = Path.Combine(dir, "Cicada-1.1.0-Windows-x64.exe");
         File.WriteAllText(exe, "installer");
         var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(exe)));
-        File.WriteAllText(Path.Combine(dir, "checksums.txt"), $"{sha}  Cicada-Setup.exe\n");
-        File.WriteAllText(Path.Combine(dir, "bad.txt"), "0000  Cicada-Setup.exe\n");
+        File.WriteAllText(Path.Combine(dir, "checksums.txt"), $"{sha}  Cicada-1.1.0-Windows-x64.exe\n");
+        File.WriteAllText(Path.Combine(dir, "bad.txt"), "0000  Cicada-1.1.0-Windows-x64.exe\n");
         var checker = new UpdateChecker(null, _ => { });
         var u = new UpdateChecker.Update("1.1.0", "https://example.com", null, 9, new Uri(exe).AbsoluteUri, new Uri(Path.Combine(dir, "checksums.txt")).AbsoluteUri);
         var got = await checker.Download(u);
         Equal("installer", File.ReadAllText(got), "downloaded copy");
-        Check(got != exe && Path.GetFileName(got) == "Cicada-Setup.exe", "into its own folder, same name");
+        Check(got != exe && Path.GetFileName(got) == "Cicada-1.1.0-Windows-x64.exe", "into its own folder, same name");
         try { await checker.Download(u with { Checksums = new Uri(Path.Combine(dir, "bad.txt")).AbsoluteUri }); throw new Exception("bad checksum accepted"); }
         catch (UpdateChecker.Failure f) { Equal("下载的文件校验不通过", f.Key, "bad checksum refused"); }
         try { await checker.Download(u with { Setup = null }); throw new Exception("zip-only accepted"); }
@@ -953,10 +953,10 @@ static class Tests
         var withSetup = UpdateChecker.Decode("""
             [{"tag_name":"v1.6.0","html_url":"https://example.com/r","assets":[
               {"name":"Cicada-1.6.0-Windows-x64.zip","browser_download_url":"https://example.com/z","size":5},
-              {"name":"Cicada-Setup.exe","browser_download_url":"https://example.com/setup","size":7},
-              {"name":"Cicada-Setup-arm64.exe","browser_download_url":"https://example.com/setup-arm","size":8}]},
+              {"name":"Cicada-1.6.0-Windows-x64.exe","browser_download_url":"https://example.com/setup","size":7},
+              {"name":"Cicada-1.6.0-Windows-ARM64.exe","browser_download_url":"https://example.com/setup-arm","size":8}]},
              {"tag_name":"v1.7.0","html_url":"https://example.com/r2","assets":[
-              {"name":"Cicada-Setup.exe","browser_download_url":"https://example.com/setup2","size":9}]}]
+              {"name":"Cicada-1.7.0-Windows-x64.exe","browser_download_url":"https://example.com/setup2","size":9}]}]
             """)!;
         var x = UpdateChecker.NewestWindows(withSetup, "x64")!;
         Equal("1.7.0", x.Version, "a release with only the installer counts");
@@ -964,6 +964,14 @@ static class Tests
         var older = UpdateChecker.NewestWindows(withSetup.Take(1), "ARM64")!;
         Equal("https://example.com/setup-arm", older.Download, "ARM's installer");
         Equal(8L, older.Size, "its size");
+        // 1.1.0's installer names still count, so a release carrying only those is found too.
+        var legacy = UpdateChecker.Decode("""
+            [{"tag_name":"v1.1.0","html_url":"https://example.com/r","assets":[
+              {"name":"Cicada-Setup.exe","browser_download_url":"https://example.com/old","size":3},
+              {"name":"Cicada-Setup-arm64.exe","browser_download_url":"https://example.com/old-arm","size":4}]}]
+            """)!;
+        Equal("https://example.com/old", UpdateChecker.NewestWindows(legacy, "x64")!.Download, "1.1.0's x64 name");
+        Equal("https://example.com/old-arm", UpdateChecker.NewestWindows(legacy, "ARM64")!.Download, "1.1.0's ARM name");
     }
 
     public static void UpdateDueAfterTheAge()

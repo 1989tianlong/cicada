@@ -31,15 +31,16 @@ OUT = os.path.join(ROOT_DIR, "build", "site")
 SITE = (os.environ.get("SITE_URL") or "https://cicada.indaloop.app/").rstrip("/") + "/"
 REPO = "https://github.com/wquguru/cicada"
 DOWNLOAD = REPO + "/releases/latest"
-# The files each platform's release carries (release.yml); {v} is the version. The Windows installer
-# has no version in its name: Cicada.exe installs and updates itself from it.
+# The files each platform's release carries (release.yml); {v} is the version.
 PLATFORMS = ["mac", "windows", "linux", "android"]
 ASSETS = {
     "mac": {"dmg": "Cicada-{v}-macOS-AppleSilicon.dmg", "zip": "Cicada-{v}-macOS-AppleSilicon.zip"},
-    "windows": {"x64": "Cicada-Setup.exe", "arm64": "Cicada-Setup-arm64.exe"},
+    "windows": {"x64": "Cicada-{v}-Windows-x64.exe", "arm64": "Cicada-{v}-Windows-ARM64.exe"},
     "linux": {"tar": "Cicada-{v}-Linux.tar.gz"},
     "android": {"apk": "Cicada-{v}-Android.apk"},
 }
+# Releases whose files were named otherwise: Windows 1.1.0 only has Cicada-Setup.exe and -arm64.exe.
+OLD_ASSETS = {("windows", "1.1.0"): {"x64": "Cicada-Setup.exe", "arm64": "Cicada-Setup-arm64.exe"}}
 # The author on X: the app is not notarized yet, so a real person to ask helps people trust the first launch.
 X = "https://x.com/wquguru"
 STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "og-en.png", "og-ja.png", "og-ko.png", "img", "audio"]
@@ -145,7 +146,7 @@ def downloads(released):
         for p in shipped.get(r["version"], ()):
             if p not in out:
                 v = r["version"]
-                out[p] = (v, {k: f"{REPO}/releases/download/v{v}/{name.format(v=v)}" for k, name in ASSETS[p].items()})
+                out[p] = (v, {k: f"{REPO}/releases/download/v{v}/{name.format(v=v)}" for k, name in OLD_ASSETS.get((p, v), ASSETS[p]).items()})
     return out
 
 

@@ -788,7 +788,7 @@ static class DebugServer
         if (line != "setup status") Log.Debug($"debug: {parts[0]}");
         switch (parts[0])
         {
-            // Cicada-Setup.exe (Install.cs): is a meeting on, quit for the new copy, show yourself.
+            // The installer (Install.cs): is a meeting on, quit for the new copy, show yourself.
             case "setup": return arg switch
             {
                 "status" => new JsonObject { ["listening"] = app.Listen.Listening },

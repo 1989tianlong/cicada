@@ -177,7 +177,7 @@
 "下载后解压，替换旧的知了" = "압축을 풀어 이전 Cicada를 교체하세요";
 "下载" = "다운로드";
 
-/* Cicada-Setup.exe: install, update, uninstall */
+/* The installer: install, update, uninstall */
 "知了已更新到 %@" = "Cicada를 %@(으)로 업데이트했어요";
 "会议记录、设置和 Ling key 都在。" = "회의 기록, 설정, Ling 키는 그대로예요.";
 "知了已经装好了" = "Cicada가 이미 설치되어 있어요";

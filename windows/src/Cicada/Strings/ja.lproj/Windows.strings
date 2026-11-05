@@ -177,7 +177,7 @@
 "下载后解压，替换旧的知了" = "展開して古い Cicada と置き換えてください";
 "下载" = "ダウンロード";
 
-/* Cicada-Setup.exe: install, update, uninstall */
+/* The installer: install, update, uninstall */
 "知了已更新到 %@" = "Cicada を %@ に更新しました";
 "会议记录、设置和 Ling key 都在。" = "会議記録・設定・Ling キーはそのままです。";
 "知了已经装好了" = "Cicada はインストール済みです";
