@@ -564,6 +564,46 @@
         ],
         "title": "Windows 自建服务的地址填成公网上的 http 时，会马上说要用 https。",
         "text": "以前没填 key 时什么提示都没有，看不出地址为什么没生效；现在和 Mac 一样，地址下面直接写明：要用 https，这台电脑和局域网里的服务可以用 http。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 设置里自建服务的“翻译和纪要”“同传声音”“听对方”几行靠左对齐，不再挤在中间。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 检查自建服务时，还没填听的模型也会说模型先思考、翻一句要几秒。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 会议记录往下翻时，顶上的细条也带“双语 / 只看译文”。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 开会中途换成“电脑和会议室”，会议室的话按会议里的时间记，不再排在 00:00。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 英文、日文、韩文界面里，自建服务的 key 输入框够宽，提示不再被截断。",
+        "text": ""
       }
     ]
   },
