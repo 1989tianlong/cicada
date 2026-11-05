@@ -279,6 +279,33 @@ button.pillkeep label { color: #15171C; }
 .panel.dark .icon-tile.warn { background-color: rgba(232,85,43,0.16); }
 .panel.dark button.outline { background-color: #2A2C32; border-color: #3A3C43; color: #F2F3F5; }
 
+/* Listening, no notes asked for yet (NotesListeningView): a pale-accent row with SoundBars, then the
+   notes' shape shimmering. Both move by CSS alone, so GNOME's Reduce Animation stops them. */
+.listenrow { background-color: rgba(252,237,231,0.7); border-radius: 12px; }
+.panel.dark .listenrow { background-color: rgba(232,85,43,0.14); }
+/* SoundBars: four 3 px bars of fixed size whose orange fill grows 30% -> 100% from the middle (a
+   background, so nothing is laid out again 30 times a second); each lags the last by 0.15 s. */
+@keyframes soundbar { 0% { background-size: 100% 30%; } 50% { background-size: 100% 100%; } 100% { background-size: 100% 30%; } }
+.soundbar { min-width: 3px; min-height: 22px; border-radius: 2px; background-image: linear-gradient(#E8552B, #E8552B);
+            background-repeat: no-repeat; background-position: center; background-size: 100% 60%;
+            animation: soundbar 1.1s ease-in-out infinite; }
+.soundbar.b1 { animation-delay: -0.95s; } .soundbar.b2 { animation-delay: -0.8s; } .soundbar.b3 { animation-delay: -0.65s; }
+/* SkeletonBar: a light sweeping left to right every 1.4 s. The gradient is three bars wide, so moving
+   it from 100% to 0% takes its light (+-0.6 of a bar around the middle) from -0.5 to 1.5, the Mac's. */
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+.skeleton { border-radius: 5px; background-color: #EEF0F3; background-repeat: no-repeat; background-size: 300% 100%;
+            background-image: linear-gradient(to right, #EEF0F3 0%, #EEF0F3 30%, #F7F8FA 50%, #EEF0F3 70%, #EEF0F3 100%);
+            animation: shimmer 1.4s linear infinite; }
+.skeleton.thin { border-radius: 4px; }
+.panel.dark .skeleton { background-color: #2E3037;
+            background-image: linear-gradient(to right, #2E3037 0%, #2E3037 30%, #3A3C43 50%, #2E3037 70%, #2E3037 100%); }
+.ghost { color: #B8BDC6; }
+.panel.dark .ghost { color: #5A5F6B; }
+.slot { border: 1.5px dashed #E4E6EA; border-radius: 12px; }
+.panel.dark .slot { border-color: #3A3C43; }
+.pill { background-color: #F2F3F5; border-radius: 13px; }
+.panel.dark .pill { background-color: #34363D; }
+
 levelbar trough { min-height: 6px; padding: 0; border: none; background-color: #ECEEF1; border-radius: 3px; }
 levelbar block { min-height: 6px; border: none; border-radius: 3px; }
 levelbar block.filled, levelbar block.low, levelbar block.high, levelbar block.full { background-color: #E8552B; }
@@ -656,6 +683,92 @@ def chip(s: str, now: bool = False) -> Gtk.Widget:
     c = panel(l, "chip", "now" if now else "time")
     c.set_valign(Gtk.Align.BASELINE)
     return c
+
+
+class _Fraction(Gtk.Bin):
+    """Gives its child `fraction` of the width it is given (the Mac's GeometryReader), asking for none."""
+
+    def __init__(self, child: Gtk.Widget, fraction: float):
+        super().__init__()
+        self.fraction = fraction
+        self.add(child)
+
+    def do_size_allocate(self, a):
+        self.set_allocation(a)
+        r = Gdk.Rectangle()
+        r.x, r.y, r.width, r.height = a.x, a.y, max(1, int(a.width * self.fraction)), a.height
+        self.get_child().size_allocate(r)
+
+
+class Wrap(Gtk.Fixed):
+    """The Mac's FlowLayout: children left to right at their natural size, wrapping onto the next
+    line. (A FlowBox lines its children up in columns, which spreads a row of chips apart.)"""
+
+    def __init__(self, spacing: int = 6):
+        super().__init__()
+        self.spacing = spacing
+
+    def _lines(self, width: int):
+        """[(row height, [(child, x, w, h)…])…] for this width."""
+        lines, row, x, h = [], [], 0, 0
+        for c in self.get_children():
+            if not c.get_visible():
+                continue
+            w = c.get_preferred_width()[1]
+            ch = c.get_preferred_height_for_width(w)[1]
+            if row and x + w > width:
+                lines.append((h, row))
+                row, x, h = [], 0, 0
+            row.append((c, x, w, ch))
+            x += w + self.spacing
+            h = max(h, ch)
+        if row:
+            lines.append((h, row))
+        return lines
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_get_preferred_width(self):
+        ws = [c.get_preferred_width()[1] for c in self.get_children() if c.get_visible()]
+        return max(ws, default=0), sum(ws) + self.spacing * max(0, len(ws) - 1)
+
+    def do_get_preferred_height_for_width(self, width):
+        lines = self._lines(width)
+        h = sum(lh for lh, _ in lines) + self.spacing * max(0, len(lines) - 1)
+        return h, h
+
+    def do_get_preferred_height(self):
+        return self.do_get_preferred_height_for_width(self.do_get_preferred_width()[1])
+
+    def do_size_allocate(self, a):
+        self.set_allocation(a)
+        y = a.y
+        for lh, row in self._lines(a.width):
+            for c, x, w, h in row:
+                r = Gdk.Rectangle()
+                r.x, r.y, r.width, r.height = a.x + x, y + (lh - h) // 2, min(w, a.width), h
+                c.size_allocate(r)
+            y += lh + self.spacing
+
+
+def skeleton(fraction: float = 1.0, height: int = 12) -> Gtk.Widget:
+    """SkeletonBar: a placeholder line with a light sweeping across it (the .skeleton CSS)."""
+    bar = Gtk.Box()
+    bar.set_size_request(-1, height)
+    classes(bar, "skeleton", "thin" if height < 10 else "")
+    return _Fraction(bar, fraction)
+
+
+def sound_bars() -> Gtk.Widget:
+    """SoundBars: four small orange bars rising and falling, "listening" at the size of a line of text."""
+    row = hbox(3)
+    for i in range(4):
+        b = Gtk.Box()
+        classes(b, "soundbar", "b%d" % i if i else "")
+        row.pack_start(b, False, False, 0)
+    row.set_valign(Gtk.Align.CENTER)
+    return row
 
 
 class Toasts:

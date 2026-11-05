@@ -896,18 +896,72 @@ class NotesWindow(Gtk.Window):
         card = ui.panel(ui.pad(row, 12), "notice", *([tone] if tone else []))
         body.pack_start(ui.pad(card, 0, 0, 10, 0), False, False, 0)
 
+    def _listening_view(self) -> Gtk.Widget:
+        """NotesListeningView: one quiet status row, then the notes' own shape waiting to be filled, so
+        the first version lands where the reader is already looking."""
+        view = ui.vbox(22)
+        row = ui.hbox(12, ui.sound_bars())
+        row.pack_start(ui.text(L("有人开口后，约半分钟出第一版"), 13, "ink", width_chars=20), True, True, 0)
+        self._heard = ui.text("", 12, "tertiary", wrap=False, ellipsize=False)
+        self._heard.set_no_show_all(True)
+        self._heard.set_valign(Gtk.Align.CENTER)
+        row.pack_end(self._heard, False, False, 0)
+        view.pack_start(ui.panel(ui.pad(row, 12, 14), "listenrow"), False, False, 0)
+        summary = ui.vbox(10, ui.text(L("总结"), 15, "ghost", bold=True, wrap=False))
+        for f in (0.94, 0.8, 0.56):
+            summary.pack_start(ui.skeleton(f, 10), False, False, 0)
+        view.pack_start(summary, False, False, 0)
+        topics = ui.vbox(12, ui.text(L("议题"), 15, "ghost", bold=True, wrap=False))
+        for time, lines, opacity in (("00:00", (0.52, 0.88, 0.7), 1.0), ("--:--", (0.4, 0.76), 0.6)):
+            bars = ui.vbox(8)
+            for i, f in enumerate(lines):
+                bars.pack_start(ui.skeleton(f, 11 if i == 0 else 8), False, False, 0)
+            slot = ui.hbox(12, ui.text(time, 12, "ghost", wrap=False, ellipsize=False))
+            slot.get_children()[0].set_valign(Gtk.Align.START)
+            slot.pack_start(bars, True, True, 0)
+            card = ui.panel(ui.pad(slot, 14), "slot")
+            card.set_opacity(opacity)
+            topics.pack_start(card, False, False, 0)
+        view.pack_start(topics, False, False, 0)
+        # Wraps: the English chips don't fit one line in the narrow window.
+        flow = ui.Wrap(6)
+        flow.add(ui.pad(ui.text(L("会整理出"), 12, "tertiary", wrap=False, ellipsize=False), 4, 0))
+        for t in (L("结论"), L("待办"), L("人名和术语"), L("鱼骨图")):
+            flow.add(ui.panel(ui.pad(ui.text(t, 12, "secondary", wrap=False, ellipsize=False), 4, 10), "pill"))
+        view.pack_start(ui.gap(flow, 4), False, False, 0)
+        return view
+
     def _fill_body(self) -> None:
         body = self.body
-        ui.clear(body)
         engine = self.app.notes
         n = engine.notes
         listening = self.app.listen.listening
+        # The Mac's notesPane: notes; else the key; else a request actually out; else, while listening,
+        # the placeholder, which stays up after lines arrive until that first request goes out.
+        session = self._session()
+        generating = engine.status == notesmod.UPDATING and (session is None or engine.working_id == session.id)
+        placeholder = n.is_empty and listening and not generating and engine.status not in (notesmod.NO_KEY, notesmod.INVALID_KEY)
+        # Kept across rebuilds (one per heard line) so its CSS animations don't start over.
+        keep = getattr(self, "_listening", None) if placeholder else None
+        for c in body.get_children():
+            if c is not keep:
+                body.remove(c)
+                c.destroy()
+        self._listening = keep
         self._banner(body, engine)
+        if placeholder:
+            if keep is None:
+                self._listening = self._listening_view()
+                body.pack_start(self._listening, False, False, 0)
+            else:
+                body.reorder_child(keep, -1)  # below the banner
+            heard = len(session.lines) if session is not None else 0
+            ui.retext(self._heard, LF("已听到 %lld 句", heard) if heard else "")
+            self._heard.set_visible(heard > 0)
+            body.show_all()
+            return
         if n.is_empty:
-            hint = {notesmod.NO_KEY: L("生成纪要需要 API key"),
-                    notesmod.UPDATING: L("正在整理纪要…")}.get(engine.status, L("会中每 45 秒更新") if listening else "")
-            if engine.status in (notesmod.INVALID_KEY, notesmod.RATE_LIMITED, notesmod.FAILED):
-                hint = ""  # the banner says it
+            hint = {notesmod.NO_KEY: L("生成纪要需要 API key"), notesmod.UPDATING: L("正在整理纪要…")}.get(engine.status, "")
             if hint:
                 body.pack_start(ui.helper(hint), False, False, 0)
             body.show_all()
