@@ -35,6 +35,8 @@ img { max-width: 100%; }
 
 /* Header */
 .top { position: sticky; top: 0; z-index: 10; background: rgba(246,247,249,0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line2); }
+/* Hovered links get their own layer, so a colour change doesn't re-blur the header's backdrop (that flashed). Not on .top itself: it would trap the phone's fixed language sheet. */
+.navlinks, .lang summary, .top .btn { transform: translateZ(0); }
 .top nav { display: flex; align-items: center; gap: 10px 26px; padding-top: 12px; padding-bottom: 12px; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); margin-right: auto; }
 .brand img { width: 30px; height: 30px; border-radius: 7px; }
