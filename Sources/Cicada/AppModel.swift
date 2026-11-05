@@ -1911,7 +1911,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 }
 
 @main
-struct LiveSubsMain {
+struct CicadaMain {
     static func main() {
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--render-dmg-background"), args.count > i + 1 {

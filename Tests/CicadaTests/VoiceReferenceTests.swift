@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct VoiceReferenceTests {
     /// `seconds` of silence, then `speech` seconds of a 200 Hz tone, then silence.

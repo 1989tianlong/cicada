@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct NotesWindowTests {
     private func line(_ id: String, _ t: Double, _ speaker: String = "them", _ src: String = "a line") -> TranscriptLine {

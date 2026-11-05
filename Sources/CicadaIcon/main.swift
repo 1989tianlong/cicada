@@ -1,11 +1,11 @@
 // Renders the app icon (logo B: a cicada's eyes and wings peeking over a white subtitle card, on orange)
-// into an .iconset. `LiveSubsIcon [--dev] <out.iconset>`; --dev adds a "DEV" band.
+// into an .iconset. `CicadaIcon [--dev] <out.iconset>`; --dev adds a "DEV" band.
 import AppKit
 
 let orange = NSColor(srgbRed: 0.91, green: 0.33, blue: 0.17, alpha: 1)   // #E8552B
 let ink = NSColor(srgbRed: 0.082, green: 0.09, blue: 0.11, alpha: 1)     // #15171C
 
-// A copy of CicadaLogo in Sources/LiveSubs/Onboarding.swift (this target can't import the app);
+// A copy of CicadaLogo in Sources/Cicada/Onboarding.swift (this target can't import the app);
 // keep it, that file and site/icon.svg in step.
 enum CicadaLogo {
     static let orange = rgb(0xE8552B)

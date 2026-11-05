@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 /// Answers Ling requests from the test, and keeps what was asked. Requests reach a URLProtocol
 /// with the body as a stream, not `httpBody`.

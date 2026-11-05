@@ -6,8 +6,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-swift build -c release --product LiveSubs
-swift build -c release --product LiveSubsIcon
+swift build -c release --product Cicada
+swift build -c release --product CicadaIcon
 BIN=$(swift build -c release --show-bin-path)
 
 APP=build/Cicada.app
@@ -15,7 +15,7 @@ ICONSET=build/AppIcon.iconset
 rm -rf "$APP" "$ICONSET" build/LiveSubs.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cp "$BIN/LiveSubs" "$APP/Contents/MacOS/Cicada"
+cp "$BIN/Cicada" "$APP/Contents/MacOS/Cicada"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/sample/sample.m4a "$APP/Contents/Resources/"
 # The experimental voiceprint model; the app compiles it on first use (no coremlcompiler in the CLT).
@@ -43,7 +43,7 @@ fi
 
 ICON_FLAGS=()
 [[ "${RELEASE:-}" == 1 ]] || ICON_FLAGS=(--dev)
-"$BIN/LiveSubsIcon" ${ICON_FLAGS[@]+"${ICON_FLAGS[@]}"} "$ICONSET"
+"$BIN/CicadaIcon" ${ICON_FLAGS[@]+"${ICON_FLAGS[@]}"} "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 
 # A fixed designated requirement (the bundle id alone), so rebuilding keeps the system-audio and

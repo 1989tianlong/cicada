@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct RoomTests {
     typealias In = RoomMicPlan.Input

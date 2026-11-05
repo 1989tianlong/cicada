@@ -1,5 +1,5 @@
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct TranslatorTests {
     @Test func remarkInsteadOfTranslationIsDropped() {

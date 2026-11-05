@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 /// Serves a package that is not BlackHole.
 final class FakePackage: URLProtocol, @unchecked Sendable {

@@ -5,7 +5,7 @@ import SwiftUI
 // MARK: - Brand mark (logo B: a cicada's eyes and wings peeking over a white subtitle card)
 
 /// The logo in its 100-unit design space, y down (same geometry as site/icon.svg and
-/// Sources/LiveSubsIcon; keep the three in step). Design: claude.ai/artifact/96R6Md276c3jAS4Mk4Ustn
+/// Sources/CicadaIcon; keep the three in step). Design: claude.ai/artifact/96R6Md276c3jAS4Mk4Ustn
 enum CicadaLogo {
     static let orange = rgb(0xE8552B)
     static let ink = rgb(0x15171C)

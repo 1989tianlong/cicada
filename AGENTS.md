@@ -25,13 +25,13 @@ Cicada (知了, formerly Live Subs) turns what a computer plays into live transl
 
 - Ground `#F3F4F6`, white cards (the main window is one white sheet, no cards), ink `#15171C`, one accent `#E8552B` for "live", greys `#5A5F6B` / `#6B7080`. Design canvases on claude.ai and the app itself are the source of truth.
 - Copy is Chinese and short, at most one grey helper line. Chinese text is the localization key; `Resources/{en,ja,ko}.lproj` translate it. SwiftUI literals localize themselves; other UI strings use `L("…")`; never `L()` prompts, logs or stored values. After changing UI text run `python3 scripts/strings.py` (`--write` adds TODOs), and check the English UI, which runs wider.
-- The logo geometry is kept in step in `CicadaLogo` (`Onboarding.swift`), `Sources/LiveSubsIcon` and `site/icon.svg`; then rerun `scripts/site-images.sh`.
+- The logo geometry is kept in step in `CicadaLogo` (`Onboarding.swift`), `Sources/CicadaIcon` and `site/icon.svg`; then rerun `scripts/site-images.sh`.
 
 ## Layout
 
-- `Sources/LiveSubs`: the app, one concern per file. Engines are UI-free (`ListenEngine`, `SpeakEngine`, `SpeakTest`, `Notes`, `Translator`, `Ling`, `VirtualMic`, `SessionStore`, `Updates`…); `AppModel` wires them and holds the debug commands. Settings keys: `AppSettings` in `Settings.swift`.
-- `Sources/LiveSubsIcon`: renders the icon set. `site/`: the website, built by `scripts/site.py`.
-- The site is Chinese at `/`, English / Japanese / Korean under `/en/` `/ja/` `/ko/`; every `{{t.key}}` comes from `site/i18n/<lang>.json`. `start.html` is the setup page (`download.html` the downloads); its `img/start/` screenshots come from the app in each language. `tools/`: test helpers. `Tests/LiveSubsTests`: unit tests for the pure parts.
+- `Sources/Cicada`: the app, one concern per file. Engines are UI-free (`ListenEngine`, `SpeakEngine`, `SpeakTest`, `Notes`, `Translator`, `Ling`, `VirtualMic`, `SessionStore`, `Updates`…); `AppModel` wires them and holds the debug commands. Settings keys: `AppSettings` in `Settings.swift`.
+- `Sources/CicadaIcon`: renders the icon set. `site/`: the website, built by `scripts/site.py`.
+- The site is Chinese at `/`, English / Japanese / Korean under `/en/` `/ja/` `/ko/`; every `{{t.key}}` comes from `site/i18n/<lang>.json`. `start.html` is the setup page (`download.html` the downloads); its `img/start/` screenshots come from the app in each language. `tools/`: test helpers. `Tests/CicadaTests`: unit tests for the pure parts.
 
 ## Commands
 

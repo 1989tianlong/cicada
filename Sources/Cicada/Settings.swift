@@ -200,7 +200,7 @@ final class AppSettings: ObservableObject {
         // Anyone who had it on before this question existed already knows.
         speakConfirmed = defaults.object(forKey: "speakConfirmed") as? Bool ?? defaults.bool(forKey: "speakEnabled")
         speakFrom = defaults.string(forKey: "speakFrom")
-            ?? speakLocale(forLanguage: LiveSubs.myLanguage(systemLanguages: Locale.preferredLanguages))
+            ?? speakLocale(forLanguage: Cicada.myLanguage(systemLanguages: Locale.preferredLanguages))
         speakTo = defaults.string(forKey: "speakTo") ?? "room"
         speakOutput = defaults.string(forKey: "speakOutput") ?? ""
         autoSystemMic = defaults.object(forKey: "autoSystemMic") as? Bool ?? true
@@ -289,13 +289,13 @@ final class AppSettings: ObservableObject {
     /// The reader's own language: the translate-to choice, or with "follow system" the one
     /// `myLanguage(systemLanguages:)` picks. Notes in 我的语言 use it too.
     var myLanguage: String {
-        target == "system" ? LiveSubs.myLanguage(systemLanguages: Locale.preferredLanguages) : target
+        target == "system" ? Cicada.myLanguage(systemLanguages: Locale.preferredLanguages) : target
     }
 
     /// "简体中文 / English": my language, then what it translates into when they speak mine.
     func systemTargetDescription() -> String {
         let prefs = Locale.preferredLanguages
-        let mine = LiveSubs.myLanguage(systemLanguages: prefs)
+        let mine = Cicada.myLanguage(systemLanguages: prefs)
         return [mine, followSystemTarget(source: mine, systemLanguages: prefs)].map(targetName).joined(separator: " / ")
     }
 

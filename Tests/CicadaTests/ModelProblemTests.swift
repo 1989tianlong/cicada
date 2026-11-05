@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct ModelProblemTests {
     private func cause(_ e: Error, online: Bool = true, free: Int64? = 50_000_000_000) -> ModelProblem.Cause {

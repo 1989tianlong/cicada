@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 /// Lines from a recorded Bloomberg interview (session 20261103-000911).
 @Suite struct HeardTextTests {

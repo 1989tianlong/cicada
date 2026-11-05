@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 struct AIProviderTests {
     private func shaped(_ p: AIProvider) -> [String: Any] {

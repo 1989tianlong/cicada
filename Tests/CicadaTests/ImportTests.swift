@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct ImportTests {
     @Test func importableFiles() {

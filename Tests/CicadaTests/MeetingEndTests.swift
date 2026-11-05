@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 @Suite struct MeetingEndTests {
     let t0 = Date(timeIntervalSince1970: 1_000_000)

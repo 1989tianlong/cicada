@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LiveSubs
+@testable import Cicada
 
 /// The diagnostics list: requests grouped by use, service and model; speak-back to the first sound;
 /// partial translations counted in memory.
