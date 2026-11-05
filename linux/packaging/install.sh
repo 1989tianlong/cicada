@@ -29,6 +29,8 @@ if [ -n "$missing" ]; then echo "Cicada needs:$missing  (sudo apt install$missin
 rm -rf "$lib" && mkdir -p "$lib" "$bin" "$share/applications" "$share/icons/hicolor/scalable/apps"
 cp -R "$src/cicada" "$src/lproj" "$src/bin" "$lib/"
 [ -f "$src/sample.wav" ] && cp "$src/sample.wav" "$lib/"
+# 说话人识别: the voiceprint weights and libcicada-voice-<arch>.so (speakers.py looks for them here).
+for d in models lib; do [ -d "$src/$d" ] && cp -R "$src/$d" "$lib/"; done
 cp "$src/cicada.svg" "$lib/"  # the tray and window icon, by path
 cp "$src/VERSION" "$lib/"     # read by cicada/__init__.py
 ln -sf "$lib/bin/cicada" "$bin/cicada"
