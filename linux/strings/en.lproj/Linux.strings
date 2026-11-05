@@ -197,3 +197,9 @@
 "没能自动更新：%@。请在浏览器里打开 %@ 下载" = "Couldn’t update automatically: %@. Open %@ in a browser to download it";
 /* The Mac's 改用%@重新整理 with spaces around the language (notes_window.py); same translations. */
 "改用 %@ 重新整理" = "Rewrite in %@";
+/* 其他（兼容 OpenAI）on the local network and its per-use rows (settings_window.py › _custom_page): the Mac's say "this Mac". */
+"地址要用 https；这台电脑和局域网里的服务可以用 http。" = "The address must use https; services on this computer or your local network can use http.";
+"每样可以接不同的机器；这台电脑和局域网里的服务可以用 http。" = "Each can use a different machine; services on this computer or your local network can use http.";
+"没填，同声传译用不了" = "Not set: no voice for interpreting";
+"填上听的模型" = "Add a listening model";
+"本机和局域网服务可不填" = "Optional on this computer or your local network";

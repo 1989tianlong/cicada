@@ -82,27 +82,79 @@ def named(raw: str) -> Provider:
     return next((p for p in ALL if p.id == raw), LING)
 
 
+def _host(host_or_url: str) -> str:
+    s = (host_or_url or "").strip()
+    if "://" not in s and s.count(":") > 1 and "/" not in s:
+        return s.strip("[]").lower()  # a bare IPv6 address
+    try:
+        host = urllib.parse.urlsplit(s if "://" in s else "http://" + s).hostname
+    except ValueError:
+        host = None
+    return (host or s).strip("[]").lower()
+
+
 def is_local(host_or_url: str) -> bool:
-    u = host_or_url if "://" in host_or_url else "http://" + host_or_url
-    host = urllib.parse.urlsplit(u).hostname or host_or_url
-    return host in ("localhost", "127.0.0.1", "::1")
+    """This computer."""
+    return _host(host_or_url) in ("localhost", "127.0.0.1", "::1")
+
+
+def is_nearby(host_or_url: str) -> bool:
+    """This computer or the local network (AIProvider.isNearby): plain http is allowed and a key
+    isn't needed. Private IPv4 (10/8, 172.16/12, 192.168/16), link-local, Tailscale's 100.64/10,
+    IPv6 unique and link-local addresses, and `.local` names."""
+    h = _host(host_or_url)
+    if is_local(h) or h.endswith(".local"):
+        return True
+    parts = h.split(".")
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        a, b = (int(p) for p in parts[:2])
+        if not all(0 <= int(p) <= 255 for p in parts):
+            return False
+        return a == 10 or (a, b) in ((192, 168), (169, 254)) or (a == 172 and 16 <= b <= 31) or (a == 100 and 64 <= b <= 127)
+    if ":" in h:
+        return h.startswith(("fc", "fd", "fe80"))
+    return False
 
 
 def custom_base(raw: str) -> str | None:
-    """The address as typed, normalized: https, or http only on this computer; ends in "/"."""
+    """The address as typed, normalized: https, or http only on this computer or the local network
+    (Ollama, LM Studio, a GPU box at home or work, a Tailscale address); ends in "/"."""
     s = (raw or "").strip()
     if not s:
         return None
     if "://" not in s:
-        s = ("http://" if is_local(s) else "https://") + s
+        s = ("http://" if is_nearby(s) else "https://") + s
     if not s.endswith("/"):
         s += "/"
-    parts = urllib.parse.urlsplit(s)
-    if not parts.hostname:
+    try:
+        parts = urllib.parse.urlsplit(s)
+        host = parts.hostname
+    except ValueError:
+        return None
+    if not host:
         return None
     if parts.scheme == "https":
         return s
-    return s if parts.scheme == "http" and is_local(parts.hostname) else None
+    return s if parts.scheme == "http" and is_nearby(host) else None
+
+
+def thought(root: dict) -> bool:
+    """The model thought before answering, which makes every translation slow (AIConfig.thought):
+    a `reasoning_content` (or `reasoning`) field, reasoning tokens in the usage, or a `<think>`
+    block in the answer."""
+    choices = arr((root or {}).get("choices"))
+    message = obj((obj(choices[0]) or {}).get("message")) if choices else None
+    message = message or {}
+    for k in ("reasoning_content", "reasoning"):
+        r = message.get(k)
+        if isinstance(r, str) and r.strip():
+            return True
+    details = obj((obj((root or {}).get("usage")) or {}).get("completion_tokens_details")) or {}
+    n = details.get("reasoning_tokens")
+    if isinstance(n, (int, float)) and not isinstance(n, bool) and n > 0:
+        return True
+    content = message.get("content")
+    return isinstance(content, str) and "<think>" in content
 
 
 @dataclass
@@ -116,6 +168,20 @@ class AIConfig:
     voice_base: str | None = None
     custom_voice: str | None = None
     extra: dict = field(default_factory=dict)
+    # Where the hear model is asked: a custom service's own hear address (the text model and an
+    # audio model often run as separate servers). None: the text address; "" (only from
+    # config_from): an address typed that isn't valid.
+    hear_base: str | None = None
+
+    @property
+    def hear_url(self) -> str | None:
+        """The address every hear call (and the check's hear step) goes to."""
+        return self.base if self.hear_base is None else (self.hear_base or None)
+
+    @property
+    def own_hear_address(self) -> bool:
+        """The hear model is at an address of its own, not the text model's."""
+        return self.hear_base is not None and self.hear_base != self.base
 
     @property
     def is_ling(self) -> bool:
@@ -134,14 +200,19 @@ class AIConfig:
             return (CloudVoice(self.custom_voice, ""),) if self.custom_voice else ()
         return self.provider.voices
 
-    def shape(self, body: dict, max_tokens: int) -> None:
-        """Each service turns thinking off its own way (AIConfig.shape on the Mac)."""
+    def shape(self, body: dict, max_tokens: int, template_kwargs: bool = True) -> None:
+        """Each service turns thinking off its own way (AIConfig.shape on the Mac). A custom service
+        gets `chat_template_kwargs` (vLLM, SGLang and llama.cpp pass it to the chat template, which
+        is how Qwen3 turns thinking off); `template_kwargs` False leaves it out for a server that
+        refused it."""
         body["max_tokens"] = max_tokens
         body["temperature"] = 0.2
         if self.is_ling:
             body["thinking"] = {"type": "disabled"}
         elif self.provider.id in ("openrouter", "zenmux"):
             body["reasoning"] = {"enabled": False}
+        elif self.provider.id == "custom" and template_kwargs:
+            body["chat_template_kwargs"] = {"enable_thinking": False}
 
     def audio_part(self, wav: bytes, model: str) -> dict:
         """One WAV in a user message: Ming takes a data URL; the others the standard `input_audio`,
@@ -166,13 +237,16 @@ def config_from(settings) -> AIConfig:
         voice = (voices.get("custom") or "").strip()
         voice_base = custom_base(settings.aiCustomVoiceBase) if settings.aiCustomVoiceBase.strip() else base
         name = settings.aiCustomVoice.strip()
+        # The hear model's own address (empty: the text model's); "" marks one typed that isn't valid.
+        typed = (getattr(settings, "aiCustomHearBase", "") or "").strip()
+        hear_base = (custom_base(typed) or "") if typed else None
         return AIConfig(p, base, (models.get("custom") or "").strip(), (hears.get("custom") or "").strip(),
-                        voice or None, voice_base if voice else None, name or None)
+                        voice or None, voice_base if voice else None, name or None, hear_base=hear_base)
     return AIConfig(p, p.base, models.get(p.id) or p.text_models[0].id, hears.get(p.id) or p.hear_models[0].id,
                     voices.get(p.id) or p.voice_models[0].id, p.base)
 
 
-_NOT_CHAT = re.compile(r"(embed|whisper|tts|transcribe|dall-e|image|moderation|realtime|sora|search|video|seedance|wan\d)")
+_NOT_CHAT = re.compile(r"(embed|whisper|tts|asr|transcribe|dall-e|image|moderation|realtime|sora|search|video|seedance|wan\d)")
 
 
 def catalog(data: str | dict, recommended: list, hears: bool) -> list:

@@ -4,7 +4,8 @@ per connection, one JSON line back. Never in release builds.
 
   state | start | stop | feed <wav> | sample | view notes|subtitles | show records|notes|settings|onboarding
   target <code> | key-reload | windows | select <record id> | append <record id> <n> (a growing meeting)
-  provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; "" back to the recommended)
+  provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; "" back to the recommended) |
+  ai-base text|voice|hear <url> (其他（兼容 OpenAI）'s addresses; "" for voice/hear: the text one)
   speak-enable on|off | speak on|off (同声传译) | quit
   calls <program=name,…>|none|real (meeting apps in a call) | endtimes <silence> <countdown> <grace>|off | endkeep
   notes-tab notes|transcript | notes-search <text> | notes-wide on|off | onboarding-step <n> | settings-scroll <0-1>
@@ -243,6 +244,16 @@ def command(app, line: str) -> dict:
     if cmd == "provider":
         app.set_ai_provider(arg)
         return {"ok": True, "ai": _ai(app)}
+    if cmd == "ai-base":
+        # A custom service's addresses: text, voice or hear ("" for voice and hear: the text one).
+        kind, _, url = arg.partition(" ")
+        field = {"text": "aiCustomBase", "voice": "aiCustomVoiceBase", "hear": "aiCustomHearBase"}.get(kind)
+        if field is None:
+            return {"ok": False, "error": "ai-base text|voice|hear <url>"}
+        setattr(app.settings, field, url.strip())
+        app.settings.save()
+        app.ai_changed()
+        return {"ok": True, "ai": _ai(app)}
     if cmd == "ai-model":
         kind, _, model = arg.partition(" ")
         app.set_ai_model(kind, model.strip())
@@ -368,7 +379,7 @@ def command(app, line: str) -> dict:
 def _ai(app) -> dict:
     """The AI service in use and what its last check found (never the key itself)."""
     c, ling = app.ling.config(), app.ling
-    return {"provider": c.provider.id, "base": c.base, "text": c.text_model, "hear": c.hear_model, "voice": c.voice_model,
+    return {"provider": c.provider.id, "base": c.base, "hearBase": c.hear_url, "text": c.text_model, "hear": c.hear_model, "voice": c.voice_model,
             "state": ling.key_state, "hears": ling.hears, "check": ling.check_result.summary(), "message": ling.message(),
             "proxyLine": ling.check_result.proxy_line(ling.service_name, ling.service_host),
             "keyWorks": app.key_works, "asking": getattr(app, "_asking", None) is not None,

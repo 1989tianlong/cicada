@@ -23,6 +23,9 @@ class AppSettings:
         "aiCustomBase": "",
         "aiCustomVoiceBase": "",
         "aiCustomVoice": "",
+        # The custom service's hear model at an address of its own (the port's, like the Mac's
+        # aiCustomHearBase); empty: the same address as the text model.
+        "aiCustomHearBase": "",
         "view": "notes",             # "notes" (the notes window, default) or "subtitles" (the subtitle bar)
         "showInCapture": False,      # 共享屏幕时让对方看到 (Linux can't hide it; see NotesWindow)
         "onboarded": False,

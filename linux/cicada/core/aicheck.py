@@ -27,6 +27,20 @@ RUNNING, OK, BUSY_STATE, FAIL, SKIPPED, UNTESTED = "running", "ok", "busy", "fai
 # Below this many dollars left, OpenRouter's balance is worth a word.
 LOW_BALANCE = 0.5
 TOP_UP = "https://openrouter.ai/settings/credits"
+# A custom service whose sentence takes this long often misses the 6 s a translation is given and
+# falls back to Google (AICheck.Speed.slowAfter).
+SLOW_AFTER = 3.0
+
+
+@dataclass(frozen=True)
+class Speed:
+    """A custom service: how long one real sentence took, and whether the model thought first."""
+    seconds: float
+    thinks: bool
+
+    @property
+    def slow(self) -> bool:
+        return self.thinks or self.seconds >= SLOW_AFTER
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,8 @@ class AICheck:
         # GNOME's is automatic; ("app", port) a proxy app listens but no proxy is set; ("none",).
         self.proxy: tuple | None = None
         self.balance: float | None = None
+        # A custom service: the real sentence the check translated (Speed).
+        self.translate: Speed | None = None
 
     def copy(self) -> "AICheck":
         return copy.deepcopy(self)
@@ -88,6 +104,11 @@ class AICheck:
         return self.at is not None and self.failure is None and not self.running
 
     @property
+    def slow(self) -> bool:
+        """Text works but every sentence is slow (a thinking model): translations will fall back."""
+        return self.failure is None and self.translate is not None and self.translate.slow
+
+    @property
     def low_balance(self) -> bool:
         return self.balance is not None and self.balance < LOW_BALANCE
 
@@ -101,8 +122,10 @@ class AICheck:
 
     @property
     def down(self) -> bool:
-        """Nothing AI works: the service can't be reached, or won't take the key."""
-        return self.reason in (UNREACHABLE, BAD_ADDRESS, INVALID_KEY, MGMT_KEY, NO_CREDIT)
+        """Nothing AI works: the service can't be reached, or won't take the key. A hear model at an
+        address of its own that can't be reached leaves the text model working."""
+        f = self.failure
+        return f is not None and f[0] != "hear" and f[1] in (UNREACHABLE, BAD_ADDRESS, INVALID_KEY, MGMT_KEY, NO_CREDIT)
 
     def fail(self, step: str, reason: str, code: int | None = None, reached: bool = True) -> None:
         """`step` failed and the ones after it were never reached. `reached`: a reply came back, so
@@ -144,7 +167,7 @@ class AICheck:
         reason, code = f[1], f[2]
         return {
             UNREACHABLE: lambda: LF("这台电脑访问不到 %@。", host),
-            BAD_ADDRESS: lambda: L("地址要用 https，只有 localhost 可以用 http。"),
+            BAD_ADDRESS: lambda: L("地址要用 https；这台电脑和局域网里的服务可以用 http。"),
             INVALID_KEY: lambda: LF("%@ 说这个 key 无效，可能没复制全，或已删除。", service),
             MGMT_KEY: lambda: L("这是 ZenMux 的管理 key，不能用来调用模型。请粘贴 sk-payg 开头的 key。"),
             NO_CREDIT: lambda: LF("%@ 账户余额不足。", service),
@@ -154,6 +177,16 @@ class AICheck:
             BUSY: lambda: LF("%@ 现在很忙，key 没问题。开会时会自动重试。", service),
             SERVER_ERROR: lambda: LF("%@ 暂时出错（HTTP %lld），稍后再试。", service, code or 0),
         }[reason]()
+
+    def slow_line(self) -> str | None:
+        """Why translations are slow, and what to do (a custom service). Linux falls back to Google
+        too (Translator.translate, 6 s), so the Mac's words hold."""
+        if not self.slow:
+            return None
+        secs = "%.1f" % self.translate.seconds
+        if self.translate.thinks:
+            return LF("这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒会改用 Google。在服务端关掉思考，或换一个不思考的模型。", secs)
+        return LF("翻一句要 %@ 秒，超过 6 秒会改用 Google。换一个更小的模型会快一些。", secs)
 
     def proxy_line(self, service: str, host: str) -> str | None:
         """Under "can't reach": what this computer's proxy looks like, and what to do."""
@@ -196,6 +229,8 @@ class AICheck:
             out.append("balance=%.2f" % self.balance)
         if self.passive:
             out.append("passive")
+        if self.translate is not None:
+            out.append("translate=%.1fs%s" % (self.translate.seconds, " thinks" if self.translate.thinks else ""))
         return " ".join(out)
 
 

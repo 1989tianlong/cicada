@@ -181,6 +181,12 @@ button.iconbtn.on { background-color: #F3F4F6; color: #15171C; }
 .breathemark { border-radius: 6px; animation: breathe-mark 2.2s ease-out infinite; }
 .breathemark.late { animation-delay: 1.1s; }
 .idledot { background-color: #C9CCD3; border-radius: 4px; min-width: 7px; min-height: 7px; }
+/* The custom service's per-use rows: how each use is doing (AISettings.swift sectionHeader). */
+.statedot { background-color: #C9CCD3; border-radius: 4px; min-width: 8px; min-height: 8px; }
+.statedot.ok { background-color: #1F7A45; }
+.statedot.warn { background-color: #8A5A00; }
+.statedot.error { background-color: #B42318; }
+.statedot.live { background-color: #E8552B; }
 
 .sidebar { background-color: #F3F4F6; border-right: 1px solid #E4E6EA; }
 .sidebar list, .sidebar viewport { background-color: #F3F4F6; }
