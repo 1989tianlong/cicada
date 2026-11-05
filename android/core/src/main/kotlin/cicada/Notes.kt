@@ -290,6 +290,8 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
             for (t in next.topics) {
                 val times = t.points.mapIndexed { i, p -> min(t.pointTime(i), known[p]) }.toMutableList()
                 t.pointTimes = if (times.any { it != null }) times else null
+                // A topic starts no later than its first point (the reply dates it from the lines it cites now).
+                times.filterNotNull().minOrNull()?.let { if (it < t.start) t.start = it }
             }
             val items = HashMap<String, Double>()
             for (i in old.conclusions + old.todos) i.t?.let { items.putIfAbsent(i.text, it) }
