@@ -2,7 +2,7 @@
 # Cuts a release: scripts/release.sh 1.0.1
 # Writes the CHANGELOG.md section from the commits since the last tag, sets VERSION (one version
 # for every platform: Mac, Windows, Android, Linux all build from it), commits, tags v<version> and
-# pushes; the release workflow builds and publishes the DMG with that section as its notes.
+# pushes; the release workflow builds a draft release with that section as its notes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -25,4 +25,4 @@ if [[ "$CURRENT" != "$VERSION" ]]; then
 fi
 git tag -a "v$VERSION" -m "Cicada $VERSION"
 git push origin main "v$VERSION"
-echo "Pushed v$VERSION; follow it at https://github.com/wquguru/cicada/actions/workflows/release.yml"
+echo "Pushed v$VERSION; follow it at https://github.com/wquguru/cicada/actions/workflows/release.yml, then try the draft and scripts/publish-release.sh $VERSION"

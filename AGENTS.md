@@ -40,7 +40,7 @@ scripts/test.sh                        # AGENTS.md check + unit tests
 scripts/build.sh && open build/Cicada.app   # dev build: own bundle id, settings, log
 RELEASE=1 scripts/build.sh             # release build
 scripts/package.sh                     # DMG + zip + checksums
-scripts/release.sh <x.y.z>             # VERSION + CHANGELOG section, tag; CI builds the platforms that changed
+scripts/release.sh <x.y.z>             # VERSION, CHANGELOG, tag; CI drafts what changed; publish-release.sh
 scripts/deploy-site.sh                 # build and deploy the site (cicada.indaloop.app)
 ```
 
