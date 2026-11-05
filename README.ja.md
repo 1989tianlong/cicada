@@ -38,11 +38,11 @@ Cicada は、Zoom、Teams、Feishu の通話から、X スペース、Discord �
 | プラットフォーム | 動作環境 | 備考 |
 |---|---|---|
 | Mac | macOS 14.4 以降、Apple シリコン | すべての機能に対応。音声認識は Mac の中で行い、キーなしでも使えます |
-| Windows | Windows 10 2004 以降、x64 / ARM64 | Ling のキーが必要で、音声認識は Ming が行います。[windows/](windows/README.md) を参照 |
-| Linux | Ubuntu 22.04 / 24.04 デスクトップ | Ling のキーが必要。メモのウィンドウは画面共有に映ります。[linux/](linux/README.md) を参照 |
-| Android | Android 10 以降 | Ling のキーが必要。動画や配信の字幕、対面での通訳。[android/](android/README.md) を参照 |
+| Windows | Windows 10 2004 以降、x64 / ARM64 | Ling のキーが必要（使えない場合は OpenRouter、ZenMux なども可）。[windows/](windows/README.md) を参照 |
+| Linux | Ubuntu 22.04 / 24.04 デスクトップ | Ling かほかの AI サービスのキーが必要。メモのウィンドウは画面共有に映ります。[linux/](linux/README.md) を参照 |
+| Android | Android 10 以降 | Ling かほかの AI サービスのキーが必要。動画や配信の字幕、対面での通訳。[android/](android/README.md) を参照 |
 
-> **AI サービス：** Mac では、メモと自然な音声に OpenRouter（推奨）、Ling、ZenMux、OpenAI が使えます（[設定する](#ling-api-key)）。Windows、Linux、Android 版は Ling の Ming で音声を認識するため、当面は Ling のキーが必要です。Ling に登録できない場合は、どのサービスを使いたいか[教えてください](https://github.com/wquguru/cicada/issues)。
+> **AI サービス：** Mac では、メモと自然な音声に OpenRouter（推奨）、Ling、ZenMux、OpenAI が使えます（[設定する](#ling-api-key)）。Windows、Linux、Android 版でも同じサービスを使えます。こちらでは相手の音声の認識もそのサービスが行うため、字幕は Ling より 1〜2 秒遅れます。
 
 4 つのプラットフォームは同じバージョン番号と同じ会議の記録の形式を共有しています。ダウンロードは[Web サイト](https://cicada.indaloop.app/ja/download/)と [Releases](https://github.com/wquguru/cicada/releases) から。以下の機能の説明は Mac 版のものです。
 
@@ -80,7 +80,7 @@ Cicada は、話されている言語を数秒以内にデバイス上で検出�
 
 Mac では、音声の取得、言語の検出、音声認識（Apple SpeechAnalyzer。macOS 14.4〜15 ではオンデバイスモードの SFSpeechRecognizer）、会議の録音は、すべてパソコンの中にとどまります。デバイスの外に出るデータは、翻訳と議事メモのために送信される認識済みのテキストと、Ling の API キーを使っている場合に話すキーを押しながら話した短い音声クリップだけです。API キーがなくても、字幕、翻訳（Google を使い、macOS 26 では Apple のデバイス上の翻訳にフォールバック）、会議の記録、プッシュトゥトークの通訳はすべて使えます。リアルタイムの議事メモには、OpenRouter（推奨）または Ling（Ant Group のモデルサービス）のあなた自身の AI サービスのキーを使います（[下記](#ling-api-key)を参照）。ワンステップの音声翻訳と声のクローンは Ling のみです。Ling では、リアルタイムのメモ 1 時間あたりの費用は現在の料金で約 ¥0.15〜¥1 で、毎月 ¥10 分のクレジットがもらえるため、約 10〜50 時間分の会議に足ります。
 
-Windows、Linux、Android 版は Ming で音声を認識します。話された内容は短く区切って Ling に送られ、認識と翻訳が一度に行われるため、Ling のキーが必要です。録音と会議の記録は、これらのプラットフォームでもデバイスの中にとどまります。
+Windows、Linux、Android 版はクラウドで音声を認識します。話された内容は短く区切って Ling の Ming（または切り替えた OpenRouter、ZenMux などのサービス）に送られるため、AI サービスのキーが必要です。録音と会議の記録は、これらのプラットフォームでもデバイスの中にとどまります。
 
 このセクションの残りは Mac 版についての説明です。Cicada が権限を求めるのは、それを必要とする機能を使うときだけで、拒否してもそれ以外の機能は引き続き動作します。
 
@@ -120,7 +120,7 @@ Windows、Linux、Android 版は Ming で音声を認識します。話された
 2. Cicada で **設定 › AI サービス** を開き、右上のメニューで **OpenRouter** を選んでキーを貼り付け、**保存して確認** をクリックします（初回起動時のガイドでは **Ling が使えませんか？** をクリックします）。
 3. モデルは品質と価格を考えてあらかじめ選ばれていますが、同じページで自由に変更できます。
 
-ZenMux、OpenAI、または OpenAI 互換の任意のサービス（たとえば Mac 上で動かしているモデル）のアドレスも、同じメニューから同じように使え、ZenMux には Gemini の音声もあります。ライブ議事メモと文の翻訳はどのサービスでも使えます。ワンステップの音声翻訳と声のクローンは Ling のみで、ほかのサービスでは、通訳は Mac 上で認識してから翻訳します。キーはサービスごとに保存されるので、元に戻すときに入力し直す必要はありません。
+ZenMux、OpenAI、または OpenAI 互換の任意のサービス（たとえば Mac 上で動かしているモデル）のアドレスも、同じメニューから同じように使え、ZenMux には Gemini の音声もあります。ライブ議事メモと文の翻訳はどのサービスでも使えます。ワンステップの音声翻訳と声のクローンは Ling のみで、ほかのサービスでは、通訳は Mac 上で認識してから翻訳します。キーはサービスごとに保存されるので、元に戻すときに入力し直す必要はありません。接続できないときや key・モデルに問題があるときは、設定画面がどの段階で止まったかと直し方を順に示します。プロキシがオフなのか、プロキシアプリがシステムプロキシになっていないのか、プロキシがオンでも接続できないのかも区別します（Cicada がプロキシ設定を変えることはありません。[セットアップページ](https://cicada.indaloop.app/ja/start/#proxy)を参照）。OpenRouter では残高が少なくなると事前に知らせます。
 
 **Ling**（Ant Group のモデルサービス）では自分自身の声を含むすべての機能が使え、毎月 ¥10 分のクレジットがもらえます：
 

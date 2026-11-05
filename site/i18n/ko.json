@@ -489,5 +489,19 @@
   "svc_or_btn": "OpenRouter 키 받기",
   "new_tab_or": "(새 탭에서 OpenRouter 열기)",
   "svc_more": "ZenMux, OpenAI 또는 OpenAI 호환 서비스도 됩니다: 설정 › AI 서비스 오른쪽 위에서 전환. 키는 Mac에만 저장됩니다.",
-  "s2_req_alt": "<b>Ling에 가입할 수 없나요?</b> 이 앱은 아직 Ling만 지원합니다. Mac 버전은 OpenRouter로도 쓸 수 있습니다. <a href=\"{{REPO}}/issues\">원하는 서비스를 알려 주세요 →</a>"
+  "s2_req_alt": "<b>Ling에 가입할 수 없나요?</b> OpenRouter, ZenMux 또는 OpenAI 호환 서비스로 바꿀 수 있습니다. 설정 과정에서 “Ling을 사용할 수 없나요?”를 누르거나 설정 › AI 서비스에서 고르세요. 자막은 Ling보다 1~2초 늦습니다.",
+  "proxy_h": "OpenRouter나 ZenMux에 연결되지 않나요?",
+  "proxy_p": "Cicada는 이 기기의 시스템 프록시를 거쳐 이 서비스에 접속하며, 프록시 설정을 직접 바꾸지 않습니다. 연결되지 않으면 설정 화면에 아래 중 어느 경우인지 표시됩니다.",
+  "proxy1_small": "‘프록시가 꺼져 있습니다’가 보이면",
+  "proxy1_h": "프록시가 꺼져 있음",
+  "proxy1_p": "프록시 앱을 열고 ‘시스템 프록시’를 켜세요. Cicada가 자동으로 다시 확인하며, 다시 시작할 필요는 없습니다.",
+  "proxy2_small": "‘프록시 앱이 실행 중’이 보이면",
+  "proxy2_h": "프록시 앱은 실행 중이지만 시스템 프록시가 꺼져 있음",
+  "proxy2_p": "프록시 앱에서 ‘시스템 프록시’나 ‘TUN 모드’를 켜세요. 앱만 실행돼 있으면 Cicada의 요청은 프록시를 거치지 않습니다.",
+  "proxy3_small": "‘프록시가 켜져 있는데도 연결되지 않습니다’가 보이면",
+  "proxy3_h": "프록시를 켜도 연결되지 않음",
+  "proxy3_p": "다른 서버로 바꾸거나, 프록시 앱 규칙에서 openrouter.ai와 zenmux.ai가 프록시를 거치게 하세요.",
+  "proxy4_small": "시스템 프록시 위치",
+  "proxy4_h": "플랫폼별 시스템 프록시",
+  "proxy4_p": "Mac: 시스템 설정 › 네트워크 › 세부사항 › 프록시. Windows: 설정 › 네트워크 및 인터넷 › 프록시. Linux: 설정 › 네트워크 › 네트워크 프록시. Android: Wi‑Fi 세부정보의 프록시."
 }

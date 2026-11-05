@@ -36,9 +36,9 @@
 | 平台 | 系统要求 | 说明 |
 |---|---|---|
 | Mac | macOS 14.4+，Apple 芯片 | 功能最全；本机识别，不填 key 也能用 |
-| Windows | Windows 10 2004+，x64 / ARM64 | 需要 Ling key，识别走 Ming；见 [windows/](windows/README.md) |
-| Linux | Ubuntu 22.04 / 24.04 桌面版 | 需要 Ling key；纪要窗会被屏幕共享看到；见 [linux/](linux/README.md) |
-| Android | Android 10+ | 需要 Ling key；视频与直播字幕、面对面互译；见 [android/](android/README.md) |
+| Windows | Windows 10 2004+，x64 / ARM64 | 需要 Ling key（用不了 Ling 时可换 OpenRouter、ZenMux 等）；见 [windows/](windows/README.md) |
+| Linux | Ubuntu 22.04 / 24.04 桌面版 | 需要 Ling 或其他 AI 服务的 key；纪要窗会被屏幕共享看到；见 [linux/](linux/README.md) |
+| Android | Android 10+ | 需要 Ling 或其他 AI 服务的 key；视频与直播字幕、面对面互译；见 [android/](android/README.md) |
 
 四个平台共用一个版本号和同一种会议记录格式，安装包都在 [官网下载页](https://cicada.indaloop.app/download/) 和 [Releases](https://github.com/wquguru/cicada/releases)。下面的功能说明以 Mac 版为准。
 
@@ -76,7 +76,7 @@
 
 在 Mac 上，声音采集、语言识别、语音识别（Apple SpeechAnalyzer，macOS 14.4–15 上是 SFSpeechRecognizer 的本机模式）和会议录音全部在本机完成。会离开电脑的只有识别出来的文字（发去做翻译和生成纪要），以及填了 Ling API key 并按住说话键用同声传译时你说的那几句语音。不填 API key 时，实时字幕、翻译（走 Google 或退回 Apple 本机翻译，本机翻译只在 macOS 26 上有）、会议记录和同声传译都能正常用。实时纪要、一步语音翻译和声音克隆需要你自己的 Ling（蚂蚁集团的大模型服务）API key（配置方法见[下文](#配置-ling-api-key)），开一小时会大约花 0.15 到 1 元人民币，Ling 每月赠送 10 元额度，约够 10 到 50 小时会议。
 
-Windows、Linux 和 Android 版用 Ming 识别：说话的声音分段发给 Ling 的服务，识别和翻译一次完成，所以必须填 Ling key；录音和会议记录同样只存在本机。
+Windows、Linux 和 Android 版在云端识别：说话的声音分段发给 Ling 的 Ming（或换成的 OpenRouter、ZenMux 等服务），所以必须填一个 AI 服务的 key；录音和会议记录同样只存在本机。
 
 下面说的是 Mac 版。知了只在用到某项功能时才请求对应的权限，拒绝后其他功能照常可用。
 
@@ -114,7 +114,7 @@ Windows、Linux 和 Android 版用 Ming 识别：说话的声音分段发给 Lin
 3. 在知了里打开设置里的 AI 服务，粘贴后点保存并检查，也可以直接粘贴到纪要窗口顶部的提示框里。知了会发一个只用一个 token 的请求确认 key 可用。
 4. 同一页面可以选模型（默认 `Ling-3.1-flash`），每种语言用哪个 Ming 声音在同声传译设置里选。想移除 key，在同一页面点移除即可。
 
-**注册不了 Ling？**可以在“设置 › AI 服务”右上角换成 OpenRouter、ZenMux、OpenAI，或填任何 OpenAI 兼容服务的地址（比如本机跑的模型）。实时纪要和整句翻译都能用，模型已经按效果和价格选好，也可以自己换；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆只有 Ling 有，其他服务下同传先在本机识别再翻译。每个服务的 key 各存一份，切换时不用重填。Windows、Linux、Android 版的识别靠 Ling 的 Ming，暂时只能用 Ling；想用别的服务，欢迎[告诉我们](https://github.com/wquguru/cicada/issues)。
+**注册不了 Ling？**可以在“设置 › AI 服务”右上角换成 OpenRouter、ZenMux、OpenAI，或填任何 OpenAI 兼容服务的地址（比如本机跑的模型）。实时纪要和整句翻译都能用，模型已经按效果和价格选好，也可以自己换；OpenRouter 和 ZenMux 还能用 Gemini 的自然人声做同传。一步语音翻译和声音克隆只有 Ling 有，其他服务下同传先在本机识别再翻译。每个服务的 key 各存一份，切换时不用重填。Windows、Linux、Android 版也能换：在引导里点“用不了 Ling？”或在设置 › AI 服务里选，听对方也交给这家服务，字幕比 Ling 晚 1–2 秒。连不上或 key、模型有问题时，设置里会一步步说清坏在哪、怎么修：是没开代理、代理软件没接管系统代理，还是开了代理也不通（知了不会自己改代理，说明见网站的[设置页](https://cicada.indaloop.app/start/#proxy)）；用 OpenRouter 时余额快用完会提前提醒。
 
 ## 系统要求与安装
 

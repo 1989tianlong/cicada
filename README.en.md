@@ -36,11 +36,11 @@ Cicada works with whatever is playing on your computer, from Zoom, Teams, and Fe
 | Platform | Requirements | Notes |
 |---|---|---|
 | Mac | macOS 14.4+, Apple silicon | The full feature set; recognizes speech on your Mac, works without a key |
-| Windows | Windows 10 2004+, x64 / ARM64 | Needs a Ling key, speech recognized by Ming; see [windows/](windows/README.md) |
-| Linux | Ubuntu 22.04 / 24.04 desktop | Needs a Ling key; the notes window shows in screen sharing; see [linux/](linux/README.md) |
-| Android | Android 10+ | Needs a Ling key; subtitles for videos and streams, face-to-face interpreting; see [android/](android/README.md) |
+| Windows | Windows 10 2004+, x64 / ARM64 | Needs a Ling key, or OpenRouter, ZenMux and others when Ling isn't an option; see [windows/](windows/README.md) |
+| Linux | Ubuntu 22.04 / 24.04 desktop | Needs a key for Ling or another AI service; the notes window shows in screen sharing; see [linux/](linux/README.md) |
+| Android | Android 10+ | Needs a key for Ling or another AI service; subtitles for videos and streams, face-to-face interpreting; see [android/](android/README.md) |
 
-> **AI service:** on the Mac, notes and natural voices work with OpenRouter (recommended), Ling, ZenMux or OpenAI ([set up](#ling-api-key)). The Windows, Linux and Android apps recognize speech with Ling's Ming, so they need a Ling key for now; can't sign up for Ling? [Tell us](https://github.com/wquguru/cicada/issues) which service you'd like.
+> **AI service:** on the Mac, notes and natural voices work with OpenRouter (recommended), Ling, ZenMux or OpenAI ([set up](#ling-api-key)). The Windows, Linux and Android apps work with the same services; there the service also hears the other side, so subtitles run 1–2 seconds behind Ling's.
 
 All four share one version number and one meeting record format; downloads are on [the website](https://cicada.indaloop.app/en/download/) and [Releases](https://github.com/wquguru/cicada/releases). The features below describe the Mac app.
 
@@ -78,7 +78,7 @@ Every session saves its bilingual transcript, notes, and audio recording on your
 
 On the Mac, audio capture, language detection, speech recognition (Apple SpeechAnalyzer; on macOS 14.4–15, SFSpeechRecognizer in on-device mode), and meeting recordings all stay on your computer. The only data that leaves your device is the recognized text sent for translation and meeting notes, plus the short audio clips you speak while holding the talk key when using a Ling API key. Without an API key, subtitles, translation (via Google, with Apple on-device fallback on macOS 26), meeting records, and push-to-talk interpreting all work. Live meeting notes use your own AI service key, OpenRouter (recommended) or Ling (Ant Group's model service); see [below](#ling-api-key). One-step voice translation and voice cloning are Ling only. With Ling, an hour of live notes costs roughly ¥0.15 to ¥1 at current pricing, and Ling gives ¥10 of credit every month, enough for about 10 to 50 hours of meetings.
 
-The Windows, Linux and Android apps recognize speech with Ming: what is said goes to Ling in short pieces, recognized and translated in one step, so they need a Ling key. Recordings and meeting records stay on the device there too.
+The Windows, Linux and Android apps recognize speech in the cloud: what is said goes in short pieces to Ling's Ming (or to OpenRouter, ZenMux or another service you switch to), so they need an AI service key. Recordings and meeting records stay on the device there too.
 
 The rest of this section is about the Mac app. Cicada asks for a permission only when you use the feature that needs it, and everything else keeps working if you decline.
 
@@ -118,7 +118,7 @@ Either service works; pick the one you can sign up for. **OpenRouter** (recommen
 2. In Cicada, open **Settings › AI Service**, pick **OpenRouter** from the menu at the top right, paste the key, and click **Save and check** (in the first-launch guide, click **Can't use Ling?**).
 3. Models are already picked for quality and price; change them on the same page if you like.
 
-ZenMux, OpenAI or the address of any OpenAI-compatible service (a model running on your Mac, for example) work the same way from that menu; ZenMux also has the Gemini voices. Live notes and sentence translation work with all of them. One-step voice translation and voice cloning are Ling only; with other services, interpreting recognizes on your Mac and then translates. Each service keeps its own key, so switching back needs no re-entry.
+ZenMux, OpenAI or the address of any OpenAI-compatible service (a model running on your Mac, for example) work the same way from that menu; ZenMux also has the Gemini voices. Live notes and sentence translation work with all of them. One-step voice translation and voice cloning are Ling only; with other services, interpreting recognizes on your Mac and then translates. Each service keeps its own key, so switching back needs no re-entry. When the service can't be reached, or the key or model has a problem, Settings shows step by step where it broke and how to fix it: no proxy on, a proxy app that isn't the system proxy, or a proxy that still can't connect (Cicada never changes proxy settings itself; see the [setup page](https://cicada.indaloop.app/en/start/#proxy)). With OpenRouter it also warns before the balance runs out.
 
 **Ling** (Ant Group's model service) has every feature, including your own voice, and gives ¥10 of credit every month:
 

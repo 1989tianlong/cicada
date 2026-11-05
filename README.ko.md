@@ -36,11 +36,11 @@ Zoom, Teams, Feishu 회의부터 X Spaces, Discord 스테이지, YouTube 라이�
 | 플랫폼 | 요구 사항 | 비고 |
 |---|---|---|
 | Mac | macOS 14.4+, Apple silicon | 모든 기능 지원. Mac 기기 내 음성 인식, 키 없이도 사용 가능 |
-| Windows | Windows 10 2004+, x64 / ARM64 | Ling 키 필요, Ming으로 음성 인식. [windows/](windows/README.md) 참고 |
-| Linux | Ubuntu 22.04 / 24.04 데스크톱 | Ling 키 필요. 화면 공유 시 회의록 창이 보임. [linux/](linux/README.md) 참고 |
-| Android | Android 10+ | Ling 키 필요. 동영상·라이브 자막, 대면 통역. [android/](android/README.md) 참고 |
+| Windows | Windows 10 2004+, x64 / ARM64 | Ling 키 필요(쓸 수 없으면 OpenRouter, ZenMux 등도 가능). [windows/](windows/README.md) 참고 |
+| Linux | Ubuntu 22.04 / 24.04 데스크톱 | Ling 또는 다른 AI 서비스 키 필요. 화면 공유 시 회의록 창이 보임. [linux/](linux/README.md) 참고 |
+| Android | Android 10+ | Ling 또는 다른 AI 서비스 키 필요. 동영상·라이브 자막, 대면 통역. [android/](android/README.md) 참고 |
 
-> **AI 서비스:** Mac에서는 회의록과 자연스러운 음성에 OpenRouter(추천), Ling, ZenMux, OpenAI를 쓸 수 있습니다([설정 방법](#ling-api-key)). Windows, Linux, Android 버전은 Ling의 Ming으로 음성을 인식하므로 현재 Ling 키가 필요합니다. Ling에 가입할 수 없다면 원하는 서비스를 [알려 주세요](https://github.com/wquguru/cicada/issues).
+> **AI 서비스:** Mac에서는 회의록과 자연스러운 음성에 OpenRouter(추천), Ling, ZenMux, OpenAI를 쓸 수 있습니다([설정 방법](#ling-api-key)). Windows, Linux, Android 버전도 같은 서비스를 쓸 수 있으며, 이때는 상대방 음성 인식도 그 서비스가 맡아 자막이 Ling보다 1~2초 늦습니다.
 
 네 플랫폼 모두 같은 버전 번호와 회의 기록 형식을 공유합니다. 설치 파일은 [웹사이트](https://cicada.indaloop.app/ko/download/)와 [Releases](https://github.com/wquguru/cicada/releases)에서 받을 수 있습니다. 아래 기능 설명은 Mac 앱 기준입니다.
 
@@ -78,7 +78,7 @@ Zoom, Teams, Feishu 회의부터 X Spaces, Discord 스테이지, YouTube 라이�
 
 Mac에서는 오디오 캡처, 언어 감지, 음성 인식(Apple SpeechAnalyzer, macOS 14.4–15에서는 SFSpeechRecognizer 기기 내 모드), 회의 녹음이 모두 컴퓨터 안에서 이루어집니다. 기기 밖으로 나가는 데이터는 번역과 회의록 생성을 위해 전송되는 인식된 텍스트와, Ling API 키를 쓴 채 말하기 키를 누르고 말한 짧은 음성뿐입니다. API 키가 없어도 자막, 번역(Google 번역 사용, macOS 26에서는 실패 시 Apple 기기 내 번역으로 전환), 회의 기록, 동시통역 모두 작동합니다. 실시간 회의록에는 사용자의 AI 서비스 키가 필요합니다. OpenRouter(추천)나 Ling(Ant Group의 모델 서비스)을 쓸 수 있습니다([아래 설명](#ling-api-key) 참고). 원스텝 음성 번역과 목소리 복제는 Ling에서만 지원됩니다. Ling을 쓰면 1시간 회의 기준 현재 요금으로 약 0.15~1위안이 들며, Ling에서 매달 제공하는 무료 크레딧 10위안으로 약 10~50시간 동안 회의할 수 있습니다.
 
-Windows, Linux, Android 버전은 Ming으로 음성을 인식합니다. 말소리를 짧게 나누어 Ling으로 보내 인식과 번역을 한 번에 처리하므로 Ling 키가 꼭 필요합니다. 녹음과 회의 기록은 이 플랫폼들에서도 기기에만 저장됩니다.
+Windows, Linux, Android 버전은 클라우드에서 음성을 인식합니다. 말소리를 짧게 나누어 Ling의 Ming(또는 바꾼 OpenRouter, ZenMux 등의 서비스)으로 보내므로 AI 서비스 키가 꼭 필요합니다. 녹음과 회의 기록은 이 플랫폼들에서도 기기에만 저장됩니다.
 
 아래는 Mac 앱 기준 설명입니다. Cicada는 해당 기능을 실제로 쓸 때만 권한을 요청하며, 거부하더라도 나머지 기능은 그대로 쓸 수 있습니다.
 
@@ -118,7 +118,7 @@ Windows, Linux, Android 버전은 Ming으로 음성을 인식합니다. 말소�
 2. Cicada에서 **설정 › AI 서비스**를 열고 오른쪽 위 메뉴에서 **OpenRouter**를 고른 뒤, 키를 붙여넣고 **저장 및 확인**을 클릭합니다(초기 안내 화면에서는 **Ling을 사용할 수 없나요?** 클릭).
 3. 품질과 가격을 고려한 기본 모델이 이미 선택되어 있으며, 같은 화면에서 원하는 모델로 바꿀 수 있습니다.
 
-같은 메뉴에서 ZenMux, OpenAI 또는 OpenAI 호환 서비스 주소(예: Mac에서 로컬로 실행 중인 모델)도 똑같은 방식으로 쓸 수 있으며, ZenMux 역시 Gemini 음성을 지원합니다. 실시간 회의록과 문장 번역은 모든 서비스에서 작동합니다. 원스텝 음성 번역과 목소리 복제는 Ling 전용이며, 다른 서비스에서는 Mac이 먼저 음성을 인식한 뒤 번역합니다. 서비스마다 키가 따로 저장되므로 다시 입력할 필요 없이 전환할 수 있습니다.
+같은 메뉴에서 ZenMux, OpenAI 또는 OpenAI 호환 서비스 주소(예: Mac에서 로컬로 실행 중인 모델)도 똑같은 방식으로 쓸 수 있으며, ZenMux 역시 Gemini 음성을 지원합니다. 실시간 회의록과 문장 번역은 모든 서비스에서 작동합니다. 원스텝 음성 번역과 목소리 복제는 Ling 전용이며, 다른 서비스에서는 Mac이 먼저 음성을 인식한 뒤 번역합니다. 서비스마다 키가 따로 저장되므로 다시 입력할 필요 없이 전환할 수 있습니다. 서비스에 연결할 수 없거나 키·모델에 문제가 있으면 설정에서 어느 단계가 막혔는지와 해결 방법을 차례로 보여 줍니다. 프록시가 꺼져 있는지, 프록시 앱이 시스템 프록시로 설정되지 않았는지, 프록시를 켜도 연결되지 않는지까지 구분합니다(Cicada는 프록시 설정을 직접 바꾸지 않습니다. [설정 페이지](https://cicada.indaloop.app/ko/start/#proxy) 참고). OpenRouter에서는 잔액이 거의 떨어지기 전에 미리 알려 줍니다.
 
 **Ling**(Ant Group의 모델 서비스)은 내 목소리를 포함한 모든 기능을 쓸 수 있고, 매달 ¥10 크레딧을 제공합니다:
 

@@ -489,5 +489,19 @@
   "svc_or_btn": "Get an OpenRouter key",
   "new_tab_or": "(opens OpenRouter in a new tab)",
   "svc_more": "ZenMux, OpenAI or any OpenAI-compatible service work too: Settings › AI Service, top right. Your key stays on your Mac.",
-  "s2_req_alt": "<b>Can’t sign up for Ling?</b> This app works with Ling only for now; Cicada for Mac also works with OpenRouter. <a href=\"{{REPO}}/issues\">Tell us which service you’d like →</a>"
+  "s2_req_alt": "<b>Can’t sign up for Ling?</b> Use OpenRouter, ZenMux or any OpenAI-compatible service instead: click “Can't use Ling?” during setup, or pick one in Settings › AI Service. Subtitles run 1–2 seconds behind Ling’s.",
+  "proxy_h": "Can't connect to OpenRouter or ZenMux?",
+  "proxy_p": "Cicada reaches these services through your device's system proxy and never changes proxy settings itself. When it can't connect, Settings says which of these it is.",
+  "proxy1_small": "Cicada says “No proxy is on”",
+  "proxy1_h": "No proxy is on",
+  "proxy1_p": "Open your proxy app and turn on its “System Proxy”. Cicada checks again by itself; no restart needed.",
+  "proxy2_small": "Cicada says “A proxy app is running”",
+  "proxy2_h": "The proxy app runs, but not as the system proxy",
+  "proxy2_p": "Turn on “System Proxy” or “TUN mode” in the proxy app. While it only runs without taking over the system proxy, Cicada's requests don't go through it.",
+  "proxy3_small": "Cicada says “A proxy is on but it still can't connect”",
+  "proxy3_h": "A proxy is on, and it still can't connect",
+  "proxy3_p": "Try another server, or set the proxy app's rules so openrouter.ai and zenmux.ai go through the proxy.",
+  "proxy4_small": "Where the system proxy is",
+  "proxy4_h": "System proxy on each platform",
+  "proxy4_p": "Mac: System Settings › Network › Details › Proxies. Windows: Settings › Network & internet › Proxy. Linux: Settings › Network › Network Proxy. Android: Proxy in the Wi‑Fi network's details."
 }

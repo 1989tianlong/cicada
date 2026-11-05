@@ -1,5 +1,60 @@
 [
   {
+    "version": "1.2.0",
+    "date": null,
+    "title": "用不了 Ling 时换一家 AI 服务，出问题时说清怎么修",
+    "summary": "Windows、Linux、Android 版也能用 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务；AI 服务连不上或 key、模型有问题时，知了会说清坏在哪一步、该怎么修。",
+    "image": null,
+    "items": [
+      {
+        "kind": "new",
+        "platforms": [
+          "mac",
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "AI 服务出问题时，设置里会一步步说清坏在哪、怎么修。",
+        "text": "检查分成连上服务、key、纪要和翻译几步（Windows、Linux、Android 还有听对方），坏在哪步停在哪步，配一个修复按钮，比如“换成推荐的模型”。连不上时会说是没开代理、代理软件没接管系统代理，还是开了代理也不通，并链到网站上的说明；知了不会自己改代理。开会时的真实请求会顺带更新结果，网络恢复后自动再查。用 OpenRouter 时，余额快用完会提前提醒。"
+      },
+      {
+        "kind": "new",
+        "platforms": [
+          "windows"
+        ],
+        "title": "Windows 版用不了 Ling 时，可以换成 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务。",
+        "text": "在引导第一步点“用不了 Ling？”或在 设置 › AI 服务 里选；听对方、纪要、翻译和同传声音都走它，没有声音模型时用 Windows 的声音，字幕比 Ling 晚 1–2 秒。"
+      },
+      {
+        "kind": "new",
+        "platforms": [
+          "linux"
+        ],
+        "title": "Linux 版用不了 Ling 时，可以换成 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务。",
+        "text": "在引导第一步点“用不了 Ling？”或在 设置 › AI 服务 里选；听、纪要、翻译和同传声音都能用，推荐模型已经选好，字幕比 Ling 晚 1–2 秒。只有“用你自己的声音”仍需 Ling。"
+      },
+      {
+        "kind": "new",
+        "platforms": [
+          "android"
+        ],
+        "title": "Android 版用不了 Ling 时，可以换成 OpenRouter、ZenMux 或兼容 OpenAI 的自建服务。",
+        "text": "在引导里点“用不了 Ling？”或在 设置 › AI 服务 里选；听对方、实时纪要和翻译都跟着换，面对面时用 Gemini 的声音读给对方，字幕比 Ling 晚 1–2 秒。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac",
+          "windows",
+          "linux",
+          "android"
+        ],
+        "title": "会议结束时 AI 服务暂时太忙，最终纪要会多等一会儿再写，不再直接失败。",
+        "text": "最多再试约一分钟；会中的实时纪要照旧，下一轮自然会补上。"
+      }
+    ]
+  },
+  {
     "version": "1.1.2",
     "date": null,
     "title": "修正字幕里多出来的话",
