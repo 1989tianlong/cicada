@@ -174,7 +174,11 @@ final class AudioRouter: @unchecked Sendable {
                 }
                 for buffer in replay.reversed() { stream.append(buffer) }
                 fed = acc
+                // The ring can replay more than the voice keeps (3 min held for the language against
+                // 90 s): the kept voice is the end of the replay, not its start, or every later line
+                // looks past the end of it and the whole meeting goes without voices.
                 voice = Array(keptVoice.suffix(Int(acc * 16000)))
+                voiceStart = max(0, acc - Double(voice.count) / 16000)
             }
             self.format = format
             self.sink = stream
