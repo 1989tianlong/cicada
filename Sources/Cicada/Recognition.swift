@@ -49,6 +49,9 @@ enum Recognition {
         var end: Double
         /// Mean word confidence (0–1), nil when the recognizer gave none.
         var confidence: Double?
+        /// Heard by the service (`CloudStream`): the language it says was spoken, and its translation.
+        var language: String? = nil
+        var translation: String? = nil
     }
 
     enum ModelStatus { case installed, downloadable, unsupported }

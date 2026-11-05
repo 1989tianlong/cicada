@@ -59,6 +59,10 @@ final class AppModel: ObservableObject {
     @Published var languageAsk: [Lang] = []
     /// The second speech model coming in the background: its name and how far along.
     @Published var modelFetch: ModelFetch?
+    /// 先用○○听: offered, listening, or just handed back to this Mac.
+    @Published var cloud = CloudState()
+    /// 继续等 was chosen: the offer stays away until the next meeting.
+    private var cloudDeclined = false
     @Published var identifyingLanguage = false
     /// 在会议室里开会？ in the panel: the Mac has played nothing for a minute of listening.
     @Published var roomPrompt = false
@@ -280,6 +284,13 @@ final class AppModel: ObservableObject {
 
     func pickLanguage(_ lang: Lang) { listen.pickLanguage(lang) }
     func retryModel() { listen.retryModel() }
+    func startCloud() { listen.startCloud(); refresh() }
+    func stopCloud() { listen.stopCloud(); refresh() }
+    func declineCloud() {
+        debugLog("cloud: offer declined")
+        cloudDeclined = true
+        refresh()
+    }
     func openDictationSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") { NSWorkspace.shared.open(url) }
     }
@@ -312,8 +323,12 @@ final class AppModel: ObservableObject {
         installed = listen.installedLocales
         let ask = listen.asksLanguage ? listen.askChoices : []
         if ask != languageAsk { languageAsk = ask }
-        let fetch = listen.fetchingModel.map { ModelFetch(name: $0.lang.name, fraction: $0.progress.fractionCompleted) }
+        let fetch = listen.downloading.map { ModelFetch(name: $0.lang.name, since: $0.since, background: $0.background) }
         if fetch != modelFetch { modelFetch = fetch }
+        if !listen.isRunning { cloudDeclined = false }
+        let cloudNow = CloudState(service: listen.cloudService, offered: listen.offersCloud && !cloudDeclined,
+                                  listening: listen.cloudListening, back: listen.cloudBack?.name)
+        if cloudNow != cloud { cloud = cloudNow }
         if listen.identifyingLanguage != identifyingLanguage { identifyingLanguage = listen.identifyingLanguage }
         let roomAsk = listen.isRunning && RoomPrompt.shows(silent: listen.macSilent, answered: roomPromptDismissed,
                                                            inCall: listen.macSilent && !(fakeCalls ?? MicUsers.currentCalls()).isEmpty)
@@ -1336,6 +1351,16 @@ final class AppModel: ObservableObject {
             // network:<on|off> pretends the network came or went; network:real follows the real one.
             listen.simulatedOnline = arg == "on" ? true : arg == "off" ? false : nil
         case "modelRetry": listen.retryModel()
+        case "cloud":
+            // cloud:on is a click on 先用○○听, cloud:off on 换回等待, cloud:decline on 继续等.
+            switch arg {
+            case "off": stopCloud()
+            case "decline": declineCloud()
+            case "state":
+                debugLog("cloud state service=\(listen.cloudService ?? "none") offered=\(cloud.offered) listening=\(listen.cloudListening) "
+                         + "downloading=\(listen.downloading.map { "\($0.lang.locale) \(Int(-$0.since.timeIntervalSinceNow)) s" } ?? "none")")
+            default: startCloud()
+            }
         case "pickLanguage":
             if let lang = sourceLanguages.first(where: { $0.locale == arg }) { listen.pickLanguage(lang) }
         case "stop": stop()
@@ -1986,5 +2011,16 @@ struct CicadaMain {
 
 struct ModelFetch: Equatable {
     let name: String
-    let fraction: Double
+    let since: Date
+    /// Fetched so "auto" has a second language to compare (else listening waits for it).
+    let background: Bool
+}
+
+struct CloudState: Equatable {
+    /// The service that can hear the meeting (only Ling today), nil when there is none.
+    var service: String?
+    var offered = false
+    var listening = false
+    /// The service's name, for a few seconds after listening came back to this Mac.
+    var back: String?
 }

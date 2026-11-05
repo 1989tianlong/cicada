@@ -189,6 +189,18 @@ final class TranslationService {
         return nil
     }
 
+    /// 先用○○听: one stretch of the meeting heard by the service's audio model (Ming), its language,
+    /// what was said and its translation in one call. nil for no speech or noise; throws when the
+    /// call failed, so listening can tell a service that is down from a quiet meeting.
+    func hear(wav: Data, seconds: Double, target: String, hint: String?) async throws -> CloudHeard? {
+        guard ling.hearsAudio else { throw LingClient.Failure.noKey }
+        let reply = try await ling.chat(content: CloudHearing.prompt(target: target, hint: hint, names: glossary()),
+                                        instruction: CloudHearing.instruction(target: target), priority: .translate,
+                                        maxTokens: CloudHearing.tokens(seconds: seconds), timeout: 12,
+                                        model: "Ming-3.0-audio-flash", audio: wav, role: "heard-them")
+        return CloudHearing.parse(reply, target: target, hint: hint, seconds: seconds)
+    }
+
     /// `ORIGINAL: …` then `TRANSLATION: …`, both non-empty, and the translation in the target's
     /// script (Chinese/Japanese targets need CJK, others must not be mostly CJK).
     static func parseInterpretation(_ reply: String, target: String) -> (original: String, translation: String)? {
@@ -289,7 +301,7 @@ final class TranslationService {
         }
     }
 
-    static func englishName(_ code: String) -> String {
+    nonisolated static func englishName(_ code: String) -> String {
         switch code {
         case "zh-CN": "Simplified Chinese"
         case "zh-TW": "Traditional Chinese"

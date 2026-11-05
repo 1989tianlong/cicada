@@ -17,3 +17,4 @@ Sources/Cicada/Diagnostics.swift
 Sources/Cicada/RecordList.swift
 Sources/Cicada/Languages.swift
 Sources/Cicada/Recognition.swift
+Sources/Cicada/CloudHearing.swift

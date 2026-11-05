@@ -54,6 +54,45 @@ final class ListenEngine {
     var simulatedOnline: Bool? { didSet { networkChanged() } }
     /// A model that couldn't be had while it was needed, shown in 听不出 with what to do.
     private(set) var modelProblem: ModelProblem?
+    /// Speech models downloading (locale → which and since when), the background fetch and the one
+    /// listening waits for alike: the card says how long it has taken.
+    private var downloads: [String: (lang: Lang, since: Date)] = [:]
+    /// The download the card shows: the one listening waits for, else the background one.
+    var downloading: (lang: Lang, since: Date, background: Bool)? {
+        if let lang = activeLang, recognizer == nil || cloudListening, let d = downloads[lang.locale] {
+            return (d.lang, d.since, fetchingModel?.lang == lang)
+        }
+        guard let d = downloads.values.min(by: { $0.since < $1.since }) else { return nil }
+        return (d.lang, d.since, fetchingModel?.lang == d.lang)
+    }
+
+    /// 先用○○听: the AI service hears the meeting while the model it needs downloads (`CloudStream`).
+    private(set) var cloudListening = false
+    /// What listening was before, restored by 换回等待.
+    private var cloudReplaced: (lang: Lang?, confirmed: Bool)?
+    /// The model being waited for: once it is on the Mac, listening goes back to it.
+    private var cloudAwaiting: Lang?
+    /// The language the service says is spoken.
+    private var cloudLang: Lang?
+    private var cloudFailures = 0
+    /// Back on this Mac after the service listened (its name), shown for a few seconds.
+    private(set) var cloudBack: (name: String, at: Date)?
+    /// The service that can hear audio (only Ling's Ming today); nil when there is none.
+    var cloudService: String? {
+        guard let ling = translator?.ling, ling.hearsAudio else { return nil }
+        return ling.config().provider.name
+    }
+    /// 先用○○听 is offered: a model listening needs has been downloading a while, or couldn't be had.
+    var offersCloud: Bool {
+        guard isRunning, !cloudListening, cloudService != nil else { return false }
+        // Something already shows the meeting in its language: the download only adds a comparison.
+        guard recognizer == nil || !recordable else { return false }
+        if modelProblem != nil { return true }
+        guard let d = downloading else { return false }
+        return Date().timeIntervalSince(d.since) >= Self.cloudOfferAfter
+    }
+    /// The 132 MB English model took 97 s on a fast link: most downloads end before the offer shows.
+    static let cloudOfferAfter = 90.0
     private let pathMonitor = NWPathMonitor()
     private var realOnline = true
     private var online: Bool { simulatedOnline ?? realOnline }
@@ -84,7 +123,7 @@ final class ListenEngine {
     private var unconfirmed: [(seg: Segment, at: Date, duration: Double)] = []
     private var recordable: Bool {
         settings.sourceMode != .auto || languageConfirmed || (ambiguousDetections >= 2 && !mismatch)
-            || legacySingleLanguage
+            || legacySingleLanguage || cloudListening
     }
     /// macOS 14/15 with one Dictation language: nothing to compare it with and none Cicada could
     /// fetch, and every check takes the recognizer from the meeting. It is taken as heard.
@@ -153,6 +192,9 @@ final class ListenEngine {
 
     func languageSummary() -> String {
         let target = targetName(resolvedTarget)
+        if cloudListening, let service = cloudService {
+            return "\(activeLang?.name ?? "…") → \(target) · \(service)"
+        }
         switch settings.sourceMode {
         case .fixed(let lang):
             return "\(lang.name) → \(target)"
@@ -176,6 +218,7 @@ final class ListenEngine {
         if let simulatedModels { installedLocales.formIntersection(simulatedModels) }
         candidates = sourceLanguages.filter { installedLocales.contains($0.locale) }
         debugLog("installed speech models: \(installedLocales.sorted()) candidates=\(candidates.map(\.locale))")
+        if cloudListening { cloudModelArrived() }
         onStateChange?()
         // Also when not listening: at launch the Mac's language and English come in quietly, so
         // the first meeting already has two models to compare.
@@ -194,6 +237,7 @@ final class ListenEngine {
             !installedLocales.contains($0.locale) && !fetchFailed.contains($0.locale) && $0 != busy
         }) else { return }
         fetchingModel = (lang, Progress())
+        downloads[lang.locale] = (lang, Date())
         Task { [weak self] in
             var ok = false
             do {
@@ -214,6 +258,7 @@ final class ListenEngine {
                 if let self, await self.modelFailed(lang, error, picked: false) {
                     // A slot was given back: try again straight away.
                     self.fetchingModel = nil
+                    self.downloads[lang.locale] = nil
                     self.fetchSecondModel()
                     return
                 }
@@ -221,6 +266,7 @@ final class ListenEngine {
             guard let self else { return }
             debugLog("model fetch: \(lang.locale) \(ok ? "ready" : "gave up")")
             self.fetchingModel = nil
+            self.downloads[lang.locale] = nil
             // The new model gets its 20 s to settle the language before 听不出 is offered.
             if self.firstHeardAt != nil { self.firstHeardAt = Date() }
             if ok {
@@ -264,6 +310,8 @@ final class ListenEngine {
         fetchFailed = []
         modelProblem = nil
         mismatch = false
+        resetCloud()
+        cloudBack = nil
         startedAt = Date()
         macSilent = false
         updateHold()
@@ -302,6 +350,8 @@ final class ListenEngine {
         heardSpeech = isRunning && (router.stats().voicedTotal >= 3 || firstHeardAt != nil)
         isRunning = false
         generation += 1
+        resetCloud()
+        cloudBack = nil
         tickTimer?.invalidate()
         tickTimer = nil
         audioTap?.stop()
@@ -474,12 +524,16 @@ final class ListenEngine {
         debugLog("model status for \(lang.locale): \(status)")
         guard status != .unsupported else { throw Recognition.unsupported(lang.locale) }
         if let fail = simulatedModelFailure { throw ModelProblem.simulated(fail) }
+        if downloads[lang.locale] == nil { downloads[lang.locale] = (lang, Date()) }
+        defer { if fetchingModel?.lang != lang { downloads[lang.locale] = nil } }
         try await Recognition.install(lang.locale) { _ in self.setStatus(L("正在下载 \(lang.name) 语音模型…")) }
         simulatedModels?.insert(lang.locale)
         await refreshInstalledLocales()
     }
 
     private func switchTranscriber(to lang: Lang, replaySeconds: Double = 0) async {
+        if cloudListening { debugLog("cloud: off, \(lang.locale) on this Mac") }
+        resetCloud()
         generation += 1
         let gen = generation
         router.detach()
@@ -602,9 +656,14 @@ final class ListenEngine {
             // A "." or "…" from a breath or a click is no sentence: Ling would answer it with a note that
             // there was nothing to translate, and it would sit in the record as a line.
             guard text.contains(where: \.isLetter) else { renderSubtitles(); return }
+            if cloudListening, let code = result.language { cloudHeard(code) }
             let conf = result.confidence ?? 1
-            let provisional = volatileTranslation.isEmpty ? nil : volatileTranslation
-            var seg = Segment(id: nextSegmentID, text: text, sourceCode: activeLang?.code ?? "auto", translation: provisional)
+            // Heard by the service: its translation came with the line. Not when it was asked for the
+            // language the line turned out to be in (the target follows it): that one is translated again.
+            let given = translationOff() || result.translation == text && result.language != resolvedTarget ? nil : result.translation
+            let provisional = given ?? (volatileTranslation.isEmpty ? nil : volatileTranslation)
+            var seg = Segment(id: nextSegmentID, text: text, sourceCode: result.language ?? activeLang?.code ?? "auto",
+                              translation: provisional)
             seg.start = result.start
             seg.end = result.end
             seg.clock = gen
@@ -639,8 +698,14 @@ final class ListenEngine {
                 // Held lines keep their audio only while recent: an undecided language must not pile up minutes of it.
                 if unconfirmed.count > 20 { unconfirmed[unconfirmed.count - 21].seg.voiceSamples = nil }
             }
-            translateSegment(id: seg.id)
-            if settings.sourceMode == .auto, conf < 0.6, text.count >= 4 {
+            if let given {
+                finalTiming[seg.id] = nil
+                contentLog("HEARD [\(seg.sourceCode)→\(resolvedTarget)] \(text) => \(given)")
+                onTranslated?(seg.id, given)
+            } else {
+                translateSegment(id: seg.id)
+            }
+            if settings.sourceMode == .auto, conf < 0.6, text.count >= 4, !cloudListening {
                 needsDetection = true
             }
             checkForeignLetters(text)
@@ -677,7 +742,7 @@ final class ListenEngine {
     /// ends in a run of Latin letters counts: English words mixed into Chinese ("还在做 onboarding
     /// 的 UI") would ask for checks that each risk a wrong switch.
     private func checkForeignLetters(_ text: String) {
-        guard settings.sourceMode == .auto, !needsDetection, let code = activeLang?.code,
+        guard settings.sourceMode == .auto, !needsDetection, !cloudListening, let code = activeLang?.code,
               ["zh", "ja", "ko"].contains(where: { code.hasPrefix($0) }),
               Date().timeIntervalSince(lastForeignCheck) >= 8, HeardText.endsInLatin(text) else { return }
         lastForeignCheck = Date()
@@ -687,7 +752,7 @@ final class ListenEngine {
 
     private func maybeDetectLanguage() {
         // One model can still tell whether the audio is its language, until the language is known.
-        guard isRunning, settings.sourceMode == .auto, !detecting, !legacySingleLanguage,
+        guard isRunning, settings.sourceMode == .auto, !detecting, !legacySingleLanguage, !cloudListening,
               candidates.count >= 2 || (!languageConfirmed && candidates.first == activeLang && activeLang != nil) else { return }
         var stats = router.stats(window: 6)
         if stats.silenceRun >= AudioRouter.gapSeconds { needsDetection = true }
@@ -704,7 +769,7 @@ final class ListenEngine {
 
     /// A model that just arrived checks the speech held back, without waiting for someone to talk again.
     private func detectHeld() {
-        guard isRunning, settings.sourceMode == .auto, !languageConfirmed, !detecting, candidates.count >= 2 else { return }
+        guard isRunning, settings.sourceMode == .auto, !languageConfirmed, !detecting, candidates.count >= 2, !cloudListening else { return }
         let held = router.voicedSnapshot(seconds: 6)
         guard held.seconds >= 2.5 else { return }
         debugLog(String(format: "detect: new model, checking %.1f s of held speech", held.seconds))
@@ -870,7 +935,7 @@ final class ListenEngine {
     /// could settle it (no check running, no model coming). Too quiet for a check, two models that
     /// keep disagreeing, a model that couldn't be fetched: one click ends each.
     var asksLanguage: Bool {
-        guard isRunning, settings.sourceMode == .auto, !languageConfirmed, fetchingModel == nil,
+        guard isRunning, settings.sourceMode == .auto, !languageConfirmed, fetchingModel == nil, !cloudListening,
               !legacySingleLanguage, let firstHeardAt else { return false }
         // Once offered it stays until answered: a check running meanwhile doesn't make it blink.
         if askShown { return true }
@@ -933,6 +998,137 @@ final class ListenEngine {
         }
     }
 
+    // MARK: Listening through the service
+
+    /// 先用○○听: the service hears the meeting until the model being downloaded is on the Mac.
+    func startCloud() {
+        guard isRunning, !cloudListening, cloudService != nil, let translator else { return }
+        let awaiting = downloading?.lang ?? modelProblem?.lang
+        debugLog("cloud: on (\(cloudService ?? "?")), replacing \(recognizer == nil ? "nothing" : activeLang?.locale ?? "?"), awaiting \(awaiting?.locale ?? "none")")
+        // Held lines were a model's guesses at a language it may not know: the held audio goes to the service instead.
+        let replay = languageConfirmed && recognizer != nil ? 0 : 30.0
+        let replaced = (lang: activeLang, confirmed: languageConfirmed)
+        // The analyzer's format keeps the audio held for it replayable.
+        let format = recognizer?.format
+        generation += 1
+        let gen = generation
+        router.detach()
+        resultsTask?.cancel()
+        resultsTask = nil
+        if let old = recognizer {
+            recognizer = nil
+            Task { await old.cancel() }
+        }
+        cloudListening = true
+        cloudReplaced = replaced
+        cloudAwaiting = awaiting
+        cloudLang = nil
+        cloudFailures = 0
+        unconfirmed = []
+        segments.removeAll()
+        volatileText = ""
+        volatileTranslation = ""
+        lastVolatileSent = ""
+        mismatch = false
+        modelProblem = nil
+        let stream = CloudStream(format: format) { [weak self] wav, seconds in
+            guard let self, gen == self.generation else { return nil }
+            do {
+                let heard: CloudHeard?
+                do {
+                    heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
+                } catch LingClient.Failure.rateLimited {
+                    // Ling's ~2 requests a second are shared with notes and translation: one more try.
+                    try await Task.sleep(for: .seconds(1))
+                    heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
+                }
+                self.cloudFailures = 0
+                return heard
+            } catch {
+                guard gen == self.generation, self.cloudListening, !(error is CancellationError) else { return nil }
+                debugLog("cloud: hear failed: \(error)")
+                self.cloudFailures += 1
+                // The service is down or the key stopped working: listening shouldn't go quiet with it.
+                if self.cloudFailures >= 3 { self.stopCloud() }
+                return nil
+            }
+        }
+        router.attach(stream, replaySeconds: replay)
+        recognizer = stream
+        resultsTask = Task { [weak self] in
+            do {
+                for try await piece in stream.results { self?.handle(piece, generation: gen) }
+            } catch {
+                debugLog("cloud: stream ended: \(error)")
+            }
+        }
+        setStatus(L("\(cloudService ?? "AI") 在听"))
+    }
+
+    /// 换回等待 (or the service failing): back to what listened before, the download carrying on.
+    func stopCloud() {
+        guard cloudListening else { return }
+        let back = cloudReplaced
+        let lang = back?.lang ?? activeLang
+        debugLog("cloud: off, back to \(lang?.locale ?? "nothing")")
+        resetCloud()
+        generation += 1
+        languageConfirmed = back?.confirmed ?? false
+        updateHold()
+        onStateChange?()
+        guard let lang else { return }
+        Task { await switchTranscriber(to: lang) }
+    }
+
+    private func resetCloud() {
+        cloudListening = false
+        cloudReplaced = nil
+        cloudAwaiting = nil
+        cloudLang = nil
+        cloudFailures = 0
+    }
+
+    /// The language the meeting has been in, which keeps Ming from flipping on a short stretch.
+    private var cloudHint: String? {
+        if case .fixed(let lang) = settings.sourceMode { return lang.code }
+        return cloudLang?.code ?? (cloudReplaced?.confirmed == true ? cloudReplaced?.lang?.code : nil)
+    }
+
+    /// The service said which language a line was in: it answers what detection would have.
+    private func cloudHeard(_ code: String) {
+        guard let lang = sourceLanguages.first(where: { $0.code == code })
+                ?? sourceLanguages.first(where: { code.hasPrefix("zh") && $0.code.hasPrefix("zh") }) else { return }
+        if cloudLang != lang { debugLog("cloud: heard \(lang.locale)") }
+        cloudLang = lang
+        if settings.sourceMode == .auto, activeLang != lang {
+            activeLang = lang
+            UserDefaults.standard.set(lang.locale, forKey: "lastDetected")
+        }
+    }
+
+    /// A model came in while the service listened: the awaited one goes back to listening on the Mac.
+    private func cloudModelArrived() {
+        guard let awaiting = cloudAwaiting, installedLocales.contains(awaiting.locale) else { return }
+        let want: Lang
+        if case .fixed(let lang) = settings.sourceMode {
+            want = lang
+        } else if let heard = cloudLang, installedLocales.contains(heard.locale) {
+            want = heard
+        } else {
+            want = awaiting
+        }
+        guard installedLocales.contains(want.locale) else { return }
+        debugLog("cloud: \(awaiting.locale) is on the Mac, back to \(want.locale) here")
+        cloudBack = (cloudService ?? "AI", Date())
+        // What the service heard settles the language; without a line from it, detection still decides.
+        let confirmed = cloudLang == want
+        resetCloud()
+        generation += 1
+        languageConfirmed = confirmed
+        updateHold()
+        Task { await switchTranscriber(to: want) }
+    }
+
     // MARK: Translation
 
     private func startTickTimer() {
@@ -956,8 +1152,10 @@ final class ListenEngine {
                 }
                 if self.ticks % 20 == 0 { self.checkDictation() }
                 // The fetch's progress, and 听不出 coming or going, redraw the windows.
+                if let back = self.cloudBack, Date().timeIntervalSince(back.at) > 6 { self.cloudBack = nil }
                 let ask = self.asksLanguage
-                if ask != self.askShown || self.fetchingModel != nil {
+                // The download's time, the offer and the service listening redraw every second too.
+                if ask != self.askShown || !self.downloads.isEmpty || self.cloudListening || self.cloudBack != nil {
                     if ask != self.askShown { debugLog("language ask \(ask ? "shown" : "hidden")") }
                     let flipped = ask != self.askShown
                     self.askShown = ask

@@ -948,7 +948,7 @@ struct MainWindowView: View {
     /// 此刻: the sentence being heard, pinned under the page while the meeting is live.
     @ViewBuilder private var liveNow: some View {
         let src = model.liveSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !src.isEmpty || !model.languageAsk.isEmpty || model.modelFetch != nil {
+        if !src.isEmpty || !model.languageAsk.isEmpty || model.modelFetch != nil || model.cloud.listening || model.cloud.back != nil {
             HStack(alignment: .top, spacing: 14) {
                 HStack(spacing: 6) {
                     BreathingDot(size: 6)
@@ -1302,7 +1302,11 @@ struct LanguageNotice: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        if let problem = model.modelProblem, !model.languageAsk.isEmpty || model.modelBlocked {
+        if let service = model.cloud.back {
+            cloudBackCard(service)
+        } else if model.cloud.listening, let service = model.cloud.service {
+            cloudCard(service)
+        } else if let problem = model.modelProblem, !model.languageAsk.isEmpty || model.modelBlocked {
             problemCard(problem)
         } else if model.languageNotInstalled {
             notInstalledCard
@@ -1325,12 +1329,64 @@ struct LanguageNotice: View {
                 }
             }
         } else if let fetch = model.modelFetch {
+            fetchCard(fetch)
+        }
+    }
+
+    /// macOS reports a speech model's download only as not started or done, so a bar that fills
+    /// would sit at its start: a moving one and the time waited say it is still coming.
+    private func fetchCard(_ fetch: ModelFetch) -> some View {
+        let offer = model.cloud.offered ? model.cloud.service : nil
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                ProgressView(value: max(0.02, fetch.fraction)).progressViewStyle(.linear).tint(Palette.tertiary).frame(width: 96)
-                Text("正在补装 \(fetch.name) 语音模型，装好后自动判断语言").font(.system(size: 12)).foregroundStyle(Palette.secondary)
-                    .lineLimit(1).truncationMode(.tail)
+                ProgressView().progressViewStyle(.linear).controlSize(.small).tint(Palette.tertiary).frame(width: 64)
+                Text(fetch.background ? L("正在补装 \(fetch.name) 语音模型") : L("正在下载 \(fetch.name) 语音模型"))
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+            }
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let waited = Self.minutes(context.date.timeIntervalSince(fetch.since))
+                Text(offer.map { L("已等 \(waited)，比平常慢。可以先交给 \($0) 听：声音会发给 \($0)，整句出字、慢 2–3 秒") }
+                     ?? (fetch.background ? L("约 140 MB · 已等 \(waited) · 装好后自动判断语言") : L("约 140 MB · 已等 \(waited)")))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if let offer {
+                HStack(spacing: 8) {
+                    SoftButton(L("先用 \(offer) 听"), dark: true) { model.startCloud() }
+                    SoftButton(L("继续等")) { model.declineCloud() }
+                }
             }
         }
+    }
+
+    /// The service hears the meeting: lines come whole and a little late, and the audio leaves the Mac.
+    private func cloudCard(_ service: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                if model.modelFetch != nil {
+                    ProgressView().progressViewStyle(.linear).controlSize(.small).tint(Palette.tertiary).frame(width: 64)
+                }
+                Text("\(service) 先听着").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+            }
+            Text(model.modelFetch.map { L("整句出字、慢 2–3 秒，\($0.name) 模型装好后自动换回本机") } ?? L("整句出字、慢 2–3 秒，声音会发给 \(service)"))
+                .font(.system(size: 12)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
+            SoftButton(model.modelFetch != nil ? L("换回等待") : L("换回本机")) { model.stopCloud() }
+        }
+    }
+
+    private func cloudBackCard(_ service: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+                Text("语音模型装好了，已换回本机").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
+            }
+            Text("字幕重新边说边出，声音不再发给 \(service)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    static func minutes(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     /// None of the installed models hear their language: the likely ones not installed come first
@@ -1390,7 +1446,13 @@ struct LanguageNotice: View {
                 case .other, .limit: SoftButton(L("再试一次"), dark: true) { model.retryModel() }
                 case .offline: EmptyView()
                 }
-                if !installed.isEmpty {
+                // Not offline: the service is out of reach then too.
+                if p.cause != .offline, model.running, let service = model.cloud.service {
+                    SoftButton(L("先用 \(service) 听")) { model.startCloud() }
+                }
+            }
+            if !installed.isEmpty {
+                HStack(spacing: 8) {
                     Text("先用已装的：").font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     ForEach(installed, id: \.locale) { lang in
                         SoftButton(lang.name) { model.pickLanguage(lang) }
