@@ -304,3 +304,10 @@
 "插上麦克风后再开始听。" = "Plug in a microphone, then start again.";
 "电脑声音" = "This PC";
 "电脑声音（线上会议、视频）" = "This PC (online meetings, videos)";
+
+/* 听哪里 › 电脑和会议室: the Mac's words name the Mac. */
+"电脑和会议室" = "PC + Room";
+"电脑和会议室 · %@" = "PC + Room · %@";
+"电脑和会议室（线上和桌边的人都听）" = "PC + Room (people online and at the table)";
+"也听电脑" = "Hear the PC too";
+"电脑里放出来的" = "Played on the PC";

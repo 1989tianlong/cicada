@@ -762,6 +762,119 @@ static class Tests
 
     sealed class FakePrint(Func<short[], float[]?> f) : IVoiceprint { public float[]? Embed(short[] s) => f(s); }
 
+    // MARK: 电脑和会议室
+
+    static EchoMatch.Heard H(string t, double s, double e) => new(t, s, e);
+
+    public static void TheRoomsCopyOfARemoteSentenceIsAnEcho()
+    {
+        // EchoMatchTests on the Mac, case for case.
+        List<EchoMatch.Heard> online = [H("Revenue grew by 12%, mostly from the new region.", 10, 14)];
+        Check(EchoMatch.IsEcho(H("revenue grew by 12% mostly from new region", 10.3, 14.2), online), "heard worse, a word lost");
+        Check(!EchoMatch.IsEcho(H("I think we should check the numbers for Europe first", 11, 15), online), "room speech is kept");
+        Check(!EchoMatch.IsEcho(H("我觉得应该先看一下欧洲的情况", 11, 15), online), "room speech in Chinese is kept");
+        Check(EchoMatch.IsEcho(H("这个季度的数据收入增长了百分之十二", 0.8, 4), [H("我们先看一下这个季度的数据。", 0, 2), H("收入增长了百分之十二，主要来自新的市场。", 2.2, 5)]), "cut differently");
+        Check(!EchoMatch.IsEcho(H("can everyone hear me okay", 20, 22), [H("Can everyone hear me okay?", 0, 2)]), "the same words long after");
+        Check(EchoMatch.IsEcho(H("ok", 5.2, 5.6), [H("OK.", 5, 5.5)]) && !EchoMatch.IsEcho(H("no", 5.2, 5.6), [H("OK.", 5, 5.5)]), "short lines only exactly");
+    }
+
+    public static void EchoGateClosesForTheHang()
+    {
+        double now = 100;
+        var g = new EchoGate(() => now);
+        Check(!g.Closed, "open");
+        g.Hold();
+        now = 100.3; Check(g.Closed, "closed just after loud audio");
+        now = 100 + EchoGate.Hang + 0.01; Check(!g.Closed, "open after the hang");
+        var echo = new EchoFilter(g);
+        Check(echo.Quiet(H("x", 104, 105)), "nothing played around a later line");
+        Check(!echo.Quiet(H("x", 101, 102)), "the computer played just before");
+        var pump = new Pump();
+        var room = new GatedSource(pump) { Silenced = () => g.Closed };
+        short[]? got = null;
+        room.Samples += b => got = b;
+        pump.Push([100, -100]);
+        Check(got is [100, -100], "the room passes while the computer is quiet");
+        g.Hold();
+        pump.Push([100, -100]);
+        Check(got is [0, 0], "silence while the gate is closed");
+        now += 1; room.Muted = true;
+        pump.Push([100, -100]);
+        Check(got is [0, 0], "silence while you hold the talk key");
+    }
+
+    sealed class Pump : IAudioSource
+    {
+        public event Action<short[]>? Samples;
+        public event Action<string?>? Ended { add { } remove { } }
+        public void Push(short[] b) => Samples?.Invoke(b);
+        public void Start() { }
+        public void Stop() { }
+    }
+
+    public static void PlacesShowOnlyWhenBothWereHeard()
+    {
+        TranscriptLine L(string id, string speaker = "them", string? via = null) => new() { Id = id, Speaker = speaker, Via = via };
+        Check(!Places.HeardBoth([L("a"), L("b")]), "the computer alone");
+        Check(!Places.HeardBoth([L("a", via: "room"), L("b", "me")]), "my own lines aren't the computer's");
+        Check(Places.HeardBoth([L("a", via: "room"), L("b")]), "both");
+        var starts = Places.Starts([L("a"), L("b"), L("c", via: "room"), L("d", "me"), L("e", via: "room"), L("f")]);
+        Check(starts.SetEquals(["a", "c", "e", "f"]), "a change of place starts a run: " + string.Join(",", starts));
+        Check(RoomPrompt.AsksOnline(true, false, true) && !RoomPrompt.AsksOnline(true, true, true) && !RoomPrompt.AsksOnline(false, false, true) && !RoomPrompt.AsksOnline(true, false, false), "线上也有人？ once, in a call, in the room");
+    }
+
+    public static async Task TheRoomSideDropsTheSpeakersAndKeepsTheTable()
+    {
+        // The computer plays one sentence; the room mic hears it again from the speakers, then
+        // someone at the table says something else.
+        const string remote = "LANG: en\nORIGINAL: Revenue grew by 12%, mostly from the new region.\nTRANSLATION: 收入增长了 12%，主要来自新区域。";
+        const string table = "LANG: en\nORIGINAL: I think we should check the numbers for Europe first\nTRANSLATION: 我觉得应该先看欧洲的数字";
+        var fake = new Fake(body =>
+        {
+            if (!body.Contains("Ming-3.0-audio-flash")) return Reply("{}");
+            var url = JsonNode.Parse(body)!["messages"]![1]!["content"]![0]!["audio_url"]!["url"]!.GetValue<string>();
+            return Reply(url.Length < 140_000 ? remote : table);
+        });
+        var old = LingClient.Spacing; LingClient.Spacing = 0.05;
+        try
+        {
+            var ling = Client(fake);
+            var store = new SessionStore();
+            var settings = new AppSettings { Target = "zh-CN", SpeakerVoices = false };
+            var notes = new NotesEngine(ling, store);
+            var main = new ListenEngine(ling, new Translator(ling), store, notes, settings);
+            var room = new ListenEngine(ling, new Translator(ling), store, notes, settings, roomSide: true);
+            var echo = new EchoFilter(new EchoGate());
+            main.Echo = echo; room.Echo = echo;
+            string Wave(string name, short[] pcm)
+            {
+                var path = Path.Combine(Path.GetTempPath(), $"cicada-{name}-{Environment.ProcessId}.wav");
+                File.WriteAllBytes(path, Wav.Bytes(pcm));
+                return path;
+            }
+            var computer = new FileAudioSource(Wave("computer", [.. Tone(2), .. Silence(1)]), speed: 0);
+            var mic = new FileAudioSource(Wave("mic", [.. Tone(2, 0.05), .. Silence(1), .. Tone(4, 0.05), .. Silence(1)]), speed: 0);
+            var done = new TaskCompletionSource[] { new(), new() };
+            computer.Ended += _ => done[0].TrySetResult();
+            mic.Ended += _ => done[1].TrySetResult();
+            main.Start(computer);
+            var started = store.Get(main.SessionId!)!.StartedAt;
+            room.Join(mic, main.SessionId!, started);
+            await Task.WhenAll(done[0].Task, done[1].Task);
+            await Task.Delay(TimeSpan.FromSeconds(EchoMatch.Hold + 1.5));
+            await room.Stop();
+            await main.Stop();
+            var s = store.Get(main.SessionId!)!;
+            var theirs = s.Lines.Where(l => l.Via == "room").ToList();
+            Equal(1, s.Lines.Count(l => l.Via is null), "the computer's line");
+            Equal(1, theirs.Count, "the speakers' copy dropped, the table kept: " + string.Join(" | ", s.Lines.Select(l => $"{l.Via}:{l.Src}")));
+            Check(theirs[0].Src.Contains("Europe") && theirs[0].Id.StartsWith("h1000001-100000"), "the table's line, in the room's ids: " + theirs[0].Id);
+            Equal(true, s.Room, "a room meeting");
+            Check(Places.HeardBoth(s.Lines), "heard both");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
     public static async Task NeverJoinsTwoVoices()
     {
         // Two halves of one "sentence" (no full stop, 0.4 s apart) in two different voices.

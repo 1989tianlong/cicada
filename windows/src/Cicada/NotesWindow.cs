@@ -128,7 +128,13 @@ sealed class NotesWindow : Window
     {
         if (!app.Listen.Listening) return new Border();
         if (app.ConfirmingEnd) return ConfirmEnd();
-        if (app.Ending is not { } p) return new Border();
+        if (app.Ending is not { } p)
+        {
+            if (app.OnlinePrompt is not { } meetingApp) return new Border();
+            var strip = TrayFlyout.OnlineStrip(app, meetingApp);
+            strip.Margin = new Thickness(12, 0, 12, 8);
+            return strip;
+        }
         Detach(endingDetail);
         var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.KeepRecording, Ui.Kind.Primary, height: 32),
                              Ui.Button(L("现在结束"), () => _ = app.StopListening(), height: 32));
@@ -174,7 +180,7 @@ sealed class NotesWindow : Window
         if (key != headerKey) { headerKey = key; header.Content = Header(); }
         Tick();
         if (Subtitles) { live.Content = SubtitleLine(); return; }
-        var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : null;
+        var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : app.OnlinePrompt is { } o ? "online " + o : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
         var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Ling.Health.Proxy}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
@@ -401,44 +407,62 @@ sealed class NotesWindow : Window
         var body = new StackPanel();
         // Stored as they arrive (the notes count them); shown in time order, so a sentence I said
         // sits between the other side's, which come back from Ming a little later.
-        foreach (var (l, who, ink) in Speakers(lines, app.Settings.SpeakerVoices)) body.Children.Add(TranscriptRow(l, who, ink));
+        foreach (var (l, who, ink, place) in Speakers(lines, app.Settings.SpeakerVoices)) body.Children.Add(TranscriptRow(l, who, ink, place));
         return body;
     }
 
     /// Lines in time order with who said them, named only where the speaker changes (as chat apps
-    /// do): 你 for what I said into the meeting, 说话人 N once voices are told apart.
-    internal static IEnumerable<(TranscriptLine line, string? who, Brush? ink)> Speakers(IReadOnlyList<TranscriptLine> lines, bool voices)
+    /// do): 你 for what I said into the meeting, 说话人 N once voices are told apart. A meeting that
+    /// heard the PC and the room says 现场 / 线上 where that changes too (`place`).
+    internal static IEnumerable<(TranscriptLine line, string? who, Brush? ink, bool place)> Speakers(IReadOnlyList<TranscriptLine> lines, bool voices)
     {
         var numbers = voices ? SpeakerLabels.Numbers(lines) : [];
+        var both = Places.HeardBoth(lines);
         string? last = null;
         foreach (var l in lines.OrderBy(x => x.T))
         {
-            var key = l.Speaker == "me" ? "me" : numbers.TryGetValue(l.Id, out var n) ? $"n{n}" : "them";
+            var key = l.Speaker == "me" ? "me" : (numbers.TryGetValue(l.Id, out var n) ? $"n{n}" : "them") + (both ? "|" + l.Via : "");
             string? who = null; Brush? ink = null;
+            var place = false;
             if (key != last)
             {
+                place = both && l.Speaker != "me";
                 if (key == "me") { who = L("你"); ink = Palette.AccentText; }
                 else if (numbers.TryGetValue(l.Id, out var m)) { who = LF("说话人 %lld", m); ink = Palette.Speaker(m); }
-                else if (numbers.Count > 0) { who = L("未识别"); ink = Palette.Tertiary; }
+                else if (numbers.Count > 0 && l.Via != "room") { who = L("未识别"); ink = Palette.Tertiary; }  // the room side tells no voices apart
             }
             last = key;
-            yield return (l, who, ink);
+            yield return (l, who, ink, place);
         }
     }
 
     /// One line of the transcript as on the Mac: who (in their colour) and when, the original in
     /// grey, the translation in ink.
-    internal static FrameworkElement TranscriptRow(TranscriptLine l, string? who = null, Brush? ink = null)
+    internal static FrameworkElement TranscriptRow(TranscriptLine l, string? who = null, Brush? ink = null, bool place = false)
     {
-        var text = new StackPanel { Margin = new Thickness(0, who is null ? 0 : 6, 0, 12) };
+        var text = new StackPanel { Margin = new Thickness(0, who is null && !place ? 0 : 6, 0, 12) };
         var head = Ui.Row(8, Ui.Text(Languages.Clock(l.T), 12, Palette.Tertiary, wrap: false));
+        if (place) head.Children.Insert(0, PlaceTag(l));
         if (who is not null) head.Children.Insert(0, Ui.Text(who, 12, ink ?? Palette.Secondary, wrap: false));
-        if (head.Children.Count > 1) ((FrameworkElement)head.Children[1]).Margin = new Thickness(8, 0, 0, 0);
+        for (int i = 1; i < head.Children.Count; i++) ((FrameworkElement)head.Children[i]).Margin = new Thickness(i == 1 && place && who is not null ? 6 : 8, 0, 0, 0);
         text.Children.Add(head);
         var translated = !string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src;
         text.Children.Add(Gap(Ui.Text(l.Src, translated ? 13 : 15, translated ? Palette.Secondary : Palette.Ink), 3, top: true));
         if (translated) text.Children.Add(Gap(Ui.Text(l.Dst!, 15, Palette.Ink), 2, top: true));
         return text;
+    }
+
+    /// 现场 / 线上 (SpeakerViews.swift › PlaceTag): the room's filled, the PC's outlined.
+    internal static FrameworkElement PlaceTag(TranscriptLine l)
+    {
+        var room = l.Via == "room";
+        return new Border
+        {
+            Background = room ? Palette.Mica : Brushes.Transparent, BorderBrush = room ? Brushes.Transparent : Palette.Line, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 0, 5, 1), VerticalAlignment = VerticalAlignment.Center,
+            Child = Ui.Text(Places.Place(l), 11, Palette.Secondary, wrap: false),
+            ToolTip = room ? L("会议室的麦克风听到的") : L("电脑里放出来的"),
+        };
     }
 
     /// Who can see this window, and when the notes change next.

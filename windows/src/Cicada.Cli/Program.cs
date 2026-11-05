@@ -3,7 +3,8 @@
 //   cicada-cli listen <file.wav> [--target zh-CN] [--speed 1|0] [--notes]
 //       Plays the file into ListenEngine as if the PC were playing it, prints each line as it is
 //       recorded, then the record's folder. --speed 0 feeds it as fast as it can; --notes waits
-//       for the final notes and prints them.
+//       for the final notes and prints them. --room <mic.wav> hears that file as the room mic too
+//       (电脑和会议室: two engines, the echo gate and EchoMatch); --room-only hears it alone (会议室).
 //   cicada-cli check                     the AI service's key check: state, hears, catalog sizes
 //   cicada-cli speak <text> <out.wav>    the service's voice for <text>, as a 24 kHz WAV
 //   cicada-cli segments <file.wav>       where the segmenter cuts (compare with ming_asr.py)
@@ -103,14 +104,16 @@ switch (args_[0])
         var store = new SessionStore();
         var notes = new NotesEngine(ling, store);
         var engine = new ListenEngine(ling, new Translator(ling), store, notes, settings);
+        var roomFile = Opt("--room", "");
+        var roomOnly = args_.Contains("--room-only");
+        var roomEngine = roomFile.Length > 0 && !roomOnly ? new ListenEngine(ling, new Translator(ling), store, notes, settings, roomSide: true) : null;
 
         var printed = new HashSet<string>();
         var shown = new Dictionary<string, string>();
         var started = DateTime.UtcNow;
-        engine.Changed += () =>
+        void show()
         {
-            var s = store.Get(engine.SessionId!);
-            if (s is null) return;
+            if (engine.SessionId is null || store.Get(engine.SessionId) is not { } s) return;
             lock (shown)
             {
                 foreach (var l in s.Lines)
@@ -119,16 +122,32 @@ switch (args_[0])
                     if (shown.TryGetValue(l.Id, out var before) && before == text) continue;
                     var tag = shown.ContainsKey(l.Id) ? "upd" : "new";
                     shown[l.Id] = text;
-                    Console.WriteLine($"[{(DateTime.UtcNow - started).TotalSeconds,5:F1}] {tag} {Languages.Clock(l.T)} {l.SrcLang,-5} {text}");
+                    Console.WriteLine($"[{(DateTime.UtcNow - started).TotalSeconds,5:F1}] {tag} {Languages.Clock(l.T)} {(l.Via == "room" ? "现场" : roomEngine is null ? "" : "线上"),-2} {l.SrcLang,-5} {text}");
                 }
             }
-        };
-        var source = new FileAudioSource(args_[1], double.Parse(Opt("--speed", "1"), System.Globalization.CultureInfo.InvariantCulture));
+        }
+        engine.Changed += show;
+        var speed = double.Parse(Opt("--speed", "1"), System.Globalization.CultureInfo.InvariantCulture);
+        IAudioSource source = new FileAudioSource(roomOnly ? roomFile : args_[1], speed);
+        if (roomOnly) source = new GatedSource(source);
         var ended = new TaskCompletionSource();
         source.Ended += _ => ended.TrySetResult();
-        engine.Start(source);
-        await ended.Task;
-        await Task.Delay(1500);
+        engine.Start(source, room: roomOnly);
+        var roomEnded = Task.CompletedTask;
+        if (roomEngine is not null)
+        {
+            var echo = new EchoFilter(new EchoGate());
+            engine.Echo = echo; roomEngine.Echo = echo;
+            var mic = new GatedSource(new FileAudioSource(roomFile, speed)) { Silenced = () => echo.Gate.Closed };
+            var done = new TaskCompletionSource();
+            mic.Ended += _ => done.TrySetResult();
+            roomEnded = done.Task;
+            roomEngine.Changed += show;
+            roomEngine.Join(mic, engine.SessionId!, store.Get(engine.SessionId!)!.StartedAt);
+        }
+        await Task.WhenAll(ended.Task, roomEnded);
+        await Task.Delay(TimeSpan.FromSeconds(1.5 + (roomEngine is null ? 0 : EchoMatch.Hold)));
+        if (roomEngine is not null) await roomEngine.Stop();
         await engine.Stop();
         var id = engine.SessionId!;
         if (args_.Contains("--notes"))

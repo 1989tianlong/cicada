@@ -17,6 +17,8 @@ static class Records
             ? local.ToString("HH:mm", Culture)
             : local.ToString(L("M月d日"), Culture);
         var parts = new List<string> { day, LF("%@ 分钟", Math.Max(1, (int)Math.Round(s.Duration.TotalMinutes))) };
+        // The Mac marks these with a mic and a display; a word reads the same here.
+        if (Places.HeardBoth(s.Lines)) parts.Add(L("电脑和会议室"));
         if (s.Notes?.Todos.Count is > 0 and var n) parts.Add(LF("待办 %@", n));
         return string.Join(" · ", parts);
     }
@@ -401,7 +403,7 @@ sealed class MainWindow : Window
         var into = s.Lines.Select(l => l.DstLang).FirstOrDefault(x => x is not null);
         var meta = new List<string> { local.ToString(L("M月d日"), Culture) + " " + local.ToString("HH:mm", Culture) };
         meta.Add(live ? L("正在听") : LF("%@ 分钟", Math.Max(1, (int)Math.Round(s.Duration.TotalMinutes))));
-        if (s.Room == true) meta.Add(L("会议室"));
+        if (s.Room == true) meta.Add(Places.HeardBoth(s.Lines) ? L("电脑和会议室") : L("会议室"));
         if (spoken is not null && into is not null) meta.Add($"{Ui.SpokenName(spoken)} → {Ui.TargetName(into)}");
         top.Children.Add(Ui.Text(string.Join(" · ", meta), 13, live ? Palette.AccentText : Palette.Secondary));
 
@@ -560,9 +562,9 @@ sealed class MainWindow : Window
         FrameworkElement? target = null;
         // The line nearest the topic's time (older notes may hold a time no line has).
         var nearest = jumpTo is { } t0 && s.Lines.Count > 0 ? s.Lines.MinBy(l => Math.Abs(l.T - t0)) : null;
-        foreach (var (l, who, ink) in NotesWindow.Speakers(s.Lines, app.Settings.SpeakerVoices))
+        foreach (var (l, who, ink, place) in NotesWindow.Speakers(s.Lines, app.Settings.SpeakerVoices))
         {
-            var line = NotesWindow.TranscriptRow(l, who, ink);
+            var line = NotesWindow.TranscriptRow(l, who, ink, place);
             if (ReferenceEquals(l, nearest)) target = line;
             body.Children.Add(line);
         }

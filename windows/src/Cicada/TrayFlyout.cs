@@ -155,8 +155,20 @@ sealed class TrayFlyout : Window
         var target = s.Target == "system" ? spoken ?? "zh-Hans" : s.Target;
         stack.Children.Add(Gap(ChoiceRow(L("翻译成"), Ui.TargetName(target), s.Target == "system" ? L("跟随系统") : null, Ui.TargetOptions(), s.Target, app.SetTarget), 12));
         // 听哪里 (the Mac panel's row): changing it mid-meeting carries the same meeting on.
-        var sources = new[] { (ListenSource.System, L("电脑声音（线上会议、视频）")), (ListenSource.Room, L("会议室（用麦克风听桌边的人）")) };
+        var sources = new[] { (ListenSource.System, L("电脑声音（线上会议、视频）")), (ListenSource.Room, L("会议室（用麦克风听桌边的人）")), (ListenSource.Both, L("电脑和会议室（线上和桌边的人都听）")) };
         stack.Children.Add(Gap(ChoiceRow(L("听哪里"), SourceName(s.Listens), null, sources, s.Listens, app.SetListenSource), 8));
+        if (app.HybridNote is { } note) stack.Children.Add(Gap(Ui.Text(note, 12, Palette.Secondary), 6));
+        if (app.OnlinePrompt is { } meetingApp) stack.Children.Add(Gap(OnlineStrip(app, meetingApp, Hide), 10));
+        if (app.HybridMicDenied)
+        {
+            var text = Ui.Stack(2, Ui.Text(L("听会议室要先允许麦克风"), 13, Palette.AccentText, Palette.Strong), Ui.Text(L("电脑声音照常在记"), 11, Palette.Secondary));
+            var open = Ui.Button(L("去设置"), () => Do(() => Controller.Open("ms-settings:privacy-microphone")), Ui.Kind.Primary, height: 30);
+            open.VerticalAlignment = VerticalAlignment.Center; open.Margin = new Thickness(10, 0, 0, 0);
+            var dock = new DockPanel();
+            DockPanel.SetDock(open, Dock.Right);
+            dock.Children.Add(open); dock.Children.Add(text);
+            stack.Children.Add(new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 10, 0, 0), Child = dock });
+        }
 
         // 同声传译
         stack.Children.Add(Rule());
@@ -190,6 +202,17 @@ sealed class TrayFlyout : Window
         foot.Children.Add(records); foot.Children.Add(quit);
         stack.Children.Add(foot);
         return stack;
+    }
+
+    /// 线上也有人？ / Zoom 正在通话 / 也听电脑 · 不用 (the Mac panel's strip), here and in the notes window.
+    public static FrameworkElement OnlineStrip(Controller app, string meetingApp, Action? after = null)
+    {
+        var stack = Ui.Stack(3, Ui.Text(L("线上也有人？"), 14, Palette.Ink, FontWeights.Bold), Ui.Text(LF("%@ 正在通话", meetingApp), 12, Palette.Secondary));
+        var buttons = Ui.Row(8, Ui.Button(L("也听电脑"), () => { after?.Invoke(); app.AnswerOnlinePrompt(true); }, Ui.Kind.Primary, height: 32),
+                             Ui.Button(L("不用"), () => { after?.Invoke(); app.AnswerOnlinePrompt(false); }, height: 32));
+        buttons.Margin = new Thickness(0, 10, 0, 0);
+        stack.Children.Add(buttons);
+        return new Border { Background = Palette.AccentPale, CornerRadius = new CornerRadius(12), Padding = new Thickness(14), Child = stack };
     }
 
     public static string SourceName(string source) => source switch

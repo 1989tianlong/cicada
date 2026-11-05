@@ -92,21 +92,65 @@ public sealed class ListenEngine
     /// 会议室: what listening hears is a microphone (its speech line follows the room's noise).
     public bool Room { get; private set; }
 
+    /// 电脑和会议室's room side (the Mac's `.room` role): it adds to the main engine's meeting rather
+    /// than keeping one, with its own language and pauses; its lines say `via: "room"` and their ids
+    /// start at RoomIDs, so the two never share one.
+    public bool RoomSide { get; }
+    public const int RoomIDs = 1_000_000;
+    /// 电脑和会议室: the main side holds the gate on loud audio and lists what it heard; the room
+    /// side checks its lines against that before recording them.
+    public EchoFilter? Echo { get; set; }
+    /// Seconds from the meeting's start to this side's first sample (the room side joins later).
+    double offset;
+    Channel<(Segment seg, Heard heard, double at, double queued)>? held;
+    Task? holding;
+    CancellationTokenSource? flush;
+    readonly Dictionary<int, double> emitted = [];
+
+    public ListenEngine(LingClient ling, Translator translator, SessionStore store, NotesEngine notes, AppSettings settings, bool roomSide)
+        : this(ling, translator, store, notes, settings) { RoomSide = roomSide; }
+
     public void Start(IAudioSource from, bool room = false)
     {
-        if (Listening) return;
+        if (Listening || RoomSide) return;
         var session = store.Begin();
         SessionId = session.Id;
         Room = room;
         if (room) store.MarkRoom(session.Id);
-        lock (gate)
-        {
-            done.Clear(); segments.Clear(); inFlight.Clear(); prints.Clear(); clusterer = new();
-            nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0;
-            hint = null; candidate = null; candidateVotes = 0; Problem = null;
-        }
+        Begin(from, room, 0);
         notes.Language = () => Languages.EnglishName(settings.NotesCode);
         notes.Begin(session.Id);
+        Log.Debug($"listen: started {session.Id} target={Target}");
+        Changed?.Invoke();
+    }
+
+    /// The room side joins the meeting `sessionId`, which began at `startedAt`.
+    public void Join(IAudioSource mic, string sessionId, DateTimeOffset startedAt)
+    {
+        if (Listening || !RoomSide) return;
+        SessionId = sessionId;
+        Room = true;
+        store.MarkRoom(sessionId);
+        Begin(mic, true, Math.Max(0, (DateTimeOffset.Now - startedAt).TotalSeconds));
+        if (Echo is { } echo)
+        {
+            held = Channel.CreateUnbounded<(Segment, Heard, double, double)>(new UnboundedChannelOptions { SingleReader = true });
+            flush = new CancellationTokenSource();
+            holding = Hold(held.Reader, echo, flush.Token);
+        }
+        Log.Debug($"listen: room side joined {sessionId} at {offset:F1}s");
+        Changed?.Invoke();
+    }
+
+    void Begin(IAudioSource from, bool room, double at)
+    {
+        lock (gate)
+        {
+            done.Clear(); segments.Clear(); inFlight.Clear(); prints.Clear(); clusterer = new(); emitted.Clear();
+            nextToDeliver = 1; lineCount = RoomSide ? RoomIDs : 0; last = null; lastEnd = 0;
+            hint = null; candidate = null; candidateVotes = 0; Problem = null;
+        }
+        offset = at;
         segmenter = new Segmenter(room ? new VoiceGate() : null);
         segmenter.Emitted += Send;
         audio = Channel.CreateUnbounded<short[]>(new UnboundedChannelOptions { SingleReader = true });
@@ -116,8 +160,10 @@ public sealed class ListenEngine
         {
             await foreach (var buf in reader.ReadAllAsync())
             {
-                segmenter.Feed(buf);
                 Level = Rms(buf);
+                // The computer is playing speech: the room mic would hear it from the speakers.
+                if (!RoomSide && Echo is { } echo && Level >= Segmenter.Threshold) echo.Gate.Hold();
+                segmenter.Feed(buf);
             }
             segmenter.Flush();
         });
@@ -125,8 +171,25 @@ public sealed class ListenEngine
         source.Samples += OnSamples;
         source.Start();
         Listening = true;
-        Log.Debug($"listen: started {session.Id} target={Target}");
-        Changed?.Invoke();
+    }
+
+    /// The room side's lines wait a moment for the computer's line they may echo (EchoMatch.Hold),
+    /// in order; one around which the computer played nothing goes straight in. Stopping records
+    /// what still waits without the wait: it was said.
+    async Task Hold(ChannelReader<(Segment seg, Heard heard, double at, double queued)> reader, EchoFilter echo, CancellationToken stopping)
+    {
+        await foreach (var (seg, heard, at, queued) in reader.ReadAllAsync())
+        {
+            var h = new EchoMatch.Heard(heard.Original, at - seg.Seconds, at);
+            if (!echo.Quiet(h))
+            {
+                var wait = queued + EchoMatch.Hold - echo.Gate.Clock();
+                if (wait > 0) try { await Task.Delay(TimeSpan.FromSeconds(wait), stopping); } catch (OperationCanceledException) { }
+            }
+            if (echo.IsEcho(h)) { Log.Debug($"listen: room line dropped as an echo ({heard.Original.Length} chars)"); continue; }
+            Record(seg, heard);
+            Changed?.Invoke();
+        }
     }
 
     void OnSamples(short[] buf) => audio?.Writer.TryWrite(buf);
@@ -169,6 +232,17 @@ public sealed class ListenEngine
         lock (gate) waiting = inFlight.ToArray();
         await Task.WhenAny(Task.WhenAll(waiting), Task.Delay(15_000));
         var id = SessionId!;
+        if (RoomSide)
+        {
+            // The meeting is the main side's to end; lines still waiting for their echo check go in.
+            held?.Writer.TryComplete();
+            flush?.Cancel();
+            if (holding is not null) await holding;
+            held = null; holding = null;
+            Log.Debug($"listen: room side stopped, {lineCount - RoomIDs} lines");
+            Changed?.Invoke();
+            return;
+        }
         store.End(id, endedAt);
         Log.Debug($"listen: stopped {id}, {lineCount} lines");
         Changed?.Invoke();
@@ -182,6 +256,7 @@ public sealed class ListenEngine
         lock (gate)
         {
             segments[seg.Index] = seg; lang = hint;
+            if (Echo is { } echo) emitted[seg.Index] = echo.Gate.Clock();
             if (settings.SpeakerVoices && Voiceprint is { } vp) prints[seg.Index] = Task.Run(() => vp.Embed(seg.Samples));
         }
         Changed?.Invoke();
@@ -220,14 +295,31 @@ public sealed class ListenEngine
                 nextToDeliver++;
             }
         }
-        foreach (var (seg, heard) in ready) if (heard is not null) Record(seg, heard);
+        foreach (var (seg, heard) in ready)
+        {
+            if (heard is null) continue;
+            if (RoomSide && held is { } h && Echo is { } echo) h.Writer.TryWrite((seg, heard, EmittedAt(seg), echo.Gate.Clock()));
+            else Record(seg, heard);
+        }
         if (ready.Count > 0) Changed?.Invoke();
+    }
+
+    /// When the segmenter let go of `seg` (just after its last word), on EchoGate's clock.
+    double EmittedAt(Segment seg)
+    {
+        lock (gate) return emitted.Remove(seg.Index, out var at) ? at : Echo?.Gate.Clock() ?? 0;
     }
 
     void Record(Segment seg, Heard heard)
     {
         var id = SessionId!;
         var target = Target;
+        // 电脑和会议室: what the computer said, for the room side to tell its copy of it.
+        if (!RoomSide && Echo is { } echo)
+        {
+            var at = EmittedAt(seg);
+            echo.Online(new EchoMatch.Heard(heard.Original, at - seg.Seconds, at));
+        }
         // The meeting's language moves only after two segments agree, so one misheard stretch
         // doesn't flip the hint (the Mac waits for confidence the same way).
         lock (gate)
@@ -267,8 +359,9 @@ public sealed class ListenEngine
             {
                 line = new TranscriptLine
                 {
-                    Id = $"h{++lineCount}-{seg.Index}", T = seg.Start, Speaker = "them",
+                    Id = $"h{++lineCount}-{(RoomSide ? RoomIDs : 0) + seg.Index}", T = Math.Round(offset + seg.Start, 3), Speaker = "them",
                     Src = heard.Original, Dst = heard.Translation, SrcLang = heard.Lang, DstLang = target, Voice = voice,
+                    Via = RoomSide ? "room" : null,
                 };
                 last = line;
             }

@@ -116,6 +116,9 @@ sealed class Controller
             () => Listen.Listening && Listen.SessionId is { } id && Store.Get(id) is { } s ? (id, s.StartedAt) : null, WindowsVoice);
         Speak.Changed += () => Dispatch.BeginInvoke(() => { speakBar ??= new SpeakBar(this); speakBar.Refresh(); });
         Listen.Voiceprint = new WinVoiceprint();
+        // No voices on the room side: its numbers would collide with the PC's.
+        RoomListen = new ListenEngine(Ling, Translator, Store, Notes, Settings, roomSide: true);
+        RoomListen.Changed += Changed;
         Listen.Changed += Changed;
         Notes.Changed += Changed;
         Store.Changed += _ => Changed();
@@ -340,7 +343,82 @@ sealed class Controller
         Settings.ListenSourceValue = value;
         Settings.Save();
         Log.Debug($"listen source: {value}");
-        if (Listen.Listening && Listen.Room != Settings.ListensToRoom) Listen.SwitchSource(Watch(NewSource()), Settings.ListensToRoom);
+        if (Listen.Listening)
+        {
+            if (!Settings.HearsBoth) _ = StopRoomSide();
+            if (Listen.Room != Settings.ListensToRoom) Listen.SwitchSource(Watch(NewSource()), Settings.ListensToRoom);
+            if (Settings.HearsBoth) StartRoomSide();
+        }
+        Changed();
+    }
+
+    // MARK: 电脑和会议室
+
+    /// The room side of 电脑和会议室: its own engine on the room mic, adding to the same meeting.
+    public readonly ListenEngine RoomListen;
+    /// 线上也有人？: the meeting app in a call while only the room is heard; answered once a meeting.
+    public string? OnlinePrompt { get; private set; }
+    bool onlinePromptAnswered;
+    /// 电脑和会议室 but Windows won't give Cicada the microphone: the PC's side keeps recording.
+    public bool HybridMicDenied { get; private set; }
+
+    /// The grey line under 听哪里 while both are heard: without echo cancellation the room pauses
+    /// while the PC plays speech (HybridNote on the Mac, whose other cases Windows doesn't have).
+    public string? HybridNote => Listen.Listening && RoomListen.Listening ? L("线上有人说话时，先不听会议室") : null;
+
+    void StartRoomSide()
+    {
+        if (RoomListen.Listening || !Listen.Listening || Listen.SessionId is not { } id || Store.Get(id) is not { } session) return;
+        var echo = new EchoFilter(new EchoGate());
+        Listen.Echo = echo;
+        RoomListen.Echo = echo;
+        var mic = RoomSource();
+        mic.Silenced = () => echo.Gate.Closed;
+        roomSources.Add(mic);
+        mic.Ended += reason =>
+        {
+            if (reason is null) return;
+            Log.Debug($"hybrid: room mic ended {reason}");
+            Dispatch.BeginInvoke(() =>
+            {
+                if (reason == "denied")
+                {
+                    HybridMicDenied = true;
+                    Toast(L("听会议室要先允许麦克风"), L("电脑声音照常在记"), () => Open("ms-settings:privacy-microphone"));
+                }
+                else if (reason == "none") Toast(L("没有可用的麦克风"), L("电脑声音照常在记"));
+                _ = StopRoomSide();
+                Changed();
+            });
+        };
+        HybridMicDenied = false;
+        RoomListen.Join(mic, id, session.StartedAt);
+        Log.Debug("hybrid: room side started");
+    }
+
+    async Task StopRoomSide()
+    {
+        Listen.Echo = null;
+        if (!RoomListen.Listening) return;
+        await RoomListen.Stop();
+        Log.Debug("hybrid: room side stopped");
+    }
+
+    /// 也听电脑 / 不用 on 线上也有人？.
+    public void AnswerOnlinePrompt(bool both)
+    {
+        onlinePromptAnswered = true;
+        OnlinePrompt = null;
+        Log.Debug($"hybrid: online prompt answered {(both ? "both" : "no")}");
+        if (both) SetListenSource(ListenSource.Both); else Changed();
+    }
+
+    void UpdateOnlinePrompt(Dictionary<string, string> calls)
+    {
+        var app = RoomPrompt.AsksOnline(Listen.Listening && Settings.ListensToRoom, onlinePromptAnswered, calls.Count > 0) ? calls.Values.First() : null;
+        if (app == OnlinePrompt) return;
+        OnlinePrompt = app;
+        if (app is not null) Log.Debug($"hybrid: online prompt for {app}");
         Changed();
     }
 
@@ -445,6 +523,9 @@ sealed class Controller
         Ending = null;
         endWatch = new MeetingEndWatch(EndConfig(), DateTimeOffset.Now);
         Listen.Start(source, room: source is GatedSource);
+        onlinePromptAnswered = false;
+        OnlinePrompt = null;
+        if (Settings.HearsBoth && source is SystemAudioTap) StartRoomSide();
         ShowNotes();
     }
 
@@ -455,6 +536,9 @@ sealed class Controller
         Ending = null;
         ConfirmingEnd = false;
         AutoEnded = auto;
+        OnlinePrompt = null;
+        HybridMicDenied = false;
+        await StopRoomSide();
         roomSources.Clear();
         await Listen.Stop(endedAt);
         Changed();
@@ -485,9 +569,13 @@ sealed class Controller
         bool live = Listen.Listening && endWatch is not null, after = !Listen.Listening && AutoEnded;
         if (readingCalls || !(live || after) || (!live && !Settings.EndWithApp)) return;
         readingCalls = true;
-        Dictionary<string, string> calls = !Settings.EndWithApp ? new() : FakeCalls ?? await Task.Run(MicReaders.Calls);
+        // 线上也有人？ needs the calls too, whatever 结束会议 says.
+        var asking = live && Settings.ListensToRoom && !onlinePromptAnswered;
+        Dictionary<string, string> found = Settings.EndWithApp || asking ? FakeCalls ?? await Task.Run(MicReaders.Calls) : new();
         readingCalls = false;
+        var calls = Settings.EndWithApp ? found : new();
         var now = DateTimeOffset.Now;
+        UpdateOnlinePrompt(asking ? found : new());
         if (Listen.Listening && endWatch is { } w)
         {
             w.Settings = EndConfig();
@@ -894,7 +982,7 @@ sealed class Controller
 
     public void OpenReleaseNotes() { if (Updates.Available is { } u) Open(u.Page); }
 
-    static void Open(string url)
+    public static void Open(string url)
     {
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
         catch (Exception e) { Log.Debug($"update: open failed {e.GetType().Name}"); }
