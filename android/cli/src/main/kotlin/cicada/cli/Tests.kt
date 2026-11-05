@@ -62,6 +62,7 @@ object Tests {
             "notesPromptIsTheMacs" to ::notesPromptIsTheMacs,
             "loadsTheMacsTranslations" to ::loadsTheMacsTranslations,
             "keyFileIsPrivate" to ::keyFileIsPrivate,
+            "onboardingKeepsAWorkingSavedKey" to ::onboardingKeepsAWorkingSavedKey,
             "lingRequestShape" to ::lingRequestShape,
             "lingDropsHijackedAndRefusedReplies" to ::lingDropsHijacked,
             "lingHeardAudioRidesOutARunOf429s" to ::lingRidesOut429s,
@@ -520,6 +521,15 @@ object Tests {
         equal("x\ny", t["a \"b\""], "escapes")
         equal("%@ min", t["%@ 分钟"], "placeholders kept")
         equal("3 分钟", Strings.LF("%@ 分钟", 3), "LF fills %@")
+    }
+
+    fun onboardingKeepsAWorkingSavedKey() {
+        check(keepsSavedKey("", "sk-saved", KeyState.Ok), "empty field keeps a working key")
+        check(keepsSavedKey("", "sk-saved", KeyState.Unchecked), "empty field keeps a key not checked yet")
+        check(keepsSavedKey("sk-saved", "sk-saved", KeyState.Ok), "the same key again")
+        check(!keepsSavedKey("", "sk-saved", KeyState.Invalid), "an invalid key is not kept")
+        check(!keepsSavedKey("", null, KeyState.None), "no key saved")
+        check(!keepsSavedKey("sk-new", "sk-saved", KeyState.Ok), "a new key is checked")
     }
 
     fun keyFileIsPrivate() {

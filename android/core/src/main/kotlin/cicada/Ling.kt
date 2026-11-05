@@ -83,6 +83,12 @@ enum class Priority { Speak, Translate, Notes }
 
 enum class KeyState { None, Unchecked, Checking, Ok, Invalid, Unreachable }
 
+/// 继续 on the key step with a key already saved (the guide opened again from 设置): an empty field,
+/// or the saved key again, keeps it, unless it was found invalid. Onboarding opens past the key step
+/// on the same condition.
+fun keepsSavedKey(typed: String, saved: String?, state: KeyState) =
+    saved != null && state != KeyState.Invalid && (typed.isEmpty() || typed == saved)
+
 /// `retryAfter`: seconds the service asked us to wait (a 429's Retry-After), when it said.
 class LingException(val kind: Kind, val status: Int = 0, val retryAfter: Double? = null) : Exception(if (kind == Kind.Http) "http$status" else kind.name) {
     enum class Kind { NoKey, InvalidKey, RateLimited, Hijacked, Timeout, Http, Network, Parse }

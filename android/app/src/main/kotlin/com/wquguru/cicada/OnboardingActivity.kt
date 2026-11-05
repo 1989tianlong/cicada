@@ -18,6 +18,7 @@ import cicada.Providers
 import cicada.Strings
 import cicada.Strings.L
 import cicada.Strings.LF
+import cicada.keepsSavedKey
 
 /// First run, three screens, one job each, the main button pinned at the bottom: Ling key → what
 /// Cicada can hear and the permissions for it → try the sample meeting.
@@ -204,6 +205,8 @@ class OnboardingActivity : Activity() {
             other.removeAllViews()
             // Onboarding never blocks: a key that was checked and failed still goes on (the steps say why).
             if (tried && !app.ling.aiCheck.running && (text.isEmpty() || text == app.ling.currentKey())) { checkShown = null; next(); return@submit }
+            // The guide opened again with a working key saved: an empty field keeps it.
+            if (!tried && keepsSavedKey(text, app.ling.currentKey(), app.ling.keyState)) { checkShown = null; next(); return@submit }
             if (AiServiceActivity.keyHint(ui, text, "ling", status, other) { tried = true; checkKey = null; status.text = L("正在检查…") }) {
                 field.background = ui.rounded(Palette.card, 16, Palette.link, 2)
                 return@submit
