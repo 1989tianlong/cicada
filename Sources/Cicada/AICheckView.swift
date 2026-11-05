@@ -86,6 +86,8 @@ struct AICheckSteps: View {
         let recheck = recheckInStep ? [Action(title: L("重新检查")) { Task { await ling.check() } }] : []
         switch f.reason {
         case .unreachable:
+            // A proxy has nothing to do with a server on this Mac or the local network.
+            if AIProvider.isNearby(host) { return recheck }
             return [Action(title: L("怎么设置代理")) { NSWorkspace.shared.open(ProxyProbe.helpURL) }] + recheck
         case .invalidKey, .mgmtKey:
             var a = [Action(title: L("更换 key"), run: changeKey)]

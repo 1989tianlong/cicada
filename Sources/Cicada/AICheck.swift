@@ -228,7 +228,8 @@ struct AICheck: Equatable {
 
     /// The proxy line under "can't reach": what this Mac's proxy looks like, and what to do.
     func proxyLine(service: String, host: String) -> String? {
-        guard failure?.reason == .unreachable, let proxy else { return nil }
+        // A server on this Mac or the local network: a proxy has nothing to do with it.
+        guard failure?.reason == .unreachable, let proxy, !AIProvider.isNearby(host) else { return nil }
         switch proxy {
         case .systemOn: return L("开了代理也连不上：换一个节点，或检查代理软件是否放过 \(host)。")
         // As text: a number would be grouped ("7,890").
