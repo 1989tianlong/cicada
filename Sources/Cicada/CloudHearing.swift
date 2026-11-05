@@ -328,8 +328,13 @@ final class CloudStream: RecognitionStream, @unchecked Sendable {
         continuation.finish()
     }
 
-    /// On `queue`.
+    /// On `queue`. A stretch nobody spoke in (hold music, a ringtone, an alert) isn't sent: Ming
+    /// would write something for it anyway, and a minute on hold is some thirty calls.
     private func send(_ piece: CloudSegmenter.Piece) {
+        if let v = SoundKind.judge(piece.samples), v.speech < SoundKind.speechLine {
+            debugLog(String(format: "hear: not speech, not sent (speech %.2f, music %.2f, %.1f s)", v.speech, v.music, piece.seconds))
+            return
+        }
         issued += 1
         let index = issued
         let wav = CloudHearing.wav(piece.samples)
