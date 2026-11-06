@@ -898,6 +898,10 @@ final class ListenEngine {
 
     private func applyDetection(_ ranked: [LanguageDetector.Candidate]) {
         guard let best = ranked.first else { return }
+        if LanguageDetector.saysNothing(ranked) {
+            if !languageConfirmed || mismatch { needsDetection = true }
+            return
+        }
         if ranked.count == 1 {
             // The right model is ≥0.85 sure; English heard by a French model scored 0.12.
             guard best.lang == activeLang, best.confidence >= 0.6, best.score >= 0.6 else {

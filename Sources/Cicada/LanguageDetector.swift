@@ -36,6 +36,14 @@ enum LanguageDetector {
                          score: score(conf: heard.confidence, chars: heard.letters, text: heard.text, lang: lang))
     }
 
+    /// A clip in which no model wrote more than a short word (the room before anyone speaks, a
+    /// cough, a two-character fragment of a sentence) says nothing about the language. Counted as
+    /// unsure, two of them held a room's lines, and one between two sure answers kept them held:
+    /// a table speaking short Chinese sentences lost a whole meeting that way.
+    static func saysNothing(_ ranked: [Candidate]) -> Bool {
+        ranked.count >= 2 && ranked.allSatisfy { $0.chars <= 3 }
+    }
+
     static func score(conf: Double, chars: Int, text: String, lang: Lang) -> Double {
         guard chars > 0 else { return 0 }
         // Very short output means the model mostly heard noise.

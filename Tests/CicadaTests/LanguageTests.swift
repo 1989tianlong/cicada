@@ -30,6 +30,21 @@ import Testing
         #expect(LanguageDetector.score(conf: 0.9, chars: 3, text: "abc", lang: english) == 0.45)
     }
 
+    @Test func aClipWithNextToNothingWrittenSaysNothing() {
+        let zh = sourceLanguages.first { $0.code == "zh-CN" }!
+        func c(_ lang: Lang, _ chars: Int, _ score: Double) -> LanguageDetector.Candidate {
+            .init(lang: lang, confidence: score, chars: chars, text: "", score: score)
+        }
+        // The room before anyone spoke, and a two-character fragment.
+        #expect(LanguageDetector.saysNothing([c(zh, 3, 0.09), c(english, 0, 0)]))
+        #expect(LanguageDetector.saysNothing([c(zh, 2, 0.26), c(japanese, 0, 0)]))
+        // A short sentence, and Chinese that the English model writes out as words.
+        #expect(!LanguageDetector.saysNothing([c(zh, 7, 0.86), c(english, 0, 0)]))
+        #expect(!LanguageDetector.saysNothing([c(zh, 3, 0.44), c(english, 10, 0.2)]))
+        // One model only: its answer still decides.
+        #expect(!LanguageDetector.saysNothing([c(zh, 2, 0.26)]))
+    }
+
     @Test func cjkModelWritingLatinIsPenalised() {
         let latin = "hello there everyone"
         let native = "こんにちは皆さん"

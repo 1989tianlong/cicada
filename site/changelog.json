@@ -7,6 +7,14 @@
     "image": null,
     "items": [
       {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "打开麦克风后，会议室里的人说的多是短句时，不再整场一句都没记下。",
+        "text": "开头的静音或半句两三个字的片段不再被当成“听不出是什么语言”，桌边的话照常出字幕。"
+      },
+      {
         "kind": "new",
         "platforms": [
           "mac",
