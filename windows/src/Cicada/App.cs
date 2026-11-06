@@ -580,7 +580,18 @@ sealed class Controller
         ShowNotes();
     }
 
-    public async Task StopListening(DateTimeOffset? endedAt = null, bool auto = false)
+    /// The meeting being ended: Quit waits for it, or a meeting ended a moment before quitting
+    /// (its last sentences still out at the AI service) was never closed and came back empty.
+    Task stopping = Task.CompletedTask;
+
+    public Task StopListening(DateTimeOffset? endedAt = null, bool auto = false)
+    {
+        var t = Stopping(endedAt, auto);
+        if (!t.IsCompleted) stopping = t; // a second, empty stop mustn't hide the one still running
+        return t;
+    }
+
+    async Task Stopping(DateTimeOffset? endedAt, bool auto)
     {
         var id = Listen.SessionId;
         endWatch = null;
@@ -1112,6 +1123,7 @@ sealed class Controller
     public async Task Quit()
     {
         if (Listen.Listening) await StopListening();
+        else await stopping;
         Store.Flush();
         hotkey?.Dispose();
         talk?.Dispose();
