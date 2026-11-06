@@ -141,6 +141,7 @@ class Controller:
     def _recorder(self, sid: str):
         """The new meeting's recorder, or None (setting off, or no AAC encoder here)."""
         from . import media
+        media.rescan()  # formats installed since launch record this meeting
         if not self.settings.recordAudio or media.encoder() is None:
             return None
         rec = media.Recorder(self.store.audio_path(sid))
@@ -265,6 +266,8 @@ class Controller:
         self.notes_window.show_all()
 
     def show_records(self) -> None:
+        from . import media
+        media.rescan()  # a recording plays once the formats are installed, no restart
         if self.records_window is None:
             from .records_window import RecordsWindow
             self.records_window = RecordsWindow(self)

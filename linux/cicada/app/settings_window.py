@@ -315,22 +315,32 @@ class SettingsWindow(Gtk.Window):
         return ui.prow(title, box, L("在任何窗口里都能用"))
 
     def _record_row(self) -> Gtk.Widget:
-        """保存会议录音: on by default, as on the Mac; greyed out, saying why, without an AAC encoder."""
+        """保存会议录音: on by default, as on the Mac; greyed out, saying why, without an AAC encoder.
+        Checked again each time Settings shows: the formats may have been installed meanwhile."""
         app = self.app
         sw = Gtk.Switch()
         sw.set_valign(Gtk.Align.CENTER)
-        ok = app.can_record
-        sw.set_active(ok and app.settings.recordAudio)
-        sw.set_sensitive(ok)
+        hint = ui.text("", 11, "tertiary", width_chars=50)
+        state = {"ok": False}
+
+        def check(*_):
+            from . import media
+            media.rescan()
+            ok = state["ok"] = app.can_record
+            sw.set_active(ok and app.settings.recordAudio)
+            sw.set_sensitive(ok)
+            ui.retext(hint, L("只存在这台电脑上") if ok else L("这台电脑缺少 AAC 编码器，装上“第三方媒体格式”后可用"))
 
         def toggled(w, _p):
-            if not ok:
+            if not state["ok"]:
                 return
             app.settings.recordAudio = w.get_active()
             app.settings.save()
             app.settings_changed()
+        check()
         sw.connect("notify::active", toggled)
-        return ui.prow(L("保存会议录音"), sw, L("只存在这台电脑上") if ok else L("这台电脑缺少 AAC 编码器，装上“第三方媒体格式”后可用"))
+        self.connect("show", check)
+        return ui.prow(L("保存会议录音"), sw, subtitle_widget=hint)
 
     def scroll_to_general(self) -> None:
         """Brings 通用 into view (the records window's 保存会议录音 link), once it is laid out."""

@@ -45,6 +45,17 @@ def can_play() -> bool:
     return _has("playbin") and any(_has(d) for d in DECODERS)
 
 
+def rescan() -> None:
+    """Looks again for what was missing: the third-party media formats installed while Cicada runs
+    (Settings says to) work without a restart. GStreamer read its plugin registry once at init; the
+    rescan takes ~0.1 s after a new plugin and nothing when none changed."""
+    if Gst is None or (encoder() is not None and can_play()):
+        return
+    Gst.update_registry()
+    for name in [n for n, found in _found.items() if not found]:
+        del _found[name]
+
+
 def codecs() -> dict:
     """What this computer has (debug, the log)."""
     return {"gst": Gst is not None, "encoder": encoder(), "decoders": [d for d in DECODERS if _has(d)], "play": can_play()}
