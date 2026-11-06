@@ -148,6 +148,9 @@ sealed class Controller
         }
         Log.Debug($"app: launch {(Paths.Dev ? "dev" : "release")} {Environment.OSVersion.Version}");
         SetUpTray();
+        // 保存会议录音: Windows' AAC encoder; a recording the last run didn't close is finished now.
+        Store.Audio = new MediaFoundationAudio();
+        Store.FinishLeftovers();
         hotkey = new Hotkey(() => Dispatch.BeginInvoke(() => _ = ToggleListening()));
         talk = new PushToTalk();
         talk.Pressed += () => Dispatch.BeginInvoke(PressBegan);
@@ -840,6 +843,10 @@ sealed class Controller
 
     public void ShowRecords() => ShowRecords(null);
 
+    /// Debug pipe: a record opened at a tab, and the player in it.
+    public void OpenRecord(string id, string tab) { ShowRecords(id); mainWindow?.Select(id, tab); }
+    public void Play(string arg) => mainWindow?.DebugPlay(arg);
+
     public void ShowRecords(string? id)
     {
         if (mainWindow is null) { mainWindow = new MainWindow(this, id); mainWindow.Closed += (_, _) => { mainWindow = null; WindowClosed(); }; }
@@ -1150,6 +1157,9 @@ sealed class Controller
         ["roomEcho"] = Listen.Echo?.Gate.Echo,
         ["roomMusic"] = Listen.Echo?.Gate.PlayingMusic,
         ["room"] = Listen.Room,
+        ["recordAudio"] = Settings.RecordAudio,
+        ["hasAudio"] = Listen.SessionId is { } aid && Store.Get(aid) is { } a ? a.HasAudio : null,
+        ["player"] = mainWindow?.PlayerState(),
     };
 }
 
@@ -1161,6 +1171,8 @@ sealed class Controller
 ///   updatefeed <url or file> | checkupdate
 ///   calls <program=name,…>|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
 ///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; no id: the recommended)
+///   open <id> [transcript] | play <seconds>|toggle|speed | recordaudio on|off (保存会议录音 and 回放)
+///   aacencode <wav>|<out.aac> | aacrewrap <in.aac>|<out.m4a>[|<seconds>]
 ///   ai-check | ai-check-sim <reason|lowBalance|off> (unreachable, invalidKey, noCredit, noModel, deaf, busy…)
 static class DebugServer
 {
@@ -1258,6 +1270,26 @@ static class DebugServer
             case "speakers": app.Settings.SpeakerVoices = arg == "on"; app.Settings.Save(); app.SettingsChanged(); break;
             case "fakemic": app.SetFakeMic(arg == "off" ? null : arg); break;
             case "record": _ = app.RecordCable(arg); break;
+            // 回放: "open <id> [transcript]", "play <seconds>|toggle|speed", "recordaudio on|off".
+            case "open": { var p = arg.Split(' '); app.OpenRecord(p[0], p.Length > 1 ? p[1] : "notes"); break; }
+            case "play": app.Play(arg); break;
+            case "recordaudio": app.Settings.RecordAudio = arg == "on"; app.Settings.Save(); app.SettingsChanged(); break;
+            // 保存会议录音 on its own: "aacencode <wav>|<out.aac>", "aacrewrap <in.aac>|<out.m4a>[|<seconds>]".
+            case "aacencode":
+                {
+                    var p = arg.Split('|');
+                    var w = app.Store.Audio?.Open(p[1]);
+                    if (w is null) return new JsonObject { ["error"] = "no encoder" };
+                    var pcm = Wav.Read(p[0]);
+                    for (int i = 0; i < pcm.Length; i += 1600) w.Write(pcm.AsSpan(i, Math.Min(1600, pcm.Length - i)));
+                    w.Close();
+                    return new JsonObject { ["ok"] = true };
+                }
+            case "aacrewrap":
+                {
+                    var p = arg.Split('|');
+                    return new JsonObject { ["ok"] = app.Store.Audio?.Rewrap(p[0], p[1], p.Length > 2 ? double.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture) : null) ?? false };
+                }
             case "preview": _ = app.Preview(arg.Length > 0 ? arg : app.Speak.Target); break;
             case "calls":
                 app.FakeCalls = arg switch { "real" => null, "" or "none" => [], _ => arg.Split(',').Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => p[^1]) };

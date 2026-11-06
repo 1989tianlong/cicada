@@ -308,6 +308,127 @@ static class Tests
         Check(JsonNode.DeepEquals(JsonNode.Parse(mac), JsonNode.Parse(Json.Write(s))), "written back with every key: " + Json.Write(s));
     }
 
+    // MARK: 保存会议录音
+
+    /// Records what it is given; the "file" is a list of samples, and Rewrap copies the partial file.
+    sealed class FakeAudio : IAudioFiles
+    {
+        public readonly List<short> Samples = [];
+        public bool Closed;
+        public readonly List<(string from, string to, double? until)> Rewraps = [];
+        public IAudioWriter? Open(string path) { File.WriteAllBytes(path, [0xFF, 0xF1]); return new Writer(this); }
+        public bool Rewrap(string from, string to, double? until) { Rewraps.Add((from, to, until)); File.Copy(from, to, true); return true; }
+        sealed class Writer(FakeAudio a) : IAudioWriter
+        {
+            public void Write(ReadOnlySpan<short> pcm) { lock (a.Samples) a.Samples.AddRange(pcm.ToArray()); }
+            public void Close() => a.Closed = true;
+        }
+    }
+
+    /// Loopback as it really is: sound while something plays, nothing at all in between.
+    sealed class GappySource(params (double seconds, bool sound)[] parts) : IAudioSource
+    {
+        public event Action<short[]>? Samples;
+        public event Action<string?>? Ended;
+        public void Start() => Task.Run(async () =>
+        {
+            foreach (var (seconds, sound) in parts)
+            {
+                if (!sound) { await Task.Delay(TimeSpan.FromSeconds(seconds)); continue; }
+                for (int i = 0; i < seconds * 10; i++) { Samples?.Invoke(Tone(0.1, 0.002)); await Task.Delay(100); }
+            }
+            Ended?.Invoke(null);
+        });
+        public void Stop() { }
+    }
+
+    public static void SilenceGoesInOnlyOnceTheStreamIsASecondBehind()
+    {
+        Equal(0, Recording.Behind(0.5, 0, 1600), "a packet a little late: nothing");
+        Equal(0, Recording.Behind(2.0, 16000, 1600), "0.9 s behind: still nothing");
+        Equal(24000, Recording.Behind(2.6, 16000, 1600), "1.5 s behind after 1.1 s of audio: 1.5 s of silence");
+        Equal(0, Recording.Behind(1.0, 64000, 1600), "ahead of the clock: nothing");
+    }
+
+    public static async Task TheRecordingKeepsTheMeetingsClock()
+    {
+        // 0.5 s of sound, 2.5 s of nothing (loopback while the PC is silent), 0.5 s of sound.
+        var fake = new Fake(_ => Reply("{}"));
+        var ling = Client(fake);
+        var store = new SessionStore { Audio = new FakeAudio() };
+        var audio = (FakeAudio)store.Audio;
+        var engine = new ListenEngine(ling, new Translator(ling), store, new NotesEngine(ling, store), new AppSettings { Target = "zh-CN", SpeakerVoices = false });
+        var source = new GappySource((0.5, true), (2.5, false), (0.5, true));
+        var ended = new TaskCompletionSource();
+        source.Ended += _ => ended.TrySetResult();
+        engine.Start(source);
+        var id = engine.SessionId!;
+        Check(File.Exists(Recording.Partial(Recording.SystemAudio(id))), "written as system.aac while live");
+        await ended.Task;
+        var wall = (DateTimeOffset.Now - store.Get(id)!.StartedAt).TotalSeconds;
+        await engine.Stop();
+        Check(audio.Closed, "closed when the meeting ends");
+        var recorded = audio.Samples.Count / 16000.0;
+        Check(recorded > wall - 1.1 && recorded < wall + 0.2, $"the recording ({recorded:F2} s) is as long as the meeting ({wall:F2} s)");
+
+        var off = new SessionStore { Audio = new FakeAudio() };
+        var quiet = new ListenEngine(ling, new Translator(ling), off, new NotesEngine(ling, off), new AppSettings { RecordAudio = false });
+        quiet.Start(new GappySource((0.2, true)));
+        Check(!File.Exists(Recording.Partial(Recording.SystemAudio(quiet.SessionId!))), "保存会议录音 off: no file");
+        await quiet.Stop();
+    }
+
+    public static async Task EndingAMeetingFinishesItsRecording()
+    {
+        var audio = new FakeAudio();
+        var store = new SessionStore { Audio = audio };
+        var s = store.Begin(DateTimeOffset.Parse("2026-02-01T02:00:00Z"));
+        store.Append(s.Id, new TranscriptLine { Id = "h1-1", Src = "hi", SrcLang = "en", DstLang = "zh-CN", T = 3 });
+        var m4a = Recording.SystemAudio(s.Id);
+        Directory.CreateDirectory(Path.GetDirectoryName(m4a)!);
+        File.WriteAllBytes(Recording.Partial(m4a), [1]);
+        store.End(s.Id, DateTimeOffset.Parse("2026-02-01T02:10:00Z"));
+        Check(store.Get(s.Id)!.HasAudio, "hasAudio once a recording exists");
+        for (int i = 0; i < 50 && !File.Exists(m4a); i++) await Task.Delay(20);
+        Check(File.Exists(m4a) && !File.Exists(Recording.Partial(m4a)), "rewrapped into system.m4a, the partial file gone");
+        Equal(600.0, audio.Rewraps[0].until, "a meeting that ended by itself is cut where it ended");
+        Equal(m4a, Recording.Playable(store.Get(s.Id)!), "it plays");
+
+        // A meeting the app didn't get to close: finished at the next launch.
+        var t = store.Begin(DateTimeOffset.Parse("2026-02-02T02:00:00Z"));
+        store.Append(t.Id, new TranscriptLine { Id = "h1-1", Src = "hi", SrcLang = "en", DstLang = "zh-CN" });
+        store.Flush();
+        File.WriteAllBytes(Recording.Partial(Recording.SystemAudio(t.Id)), [1]);
+        var later = new SessionStore { Audio = audio };
+        later.FinishLeftovers();
+        for (int i = 0; i < 50 && !File.Exists(Recording.SystemAudio(t.Id)); i++) await Task.Delay(20);
+        Check(later.Get(t.Id)!.HasAudio && File.Exists(Recording.SystemAudio(t.Id)), "a crash's recording is kept");
+        Equal(null, Recording.Playable(new Session { Id = "20990101-000000" }), "no file: nothing to play");
+    }
+
+    public static void AdtsFramesAreSplitAndACutOneDropped()
+    {
+        // Two AAC-LC 16 kHz mono frames of 10 and 12 bytes (7-byte headers), then half a third.
+        static byte[] Frame(int payload)
+        {
+            int length = 7 + payload;
+            var f = new byte[length];
+            f[0] = 0xFF; f[1] = 0xF1; f[2] = (1 << 6) | (8 << 2); f[3] = (byte)((1 << 6) | (length >> 11));
+            f[4] = (byte)(length >> 3); f[5] = (byte)((length & 7) << 5 | 0x1F); f[6] = 0xFC;
+            for (int i = 7; i < length; i++) f[i] = (byte)i;
+            return f;
+        }
+        byte[] file = [.. Frame(3), .. Frame(5), .. Frame(9)[..8]];
+        var config = Adts.Read(file)!;
+        Equal(16000, config.Rate, "rate");
+        Equal(1, config.Channels, "mono");
+        Equal("14-08", BitConverter.ToString(config.SpecificConfig), "AudioSpecificConfig of AAC-LC 16 kHz mono");
+        var frames = Adts.Frames(file);
+        Equal(2, frames.Count, "the cut-off frame is left out");
+        Equal(new Adts.Frame(7, 3), frames[0], "payload without the header");
+        Equal(new Adts.Frame(17, 5), frames[1], "second frame");
+    }
+
     // MARK: 会议室
 
     public static void RoomMicSkipsTheCableAndHeadsets()

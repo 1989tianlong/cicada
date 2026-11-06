@@ -568,11 +568,23 @@ sealed class NotesWindow : Window
     }
 
     /// One line of the transcript as on the Mac: who (in their colour) and when, the original in
-    /// grey, the translation in ink.
-    internal static FrameworkElement TranscriptRow(TranscriptLine l, string? who = null, Brush? ink = null, bool place = false)
+    /// grey, the translation in ink. With `play` (a record with its recording) the time is a link
+    /// that plays from there; it is tagged "time" so the player can light it.
+    internal static FrameworkElement TranscriptRow(TranscriptLine l, string? who = null, Brush? ink = null, bool place = false, Action<double>? play = null)
     {
         var text = new StackPanel { Margin = new Thickness(0, who is null && !place ? 0 : 6, 0, 12) };
-        var head = Ui.Row(8, Ui.Text(Languages.Clock(l.T), 12, Palette.Tertiary, wrap: false));
+        var time = Ui.Text(Languages.Clock(l.T), 12, play is null ? Palette.Tertiary : Palette.TimeLink, wrap: false);
+        if (play is not null)
+        {
+            time.Tag = "time";
+            time.Cursor = System.Windows.Input.Cursors.Hand;
+            time.ToolTip = L("从这里播放");
+            time.MouseLeftButtonDown += (_, e) => { e.Handled = true; play(l.T); };
+            time.MouseEnter += (_, _) => time.TextDecorations = TextDecorations.Underline;
+            time.MouseLeave += (_, _) => time.TextDecorations = null;
+            System.Windows.Automation.AutomationProperties.SetName(time, L("从这里播放") + " " + time.Text);
+        }
+        var head = Ui.Row(8, time);
         if (place) head.Children.Insert(0, PlaceTag(l));
         if (who is not null) head.Children.Insert(0, Ui.Text(who, 12, ink ?? Palette.Secondary, wrap: false));
         for (int i = 1; i < head.Children.Count; i++) ((FrameworkElement)head.Children[i]).Margin = new Thickness(i == 1 && place && who is not null ? 6 : 8, 0, 0, 0);
