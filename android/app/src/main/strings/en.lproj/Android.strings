@@ -223,3 +223,4 @@
 "地址要用 https；这台手机和局域网里的服务可以用 http。" = "The address must use https; services on this phone or your local network can use http.";
 "没填，用手机的声音" = "Not set: the phone's voice";
 "本机和局域网服务可不填" = "Optional on this phone or your local network";
+"刚刚开会时用过" = "used in a meeting just now";
