@@ -437,6 +437,7 @@ final class ListenEngine {
         let tap = SystemAudioTap()
         let router = self.router
         tap.onAudio = { pcm in router.push(pcm) }
+        tap.onRateChange = { [weak self] in MainActor.assumeIsolated { self?.reconnectAudio() } }
         do {
             try tap.start()
             audioTap = tap
