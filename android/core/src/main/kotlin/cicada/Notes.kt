@@ -475,7 +475,7 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
                 var fish: Fishbone? = null
                 t["fishbone"].obj()?.let { f ->
                     val branches = objects(f["branches"]).map { br ->
-                        FishboneBranch(label = s(br["label"]), detail = s(br["detail"]), t = br["t"].num(), support = support(br["evidence"]))
+                        FishboneBranch(label = s(br["label"]), detail = s(br["detail"]), t = time(br["evidence"]) ?: br["t"].num(), support = support(br["evidence"]))
                     }.filter { it.label.isNotEmpty() }.toMutableList()
                     if (branches.size >= 2) fish = Fishbone(s(f["question"]), branches)
                 }
