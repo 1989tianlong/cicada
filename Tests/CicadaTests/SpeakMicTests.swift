@@ -66,4 +66,19 @@ struct SpeakMicTests {
         #expect(frames.count > 0)
         #expect(AudioDevices.defaultInput?.uid == original.uid)
     }
+
+    @Test func voiceSampleRecordsFromTheRealMic() async throws {
+        let (original, device) = try devices()
+        let recorder = VoiceRecorder()
+        for _ in 0..<2 {
+            recorder.start(locale: "zh-CN", device: device)
+            #expect(recorder.phase == .recording)
+            try await Task.sleep(for: .milliseconds(500))
+            let size = (try? FileManager.default.attributesOfItem(atPath: recorder.url.path)[.size] as? Int) ?? 0
+            #expect(size > 8_000)  // a quarter second of 16 kHz 16-bit audio
+            // Cancel: the sample is deleted, never transcribed or uploaded.
+            recorder.cancel()
+        }
+        #expect(AudioDevices.defaultInput?.uid == original.uid)
+    }
 }
