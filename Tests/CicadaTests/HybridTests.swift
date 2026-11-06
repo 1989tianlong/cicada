@@ -58,6 +58,18 @@ import Testing
         }
     }
 
+    @Test func thePressShareTheMacPlayedThrough() {
+        let g = EchoGate()
+        // The meeting loud through 0–4 s (a block every 0.1 s), then quiet.
+        for i in 0..<40 { g.hold(now: 1000 + Double(i) * 0.1) }
+        #expect(g.playedShare(from: 1000, to: 1004) > 0.9)
+        #expect(g.playedShare(from: 1006, to: 1010) == 0)
+        #expect(abs(g.playedShare(from: 1002, to: 1006) - 0.6) < 0.1)
+        // Headphones: the speakers don't reach the mic, so nothing played counts.
+        g.forced = false
+        #expect(g.playedShare(from: 1000, to: 1004) == 0)
+    }
+
     @Test func musicStopsClosingTheGate() {
         let g = EchoGate()
         var t = 0.0

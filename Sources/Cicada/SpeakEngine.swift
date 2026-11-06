@@ -131,8 +131,16 @@ final class SpeakEngine {
     private var finals: [String] = []
     private var volatile = ""
     private var pressStarted = Date()
+    /// The press went to the plain mic: echo cancellation wasn't to be had (打开麦克风 holds the mic
+    /// without it, and lets go of the unit the press would need).
+    private var pressPlain = false
     /// Whether the plain room mic holds the mic (打开麦克风 without echo cancellation).
     var micTaken: (() -> Bool)?
+    /// The share of a stretch the Mac played its meeting through to the mic (`EchoGate.playedShare`).
+    var playedShare: ((Date, Date) -> Double)?
+    /// Over this share, what the plain mic heard is the meeting's echo as much as you: Ming sent the
+    /// other side's own words back to them (as the ports drop it, Windows `EchoShare`).
+    static let echoShare = 0.5
     private nonisolated(unsafe) var micRecorder: AVAudioFile?
     private nonisolated(unsafe) var micRecordURL: URL?
     /// This press's audio as 16 kHz mono 16-bit samples for Ming; only touched on `micQueue`.
@@ -367,8 +375,9 @@ final class SpeakEngine {
                 }
             }
             debugLog("speak: mic \(started ? "with echo cancellation" : "plain, echo cancellation not ready")")
-            if started { return }
+            if started { pressPlain = false; return }
         }
+        pressPlain = true
         // A unit left over (toggled off mid-press, a virtual mic) would starve the plain mic; one the
         // room is using stays (the talk key is then on another mic).
         if !voiceMic.inUse { voiceMic.release() }
@@ -474,6 +483,16 @@ final class SpeakEngine {
             volatile = ""
             phase = .idle
             onLive?(.idle, "", "")
+            return
+        }
+        // The meeting playing through most of a press on the plain mic: don't send its echo back.
+        if pressPlain, probe == nil, let share = playedShare?(pressStarted, released), share > Self.echoShare {
+            debugLog(String(format: "speak: the Mac played through %.0f%% of the press (echo), nothing sent", share * 100))
+            Task { _ = await u.text.value }
+            finals = []
+            volatile = ""
+            phase = .idle
+            onLive?(.idle, "", L("对方在说话时说的，没有说出去"))
             return
         }
         probe?.pressWAV = wav

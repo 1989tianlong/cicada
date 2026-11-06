@@ -151,6 +151,8 @@ final class EchoGate: @unchecked Sendable {
     private var during: [(t: Double, rms: Float, s: Double)] = []
     private var quiet: [(t: Double, rms: Float, s: Double)] = []
     private var _echo = true
+    /// When the Mac's loud blocks came, for `playedShare`.
+    private var loud: [Double] = []
     /// Debug (`roomEchoSim:<on|off>`): pretend the measurement says this.
     var forced: Bool?
 
@@ -168,6 +170,8 @@ final class EchoGate: @unchecked Sendable {
     /// A loud block of the Mac's audio, on the main engine's audio queue.
     func hold(now: Double = CFAbsoluteTimeGetCurrent()) {
         lock.withLock {
+            loud.append(now)
+            loud.removeAll { $0 < now - Self.window * 3 }
             if now - lastLoud > Self.stretchGap { stretchStart = now }
             lastLoud = now
             guard !musicLocked(now), echoLocked else { return }
@@ -186,6 +190,21 @@ final class EchoGate: @unchecked Sendable {
 
     func closed(now: Double = CFAbsoluteTimeGetCurrent()) -> Bool {
         lock.withLock { now < until }
+    }
+
+    /// The share of `from`…`to` the Mac played something loud through, when its speakers reach the
+    /// mic (0 on headphones). The talk key on the plain mic hears that as much as you.
+    func playedShare(from: Double, to: Double) -> Double {
+        lock.withLock {
+            guard echoLocked, to > from else { return 0 }
+            let steps = max(1, Int((to - from) / 0.1))
+            var hit = 0
+            for i in 0..<steps {
+                let t = from + (Double(i) + 0.5) * (to - from) / Double(steps)
+                if loud.contains(where: { $0 <= t + Self.hang && $0 >= t - Self.hang }) { hit += 1 }
+            }
+            return Double(hit) / Double(steps)
+        }
     }
 
     /// Whether the speakers reach the room mic, as last measured.

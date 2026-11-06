@@ -184,6 +184,9 @@ final class AppModel: ObservableObject {
             guard let self else { return false }
             return self.roomListen.holdsPlainMic || self.listen.holdsPlainMic
         }
+        speak.playedShare = { [gate = roomListen.echoGate] from, to in
+            gate.playedShare(from: from.timeIntervalSinceReferenceDate, to: to.timeIntervalSinceReferenceDate)
+        }
         roomListen.onStateChange = { [weak self] in self?.refresh() }
         listen.onSubtitle = { [weak self] src, dst in
             guard let self else { return }
