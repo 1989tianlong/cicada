@@ -70,7 +70,8 @@ public sealed class ListenEngine
             LingException.Kind.RateLimited => ling ?(Strings.L("Ling 太忙"), Strings.L("稍后会自动重试。"), false) : (null, Strings.LF("%@ 太忙，稍后再试", service), false),
             LingException.Kind.InvalidKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("%@ 的 key 无效", service), Strings.L("去设置里换一个 key。"), true),
             LingException.Kind.NoKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("需要 %@ 的 key 才能听", service), Strings.L("去设置里换一个 key。"), true),
-            _ => (ling ? Strings.L("连不上 Ling") : Strings.LF("连不上 %@", service), Strings.L("这段时间的话没能识别。网络恢复后自动继续。"), false),
+            // The service hears the meeting here, so the subtitles wait with the notes.
+            _ => (null, Strings.LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", service), false),
         };
     }
 

@@ -920,6 +920,17 @@ sealed class Controller
         AIChanged();
     }
 
+    /// "改用 Ling" where another service is out of reach: only when a Ling key is already saved,
+    /// so the one click works without a trip to the settings.
+    public bool CanSwitchToLing => Settings.AiProvider != "ling" && Key.Read("ling") is not null;
+
+    public void SwitchToLing()
+    {
+        if (!CanSwitchToLing) return;
+        Log.Debug("ai: switched to Ling from the status line");
+        SetAIProvider("ling");
+    }
+
     /// What the tray says first when the AI service needs the user (title, detail); null otherwise.
     /// On Windows the service hears too, so a dead service means no subtitles either.
     public (string Title, string Detail)? AIProblem()
@@ -1233,6 +1244,8 @@ static class DebugServer
                 else _ = app.Speak.Speak(Wav.Bytes(Wav.Read(arg)), new DeviceSpeaker(Endpoints.Cable));
                 break;
             case "provider": app.SetAIProvider(arg); break;
+            // switchtoling: the 改用 Ling on a status line (logs why when it isn't offered).
+            case "switchtoling": Log.Debug($"switchtoling offered={app.CanSwitchToLing}"); app.SwitchToLing(); break;
             case "ai-check":
                 // ai-check: a check now; ai-check-sim <reason|lowBalance|off>: every check ends this way (screenshots).
                 _ = app.Ling.Check();

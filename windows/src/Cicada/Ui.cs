@@ -361,6 +361,47 @@ static class Ui
         };
     }
 
+    public enum Tone { Waiting, NeedsYou, Info }
+
+    /// #C98A00: WarnIcon is too dark to tell from the text at 6 px.
+    static readonly SolidColorBrush waitingDot = Frozen(Color.FromRgb(0xC9, 0x8A, 0x00));
+    static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+
+    /// A service in trouble, said the same way wherever it shows (Views.swift › StatusLine): a dot,
+    /// what waits for what · what still works, and at most one action. Colour sits in the dot only,
+    /// so a passing wait doesn't read as a fault: yellow waits and comes back by itself, red needs
+    /// you, grey is just so you know.
+    public static Border StatusLine(Tone tone, string text, (string Title, Action Run)? action = null)
+    {
+        var dot = Dot(tone switch { Tone.Waiting => waitingDot, Tone.NeedsYou => Palette.Danger, _ => Palette.Tertiary }, 6);
+        dot.Margin = new Thickness(0, 0, 8, 0);
+        var dock = new DockPanel();
+        DockPanel.SetDock(dot, Dock.Left);
+        dock.Children.Add(dot);
+        if (action is { } a)
+        {
+            var label = Text(a.Title, 12, Palette.Ink, FontWeights.SemiBold, wrap: false);
+            var b = new Button
+            {
+                Content = label, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand,
+                Padding = new Thickness(6, 4, 6, 4), Margin = new Thickness(8, 0, -6, 0), VerticalAlignment = VerticalAlignment.Center,
+            };
+            b.Template = Template(plain: true, radius: 6);
+            b.Click += (_, _) => a.Run();
+            AutomationName(b, a.Title);
+            DockPanel.SetDock(b, Dock.Right);
+            dock.Children.Add(b);
+        }
+        var words = Text(text, 12, Palette.Secondary);
+        words.VerticalAlignment = VerticalAlignment.Center;
+        dock.Children.Add(words);
+        return new Border
+        {
+            Background = Palette.Subtle, CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 7, 12, 7),
+            MinHeight = 36, Child = dock,
+        };
+    }
+
     /// The Mac's switch: an ink track when on, a grey one when off, a white knob; no 开/关 beside it.
     public static FrameworkElement Switch(bool on, Action<bool> changed, string name)
     {
