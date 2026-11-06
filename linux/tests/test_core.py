@@ -419,6 +419,34 @@ class Hearing(Base):
         self.assertEqual("好的，翻译。", clean_translation("好的，翻译。", "zh-CN"))
         self.assertEqual("Done.", clean_translation("<think>x</think>Done.", "en"))
 
+    def test_an_unreachable_service_is_tried_once_in_15_seconds(self):
+        # Translator.swift › lingWorthTrying: while the check says the text model is out of reach,
+        # lines go straight to Google but for one in 15 s; a hear model at its own address doesn't count.
+        from cicada.core import aicheck
+        tried = []
+
+        class Net:
+            def send(self, url, method, body, headers, timeout):
+                if "googleapis" in url:
+                    return Response(200, '[[["你好","hello",null,null,1]]]')
+                tried.append(url)
+                raise OSError("no route")
+        net = Net()
+        ling = client(net)
+        t = Translator(ling, transport=net)
+        ling.check_result.fail("reach", aicheck.UNREACHABLE, reached=False)
+        self.assertEqual("你好", t.translate("hello", "en", "zh-CN", Translator.SENTENCE))
+        self.assertEqual(1, len(tried), "the first line still tries the service")
+        self.assertEqual("你好", t.translate("hello", "en", "zh-CN", Translator.SENTENCE))
+        self.assertEqual(1, len(tried), "the next one goes straight to Google")
+        t._last_unreachable_try -= 15
+        t.translate("hello", "en", "zh-CN", Translator.SENTENCE)
+        self.assertEqual(2, len(tried), "15 s later it is tried again")
+        ling.check_result = aicheck.AICheck()
+        ling.check_result.fail("hear", aicheck.UNREACHABLE)
+        t.translate("hello", "en", "zh-CN", Translator.SENTENCE)
+        self.assertEqual(3, len(tried), "only the hear model is away: text is tried")
+
     def test_joins_cut_sentences(self):
         last = TranscriptLine(src="We finished the migration and", srcLang="en")
         self.assertTrue(continues(last, 0.2, Heard("en", "the error rate dropped.", None)))
