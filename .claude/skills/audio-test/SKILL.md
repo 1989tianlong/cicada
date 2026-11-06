@@ -1,52 +1,40 @@
 ---
-name: room-test
-description: Measure Cicada's room microphone for real on the Mac — echo from the speakers, people at the table talking in the gaps and over the online side, music, headphones — with an ESP32 speaker standing in for a person at the table, and score each round. Use after any change to 打开麦克风, the room mic, EchoGate / EchoMatch, voice activity or the room recognizer, or for "测回声", "测会议室麦克风", "混合会议实测", "抢话测试".
+name: audio-test
+description: Test Cicada with real sound on the Mac — a scripted meeting from the speakers, a person in the room played by an ESP32 speaker next to the mic, the talk key held from the shell — and score each round against a pass line. Use after any change to the room mic (打开麦克风, EchoGate, EchoMatch), 同声传译 (the talk key, its mic, echo cancellation, the virtual mic), voice activity or recognition from a mic; or for "实测", "测回声", "测同声传译", "混合会议实测", "抢话测试".
 ---
 
-# Room test
+# Audio test
 
-How the 打开麦克风 change (cb7762c) was measured. The Mac is the reference; Windows and Linux VMs have no speakers or mic, so their rounds are UI and state only (`cicadactl mic on`, `roomechosim`).
+Real sound through real speakers and mics, on the Mac (the reference). The Windows and Linux VMs have no speakers or mic: their rounds are UI and state only (`cicadactl mic on`, `roomechosim`). One file per feature under `references/`: read the one for what changed.
 
-## The rig
+| Feature | Reference | Script |
+|---|---|---|
+| 打开麦克风: echo, people at the table, music, headphones | `references/room.md` | `scripts/room-round.sh` |
+| 同声传译: what I say, with the meeting playing | `references/speak.md` | `scripts/speak-round.sh` |
 
-- **Online side:** `mac.wav` (five English sentences, 10 s apart) from the MacBook's speakers, through `afplay`.
-- **Table side:** `table.wav` (six Chinese sentences: three in the Mac's gaps, three over its speech) from the M5Stack StopWatch's speaker: `~/workshop/15.experiment/m5-stopwatch/tablevoice/tv.py play <wav> --at <utc>` (prints START/END). Different languages, so each record line says which side it came from.
-- **Where:** the ESP32 about 10 cm from the MacBook Pro's mics, which sit under the left speaker grille near the hinge (by Esc), speaker facing it, not on the right grille. At 30 cm it reaches only −22 dB peak and half the table lines are lost to level alone. Its volume is already the ceiling (255).
-- The ESP32 belongs to the `esp32-stopwatch-meeting-mic-test` session: message it before using the port (one `tv.py` at a time) and when done. Flashing it is that session's user's call.
-- `scripts/clips.py` writes the clips (and `music.wav`); `scripts/audio.swift` sets the output device and the mic's input level; `scripts/round.sh` runs one round and scores it. Both are built into `$WORK` on first use.
+## The cast
+
+- **The online side:** clips from the MacBook speakers (`afplay`), English, Samantha.
+- **A person in the room** (someone at the table, or me holding the talk key): an M5Stack StopWatch's speaker about 10 cm from the MacBook Pro's mics, which sit under the left speaker grille near the hinge (by Esc), facing it, not on the right grille. `~/workshop/15.experiment/m5-stopwatch/tablevoice/tv.py play <wav> [--at <utc>]` (START/END on stdout, blocks until END). Chinese, Tingting, so every record line says which side it came from. At 30 cm it reaches only −22 dB and half the lines are lost to level alone; its volume is already the ceiling.
+- **What the meeting app hears:** BlackHole 2ch, the virtual mic. `lsctl speakOut:<file.m4a>` keeps a copy of each voice sent.
+- **The talk key:** `lsctl talkDown` / `talkUp`, with the real mic.
+
+The ESP32 belongs to the `esp32-stopwatch-meeting-mic-test` session: message it before using the port (one `tv.py` at a time) and when done. Flashing it is that session's user's call.
+
+Scripts: `clips.py` writes every clip into `$WORK` (default `$TMPDIR/cicada-room-test`), `audio.swift` sets the output device and an input's level (`audio list`), the round scripts build both on first use, drive the dev build with `tools/lsctl`, and score from the meeting record and `/tmp/livesubs-dev-debug.log`.
 
 ## Before the first round
 
-- `ListAgents`: tell the sessions on this repo you hold the dev build, the speakers and the mic; nobody else rebuilds or drives `build/Cicada.app` until you say so. Build it yourself and check the panel's `main @ <commit>` line is yours.
-- Nothing else makes sound: quit the release Cicada (`osascript -e 'quit app id "com.wquguru.cicada"'`; if it hangs, `kill -TERM`), shut simulators (`xcrun simctl shutdown all`). `pmset -g assertions | grep -i audio` lists who plays or records. Ask before closing anything the user may be using.
-- `audio list`: output must be the MacBook speakers and the MacBook mic's level about 0.5. **AirPods take the output when they connect** (and the clips then play in the user's ears): `round.sh` forces the output every round; check it again after any pause, and ask the user before playing out loud.
-- The terminal has no microphone permission: `ffmpeg -f avfoundation` records zeros. Judge the mic only through the app (`hybridState`, the record).
+- `ListAgents`: tell the sessions on this repo you hold the dev build, the speakers and the mic, and ask who used it last; nobody else rebuilds or drives `build/Cicada.app` until you say so. Build it yourself and check the panel's `main @ <commit>` line is yours.
+- Nothing else makes sound: quit the release Cicada (`osascript -e 'quit app id "com.wquguru.cicada"'`; if it hangs, `kill -TERM`), shut simulators (`xcrun simctl shutdown all`). `pmset -g assertions | grep -i audio` lists who plays or records. Ask before closing what the user may be using.
+- `audio list`: output the MacBook speakers, the MacBook mic's level about 0.5. **AirPods take the output when they connect** and the clips then play in the user's ears: the scripts force the output every round; ask the user before playing out loud.
+- The terminal has no microphone permission: `ffmpeg -f avfoundation` records zeros. Judge the mic through the app only.
+- 同声传译 needs a working AI service (`lsctl aiState`); the dev build's service is the user's setting: switch it only for the test and put it back.
 
-## Rounds
+## Designing a new scenario
 
-`scripts/round.sh <label> [mac|music|none] [volume]`, env `OUT` (`BlackHole` = headphones: nothing reaches the room), `ECHO` (`roomEcho`, default off), `GATE`, `TABLE`. Each round is about 75 s and prints, for example:
-
-```
-== speakers56: mac=5 room=3 echo_dropped=0 english_room=0 table: 空100% 抢0% 空75% 抢0% 抢20% 空100%
-   echo=true [during=7.8s p80=0.0943 quiet=4.8s floor=0.0043]
-```
-
-`english_room` is online speech that got into the room's record (echo). `空` is a table sentence in a gap, `抢` one over the online side, with the share of its characters found. `echo=` is what EchoGate measured: speakers about ×20 at 56 %, ×6 at 25 %, headphones about ×1.
-
-The pass line (2026-11-06, MacBook Pro 14):
-
-| Round | Command | Pass |
-|---|---|---|
-| Speakers 25 / 56 / 100 % | `round.sh s25 mac 25` … | `english_room` 0; gaps ≥ 75 % |
-| Music | `round.sh music music 56` | table ≥ 60 % (gaps and over) |
-| Headphones | `OUT=BlackHole round.sh hp mac 56` | `echo=false`; over ≥ 90 % |
-| Then speakers again | `round.sh s56b mac 56` | `english_room` 0 (the measurement starts over) |
-| Table alone | `round.sh alone none` | 6/6 |
-
-Lines over the online side are lost on speakers by design (the gate). Run a round twice before believing a single bad cell: the ESP32 is quiet and one round varies.
-
-Also: `lsctl roomMicSilent:on` then `mic:on` shows 麦克风没声音 after about 10 s (log `room mic: silent since it started`, then `still silent`); `roomEchoSim:<on|off|real>` fixes the measurement for UI work.
+Write it down as a conversation before scripting it: who says what, when, from where (speakers, ESP32, nobody), and which key is held. Give each side its own language, one sentence per row with its time. Then the pass line: what must appear in which part of the record (`speaker` "me" or "them", `via` "room"), what must not (the other side's language), and a number for each. Run a round twice before believing a single bad cell: the ESP32 is quiet and rounds vary. Add the scenario and its numbers to the feature's reference.
 
 ## After
 
-`lsctl mic:off`, `stop`, `roomEcho:off`, `roomGate:on`, `roomMicSilent:off`; output back to what the user had; volume back; tell the ESP32 session and the repo's sessions you're done. Put the numbers in the commit message.
+`lsctl mic:off`, `stop`, `speakOff` if you turned it on, `roomEcho:off`, `roomGate:on`, `speakVP:on` (the default), `speakMic:` (the user's), `roomMicSilent:off`, the AI service back; output and volume back to what the user had; tell the ESP32 session and the repo's sessions you're done. Put the numbers in the commit message.

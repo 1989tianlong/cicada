@@ -1,6 +1,6 @@
 #!/bin/zsh
 # One room-test round on the Mac dev build, scored. Usage:
-#   round.sh <label> [mac|music|none] [volume 0-100]
+#   room-round.sh <label> [mac|music|none] [volume 0-100]
 # Env: OUT (output device name part, default "MacBook Pro Speakers"; "BlackHole" stands in for
 # headphones), ECHO (roomEcho on|off, default off), GATE (roomGate on|off, default on),
 # TABLE (on|off: play table.wav on the ESP32, default on), WORK (clips and tools, default

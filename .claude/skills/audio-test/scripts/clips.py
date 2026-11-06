@@ -6,6 +6,11 @@
              three over the Mac's speech (11, 31, 41 s)
   music.wav  chords and a beat, no words: what the Mac plays instead of mac.wav in the music round
 
+For 同声传译 (speak-round.sh):
+  me1.wav … me3.wav  what "I" say, one sentence each (Tingting), for the ESP32 while the talk key is held
+  meeting.wav        the online side talking without a break (Samantha, the five sentences twice), from
+                     the speakers while I talk: its echo must not be what gets interpreted
+
 Different languages on the two sides, so every line in the record says where it came from.
 Usage: clips.py <folder>"""
 import array, math, os, random, subprocess, sys, wave
@@ -17,6 +22,7 @@ MAC = ["Revenue grew twelve percent compared to last quarter, mostly from enterp
        "The offsite budget needs approval by Friday, so send comments soon."]
 TABLE = ["我同意这个数字。", "等一下，企业版具体涨了多少？", "设计那个岗位很急。", "好的，没问题。", "导出功能我们下周排期。", "周四之前我会回复。"]
 TABLE_AT = [6, 11, 25, 31, 41, 47]
+ME = ["我们下周三之前可以把测试做完。", "价格方面我需要先和财务确认一下。", "这个问题我会后发邮件给大家。"]
 RATE, LENGTH = 16000, 52
 
 
@@ -59,6 +65,14 @@ if __name__ == "__main__":
     tmp = os.path.join(folder, "piece.wav")
     write(os.path.join(folder, "mac.wav"), [(say("Samantha", s, tmp), i * 10) for i, s in enumerate(MAC)])
     write(os.path.join(folder, "table.wav"), [(say("Tingting", s, tmp), at) for s, at in zip(TABLE, TABLE_AT)])
-    os.remove(tmp)
     write(os.path.join(folder, "music.wav"), [(music(), 0)])
+    for i, sentence in enumerate(ME, 1):
+        say("Tingting", sentence, os.path.join(folder, "me%d.wav" % i))
+    talk, at = [], 0.0
+    for sentence in MAC * 2:
+        samples = say("Samantha", sentence, tmp)
+        talk.append((samples, at))
+        at += len(samples) / RATE + 0.3
+    write(os.path.join(folder, "meeting.wav"), talk)
+    os.remove(tmp)
     print("clips in", folder)

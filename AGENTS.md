@@ -48,7 +48,7 @@ scripts/deploy-site.sh                 # build and deploy the site (cicada.indal
 
 - Run the app and check the behaviour, not just the build; check the English UI too.
 - Drive the dev build with `tools/lsctl` (commands and testing tips in `tools/README.md`; the source of truth is `AppModel.debugCommand`). Use `afplay Resources/sample/sample.m4a` or `say -o` clips as input and read `/tmp/livesubs-dev-debug.log`.
-- Room mic and echo: `.claude/skills/room-test` (ESP32 as the table). A real voice, the BlackHole install, Input Monitoring and a Mac without permissions need a person.
+- Real sound (room mic, 同声传译): `.claude/skills/audio-test`. A real voice, the BlackHole install, Input Monitoring and a Mac without permissions need a person.
 
 ## Conventions
 
