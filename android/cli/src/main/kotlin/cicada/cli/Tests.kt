@@ -31,6 +31,7 @@ object Tests {
             "theLiveMeetingCantBeDeleted" to ::theLiveMeetingCantBeDeleted,
             "followSystemLikeTheMac" to ::followSystemLikeTheMac,
             "anUntranslatedSentenceIsNeitherSentNorRecorded" to ::anUntranslatedSentenceIsNeitherSentNorRecorded,
+            "anUnreachableServiceIsTriedOncePer15s" to ::anUnreachableServiceIsTriedOncePer15s,
             "storeSavesAndDropsEmptyMeetings" to ::storeSavesAndDropsEmptyMeetings,
             "closesInterruptedMeetings" to ::closesInterruptedMeetings,
             "exportsLikeTheMac" to ::exportsLikeTheMac,
@@ -1000,6 +1001,27 @@ object Tests {
             equal("them:First one.|me:你好。", s.lines.joinToString("|") { "${it.speaker}:${it.src}" }, "my line recorded, the echo dropped")
             equal("m1", s.lines[1].id, "Mac-style id")
             check(s.lines[1].t >= 2.0, "my line's time is when I pressed")
+        } finally { LingClient.spacing = old }
+    }
+
+    fun anUnreachableServiceIsTriedOncePer15s() {
+        // The service doesn't answer; Google does.
+        val fake = Fake { body -> if (body.contains("Subtitle:")) Transport.Response(500, "") else Transport.Response(200, "[[[\"你好\",\"Hello\"]]]") }
+        val old = LingClient.spacing
+        LingClient.spacing = 0.0
+        try {
+            val ling = client(fake)
+            val translator = Translator(ling, fake)
+            fun lingCalls() = synchronized(fake.calls) { fake.calls.count { it.second.contains("Subtitle:") } }
+            translator.translate("Hello.", "en", "zh-CN", Translator.Kind.Sentence)
+            equal(1, lingCalls(), "tried while the check says nothing")
+            ling.simulateCheck = AICheck.Reason.Unreachable
+            ling.check()
+            equal(AICheck.Reason.Unreachable, ling.aiCheck.failure?.reason, "the check says unreachable")
+            equal("你好", translator.translate("Hello.", "en", "zh-CN", Translator.Kind.Sentence), "Google")
+            equal(2, lingCalls(), "one line still goes to the service")
+            equal("你好", translator.translate("Hello again.", "en", "zh-CN", Translator.Kind.Sentence), "Google at once")
+            equal(2, lingCalls(), "the next lines within 15 s don't wait for it")
         } finally { LingClient.spacing = old }
     }
 
