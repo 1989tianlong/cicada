@@ -193,7 +193,7 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
             }
             // Without its topics: given them, the merge wrote them all back out and was cut off.
             notes.add(Json.write(part - "topics", pretty = false))
-            topics += spread(parsed!!.topics, partTopics(parts.size))
+            topics += thinned(parsed!!.topics, partTopics(parts.size), lines[parts[i].last].t)
         }
         val prompt = mergePrompt(notes, lines, lang)
         for (attempt in 1..2) {
@@ -393,13 +393,33 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
         /// Each part's share of the topics: the merge keeps them as they are, so every part has some.
         fun partTopics(parts: Int) = maxOf(2, MAX_TOPICS / maxOf(1, parts))
 
-        /// `count` of `topics`, spread evenly from the first to the last: a part's reply often has
-        /// more topics than asked, and keeping the first ones (or folding the rest into the last) lost
-        /// the end of each part.
-        fun spread(topics: List<NoteTopic>, count: Int): List<NoteTopic> {
-            if (topics.size <= count || count <= 0) return topics
-            if (count == 1) return listOf(topics[0])
-            return (0 until count).map { topics[Math.round(it.toDouble() * (topics.size - 1) / (count - 1)).toInt()] }
+        /// At most `count` of a part's `topics`, neighbours joined: a part's reply often has more
+        /// topics than asked. Keeping the first ones lost the end of the part, and keeping some spread
+        /// from first to last kept a topic's "（续）" stub at the part's end and dropped the topic
+        /// itself. The same subject twice is joined first, under the first one's title; then the pair
+        /// spanning the least time (to the next topic's start, or `end` for the last), as live notes do.
+        fun thinned(topics: List<NoteTopic>, count: Int, end: Double): List<NoteTopic> {
+            val list = topics.toMutableList()
+            while (list.size > maxOf(1, count)) {
+                fun span(i: Int) = (if (i + 2 < list.size) list[i + 2].start else end) - list[i].start
+                val pairs = 0 until list.size - 1
+                val same = pairs.firstOrNull { subject(list[it].title) == subject(list[it + 1].title) }
+                // minBy keeps the first of equal spans, as the Mac does.
+                val at = same ?: pairs.minBy { span(it) }
+                val one = joined(list[at], list[at + 1])
+                if (same != null) { one.title = list[at].title; one.summary = list[at].summary }
+                list[at] = one
+                list.removeAt(at + 1)
+            }
+            return list
+        }
+
+        /// A topic title without a trailing bracket ("预算评审（续）", "Budget (cont.)"): what it is about.
+        fun subject(title: String): String {
+            val t = title.trim()
+            if (t.isEmpty() || t.last() !in "）)") return t
+            val open = t.lastIndexOfAny(charArrayOf('（', '('))
+            return if (open > 0) t.substring(0, open).trim() else t
         }
 
         /// The whole meeting's title, summary, conclusions, to-dos and terms from its parts' notes (the

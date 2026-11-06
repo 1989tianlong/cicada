@@ -627,9 +627,23 @@ object Tests {
         check(merge.contains("\"topics\": []"), "no topics back")
 
         val ten = (0 until 10).map { topic(it * 300.0, "t$it") }
-        equal("t0,t3,t6,t9", NotesEngine.spread(ten, 4).joinToString(",") { it.title }, "topics spread over the part")
-        equal("t0", NotesEngine.spread(ten, 1).joinToString(",") { it.title }, "one")
-        equal(3, NotesEngine.spread(ten.take(3), 4).size, "fewer stay")
+        val kept = NotesEngine.thinned(ten, 4, 3000.0)
+        equal(4, kept.size, "topics thinned to four")
+        equal(0.0, kept[0].start, "from the first")
+        check(ten.all { t -> kept.any { t.title in it.title.split(" / ") } }, "every topic joined, none dropped")
+        equal("0.0", NotesEngine.thinned(ten, 1, 3000.0).joinToString(",") { it.start.toString() }, "one")
+        equal(3, NotesEngine.thinned(ten.take(3), 4, 3000.0).size, "fewer stay")
+        // A 2.5-hour meeting's last part, asked for 2 topics, came back with 3: the budget topic's
+        // end as its own. Kept first and last, the budget topic at 125 min was lost.
+        val part = listOf(topic(6000.0, "营销发布安排", listOf("a")), topic(7500.0, "预算评审", listOf("b")), topic(8982.0, "预算评审（续）", listOf("c")))
+        val two = NotesEngine.thinned(part, 2, 8990.0)
+        equal("营销发布安排,预算评审", two.joinToString(",") { it.title }, "the topic kept over its continuation")
+        equal("6000.0,7500.0", two.joinToString(",") { it.start.toString() }, "at its own start")
+        equal("b,c", two[1].points.joinToString(","), "with the continuation's points")
+        val other = listOf(topic(6000.0, "营销发布安排"), topic(7500.0, "预算评审"), topic(8982.0, "收尾"))
+        equal("6000.0,7500.0", NotesEngine.thinned(other, 2, 8990.0).joinToString(",") { it.start.toString() }, "a stub joins the topic it ends")
+        equal("Budget review", NotesEngine.subject("Budget review (cont.)"), "subject without the bracket")
+        equal("(续)", NotesEngine.subject("(续)"), "a bracket alone stays")
     }
 
     fun topicStartsWhenItsLinesWereSaid() {
