@@ -1127,8 +1127,9 @@ final class ListenEngine {
                 let heard: CloudHeard?
                 do {
                     heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
-                } catch LingClient.Failure.rateLimited {
-                    // Ling's ~2 requests a second are shared with notes and translation: one more try.
+                } catch LingClient.Failure.rateLimited where translator.ling.transcribes {
+                    // A chat to the audio model retries 429s itself (LingClient.retryWaits); a
+                    // custom speech server's transcription doesn't: one more try.
                     try await Task.sleep(for: .seconds(1))
                     heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
                 }
