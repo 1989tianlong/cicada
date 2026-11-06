@@ -110,6 +110,16 @@ import Testing
         #expect(g.echo)
     }
 
+    @Test func aResetAssumesEchoAgain() {
+        let g = EchoGate()
+        play(g, from: 0, to: 6, words: true, during: 0.001, quiet: 0.001)
+        #expect(!g.echo)
+        g.reset()
+        #expect(g.echo)
+        g.hold(now: 50)
+        #expect(g.closed(now: 50.1))
+    }
+
     @Test func notEnoughToTellKeepsTheEcho() {
         #expect(EchoGate.ratio(during: [(0.001, 1)], quiet: [(0.001, 10)]) == nil)
         #expect(EchoGate.ratio(during: [(0.001, 5)], quiet: [(0.001, 1)]) == nil)

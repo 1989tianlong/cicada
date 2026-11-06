@@ -154,6 +154,17 @@ final class EchoGate: @unchecked Sendable {
     /// Debug (`roomEchoSim:<on|off>`): pretend the measurement says this.
     var forced: Bool?
 
+    /// Forget what was measured: the speakers are taken to echo until measured again (a new
+    /// meeting, or the output moved between speakers and headphones).
+    func reset() {
+        lock.withLock {
+            during = []
+            quiet = []
+            _echo = true
+        }
+        debugLog("room echo: measuring again")
+    }
+
     /// A loud block of the Mac's audio, on the main engine's audio queue.
     func hold(now: Double = CFAbsoluteTimeGetCurrent()) {
         lock.withLock {

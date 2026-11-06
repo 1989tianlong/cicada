@@ -1314,6 +1314,8 @@ final class AppModel: ObservableObject {
         // macOS 14/15: two live recognizers interrupt each other (docs/macos-legacy-plan.md 2, 10).
         guard !roomListen.isRunning, !Recognition.legacy else { return }
         roomListen.echoCancelled = roomEchoCancel
+        // Last meeting's measurement may be another room or another output: assume echo until measured.
+        roomListen.echoGate.reset()
         // A, the gate: only the plain room mic heeds it (echo cancellation keeps talk over a remote speaker).
         listen.router.setOnLoud(roomEchoGate ? { [gate = roomListen.echoGate] in gate.hold() } : nil)
         roomListen.start()
@@ -2308,6 +2310,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             MainActor.assumeIsolated {
                 debugLog("default output device changed → reconnecting tap")
                 self?.model.listen.reconnectAudio()
+                // Headphones in or out: whether the speakers reach the room mic is measured again.
+                self?.model.roomListen.echoGate.reset()
                 self?.model.refreshOutputs()
             }
         }
