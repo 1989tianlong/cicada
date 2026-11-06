@@ -5,6 +5,116 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes. Since 1.1.2 every release ships
 every platform (one with nothing new says No changes); earlier ones shipped only those listed. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
+## 1.4.0 — 2026-11-06
+
+### Mac
+
+#### New
+
+- When an AI service has trouble, the notes window says in one line what is waiting and what still works, with Use Ling one click away ([1e59953](https://github.com/wquguru/cicada/commit/1e59953cef2c1c9aa049f80b5ccb3d8acfe66c53))
+- A Turn on mic button in the menu bar panel, Live notes and the subtitle bar replaces Listen to, and people at the table are heard over music and with headphones on ([fc7e395](https://github.com/wquguru/cicada/commit/fc7e3954c33b28fe90746c1fc404241dff9dda57))
+- A meeting's recording plays back in its record, a click on a line's time plays from there, and the line playing lights up and stays in view ([acee2d2](https://github.com/wquguru/cicada/commit/acee2d2517250b7cf335a9a7eb020a5cc554634c))
+- With your own AI service, meeting audio and text can stay off Google Translate ([d019283](https://github.com/wquguru/cicada/commit/d019283f9bba4887bc48d5aae6246256c853805f))
+- The meeting transcript is re-heard on the Mac and comes out with far fewer misheard words ([44dbce6](https://github.com/wquguru/cicada/commit/44dbce6df5d4acde9aebcf7659bf71b41c426b14))
+
+#### Fixed
+
+- Switching AI service right after a meeting no longer shows the new one as connected because the old one answered the meeting's last notes ([c4b12b6](https://github.com/wquguru/cicada/commit/c4b12b63307848bc3487abc4391ad1e9307ec2e2))
+- Holding the talk key no longer quits Cicada when the microphone's format differs from the system input ([1bdce0a](https://github.com/wquguru/cicada/commit/1bdce0a2a0ffdc62261be35262fb80424f958432))
+- Generate Notes on a long meeting no longer drops a topic and keeps only its "(continued)" end ([452aaec](https://github.com/wquguru/cicada/commit/452aaec5c6091f61358953583c15e03c5614460b))
+- When the AI service hearing an Intel Mac's meeting keeps answering with a server error, the status says it is having trouble instead of that it can't be reached ([59d161b](https://github.com/wquguru/cicada/commit/59d161b6aec19bb2ea393822c6c690f61cb88c48))
+- The local network prompt says Cicada only uses it to reach the AI server you set up on your local network ([35e6370](https://github.com/wquguru/cicada/commit/35e6370d685e9f568663b8ab995b21eb565a0fa5))
+- When Cicada isn't allowed on the local network, AI Service says so and opens the right System Settings pane instead of showing a dead server ([13fb423](https://github.com/wquguru/cicada/commit/13fb423d5f860f0cd4c3b4404c945965e8615e80))
+- A cause in a meeting's fishbone diagram is timed by the lines it cites, not a time past the meeting's end ([316b9ca](https://github.com/wquguru/cicada/commit/316b9cace5a3ef67da29cb120727867f421be48e))
+- When Ling hears the meeting and is briefly too busy, it tries again for about 15 s instead of losing the line ([70df016](https://github.com/wquguru/cicada/commit/70df016a25ab37947926d6c09a5b41ec75c267a7))
+- The Rewrite in English button after a meeting has spaces around English in Chinese ([5223610](https://github.com/wquguru/cicada/commit/52236102430c7dbcd8f21d90ea0c7e1aa4e36b2b))
+- Subtitles no longer stall when Google Translate can't be reached, and without a key the notes window says what to do ([b8d0e47](https://github.com/wquguru/cicada/commit/b8d0e47ecc098aace64c969f40ee89ef2e13bb00))
+- When your own AI service can't be reached, subtitles no longer wait a few seconds on every line before Google translates them ([89485cb](https://github.com/wquguru/cicada/commit/89485cb90332fe30cd58a8deb51138d03c34b0f9))
+- The room mic no longer goes silent when the system input is a virtual mic with a different format ([813bc64](https://github.com/wquguru/cicada/commit/813bc64fce002cf6ca8002c4ff95ffb8a4167b8e))
+- Recording a voice sample no longer crashes when the system input is a virtual mic with a different format ([257c9ce](https://github.com/wquguru/cicada/commit/257c9cea72d361d1403d9f25e3a4bd170f18ddc7))
+- After a meeting on headphones, the next meeting on speakers no longer lets the first online sentence into the room's lines ([4f72d4b](https://github.com/wquguru/cicada/commit/4f72d4b2ab29e21fa4192d648a6f7a6533452b77))
+- Holding the talk key with AirPods as the microphone no longer quits Cicada ([5e0a421](https://github.com/wquguru/cicada/commit/5e0a421f799c0d9e7b3c8c54ee04d217f3603d50))
+- Holding the talk key without saying anything no longer sends "Hmm." into the meeting ([88ac648](https://github.com/wquguru/cicada/commit/88ac6489acbed633b1a06691bd6b78b3073071bb))
+- With the meeting on the speakers, the talk key no longer sends the other side's own words back into the meeting ([5e2e955](https://github.com/wquguru/cicada/commit/5e2e955b7e7708efbf097be7d77fe6c33a7d7f0d))
+- A meeting in Lark (international) counts as a call ([1bf9a71](https://github.com/wquguru/cicada/commit/1bf9a71267ba48c6943a9649fdf86a31fd3b6c5e))
+- A meeting in WeCom or Webex Meetings counts as a call ([4b93ac1](https://github.com/wquguru/cicada/commit/4b93ac1e40f70163c8933057a66694e60bfb8647))
+- Subtitles keep coming when the output device runs at 16 kHz, as a headset in a call does ([1644770](https://github.com/wquguru/cicada/commit/1644770b93ce8a15bc0b02916673054bb38d6b06))
+- With the mic on, a table speaking mostly short sentences is no longer left out of the whole meeting ([b7b28ca](https://github.com/wquguru/cicada/commit/b7b28caf063c1b986b59910b92a428d238998cff))
+- With the mic on, holding the talk key no longer garbles what you say or keeps your voice from reaching the meeting ([fa1677e](https://github.com/wquguru/cicada/commit/fa1677edfca6a8122edf59f1bed7fc8ff3bf294a))
+- With the mic on and the meeting on the speakers, the talk key no longer sends the other side's own words back into the meeting ([e41a689](https://github.com/wquguru/cicada/commit/e41a6890c3573978c863e1de154c3f4fd0db94bd))
+
+### Windows
+
+#### New
+
+- When an AI service has trouble, the notes window says in one line what is waiting and what still works, with Use Ling one click away ([9f31a53](https://github.com/wquguru/cicada/commit/9f31a5385caa56127b24c9d5ae8dc96586d7744c))
+- A Turn on mic button in the tray panel, Live notes, the subtitle bar and the tray menu replaces Listen to, and people at the table are heard over music and with headphones on ([a5212cc](https://github.com/wquguru/cicada/commit/a5212cc96e54a1a80b73773d819772eba2b9e774))
+- Meetings are recorded, and the recording plays back in the record, a click on a line's time plays from there, and the line playing lights up ([0f98e96](https://github.com/wquguru/cicada/commit/0f98e968ba4411cadefcc7060628b83e13026109))
+- With your own AI service, meeting audio and text can stay off Google Translate ([6e90cdf](https://github.com/wquguru/cicada/commit/6e90cdf00ad943434b89a7af7300198c2a798d9a))
+
+#### Fixed
+
+- Generate Notes on a long meeting no longer drops a topic and keeps only its "(continued)" end ([51c99ac](https://github.com/wquguru/cicada/commit/51c99ac26c6ed6cde69b7c107925166247579420))
+- A quiet short phrase on its own, like a soft "Good morning everyone" opening a meeting, is no longer dropped ([a9849e2](https://github.com/wquguru/cicada/commit/a9849e295e219bb1fc93739db663975d07126c70))
+- When the AI service keeps answering a meeting's audio with a server error, the notes window says so instead of leaving the subtitles silently empty or blaming the network ([dbe59ed](https://github.com/wquguru/cicada/commit/dbe59edc5eda1d893828752749bb74204ef5fa3d))
+- A cause in a meeting's fishbone diagram is timed by the lines it cites, not a time past the meeting's end ([dd76ede](https://github.com/wquguru/cicada/commit/dd76ede31d1ce4c884336a5197625da84fded412))
+- A quiet short phrase on its own is kept however its first moments line up with the audio, and a faded-in hiss no longer passes as a word ([1d193be](https://github.com/wquguru/cicada/commit/1d193be72249b8312204f780bbf83b8a1d813bf1))
+- When your own AI service can't be reached, subtitles no longer wait a few seconds on every joined sentence before Google translates it ([f61c0f1](https://github.com/wquguru/cicada/commit/f61c0f171378a80ee89b3410f99cb84038963240))
+- The custom voice model and voice fields show their hint in English, Japanese and Korean again ([693f407](https://github.com/wquguru/cicada/commit/693f4079532995f60f14f814a9633a258cd7fd12))
+- The talk key no longer sends "Hmm." for a press nobody spoke in, or the other side's own words back while the meeting plays ([dbd92d8](https://github.com/wquguru/cicada/commit/dbd92d845b5daba47dd86e9f96ba1a1b44831642))
+- A meeting in WeCom counts as a call ([8a58820](https://github.com/wquguru/cicada/commit/8a588201a4c4c85b33041fd6e61d201d0a0dcb62))
+- The tray panel's microphone row and the no-microphone notice say PC instead of Mac in English, Japanese and Korean ([0c214db](https://github.com/wquguru/cicada/commit/0c214db298233c0489bf59305a742674bce52868))
+- The tray panel's Hide notes button is no longer cut off in English and Japanese ([6767b0e](https://github.com/wquguru/cicada/commit/6767b0e06cb21fe7fff78be8874b60416b2119f4))
+- The notes window's collapse button stays in view in English while listening, next to Turn on mic and End ([ac3d713](https://github.com/wquguru/cicada/commit/ac3d713b53eebc1856e3c6428b7aababdbcff56e))
+- With your own AI service, the notes window's line about waiting for it names its address instead of Other (OpenAI-compatible) ([7f5c19e](https://github.com/wquguru/cicada/commit/7f5c19e34b3d149cfb6d7565ead05fda19b4f619))
+- The tray panel's Hide notes button is no longer cut off in Korean ([b650fc2](https://github.com/wquguru/cicada/commit/b650fc293275ec31d25fdd454e7f8e9ed38b1889))
+- Quitting right after ending a meeting keeps its last sentences instead of leaving an empty record ([e49db5c](https://github.com/wquguru/cicada/commit/e49db5c2186db16dca97c3aa92620cd973c25763))
+
+### Android
+
+#### New
+
+- When an AI service has trouble, the live screens say in one line what is waiting and what still works, with Use Ling one tap away ([65d93f5](https://github.com/wquguru/cicada/commit/65d93f5bb78d527af735c62e2116caebba9425b8))
+- A meeting's recording plays back from a bar at the bottom of its record, a tap on a line's time plays from there, and the line playing lights up ([304d5ed](https://github.com/wquguru/cicada/commit/304d5ed1c2af61c3cb66ea4e2147a269da0b90f3))
+- With your own AI service, meeting audio and text can stay off Google Translate ([3b33793](https://github.com/wquguru/cicada/commit/3b337934aa7ddd3edb473159e09c8b2fd5e5f9a4))
+- Android tells the other side's voices apart and names them, with the Mac's voiceprint model ([3167539](https://github.com/wquguru/cicada/commit/31675397078ab7bffb86d0400d7490bf22726afc))
+
+#### Fixed
+
+- Generate Notes on a long meeting no longer drops a topic and keeps only its "(continued)" end ([6c33dad](https://github.com/wquguru/cicada/commit/6c33dad4cf979cce67e11fb47e8e261a2ccafdc2))
+- A quiet short phrase on its own, like a soft "Good morning everyone" opening a meeting, is no longer dropped ([8c329da](https://github.com/wquguru/cicada/commit/8c329dac8d09e9149c10004e8f8b5c9973198503))
+- When the AI service keeps answering a meeting's audio with a server error, the banner says so instead of leaving the subtitles silently empty ([34b0199](https://github.com/wquguru/cicada/commit/34b0199c33db84bd06eb6f1be9867e00033afd95))
+- A cause in a meeting's fishbone diagram is timed by the lines it cites, not a time past the meeting's end ([354c011](https://github.com/wquguru/cicada/commit/354c01169293cfe3dbd9177b68f49fb8f9d78f25))
+- Right after a meeting, AI Service says the service was used in a meeting just now instead of now ([6f4f85d](https://github.com/wquguru/cicada/commit/6f4f85d1bad1d7b3635c04daeec6fa65914d07eb))
+- A quiet short phrase on its own is kept however its first moments line up with the audio, and a faded-in hiss no longer passes as a word ([c4e3a44](https://github.com/wquguru/cicada/commit/c4e3a44eb5f506efdee900897f00420225b871ce))
+- When your AI service can't be reached, lines it would translate go straight to Google instead of waiting seconds for it each time ([7ad8fd5](https://github.com/wquguru/cicada/commit/7ad8fd53e3ed53ee5e5c099b37210273e55c32c5))
+- The custom voice model and voice fields show their hint in English, Japanese and Korean again ([8b1be24](https://github.com/wquguru/cicada/commit/8b1be2436c835a55cf9a6776915c123f671e91ec))
+- Holding the talk button without saying anything no longer says "Hmm." to the other person ([828a254](https://github.com/wquguru/cicada/commit/828a2549899e0f56d9d13931da6d98b260673277))
+
+### Linux
+
+#### New
+
+- When an AI service has trouble, the notes window says in one line what is waiting and what still works, with Use Ling one click away ([3128d5b](https://github.com/wquguru/cicada/commit/3128d5ba4fb2b8986e329de7456e257c5b96949a))
+- A Turn on mic button in Live notes and the top-bar menu replaces Listen to, and people at the table are heard over music and with headphones on ([d950c74](https://github.com/wquguru/cicada/commit/d950c74695e4a17d040a07794f21056a839adf6d))
+- With third-party media formats installed, meetings are recorded and play back in the record, a click on a line's time plays from there ([9492626](https://github.com/wquguru/cicada/commit/9492626f044aee06683b5d3b7facc321c0a411d0))
+- With your own AI service, meeting audio and text can stay off Google Translate ([31aee74](https://github.com/wquguru/cicada/commit/31aee74c6213b0d8d566866dd2f7a9f721be9ffb))
+
+#### Fixed
+
+- Generate Notes on a long meeting no longer drops a topic and keeps only its "(continued)" end ([c3493fc](https://github.com/wquguru/cicada/commit/c3493fc26701eb52e2d399d4626f621e8d9ed994))
+- A quiet short phrase on its own, like a soft "Good morning everyone" opening a meeting, is no longer dropped ([2567d1b](https://github.com/wquguru/cicada/commit/2567d1b5ef3c126eb1154f6512a9287081b31d39))
+- When the AI service keeps answering a meeting's audio with a server error, the notes window says so instead of leaving the subtitles silently empty ([38464e2](https://github.com/wquguru/cicada/commit/38464e26fb2048871ce9bd40614c46f2334905b6))
+- A server error before the first line shows in full on the waiting card instead of being cut off ([fb84d0c](https://github.com/wquguru/cicada/commit/fb84d0cc9aacb28dd926c255821798cd961fda40))
+- In English, a server error from your own AI server names it Other (OpenAI-compatible) instead of in Chinese ([e9618cd](https://github.com/wquguru/cicada/commit/e9618cd95861fd4eabdf644337afeebd4a176d00))
+- A cause in a meeting's fishbone diagram is timed by the lines it cites, not a time past the meeting's end ([0c382a2](https://github.com/wquguru/cicada/commit/0c382a23044d82bb7b8245ff4e192888bccf16db))
+- A quiet short phrase on its own is kept however its first moments line up with the audio, and a faded-in hiss no longer passes as a word ([1fa717f](https://github.com/wquguru/cicada/commit/1fa717f62aef98ed89dfda4b6c603c5ffa4df449))
+- When a custom AI service's text address can't be reached, translations no longer wait seconds on every line before Google translates them ([be87d6d](https://github.com/wquguru/cicada/commit/be87d6da993eef4649c642051f26754a7c32daae))
+- After a meeting on headphones, the next meeting on speakers no longer lets the first online sentence into the room's lines ([c58d0d4](https://github.com/wquguru/cicada/commit/c58d0d44494cd7d6299f2b6df584a136ceb3c95c))
+- 同声传译 no longer says "Hmm." when a hush or an echo's tail is heard as only 嗯 ([4de05e2](https://github.com/wquguru/cicada/commit/4de05e2d785fb62fe27a8fa0d3ec1dcff07398a9))
+- Third-party media formats installed while Cicada is open turn on Save meeting audio and playback without a restart ([e3566d1](https://github.com/wquguru/cicada/commit/e3566d184bb587bf5d4350eb412820bd753a27ef))
+- In English, Japanese and Korean, the notes window's mic row says computer audio only instead of Mac audio only ([1540e35](https://github.com/wquguru/cicada/commit/1540e355b303776fec9a9c981b91dbfb1cc11546))
+
 ## 1.3.0 — 2026-11-05
 
 Intel Macs, Listen to › Room on Windows and Linux and Computer + Room on every desktop, your own AI servers per job (including speech recognition on the Mac), alerts when the AI service needs you, and steadier notes in long meetings.
