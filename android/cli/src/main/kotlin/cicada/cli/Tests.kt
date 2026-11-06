@@ -440,6 +440,11 @@ object Tests {
         val n = (seconds * 16000).toInt()
         return ShortArray(n) { (sin(2 * PI * 300 * it / 16000) * Math.pow(sin(PI * it / n), 2.0) * amp * 32767).toInt().toShort() }
     }
+    /// A 7 kHz tone faded in and out over 0.3 s: crosses zero like a hiss, swells like a word.
+    private fun hiss(seconds: Double, amp: Double): ShortArray {
+        val n = (seconds * 16000).toInt()
+        return ShortArray(n) { (sin(2 * PI * 7000 * it / 16000) * minOf(1.0, it / 4800.0, (n - it) / 4800.0) * amp * 32767).toInt().toShort() }
+    }
     private fun concat(vararg parts: ShortArray): ShortArray = parts.fold(ShortArray(0)) { a, b -> a + b }
 
     private fun cut(vararg parts: ShortArray): List<Segment> {
@@ -487,6 +492,16 @@ object Tests {
         equal(1, cut(silence(1.0), word(1.2, 0.022), silence(1.0)).size, "one smooth run of voice on its own, no dips inside")
         equal(1, cut(silence(1.0), tone(0.5, 0.022, syllables = false), tone(0.15, 0.0025, syllables = false), silence(1.0)).size,
             "a quiet word whose fade (an \"s\", a breath) falls under gate / 4 still swells: a meeting's quiet opening line")
+        // Wherever the 30 ms frames fall (a few ms more lead-in), a quiet phrase with brief dips between
+        // its words stays a word, and a hum or a faded hiss in silence stays out.
+        fun flat(s: Double, a: Double) = tone(s, a, syllables = false)
+        val phrase = concat(flat(0.35, 0.022), flat(0.04, 0.0055), flat(0.4, 0.022), flat(0.04, 0.0055), flat(0.35, 0.022), flat(0.06, 0.0025))
+        for (ms in 0 until 30 step 2) {
+            val lead = silence(1.0 + ms / 1000.0)
+            equal(1, cut(lead, phrase, silence(1.0)).size, "a quiet phrase with dips, $ms ms more lead-in")
+            equal(0, cut(lead, flat(1.0, 0.03), silence(1.0)).size, "a short hum, $ms ms more lead-in")
+            equal(0, cut(lead, hiss(1.0, 0.03), silence(1.0)).size, "a faded hiss, $ms ms more lead-in")
+        }
         equal(0, cut(silence(1.0), tone(1.0, 0.03, syllables = false), silence(1.0)).size, "a short hum in silence doesn't swell and fade")
         equal(0, cut(silence(1.0), word(0.15, 0.3), silence(1.0)).size, "nor is a knock a word")
         equal(0, cut(silence(1.0), hz(12.0, 3.0, 0.1), silence(1.0)).size, "rumble far under 100 Hz is no voice however it swells")

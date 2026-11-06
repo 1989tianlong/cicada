@@ -27,7 +27,8 @@ class Segmenter {
         @Volatile var dips = 2.5 // …unless the median is this far over the 10th, quiet ones held at gate / 8
         @Volatile var short = 2.0 // a sound up to this long, with real quiet (gate / 4) on both sides…
         @Volatile var swell = Math.pow(10.0, 10 / 20.0) // …that swells and fades by 10 dB is a word: see isWord
-        @Volatile var fade = Math.pow(10.0, 30 / 20.0) // its rise and fade reach this far under its loudest frame (or gate / 4 if lower)
+        @Volatile var fade = Math.pow(10.0, 30 / 20.0) // its rise and fade reach this far under its loudest step (or gate / 4 if lower)
+        @Volatile var voiced = 0.15 // a word's full frames crossing zero under this often (per sample) have voice in them: see isVoiced
         private const val PRE_ROLL = 0.15
         private const val TAIL = 0.15
         private const val CUT_WINDOW = 2.0
@@ -156,21 +157,21 @@ class Segmenter {
     }
 
     /// A short word on its own: a sound up to `short` that rises out of real quiet and falls back
-    /// into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after), and
-    /// that swells and fades by 10 dB or more (90th / 10th percentile of its frames from where it
-    /// rises to where it fades: over gate / 4, or 30 dB under its loudest frame if that's lower).
-    /// Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run of voiced
-    /// ones, so the steady test, which looks for dips inside, dropped it even at -26 dBFS; and a
-    /// quiet one ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it needs `minWord` over
-    /// gate / 4 instead (a knock with a 150 ms tail has 0.15 s). A fan, hum or hiss is there on
-    /// both sides; a short burst of one in silence stays within about 9 dB (brown noise), 5 dB (the
-    /// rest), and Ming makes up a sentence for a hum or fan burst. Not for a forced cut, whose end
-    /// isn't a pause.
-    /// Measured over gate / 4 alone, a quiet word lost its rise and fade (an "s" or breath at -55
-    /// dBFS) and only its flat top was left: Samantha's "Thanks." was dropped at -33 dBFS (loudest
-    /// 0.1 s) and a meeting's quiet opening "Good morning everyone." at -34; now both are kept to
-    /// about -38 to -40 dBFS, where the gate itself stops them. A hiss faded in and out over 0.3 s
-    /// passes from -40 dBFS (was -36); brown noise still never does.
+    /// into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after),
+    /// and that swells and fades by 10 dB or more: at least 5% of its 10 ms steps (and 3 of them),
+    /// from where it rises to where it fades, are that far under its 90th percentile. Such a word
+    /// ("Thanks.", "Good morning everyone,") is one smooth syllable or a run of voiced ones, so the
+    /// steady test, which looks for dips inside, dropped it even at -26 dBFS; and a quiet one
+    /// ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it needs `minWord` over gate / 4
+    /// instead (a knock with a 150 ms tail has 0.15 s). A fan, hum or hiss is there on both sides;
+    /// a short burst of one in silence has at most one low step at each edge (its 5th percentile
+    /// stays within 2 dB, 9 dB with 50 ms fades), and Ming makes up a sentence for a hum or fan
+    /// burst. Not for a forced cut, whose end isn't a pause.
+    /// Where it rises and fades: over gate / 4, or 30 dB under its loudest step if that's lower;
+    /// over gate / 4 alone, a quiet word lost its rise and fade (an "s" or breath at -55 dBFS) and
+    /// only its flat top was left. 30 ms frames and their 10th percentile put Samantha's "Good
+    /// morning everyone." at 7.5 to 11.4 dB depending on where the frames fell, so it came and
+    /// went with a few ms of lead-in; 10 ms steps and their 5th percentile give it 14.6 to 16.5.
     internal fun isWord(frameLevels: List<Double>): Boolean {
         val first = frameLevels.indexOfFirst { it >= threshold }
         val last = frameLevels.indexOfLast { it >= threshold }
@@ -178,11 +179,40 @@ class Segmenter {
         val quiet = threshold / 4
         val q = lead ?: return false
         if (q > quiet || last + 1 >= frameLevels.size || frameLevels.subList(last + 1, frameLevels.size).minOrNull()!! > quiet) return false
-        val rise = minOf(quiet, frameLevels.max() / fade)
-        val from = frameLevels.indexOfFirst { it >= rise }
-        val to = frameLevels.indexOfLast { it >= rise }
-        val body = frameLevels.subList(from, to + 1).map { maxOf(it, threshold / 8) }.sorted()
-        return body[(0.9 * (body.size - 1)).toInt()] >= swell * body[(0.1 * (body.size - 1)).toInt()]
+        val samples = current.slice(0, current.size)
+        val steps = ArrayList<Double>()
+        var i = 0
+        while (i + STEP <= samples.size) {
+            var sum = 0.0
+            for (k in i until i + STEP) sum += samples[k].toDouble() * samples[k]
+            steps.add(Math.sqrt(sum / STEP) / 32768)
+            i += STEP
+        }
+        val rise = minOf(quiet, steps.max() / fade)
+        val from = steps.indexOfFirst { it >= rise }
+        val to = steps.indexOfLast { it >= rise }
+        val body = steps.subList(from, to + 1).map { maxOf(it, threshold / 8) }.sorted()
+        val low = maxOf(2, (0.05 * (body.size - 1)).toInt())
+        return low < body.size && body[(0.9 * (body.size - 1)).toInt()] >= swell * body[low] && isVoiced(frameLevels, samples)
+    }
+
+    /// Whether a word has voice in it: 2 or more of its full frames (within 3 dB of its 90th
+    /// percentile) cross zero under `voiced` times a sample. Voiced speech crosses slowly (every
+    /// voice tested had full frames at 0.01 to 0.06); a hiss crosses about every other sample (0.46
+    /// and up) and, faded in and out over 0.3 s, swells like a word. Edge frames half silence
+    /// cross slowly whatever they hold, hence full frames only and more than one.
+    private fun isVoiced(frameLevels: List<Double>, samples: ShortArray): Boolean {
+        val full = frameLevels.sorted()[(0.9 * (frameLevels.size - 1)).toInt()] / Math.sqrt(2.0)
+        var slow = 0
+        for (i in frameLevels.indices) {
+            if (frameLevels[i] < full) continue
+            val start = i * FRAME
+            val end = minOf(samples.size, start + FRAME)
+            var crossings = 0
+            for (k in start + 1 until end) if ((samples[k] >= 0) != (samples[k - 1] >= 0)) crossings++
+            if (crossings < voiced * (end - start - 1)) slow++
+        }
+        return slow >= 2
     }
 
     /// The frame's level over 100 Hz (RMS after the high-pass), the filter running on across frames.
