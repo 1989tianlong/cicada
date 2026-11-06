@@ -155,7 +155,7 @@ Requires the **Ubuntu 22.04 or 24.04 desktop** (x86_64 or arm64). Download `Cica
 
 ### Android
 
-Requires **Android 10** or later. Download `Cicada-<version>-Android.apk` on your phone, open it and allow installing unknown apps when asked; on Android 15 and later, the first time you turn on floating subtitles you also allow restricted settings in App info. Calls and meeting apps don't let other apps record their sound: put the call on speaker and switch to **In person**.
+Requires **Android 10** or later. Download `Cicada-<version>-Android.apk` on your phone, open it and allow installing unknown apps when asked; on Android 15 and later, the first time you turn on floating subtitles you also allow restricted settings in App info. Android also tells the other side's voices apart (Speaker 1, 2…) with the Mac's on-device voiceprint model, and fills in their names when a Ling key is set. Calls and meeting apps don't let other apps record their sound: put the call on speaker and switch to **In person**.
 
 Every platform's files can be checked against `checksums.txt` on the Releases page.
 
