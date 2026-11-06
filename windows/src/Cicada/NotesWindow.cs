@@ -238,10 +238,11 @@ sealed class NotesWindow : Window
             return buttons;
         }
         var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        FrameworkElement? listening = null;
         if (listen.Listening && session is not null)
         {
             left.Children.Add(Ui.LiveDot());
-            left.Children.Add(Gap(Ui.Text(L("正在听"), 14, Palette.Ink, FontWeights.Bold, wrap: false), 8));
+            left.Children.Add(listening = Gap(Ui.Text(L("正在听"), 14, Palette.Ink, FontWeights.Bold, wrap: false), 8));
             Detach(clockText);
             clockText.FontSize = 13; clockText.Foreground = Palette.Secondary; clockText.HorizontalAlignment = HorizontalAlignment.Left;
             left.Children.Add(Gap(clockText, 8));
@@ -257,10 +258,30 @@ sealed class NotesWindow : Window
             ? Ui.Button(L("结束"), app.RequestStop, Ui.Kind.Pale, Icons.Stop, 32, iconFill: true)
             : Ui.Button(L("开始听"), () => _ = app.ToggleListening(), Ui.Kind.Accent, Icons.Wave, 32);
         main.MinWidth = 0; main.Padding = new Thickness(12, 0, 12, 0);
-        if (listen.Listening) right.Children.Add(Gap(TrayFlyout.MicButton(app, panel: false), 8));
+        if (listen.Listening)
+        {
+            // The Mac's header buttons are 12 pt: at 14 the English "Turn off mic" and "End" pushed
+            // 收起 out of the window.
+            Snug(main);
+            right.Children.Add(Gap(Snug(TrayFlyout.MicButton(app, panel: false)), 8));
+        }
         right.Children.Add(Gap(main, 8));
         right.Children.Add(Gap(Ui.IconButton("M5,10 H15", L("收起（继续听）"), Collapse, Palette.Body, 34, 16), 4));
-        var row = Ui.Spread(left, right);
+        // The buttons are docked first so a long status in a wide language clips the clock, never 收起.
+        var row = new DockPanel { LastChildFill = false };
+        DockPanel.SetDock(right, Dock.Right); DockPanel.SetDock(left, Dock.Left);
+        row.Children.Add(right); row.Children.Add(left);
+        left.ClipToBounds = true;
+        // Too narrow for the word and the clock (English with the mic button): the live dot and
+        // the clock say it on their own.
+        if (listening is not null)
+            row.SizeChanged += (_, e) =>
+            {
+                listening.Visibility = Visibility.Visible;
+                left.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                right.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                if (left.DesiredSize.Width + right.DesiredSize.Width > e.NewSize.Width) listening.Visibility = Visibility.Collapsed;
+            };
         row.Height = 56;
         row.Margin = new Thickness(18, 0, 10, 0);
         return row;
@@ -692,6 +713,15 @@ sealed class NotesWindow : Window
     {
         e.Margin = top ? new Thickness(0, size, 0, 0) : new Thickness(size, 0, 0, 0);
         return e;
+    }
+
+    /// A header button at the Mac's size: 13 px label, 10 px sides.
+    static Button Snug(Button b)
+    {
+        b.Padding = new Thickness(10, 0, 10, 0);
+        if (b.Content is StackPanel { Children: var kids })
+            foreach (var t in kids.OfType<TextBlock>()) { t.FontSize = 13; t.Margin = new Thickness(t.Margin.Left > 0 ? 6 : 0, 0, 0, 0); }
+        return b;
     }
 
     static FrameworkElement Bullet(string text)
