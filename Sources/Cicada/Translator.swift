@@ -100,6 +100,17 @@ final class TranslationService {
     var onHealth: ((TranslationHealth) -> Void)?
     /// Set by the app: reads the proxy settings once Google goes down, to word the hint.
     var proxyHint: (() async -> AICheck.ProxyHint)?
+    private var lastUnreachableTry = Date.distantPast
+
+    /// A service that answers nothing (a home server switched off) costs every line its timeout
+    /// before Google gets it, so subtitles run seconds late. While the check says unreachable, one
+    /// line in 15 s still goes to it, so a server that is back is noticed without waiting for a check.
+    private func lingWorthTrying() -> Bool {
+        guard ling.aiCheck.failure?.reason == .unreachable else { return true }
+        guard Date().timeIntervalSince(lastUnreachableTry) >= 15 else { return false }
+        lastUnreachableTry = Date()
+        return true
+    }
 
     init(ling: LingClient) { self.ling = ling }
 
@@ -153,7 +164,7 @@ final class TranslationService {
             trace?.attempts.append(.init(provider: ling.provider.id.rawValue, seconds: 0, failure: "simulated"))
             return nil
         }
-        if kind != .draft, ling.usable {
+        if kind != .draft, ling.usable, lingWorthTrying() {
             let started = Date()
             let (out, failure) = await viaLing(text, source: source, target: target, kind: kind, trace: trace)
             trace?.attempts.append(.init(provider: ling.provider.id.rawValue, seconds: Date().timeIntervalSince(started),
