@@ -1295,7 +1295,9 @@ final class ListenEngine {
         let target = target ?? resolvedTarget
         if source == target { return text }
         let out = await translator?.translate(text, source: source, target: target, kind: kind, trace: trace)
-        if out == nil, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
+        // A partial without a translation is fine while the AI service will translate the sentence.
+        let coming = kind == .draft && translator?.ling.usable == true
+        if out == nil, !coming, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
             onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, L("翻译暂不可用"))
         }
         return out

@@ -44,6 +44,40 @@ struct GoogleTranslator {
 }
 
 
+/// Whether Google is worth asking. Two network errors or timeouts in a row (in China, usually no
+/// proxy) mark it down for a minute: partial text, refreshed every second, would otherwise wait out
+/// the 8 s timeout each time. After the minute one call goes through again; a success or a change
+/// of network brings it straight back. A 429 only pauses it 10 s and never counts as down.
+struct GoogleHealth {
+    static let downAfter = 2
+    static let pause: TimeInterval = 60
+    private(set) var failures = 0
+    private(set) var until = Date.distantPast
+    private(set) var down = false
+
+    func open(_ now: Date = Date()) -> Bool { now >= until }
+
+    mutating func succeeded() { failures = 0; until = .distantPast; down = false }
+
+    mutating func unreachable(_ now: Date = Date()) {
+        failures += 1
+        if failures >= Self.downAfter { down = true; until = now.addingTimeInterval(Self.pause) }
+    }
+
+    mutating func rateLimited(_ now: Date = Date()) { until = now.addingTimeInterval(10) }
+
+    /// A proxy turned on, Wi-Fi back: try again now, still down until it answers.
+    mutating func networkChanged() { until = .distantPast }
+}
+
+/// What the user is told about translation, without naming providers: Google down, and whether
+/// finished sentences are going untranslated too (no key, and no on-device model to stand in).
+struct TranslationHealth: Equatable {
+    var googleDown = false
+    var sentencesUntranslated = false
+    var proxy: AICheck.ProxyHint?
+}
+
 // MARK: - Translation chain
 
 /// Ling (with a key) → Google → Apple's on-device translation.
@@ -58,9 +92,38 @@ final class TranslationService {
     let ling: LingClient
     /// Names and terms the notes have settled on, e.g. "江充 (Jiang Chong)".
     var glossary: () -> [String] = { [] }
-    private var googleBackoffUntil = Date.distantPast
+    private var google = GoogleHealth()
+    private(set) var health = TranslationHealth() {
+        didSet { if health != oldValue { onHealth?(health) } }
+    }
+    /// Set by the app: the banner and settings show `health`.
+    var onHealth: ((TranslationHealth) -> Void)?
+    /// Set by the app: reads the proxy settings once Google goes down, to word the hint.
+    var proxyHint: (() async -> AICheck.ProxyHint)?
 
     init(ling: LingClient) { self.ling = ling }
+
+    /// Debug (`googleDown:on`): Google fails as if there were no proxy, without touching the network.
+    var simulateGoogleDown = false
+
+    func networkChanged() { google.networkChanged() }
+
+    private func googleAnswered() {
+        google.succeeded()
+        health.googleDown = false
+        health.proxy = nil
+    }
+
+    private func googleUnreachable() {
+        let was = google.down
+        google.unreachable()
+        guard google.down, !was else { return }
+        debugLog("translate google down: paused \(Int(GoogleHealth.pause)) s")
+        health.googleDown = true
+        if let proxyHint {
+            Task { let hint = await proxyHint(); if self.health.googleDown { self.health.proxy = hint } }
+        }
+    }
 
     /// `trace`, when given, collects which providers were tried, how long each took and why it
     /// fell through (diagnostics; never the text).
@@ -79,7 +142,9 @@ final class TranslationService {
             onDraft(Date().timeIntervalSince(started), out != nil)
             return out
         }
-        return await chain(text, source: source, target: target, kind: kind, trace: trace)
+        let out = await chain(text, source: source, target: target, kind: kind, trace: trace)
+        if kind == .sentence { health.sentencesUntranslated = out == nil }
+        return out
     }
 
     private func chain(_ text: String, source: String, target: String, kind: Kind, trace: TranslateTrace?) async -> String? {
@@ -98,12 +163,14 @@ final class TranslationService {
                 return out
             }
         }
-        if Date() >= googleBackoffUntil {
+        if google.open() {
             let started = Date()
             do {
+                if simulateGoogleDown { throw URLError(.cannotConnectToHost) }
                 let out = try await GoogleTranslator.translate(text, source: source, target: target)
                 trace?.attempts.append(.init(provider: "google", seconds: Date().timeIntervalSince(started), failure: nil))
                 if kind != .draft { debugLog("translate via=google kind=\(kind)") }
+                googleAnswered()
                 return out
             } catch {
                 debugLog("translate google failed: \(error)")
@@ -111,11 +178,15 @@ final class TranslationService {
                 if case TranslateFailure.badResponse(let code) = error { reason = code == 429 ? "rateLimited" : "http\(code)" }
                 if (error as? URLError)?.code == .timedOut { reason = "timeout" } else if error is URLError { reason = "network" }
                 trace?.attempts.append(.init(provider: "google", seconds: Date().timeIntervalSince(started), failure: reason))
-                if case TranslateFailure.badResponse(429) = error { googleBackoffUntil = Date().addingTimeInterval(10) }
+                if case TranslateFailure.badResponse(429) = error { google.rateLimited() }
+                if let e = error as? URLError, e.code != .cancelled { googleUnreachable() }
             }
         } else {
-            trace?.attempts.append(.init(provider: "google", seconds: 0, failure: "rateLimited"))
+            trace?.attempts.append(.init(provider: "google", seconds: 0, failure: google.down ? "down" : "rateLimited"))
         }
+        // Partial text without Google shows the original only: it is replaced by the sentence's
+        // translation a moment later, and on-device translation would be slower and rougher.
+        if kind == .draft { return nil }
         let started = Date()
         if let out = await viaApple(text, source: source, target: target) {
             trace?.attempts.append(.init(provider: "apple", seconds: Date().timeIntervalSince(started), failure: nil))

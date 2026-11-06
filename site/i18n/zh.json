@@ -493,7 +493,7 @@
   "new_tab_or": "（在新标签页打开 OpenRouter）",
   "svc_more": "也能用 ZenMux、OpenAI 或任何 OpenAI 兼容服务，在设置 › AI 服务右上角切换。key 只保存在你的 Mac 上。",
   "s2_req_alt": "<b>注册不了 Ling？</b>可以换成 OpenRouter、ZenMux 或任何 OpenAI 兼容服务：在引导里点“用不了 Ling？”，或在设置 › AI 服务里选。字幕会比用 Ling 晚 1–2 秒。",
-  "proxy_h": "用 OpenRouter 或 ZenMux 时连不上？",
+  "proxy_h": "翻译、OpenRouter 或 ZenMux 连不上？",
   "proxy_p": "知了经过这台设备的系统代理访问这些服务，不会自己改代理设置。连不上时，设置里会说是下面哪一种。",
   "proxy1_small": "知了说“没开代理”",
   "proxy1_h": "这台电脑没开代理",
@@ -503,7 +503,7 @@
   "proxy2_p": "在代理软件里打开“系统代理”或“TUN 模式”。只开着软件、不接管系统代理时，知了的请求不会经过它。",
   "proxy3_small": "知了说“开了代理也连不上”",
   "proxy3_h": "开了代理也连不上",
-  "proxy3_p": "换一个节点；或在代理软件的分流规则里，让 openrouter.ai 和 zenmux.ai 走代理。",
+  "proxy3_p": "换一个节点；或在代理软件的分流规则里，让 translate.googleapis.com、openrouter.ai 和 zenmux.ai 走代理。",
   "proxy4_small": "系统代理在哪",
   "proxy4_h": "各平台的系统代理",
   "proxy4_p": "Mac：系统设置 › 网络 › 详细信息 › 代理。Windows：设置 › 网络和 Internet › 代理。Linux：设置 › 网络 › 网络代理。Android：Wi‑Fi 详情里的代理。"
