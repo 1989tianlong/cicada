@@ -124,6 +124,12 @@ def hz(freq, seconds, amp):
                        for i in range(int(seconds * 16000))))
 
 
+def hiss(seconds, amp):
+    """A 7 kHz tone faded in and out over 0.3 s: crosses zero like a hiss, swells like a word."""
+    n = int(seconds * 16000)
+    return array("h", (int(math.sin(2 * math.pi * 7000 * i / 16000) * min(1, i / 4800, (n - i) / 4800) * amp * 32767) for i in range(n)))
+
+
 def silence(seconds):
     return array("h", bytes(int(seconds * 16000) * 2))
 
@@ -486,6 +492,15 @@ class Segmenting(Base):
         # A quiet word's flat top whose fade (an "s", a breath) falls under gate / 4 still swells:
         # Samantha's "Good morning everyone." opening a meeting at -34 dBFS was dropped.
         self.assertEqual(1, len(cut(silence(1.0), tone(0.5, 0.022, syllables=False), tone(0.15, 0.0025, syllables=False), silence(1.0))))
+        # Wherever the 30 ms frames fall (a few ms more lead-in), a quiet phrase with brief dips between
+        # its words stays a word, and a hum or a faded hiss in silence stays out.
+        flat = lambda s, a: tone(s, a, syllables=False)
+        phrase = flat(0.35, 0.022) + flat(0.04, 0.0055) + flat(0.4, 0.022) + flat(0.04, 0.0055) + flat(0.35, 0.022) + flat(0.06, 0.0025)
+        for ms in range(0, 30, 2):
+            lead = silence(1.0 + ms / 1000)
+            self.assertEqual(1, len(cut(lead, phrase, silence(1.0))), ms)
+            self.assertEqual(0, len(cut(lead, flat(1.0, 0.03), silence(1.0))), ms)
+            self.assertEqual(0, len(cut(lead, hiss(1.0, 0.03), silence(1.0))), ms)
         # …a short hum in silence, which doesn't swell and fade, isn't; nor is a knock.
         self.assertEqual(0, len(cut(silence(1.0), tone(1.0, 0.03, syllables=False), silence(1.0))))
         self.assertEqual(0, len(cut(silence(1.0), word(0.15, 0.3), silence(1.0))))
