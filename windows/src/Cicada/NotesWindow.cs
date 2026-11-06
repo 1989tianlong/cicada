@@ -275,7 +275,8 @@ sealed class NotesWindow : Window
             // Can't reach it: what this computer's proxy looks like says what to do.
             var offline = problem is LingException.Kind.Network or LingException.Kind.Timeout;
             if (offline && ling.Health.ProxyLine(ling.ServiceName, ling.ServiceHost) is { } proxy) body += "\n" + proxy;
-            if (problem == LingException.Kind.RateLimited) Add(Ui.InfoBar(Ui.Severity.Warning, title, body));
+            // Busy or erring (a 5xx): it passes by itself, nothing to press.
+            if (problem == LingException.Kind.RateLimited || ListenEngine.IsServerError(problem, app.Listen.ProblemStatus)) Add(Ui.InfoBar(Ui.Severity.Warning, title, body));
             else if (settings || offline) Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("设置"), app.ShowAISettings, height: 32)));
             else Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); }, height: 32)));
         }

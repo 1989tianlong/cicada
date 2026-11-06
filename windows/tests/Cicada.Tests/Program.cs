@@ -2180,6 +2180,50 @@ static class Tests
         Check(ListenEngine.Words(LingException.Kind.Network, 0, "ZenMux").Title!.Contains("ZenMux"), "named");
         Equal("连不上 Ling", ListenEngine.Words(LingException.Kind.Timeout, 0, "Ling").Title, "Ling keeps its words");
         Check(!ListenEngine.Words(LingException.Kind.Http, 400, "Ling").Settings, "Ling's 400 is the network bar");
+        // A gateway's 502 in front of the server: the service erring, not the network, nothing in settings.
+        Equal((null, "ZenMux 暂时出错（HTTP 502），稍后再试。", false), ListenEngine.Words(LingException.Kind.Http, 502, "ZenMux"), "a 5xx is the service's trouble");
+        Equal("Ling 暂时出错（HTTP 503），稍后再试。", ListenEngine.Words(LingException.Kind.Http, 503, "Ling").Body, "Ling's too");
+    }
+
+    public static async Task ServerErrorsInARowAreSaidAndClearOnTheNextLine()
+    {
+        // Every stretch answered 502 by a gateway: no subtitles, so from the third in a row the bar
+        // says the service is erring; the next stretch heard clears it. Two blips say nothing.
+        var calls = 0;
+        var seen = new List<(LingException.Kind? kind, int status, int calls)>();
+        var fake = new Fake(body =>
+        {
+            if (!body.Contains("Ming-3.0-audio-flash")) return Reply("{}");
+            return Interlocked.Increment(ref calls) <= 3 ? new HttpResponseMessage(HttpStatusCode.BadGateway)
+                : Reply("LANG: en\nORIGINAL: Back again.\nTRANSLATION: 回来了。");
+        });
+        var old = LingClient.Spacing; LingClient.Spacing = 0.05;
+        try
+        {
+            var ling = Client(fake);
+            var store = new SessionStore();
+            var engine = new ListenEngine(ling, new Translator(ling), store, new NotesEngine(ling, store), new AppSettings { Target = "zh-CN" });
+            engine.Changed += () => { lock (seen) seen.Add((engine.Problem, engine.ProblemStatus, Volatile.Read(ref calls))); };
+            var path = Path.Combine(Path.GetTempPath(), $"cicada-502-{Environment.ProcessId}.wav");
+            short[] stretches = [.. Tone(1), .. Silence(3), .. Tone(1), .. Silence(3), .. Tone(1), .. Silence(3), .. Tone(1), .. Silence(3)];
+            File.WriteAllBytes(path, Wav.Bytes(stretches));
+            // Four times real time: each reply is back before the next stretch goes, as in a meeting.
+            var src = new FileAudioSource(path, speed: 4);
+            var ended = new TaskCompletionSource();
+            src.Ended += _ => ended.TrySetResult();
+            engine.Start(src);
+            await ended.Task;
+            await Task.Delay(300);
+            await engine.Stop();
+            Equal(4, calls, "four stretches sent");
+            List<(LingException.Kind? kind, int status, int calls)> shown;
+            lock (seen) shown = seen.Where(p => p.kind is not null).ToList();
+            Check(shown.Count > 0 && shown.All(p => p.kind == LingException.Kind.Http && p.status == 502), "three 502s in a row are said");
+            Check(shown.All(p => p.calls >= 3), "not after one or two");
+            Equal(null, engine.Problem, "the next stretch heard clears it");
+            Equal("Back again.", store.Get(engine.SessionId!)!.Lines.Single().Src, "and its line is there");
+        }
+        finally { LingClient.Spacing = old; }
     }
 
     public static void FinalNotesKeepRetryingForAboutAMinute()
