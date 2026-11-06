@@ -79,6 +79,7 @@ class ListenEngine:
         self.problem = None  # the last error worth showing, cleared by the next good reply
         # What kind of problem, for a state the UI can draw: "key", "busy", "network", "source".
         self.problem_kind = None
+        self._server_errors = 0  # stretches in a row the service answered with a 5xx
         self.loudness = None  # SpeakEngine's LoudnessLog: when the system audio was loud (the echo check)
         # 说话人识别: a voiceprint per segment on its own thread while Ming hears it, labelled in order.
         self.speakers = None  # speakers.Tagger, set by the app
@@ -189,6 +190,7 @@ class ListenEngine:
             self._in_flight.clear()
             self._line_count = 0
             self.problem = self.problem_kind = None
+            self._server_errors = 0
         self.notes.begin(session.id)
         if self.speakers is not None:
             self.speakers.reset()
@@ -376,9 +378,17 @@ class ListenEngine:
             started = time.monotonic()
             try:
                 heard = self.translator.hear(wav, seg.asked, lang)
+                with self._gate:
+                    self._server_errors = 0
                 self.problem = self.problem_kind = None
             except LingError as e:
-                self.problem_kind, self.problem = problem(e, self.ling.provider.name, self.ling.config().hear_model)
+                # A server error (a gateway's 502) is said from the third in a row, as on the Mac: one
+                # isn't worth a banner, but a meeting with no subtitles and no reason is worse.
+                with self._gate:
+                    self._server_errors = self._server_errors + 1 if server_error(e) else 0
+                    shown = not server_error(e) or self._server_errors >= SERVER_ERRORS_SHOWN
+                if shown:
+                    self.problem_kind, self.problem = problem(e, self.ling.provider.name, self.ling.config().hear_model)
                 Log.d("listen: segment %d failed %s" % (seg.index, e))
             except Exception as e:  # noqa: BLE001
                 Log.d("listen: segment %d failed %s" % (seg.index, type(e).__name__))
@@ -561,14 +571,25 @@ def join(a: str, b: str, lang: str) -> str:
     return a.rstrip() + b.lstrip() if cjk else a.rstrip() + " " + b.lstrip()
 
 
+# Server errors in a row before listening says so (ListenEngine.swift's cloudFailures).
+SERVER_ERRORS_SHOWN = 3
+
+
+def server_error(e: LingError) -> bool:
+    return e.kind == LingError.HTTP and e.status >= 500
+
+
 def problem(e: LingError, service: str, hear_model: str = ""):
     """(kind, what to say) for a stretch that couldn't be heard. Ling keeps its own words; another
     service is named. A hear model that refuses audio (400 / 404 / 415 / 422) is a key-like problem:
-    设置 fixes it, in the words of the settings' 听对方 step."""
+    设置 fixes it, in the words of the settings' 听对方 step. A 5xx is the service's own trouble."""
     L, LF = strings.L, strings.LF
     ling = service == "Ling"
     if e.kind == LingError.HTTP and e.status in (400, 404, 415, 422) and not ling:
         return "key", LF("%@ 听不了声音。", hear_model or service)
+    # It answered, with an error: like busy, it passes by itself (AICheck's serverError words).
+    if server_error(e):
+        return "busy", LF("%@ 暂时出错（HTTP %lld），稍后再试。", service, e.status)
     kind = {LingError.NO_KEY: "key", LingError.INVALID_KEY: "key", LingError.RATE_LIMITED: "busy",
             LingError.NETWORK: "network", LingError.TIMEOUT: "network"}.get(e.kind)
     if ling:

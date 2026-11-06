@@ -984,6 +984,63 @@ class Listening(Base):
         self.assertEqual("h1-1", s.lines[0].id)
         self.assertIsNotNone(s.endedAt)
 
+    def test_server_errors_in_a_row_are_said_and_clear_on_the_next_line(self):
+        # A gateway answering 502 to every stretch: no subtitles, so from the third in a row the notes
+        # window says the service is erring (not the network); the next stretch heard clears it.
+        heard = []
+        seen = []
+
+        def respond(body):
+            if "Ming-3.0-audio-flash" in body:
+                heard.append(1)
+                if len(heard) <= 3:
+                    return Response(502, "Bad Gateway")
+                return reply("LANG: en\nORIGINAL: Back again.\nTRANSLATION: 回来了。")
+            return reply("{}")
+        LingClient.spacing = 0.05
+        ling = client(Fake(respond))
+        store = SessionStore()
+        engine = ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target="zh-CN"))
+        engine.on_change(lambda: seen.append(engine.problem))
+        # Four times real time: each reply is back before the next stretch goes, as in a meeting.
+        src = PcmAudioSource(lambda: concat(*[x for _ in range(4) for x in (tone(1.0), silence(3.0))]), speed=4)
+        ended = threading.Event()
+        src.on_ended = lambda why: ended.set()
+        engine.start(src, "file")
+        ended.wait(15)
+        time.sleep(0.3)
+        engine.stop()
+        self.assertEqual(4, len(heard))
+        said = [p for p in seen if p]
+        self.assertTrue(said, "three 502s in a row are said")
+        self.assertEqual({"Ling 暂时出错（HTTP 502），稍后再试。"}, set(said))
+        self.assertIsNone(engine.problem, "the next stretch heard clears it")
+        self.assertEqual(["Back again."], [l.src for l in store.get(engine.session_id).lines])
+
+    def test_one_server_error_is_not_said(self):
+        calls = []
+
+        def respond(body):
+            if "Ming-3.0-audio-flash" in body:
+                calls.append(1)
+                return Response(502, "") if len(calls) <= 2 else reply("LANG: en\nORIGINAL: Fine.\nTRANSLATION: 好。")
+            return reply("{}")
+        LingClient.spacing = 0.05
+        ling = client(Fake(respond))
+        store = SessionStore()
+        engine = ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target="zh-CN"))
+        seen = []
+        engine.on_change(lambda: seen.append(engine.problem))
+        src = PcmAudioSource(lambda: concat(tone(1.0), silence(3.0), tone(1.0), silence(3.0)), speed=4)
+        ended = threading.Event()
+        src.on_ended = lambda why: ended.set()
+        engine.start(src, "file")
+        ended.wait(10)
+        time.sleep(0.3)
+        engine.stop()
+        self.assertEqual(2, len(calls))
+        self.assertEqual([], [p for p in seen if p], "two blips: nothing to say yet")
+
     def test_follow_system_translates_my_own_language_into_the_next(self):
         # They speak Chinese, my language: the first stretch was asked for Chinese (nothing heard
         # yet), so its translation is dropped for the text translation; the next is asked for English.

@@ -807,8 +807,10 @@ class NotesWindow(Gtk.Window):
             if listen.listening:
                 hearing = listen.pending > 0 or listen.level >= 0.01
                 room = listen.source_kind == "room"
+                # Busy or erring before anything was heard: said here, or it reads as a quiet meeting.
+                trouble = listen.problem if kind == "busy" else None
                 self._state_card(box, "audio-input-microphone-symbolic" if room else "audio-speakers-symbolic", "grey",
-                                 L("正在识别…") if hearing else L("等有人说话"),
+                                 trouble or (L("正在识别…") if hearing else L("等有人说话")),
                                  L("正在用麦克风听会议室，有人说话后约 3 秒出字幕") if room
                                  else L("正在听电脑播放的声音，有声音后约 3 秒出字幕"))
             else:
