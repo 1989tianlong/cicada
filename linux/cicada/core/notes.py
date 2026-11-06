@@ -594,7 +594,9 @@ def parse(raw: str, times: list, started_at: float) -> MeetingNotes | None:
         fish = None
         f = obj(t.get("fishbone"))
         if f is not None:
-            branches = [FishboneBranch(label=s(br.get("label")), detail=s(br.get("detail")), t=num(br.get("t")),
+            # A branch's time from its lines, as a point's: the model's own "t" came back past the end.
+            branches = [FishboneBranch(label=s(br.get("label")), detail=s(br.get("detail")),
+                                       t=time_of(br.get("evidence")) if line_numbers(br.get("evidence")) else num(br.get("t")),
                                        support=len(line_numbers(br.get("evidence")))) for br in objects(f.get("branches"))]
             branches = [x for x in branches if x.label]
             if len(branches) >= 2:
