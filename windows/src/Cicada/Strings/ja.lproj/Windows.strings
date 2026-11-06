@@ -317,3 +317,5 @@
 "本机和局域网服务可不填" = "この PC やローカルネットワークでは省略可";
 "例如 kokoro" = "例: kokoro";
 "例如 af_heart" = "例: af_heart";
+/* The talk key: the computer was playing through the press, so what the mic heard may be its echo. */
+"对方在说话时说的，没有说出去" = "相手が話している間の発言なので、送っていません";

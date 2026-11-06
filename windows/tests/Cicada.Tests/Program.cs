@@ -1322,6 +1322,38 @@ static class Tests
         finally { LingClient.Spacing = old; }
     }
 
+    public static async Task SilencesFillersAndEchoAreNotSent()
+    {
+        var old = LingClient.Spacing;
+        LingClient.Spacing = 0.01;
+        try
+        {
+            var asked = 0;
+            var reply = "LANG: zh-CN\nORIGINAL: 嗯。\nTRANSLATION: Hmm.";
+            var fake = new Fake(body =>
+            {
+                if (body.Contains(LingClient.AudioModel)) { Interlocked.Increment(ref asked); return Reply(reply); }
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("data:{\"type\":\"speech.audio.done\"}\n\n") };
+            });
+            var engine = Speaker(Client(fake), new NoVoice(), new AppSettings { SpeakFrom = "zh-CN" });
+            // A press nobody spoke in: not even sent to the service.
+            Check(await engine.Speak(Wav.Bytes(new short[16000 * 3]), new Sink()) is null && asked == 0, "a silent press sends nothing");
+            Check(engine.State == SpeakEngine.Phase.Idle && engine.Problem is null, "and says nothing about it");
+            // Ming heard only 嗯: nothing goes out.
+            Check(await engine.Speak(Wav.Bytes(Tone(1)), new Sink()) is null && asked == 1, "a filler alone isn't sent");
+            // The computer played through the press: its echo, not me.
+            double now = 0;
+            var log = new LoudnessLog(() => now);
+            engine.Echo = log;
+            engine.BeginRecording();
+            for (var i = 0; i < 30; i++) { log.Add(true); now += 0.1; }
+            Check(await engine.Speak(Wav.Bytes(Tone(1)), new Sink()) is null && asked == 1, "pressed while the meeting played: not sent");
+            Equal(Strings.L("对方在说话时说的，没有说出去"), engine.Problem, "and the bar says why");
+        }
+        finally { LingClient.Spacing = old; }
+        Check(PressSpeech.Filler("嗯嗯。") && PressSpeech.Filler("Um, uh...") && !PressSpeech.Filler("嗯，好的。") && !PressSpeech.Filler("OK."), "fillers");
+    }
+
     public static async Task WhatISayGoesAheadOfTheMeeting()
     {
         var old = LingClient.Spacing;

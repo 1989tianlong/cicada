@@ -123,6 +123,10 @@ sealed class Controller
         Speak.Changed += () => Dispatch.BeginInvoke(() => { speakBar ??= new SpeakBar(this); speakBar.Refresh(); });
         Listen.Voiceprint = new WinVoiceprint();
         // No voices on the room side: its numbers would collide with the PC's.
+        // The talk key's echo check: the meeting playing through a press is sent back otherwise.
+        var loudness = new LoudnessLog();
+        Listen.Loudness = loudness;
+        Speak.Echo = loudness;
         RoomListen = new ListenEngine(Ling, Translator, Store, Notes, Settings, roomSide: true);
         RoomListen.Changed += Changed;
         Listen.Changed += Changed;

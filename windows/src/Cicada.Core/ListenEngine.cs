@@ -108,6 +108,8 @@ public sealed class ListenEngine
     /// 电脑和会议室: the main side holds the gate on loud audio and lists what it heard; the room
     /// side checks its lines against that before recording them.
     public EchoFilter? Echo { get; set; }
+    /// When the computer's audio was loud (the talk key's echo check), fed while listening to it.
+    public LoudnessLog? Loudness { get; set; }
     /// Seconds from the meeting's start to this side's first sample (the room side joins later).
     double offset;
     Channel<(Segment seg, Heard heard, double at, double queued)>? held;
@@ -171,6 +173,7 @@ public sealed class ListenEngine
                 Level = Rms(buf);
                 // The computer is playing speech: the room mic would hear it from the speakers.
                 if (!RoomSide && Echo is { } echo && Level >= Segmenter.Threshold) echo.Gate.Hold();
+                if (!RoomSide) Loudness?.Add(Level >= Segmenter.Threshold);
                 segmenter.Feed(buf);
             }
             segmenter.Flush();

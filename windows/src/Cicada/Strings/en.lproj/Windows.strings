@@ -317,3 +317,5 @@
 "本机和局域网服务可不填" = "Optional on this PC or your local network";
 "例如 kokoro" = "e.g. kokoro";
 "例如 af_heart" = "e.g. af_heart";
+/* The talk key: the computer was playing through the press, so what the mic heard may be its echo. */
+"对方在说话时说的，没有说出去" = "Said while they were talking, so not sent";
