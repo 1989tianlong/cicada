@@ -488,6 +488,13 @@ static class Tests
         return Enumerable.Range(0, n).Select(i => (short)(Math.Sin(2 * Math.PI * 300 * i / 16000) * Math.Pow(Math.Sin(Math.PI * i / n), 2) * amp * 32767)).ToArray();
     }
 
+    /// A 7 kHz tone faded in and out over 0.3 s: crosses zero like a hiss, swells like a word.
+    static short[] Hiss(double seconds, double amp)
+    {
+        int n = (int)(seconds * 16000);
+        return Enumerable.Range(0, n).Select(i => (short)(Math.Sin(2 * Math.PI * 7000 * i / 16000) * Math.Min(1, Math.Min(i / 4800.0, (n - i) / 4800.0)) * amp * 32767)).ToArray();
+    }
+
     static List<Segment> Cut(params short[][] parts)
     {
         var seg = new Segmenter();
@@ -538,6 +545,17 @@ static class Tests
         Equal(1, Cut(Silence(1), Word(1.2, 0.022), Silence(1)).Count, "one smooth run of voice on its own, no dips inside");
         Equal(1, Cut(Silence(1), Tone(0.5, 0.022, syllables: false), Tone(0.15, 0.0025, syllables: false), Silence(1)).Count,
             "a quiet word whose fade (an \"s\", a breath) falls under gate / 4 still swells: a meeting's quiet opening line");
+        // Wherever the 30 ms frames fall (a few ms more lead-in), a quiet phrase with brief dips between
+        // its words stays a word, and a hum or a faded hiss in silence stays out.
+        short[] Flat(double s, double a) => Tone(s, a, syllables: false);
+        short[] phrase = [.. Flat(0.35, 0.022), .. Flat(0.04, 0.0055), .. Flat(0.4, 0.022), .. Flat(0.04, 0.0055), .. Flat(0.35, 0.022), .. Flat(0.06, 0.0025)];
+        for (int ms = 0; ms < 30; ms += 2)
+        {
+            var lead = Silence(1.0 + ms / 1000.0);
+            Equal(1, Cut(lead, phrase, Silence(1)).Count, $"a quiet phrase with dips, {ms} ms more lead-in");
+            Equal(0, Cut(lead, Flat(1, 0.03), Silence(1)).Count, $"a short hum, {ms} ms more lead-in");
+            Equal(0, Cut(lead, Hiss(1, 0.03), Silence(1)).Count, $"a faded hiss, {ms} ms more lead-in");
+        }
         Equal(0, Cut(Silence(1), Tone(1, 0.03, syllables: false), Silence(1)).Count, "a short hum in silence doesn't swell and fade");
         Equal(0, Cut(Silence(1), Word(0.15, 0.3), Silence(1)).Count, "nor is a knock a word");
         Equal(0, Cut(Silence(1), Hz(12, 3, 0.1), Silence(1)).Count, "rumble far under 100 Hz is no voice however it swells");
