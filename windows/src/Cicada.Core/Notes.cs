@@ -251,7 +251,7 @@ public sealed class NotesEngine
             if (JsonNode.Parse(raw[a..(b + 1)]) is not JsonObject part) return null;
             part.Remove("topics");
             notes.Add(part.ToJsonString(Json.Compact));
-            topics.AddRange(Spread(parsed.Topics, PartTopics(parts.Count)));
+            topics.AddRange(Thinned(parsed.Topics, PartTopics(parts.Count), lines[parts[i].End.Value - 1].T));
         }
         bool voices = SpeakerLabels.Voices && SpeakerLabels.Numbers(lines).Count > 0;
         var prompt = MergePrompt(notes, lines, lang, voices);
@@ -479,15 +479,40 @@ public sealed class NotesEngine
     /// Each part's share of the topics: the merge keeps them as they are, so every part has some.
     public static int PartTopics(int parts) => Math.Max(2, MaxTopics / Math.Max(1, parts));
 
-    /// `count` of `topics`, spread evenly from the first to the last: a part's reply often has more
-    /// topics than asked, and keeping the first ones (or folding the rest into the last) lost the
-    /// end of each part.
-    public static List<NoteTopic> Spread(IReadOnlyList<NoteTopic> topics, int count)
+    /// At most `count` of a part's `topics`, neighbours joined: a part's reply often has more topics
+    /// than asked. Keeping the first ones lost the end of the part, and keeping some spread from first
+    /// to last kept a topic's "（续）" stub at the part's end and dropped the topic itself. The same
+    /// subject twice is joined first, under the first one's title; then the pair spanning the least
+    /// time (to the next topic's start, or `end` for the last), as live notes do.
+    public static List<NoteTopic> Thinned(IReadOnlyList<NoteTopic> topics, int count, double end)
     {
-        if (topics.Count <= count || count <= 0) return topics.ToList();
-        if (count == 1) return [topics[0]];
-        return Enumerable.Range(0, count)
-            .Select(k => topics[(int)Math.Round((double)k * (topics.Count - 1) / (count - 1), MidpointRounding.AwayFromZero)]).ToList();
+        var list = topics.ToList();
+        while (list.Count > Math.Max(1, count))
+        {
+            double Span(int i) => (i + 2 < list.Count ? list[i + 2].Start : end) - list[i].Start;
+            int same = Enumerable.Range(0, list.Count - 1).FirstOrDefault(i => Subject(list[i].Title) == Subject(list[i + 1].Title), -1);
+            int at = same;
+            if (at < 0)
+            {
+                // The first of equal spans, as the Mac does.
+                at = 0;
+                for (int i = 1; i < list.Count - 1; i++) if (Span(i) < Span(at)) at = i;
+            }
+            var one = Joined(list[at], list[at + 1]);
+            if (same >= 0) (one.Title, one.Summary) = (list[at].Title, list[at].Summary);
+            list[at] = one;
+            list.RemoveAt(at + 1);
+        }
+        return list;
+    }
+
+    /// A topic title without a trailing bracket ("预算评审（续）", "Budget (cont.)"): what it is about.
+    public static string Subject(string title)
+    {
+        var t = title.Trim();
+        if (t.Length == 0 || !"）)".Contains(t[^1])) return t;
+        int open = t.LastIndexOfAny(['（', '(']);
+        return open > 0 ? t[..open].Trim() : t;
     }
 
     /// The whole meeting's title, summary, conclusions, to-dos and terms from its parts' notes (the

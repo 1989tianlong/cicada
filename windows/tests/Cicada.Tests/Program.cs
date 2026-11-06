@@ -724,9 +724,23 @@ static class Tests
         Check(four.Zip(four.Skip(1)).All(x => x.First.End.Value == x.Second.Start.Value), "back to back");
         Equal(0, NotesEngine.Parts([]).Count, "no lines, no parts");
         var ten = Enumerable.Range(0, 10).Select(i => Topic(i * 300, $"t{i}")).ToList();
-        Equal("t0,t3,t6,t9", Titles(NotesEngine.Spread(ten, 4)), "a part's topics spread from first to last");
-        Equal("t0", Titles(NotesEngine.Spread(ten, 1)), "one");
-        Equal(3, NotesEngine.Spread(ten.Take(3).ToList(), 4).Count, "fewer than asked stay");
+        var kept = NotesEngine.Thinned(ten, 4, 3000);
+        Equal(4, kept.Count, "a part's topics thinned to four");
+        Equal(0.0, kept[0].Start, "from the first");
+        Check(ten.All(t => kept.Any(k => k.Title.Split(" / ").Contains(t.Title))), "every topic joined, none dropped");
+        Equal("0", string.Join(",", NotesEngine.Thinned(ten, 1, 3000).Select(t => t.Start)), "one");
+        Equal(3, NotesEngine.Thinned(ten.Take(3).ToList(), 4, 3000).Count, "fewer than asked stay");
+        // A 2.5-hour meeting's last part, asked for 2 topics, came back with 3: the budget topic's
+        // end as its own. Kept first and last, the budget topic at 125 min was lost.
+        var part = new List<NoteTopic> { Topic(6000, "营销发布安排", ["a"]), Topic(7500, "预算评审", ["b"]), Topic(8982, "预算评审（续）", ["c"]) };
+        var two = NotesEngine.Thinned(part, 2, 8990);
+        Equal("营销发布安排,预算评审", Titles(two), "the topic kept over its continuation");
+        Equal("6000,7500", string.Join(",", two.Select(t => t.Start)), "at its own start");
+        Equal("b,c", string.Join(",", two[1].Points), "with the continuation's points");
+        var other = new List<NoteTopic> { Topic(6000, "营销发布安排"), Topic(7500, "预算评审"), Topic(8982, "收尾") };
+        Equal("6000,7500", string.Join(",", NotesEngine.Thinned(other, 2, 8990).Select(t => t.Start)), "a stub joins the topic it ends");
+        Equal("Budget review", NotesEngine.Subject("Budget review (cont.)"), "subject without the bracket");
+        Equal("(续)", NotesEngine.Subject("(续)"), "a bracket alone stays");
     }
 
     public static void PartPromptKeepsLineNumbers()
