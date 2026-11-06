@@ -26,6 +26,9 @@ class AppSettings:
         # The custom service's hear model at an address of its own (the port's, like the Mac's
         # aiCustomHearBase); empty: the same address as the text model.
         "aiCustomHearBase": "",
+        # 语音和文字只发给你的服务 (the Mac's aiCustomOnly): with the custom service, Google Translate is
+        # never asked. Kept when another service is picked, but only acts on the custom one.
+        "aiCustomOnly": False,
         "view": "notes",             # "notes" (the notes window, default) or "subtitles" (the subtitle bar)
         "showInCapture": False,      # 共享屏幕时让对方看到 (Linux can't hide it; see NotesWindow)
         "onboarded": False,
@@ -82,6 +85,11 @@ class AppSettings:
         """The notes' language for a 纪要语言 choice (this one's when None): the meeting's own language
         (`meeting`, the one it was heard in) for "source", else mine (the Mac's notesLanguageCode)."""
         return meeting if (choice or self.notesLanguage) == "source" and meeting else self.target_code
+
+    @property
+    def google_off(self) -> bool:
+        """语音和文字只发给你的服务 in effect: on, and the custom service in use."""
+        return self.aiProvider == "custom" and self.aiCustomOnly
 
     @property
     def hears_room(self) -> bool:

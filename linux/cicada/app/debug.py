@@ -6,6 +6,7 @@ per connection, one JSON line back. Never in release builds.
   target <code> | key-reload | windows | select <record id> | append <record id> <n> (a growing meeting)
   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> (设置 › AI 服务; "" back to the recommended) |
   ai-base text|voice|hear <url> (其他（兼容 OpenAI）'s addresses; "" for voice/hear: the text one)
+  ai-custom-only on|off (语音和文字只发给你的服务, the Mac's aiCustomOnly)
   speak-enable on|off | speak on|off (同声传译) | quit
   calls <program=name,…>|none|real (meeting apps in a call) | endtimes <silence> <countdown> <grace>|off | endkeep
   notes-tab notes|transcript | notes-search <text> | notes-wide on|off | onboarding-step <n> | settings-scroll <0-1>
@@ -266,6 +267,9 @@ def command(app, line: str) -> dict:
         app.settings.save()
         app.ai_changed()
         return {"ok": True, "ai": _ai(app)}
+    if cmd == "ai-custom-only":
+        app.set_custom_only(arg == "on")
+        return {"ok": True, "ai": _ai(app)}
     if cmd == "ai-model":
         kind, _, model = arg.partition(" ")
         app.set_ai_model(kind, model.strip())
@@ -421,4 +425,6 @@ def _ai(app) -> dict:
             "proxyLine": ling.check_result.proxy_line(ling.service_name, ling.service_host),
             "keyWorks": app.key_works, "asking": getattr(app, "_asking", None) is not None,
             "lastVoice": list(ling.last_voice) if ling.last_voice else None, "simulate": ling.simulate,
-            "catalog": [len(ling.text_catalog), len(ling.hear_catalog)], "keyFile": os.path.basename(app.key.path)}
+            "catalog": [len(ling.text_catalog), len(ling.hear_catalog)], "keyFile": os.path.basename(app.key.path),
+            "customOnly": app.settings.aiCustomOnly, "googleOff": app.translator.google_off,
+            "sentencesUntranslated": app.translator.sentences_untranslated}

@@ -76,6 +76,7 @@ class Controller:
         self.notes = NotesEngine(self.ling, self.store)
         # 纪要语言 for notes written outside a meeting too (生成纪要 in the records window).
         self.translator = Translator(self.ling)
+        self.translator.google_off = self.settings.google_off
         self.listen = ListenEngine(self.ling, self.translator, self.store, self.notes, self.settings)
         # 同声传译: my microphone → the AI service → 知了 麦克风. The listen side's loudness feeds its echo check.
         from ..core.speak import SpeakEngine
@@ -395,9 +396,20 @@ class Controller:
 
     def ai_changed(self) -> None:
         """The service, its address, models or key changed: forget the old check and check again."""
+        self.translator.google_off = self.settings.google_off
         self.ling.key_changed()
         if self.ling.has_key:
             threading.Thread(target=self.ling.check, daemon=True).start()
+
+    def set_custom_only(self, on: bool) -> None:
+        """语音和文字只发给你的服务: Google is never asked while the custom service is in use. Nothing
+        to check again: only where translations go changes."""
+        self.settings.aiCustomOnly = on
+        self.settings.save()
+        self.translator.google_off = self.settings.google_off
+        if self.settings_window is not None:
+            self.settings_window.show_key_state()  # the switch, its grey line and the footnote
+        self.changed()
 
     def recheck(self) -> None:
         """重新检查: the AI service, step by step, off the main loop."""

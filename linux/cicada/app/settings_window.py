@@ -660,7 +660,14 @@ class SettingsWindow(Gtk.Window):
                                  ("hear", L("听对方"), hear_body)):
             rows.append(ui.vbox(0, self._custom_head(sid, title), self._custom_body(sid, body)))
         hint = ui.text(L("每样可以接不同的机器；这台电脑和局域网里的服务可以用 http。"), 12, "tertiary", width_chars=60)
-        page = ui.vbox(6, ui.pad(hint, 0, 2, 0, 2), ui.boxed(rows))
+        # 语音和文字只发给你的服务 (AISettings.swift › onlyRow): Google is never asked. The grey line says
+        # what it costs, and while the service can't be reached, that new lines are the original only.
+        self.only_switch = Gtk.Switch()
+        self.only_switch.set_active(s.aiCustomOnly)
+        self.only_switch.connect("notify::active", self._only_toggled)
+        self.only_detail = ui.text(L("不用 Google 翻译；说话时要等整句说完才出译文"), 11, "tertiary", width_chars=50)
+        only = ui.boxed([ui.prow(L("语音和文字只发给你的服务"), self.only_switch, subtitle_widget=self.only_detail)])
+        page = ui.vbox(6, ui.pad(hint, 0, 2, 0, 2), ui.boxed(rows), only)
         page.set_no_show_all(True)
         for w in page.get_children():
             w.show_all()
@@ -669,6 +676,10 @@ class SettingsWindow(Gtk.Window):
         for body in self.custom_bodies.values():
             body.set_visible(False)
         return page
+
+    def _only_toggled(self, w, _p) -> None:
+        if w.get_active() != self.app.settings.aiCustomOnly:
+            self.app.set_custom_only(w.get_active())
 
     @staticmethod
     def _label(title: str) -> Gtk.Widget:
@@ -804,7 +815,7 @@ class SettingsWindow(Gtk.Window):
         head("text", state, "%s · %s" % (host, c.text_model) if host and c.text_model else L("填上地址和模型"), trailing,
              "warn" if r.slow else "stepwhy" if text_failed and have else "")
         ui.clear(self.custom_text_status)
-        slow = r.slow_line()
+        slow = r.slow_line(google_off=s.aiCustomOnly)  # this page is the custom service's
         if slow:
             self.custom_text_status.pack_start(ui.text(slow, 12, "warn", width_chars=46), False, False, 0)
         if have and aicheck_view.show_steps(r) and (text_failed or r.running or r.busy):
@@ -853,6 +864,13 @@ class SettingsWindow(Gtk.Window):
             self.custom_hear_status.pack_start(ui.text(L("地址要用 https；这台电脑和局域网里的服务可以用 http。"), 12, "stepwhy",
                                                        width_chars=46), False, False, 0)
         self.custom_hear_status.show_all()
+        # 语音和文字只发给你的服务: set by a debug command too. Linux has no translation of its own to
+        # stand in while the service can't be reached.
+        on = s.aiCustomOnly
+        if self.only_switch.get_active() != on:
+            self.only_switch.set_active(on)  # _only_toggled sees it already saved
+        down = on and have and not r.running and f is not None and f[1] != aicheck.BUSY
+        ui.retext(self.only_detail, L("现在连不上：新字幕暂时只有原文") if down else L("不用 Google 翻译；说话时要等整句说完才出译文"))
         # A service that isn't set up yet, or doesn't work, opens where it needs filling in.
         if not getattr(self, "_custom_opened", False):
             self._custom_opened = True
@@ -1058,7 +1076,11 @@ class SettingsWindow(Gtk.Window):
             # for the hear model's address (never 声音不出本机 on a port).
             from ..core.providers import is_nearby
             cost = L("跑在你自己的机器上，不按量计费。") if c.base and is_nearby(c.base) else L("费用以这个服务为准。")
-            ui.retext(self.footnote, cost + LF("听的时候，电脑里的声音会发给 %@。", app.ling.hear_host or L("你填的地址")))
+            if app.settings.aiCustomOnly:
+                from ..core.providers import only_host
+                ui.retext(self.footnote, cost + LF("会议的语音和文字只发给 %@，不经过 Google 等外部服务。", only_host(c) or L("你填的地址")))
+            else:
+                ui.retext(self.footnote, cost + LF("听的时候，电脑里的声音会发给 %@。", app.ling.hear_host or L("你填的地址")))
         else:
             ui.retext(self.footnote, LF("听的时候，电脑里的声音会发给 %@。", name) if p.id == "ling"
                       else L("按所选模型计费。") + LF("听的时候，电脑里的声音会发给 %@。", name))

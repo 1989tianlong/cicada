@@ -665,13 +665,17 @@ def boxed(rows) -> Gtk.Widget:
     return panel(box, "boxed")
 
 
-def prow(title: str, control: Gtk.Widget | None = None, subtitle: str | None = None, title_widget=None) -> Gtk.Widget:
-    """One preferences row: title (and a grey subtitle) on the left, its control on the right."""
+def prow(title: str, control: Gtk.Widget | None = None, subtitle: str | None = None, title_widget=None,
+         subtitle_widget=None) -> Gtk.Widget:
+    """One preferences row: title (and a grey subtitle) on the left, its control on the right.
+    `subtitle_widget`: a grey line the caller rewrites later, in place of `subtitle`."""
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
     left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
     left.set_valign(Gtk.Align.CENTER)
     left.pack_start(title_widget or text(title, 13, "ink", wrap=False, ellipsize=False), False, False, 0)
-    if subtitle:
+    if subtitle_widget is not None:
+        left.pack_start(subtitle_widget, False, False, 0)
+    elif subtitle:
         left.pack_start(text(subtitle, 11, "tertiary", width_chars=50), False, False, 0)
     row.pack_start(left, True, True, 0)
     if control is not None:

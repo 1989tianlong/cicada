@@ -579,8 +579,12 @@ class ListenEngine:
 
             def retranslate():
                 dst = self.translator.translate(src, line.srcLang, target, Translator.SENTENCE)
+                if dst is None:
+                    # The notes window may now say the user's own service can't be reached.
+                    self._changed()
+                    return
                 with self._gate:
-                    if dst is None or line.src != src:
+                    if line.src != src:
                         return
                     line.dst = dst
                     updated = line.copy()

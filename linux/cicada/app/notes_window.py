@@ -864,6 +864,12 @@ class NotesWindow(Gtk.Window):
             row.pack_end(b, False, False, 0)
             body.pack_start(ui.pad(ui.panel(ui.pad(row, 12), "notice", "error"), 0, 0, 10, 0), False, False, 0)
             return
+        elif live and self.app.translator.google_off and self.app.translator.sentences_untranslated:
+            # 语音和文字只发给你的服务, and the service didn't translate the last sentence: it picks up
+            # by itself, and no 改用 Ling, which would send the meeting elsewhere.
+            notes_wait = status in (notesmod.UNREACHABLE, notesmod.UPDATING) and ling.check_result.reason == "unreachable"
+            tone = "waiting"
+            text = LF("译文和纪要等 %@ 恢复 · 字幕先显示原文", name) if notes_wait else LF("译文等 %@ 恢复 · 字幕先显示原文", name)
         elif status == notesmod.RATE_LIMITED and live:
             # A 429 holds hearing at the start gate and its retries wait it out: subtitles come late
             # for a moment, not lost; the live card says so if hearing itself stays busy.
