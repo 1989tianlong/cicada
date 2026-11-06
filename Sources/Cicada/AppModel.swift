@@ -180,6 +180,10 @@ final class AppModel: ObservableObject {
         updates.busy = { [weak self] in guard let self else { return false }; return self.running || self.speak.phase != .idle }
         // Words in the Mac's audio: speech, which the room mic is silenced for (music isn't, `EchoGate`).
         listen.onWords = { [gate = roomListen.echoGate] in gate.heardWords() }
+        speak.micTaken = { [weak self] in
+            guard let self else { return false }
+            return self.roomListen.holdsPlainMic || self.listen.holdsPlainMic
+        }
         roomListen.onStateChange = { [weak self] in self?.refresh() }
         listen.onSubtitle = { [weak self] src, dst in
             guard let self else { return }

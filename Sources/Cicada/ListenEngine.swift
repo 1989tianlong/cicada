@@ -523,6 +523,9 @@ final class ListenEngine {
     /// or when the unit can't be had, the plain mic is gated while the Mac plays speech (`gateEcho`).
     var echoCancelled = true
     var voiceMic: VoiceMic?
+    /// Whether the plain room mic is open: the echo-cancelling unit would starve it, so it lets the
+    /// unit go each time it starts (`startRoomMic`).
+    var holdsPlainMic: Bool { isRunning && audioTap is RoomMic }
     /// Whether the room is heard through the echo-cancelling unit right now.
     var hearsEchoCancelled: Bool { audioTap is EchoCancelledRoomMic }
     /// The microphone hearing the room right now, to notice it going away (nil: the default input).

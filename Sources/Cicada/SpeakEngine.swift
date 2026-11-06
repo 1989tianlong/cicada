@@ -117,7 +117,10 @@ final class SpeakEngine {
     }
     /// The real mic to cancel the echo for; nil when it is unknown or virtual (nothing to cancel there).
     private var echoInput: AudioObjectID? {
-        guard let d = inputDevice?(), !d.isVirtualMic else { return nil }
+        // The plain room mic open: the unit readied after each press made it start again, which
+        // gave the unit back, and every restart churned the system audio tap and the voice output
+        // too, so later presses lost most of what was said and voices didn't reach the meeting.
+        guard micTaken?() != true, let d = inputDevice?(), !d.isVirtualMic else { return nil }
         return d.id
     }
     private let micQueue = DispatchQueue(label: "com.wquguru.cicada.mic", qos: .userInitiated)
@@ -128,6 +131,8 @@ final class SpeakEngine {
     private var finals: [String] = []
     private var volatile = ""
     private var pressStarted = Date()
+    /// Whether the plain room mic holds the mic (打开麦克风 without echo cancellation).
+    var micTaken: (() -> Bool)?
     private nonisolated(unsafe) var micRecorder: AVAudioFile?
     private nonisolated(unsafe) var micRecordURL: URL?
     /// This press's audio as 16 kHz mono 16-bit samples for Ming; only touched on `micQueue`.
