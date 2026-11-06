@@ -179,7 +179,7 @@ sealed class NotesWindow : Window
         if (Subtitles) { live.Content = SubtitleLine(); return; }
         var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
-        var bk = $"{app.Listen.Problem}|{app.Listen.ProblemStatus}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited or NotesEngine.State.Unreachable or NotesEngine.State.Updating ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Settings.AiProvider}|{app.CanSwitchToLing}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
+        var bk = $"{app.Listen.Problem}|{app.Listen.ProblemStatus}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited or NotesEngine.State.Unreachable or NotesEngine.State.Updating ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Settings.AiProvider}|{app.CanSwitchToLing}|{app.Translator.GoogleOff && app.Translator.SentencesUntranslated}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
         live.Content = LiveCard();
         var count = app.Listen.SessionId is { } sid ? app.Store.Get(sid)?.Lines.Count ?? 0 : 0;
@@ -291,6 +291,13 @@ sealed class NotesWindow : Window
             else Add(Ui.StatusLine(Ui.Tone.Waiting, text, (L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); })));
         }
         var unreachable = app.Ling.Health.Failure?.Why == AICheck.Reason.Unreachable;
+        // 语音和文字只发给你的服务, and finished sentences go untranslated: it picks up by itself, and
+        // no 改用 Ling (that would send the meeting elsewhere). When hearing failed, its line says so.
+        var notesWait = app.Notes.Status is NotesEngine.State.Unreachable or NotesEngine.State.Updating && unreachable;
+        var stalled = problem is null && app.Listen.Listening && app.Translator.GoogleOff && app.Translator.SentencesUntranslated;
+        if (stalled)
+            Add(Ui.StatusLine(Ui.Tone.Waiting, notesWait ? LF("译文和纪要等 %@ 恢复 · 字幕先显示原文", ServiceLabel())
+                                                          : LF("译文等 %@ 恢复 · 字幕先显示原文", ServiceLabel())));
         if (app.Listen.Listening)
             switch (app.Notes.Status)
             {
@@ -302,7 +309,7 @@ sealed class NotesWindow : Window
                 // only timed out while translations still came back retry on the next round. The retry
                 // that follows (Updating) hangs as long as a timeout: the line stays meanwhile. When
                 // hearing can't reach it either, its line above says so already.
-                case NotesEngine.State.Unreachable or NotesEngine.State.Updating when unreachable:
+                case NotesEngine.State.Unreachable or NotesEngine.State.Updating when unreachable && !stalled:
                     if (problem is not (LingException.Kind.Network or LingException.Kind.Timeout))
                     {
                         // A hear model served at another address still brings subtitles.

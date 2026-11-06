@@ -320,3 +320,5 @@
 /* The talk key: the computer was playing through the press, so what the mic heard may be its echo. */
 "对方在说话时说的，没有说出去" = "相手が話している間の発言なので、送っていません";
 "只存在这台电脑上" = "このPCにのみ保存";
+"例如 kokoro" = "例：kokoro";
+"例如 af_heart" = "例：af_heart";

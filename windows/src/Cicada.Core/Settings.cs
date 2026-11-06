@@ -23,6 +23,10 @@ public sealed class AppSettings
     [JsonPropertyName("aiCustomVoice")] public string AiCustomVoice { get; set; } = "";
     /// A custom service's hear model at its own address (the Mac's key); empty: the same one.
     [JsonPropertyName("aiCustomHearBase")] public string AiCustomHearBase { get; set; } = "";
+    /// 语音和文字只发给你的服务 (the Mac's key): with the custom service, Google Translate is never
+    /// asked. Kept when another service is picked, but only acts on the custom one (GoogleOff).
+    [JsonPropertyName("aiCustomOnly")] public bool AiCustomOnly { get; set; }
+    [JsonIgnore] public bool GoogleOff => AiProvider == "custom" && AiCustomOnly;
     /// 打开麦克风: "both" while the mic is on, else "system" (the Mac's listenSource values; "room",
     /// the mic alone, is the Mac's on macOS 14/15). Not saved: every launch starts with the mic off.
     [JsonIgnore] public string ListenSourceValue { get; set; } = ListenSource.System;

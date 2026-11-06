@@ -1888,6 +1888,9 @@ static class Tests
                 "the hear model at its own address, which refused it on its own");
             Check(ling.Health.Translate is { Thinks: true } && ling.Health.Slow, ling.Health.Summary);
             Check(ling.Health.SlowLine()!.Contains("先思考"), "says why");
+            Check(ling.Health.SlowLine()!.Contains("Google"), "and that Google stands in");
+            Check(ling.Health.SlowLine(googleOff: true) is { } only && only.Contains("先思考") && only.Contains("不等它了") && !only.Contains("Google"),
+                "语音和文字只发给你的服务: no Google to fall back on");
             Equal(AICheck.Kind.Ok, ling.Health[AICheck.StepId.Hear].Kind, "hears");
             ling.KeyChanged();
             fake.Sent.Clear();
@@ -1895,6 +1898,73 @@ static class Tests
             Check(fake.Sent[0].body.Contains("chat_template_kwargs"), "settings changed: tried again");
         }
         finally { LingClient.Spacing = old; }
+    }
+
+    // 语音和文字只发给你的服务 (issue #15; the Mac's GoogleOffTests): Google is never asked.
+
+    public static void CustomOnlyActsWithTheCustomServiceAlone()
+    {
+        var s = new AppSettings { AiProvider = "custom", AiCustomOnly = true };
+        Check(s.GoogleOff, "on with the custom service");
+        s.AiProvider = "zenmux";
+        Check(!s.GoogleOff && s.AiCustomOnly, "kept but inert with another service");
+        Check(Json.Write(new AppSettings { AiCustomOnly = true }).Contains("\"aiCustomOnly\": true"), "the Mac's key");
+        Check(Json.Read<AppSettings>("{\"aiCustomOnly\":true}")!.AiCustomOnly, "read back");
+    }
+
+    public static async Task WithGoogleOffPartialTextGoesNowhere()
+    {
+        var google = new Service((_, _) => Status(200, "[[[\"周五\",\"Friday\"]]]"));
+        var service = new Service((_, _) => Reply("我们周五发布。"));
+        var (ling, _) = Using(service);
+        var t = new Translator(ling, google) { GoogleOff = true };
+        for (var i = 0; i < 3; i++) Equal(null, await t.Translate("We ship on Friday", "en", "zh-CN", Translator.Kind.Draft), "the original shows");
+        Check(google.Sent.Count == 0 && service.Sent.Count == 0, "neither Google nor the service sees a draft");
+        Check(!t.SentencesUntranslated, "a draft says nothing about sentences");
+    }
+
+    public static async Task WithGoogleOffSentencesGoToTheServiceOnly()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var google = new Service((_, _) => Status(200, "[[[\"谷歌的译文\",\"x\"]]]"));
+            var up = false;
+            var service = new Service((_, _) => up ? Reply("我们周五发布。") : Status(400, "{\"error\":{\"message\":\"bad\"}}"));
+            var (ling, _) = Using(service);
+            var t = new Translator(ling, google) { GoogleOff = true };
+            var changes = 0;
+            t.Changed += () => changes++;
+            Equal(null, await t.Translate("We ship on Friday.", "en", "zh-CN", Translator.Kind.Sentence), "the service failed: the original only");
+            Check(service.Sent.Count > 0, "the service was asked");
+            Equal(0, google.Sent.Count, "Google never was");
+            Check(t.SentencesUntranslated && changes == 1, "the notes window is told");
+            up = true;
+            Equal("我们周五发布。", await t.Translate("We ship on Friday.", "en", "zh-CN", Translator.Kind.Sentence), "the service answers again");
+            Check(!t.SentencesUntranslated && changes == 2, "and the notice goes");
+            Equal(0, google.Sent.Count, "still no Google");
+
+            // Off again: Google stands in as before.
+            t.GoogleOff = false;
+            up = false;
+            Equal("谷歌的译文", await t.Translate("We ship on Friday.", "en", "zh-CN", Translator.Kind.Sentence), "Google once more");
+            Equal(1, google.Sent.Count, "one request to Google");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task FlippingGoogleOffClearsAGoogleBackoff()
+    {
+        var google = new Service((_, _) => Status(429));
+        var (ling, _) = Using(new Service((_, _) => Reply("x")), key: null);
+        var t = new Translator(ling, google);
+        Equal(null, await t.Translate("Hello", "en", "zh-CN", Translator.Kind.Draft), "rate-limited");
+        Equal(null, await t.Translate("Hello", "en", "zh-CN", Translator.Kind.Draft), "backing off");
+        Equal(1, google.Sent.Count, "the second waits out the backoff");
+        t.GoogleOff = true;
+        t.GoogleOff = false;
+        await t.Translate("Hello", "en", "zh-CN", Translator.Kind.Draft);
+        Equal(2, google.Sent.Count, "the backoff went with the flip");
     }
 
     public static async Task AHearServerRefusingKwargsLeavesTheTextServerAlone()

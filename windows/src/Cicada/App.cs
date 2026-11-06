@@ -116,7 +116,8 @@ sealed class Controller
         Ling.Changed += Changed;
         SpeakerLabels.Voices = Settings.SpeakerVoices;
         Notes = new NotesEngine(Ling, Store);
-        Translator = new Translator(Ling);
+        Translator = new Translator(Ling) { GoogleOff = Settings.GoogleOff };
+        Translator.Changed += Changed;
         Listen = new ListenEngine(Ling, Translator, Store, Notes, Settings);
         Speak = new SpeakEngine(Ling, Translator, Store, Settings, () => Listen.Spoken,
             () => Listen.Listening && Listen.SessionId is { } id && Store.Get(id) is { } s ? (id, s.StartedAt) : null, WindowsVoice);
@@ -989,6 +990,7 @@ sealed class Controller
     /// The service, its address, models or key changed: forget the old check and check again.
     public void AIChanged()
     {
+        Translator.GoogleOff = Settings.GoogleOff;
         Ling.KeyChanged();
         if (Ling.HasKey) _ = Ling.Check();
         Changed();
@@ -1011,6 +1013,7 @@ sealed class Controller
             ["notified"] = problemNotified,
             ["simulated"] = Ling.SimulateCheck?.ToString() ?? (Ling.SimulateBalance is null ? null : "lowBalance"),
             ["catalog"] = new JsonArray(Ling.TextCatalog.Count, Ling.HearCatalog.Count), ["keyFile"] = Path.GetFileName(Key.File_),
+            ["customOnly"] = Settings.AiCustomOnly, ["googleOff"] = Translator.GoogleOff, ["untranslated"] = Translator.SentencesUntranslated,
         };
     }
 
@@ -1174,6 +1177,7 @@ sealed class Controller
 ///   open <id> [transcript] | play <seconds>|toggle|speed | recordaudio on|off (保存会议录音 and 回放)
 ///   aacencode <wav>|<out.aac> | aacrewrap <in.aac>|<out.m4a>[|<seconds>]
 ///   ai-check | ai-check-sim <reason|lowBalance|off> (unreachable, invalidKey, noCredit, noModel, deaf, busy…)
+///   ai-custom-only on|off (语音和文字只发给你的服务; acts with the custom service only)
 static class DebugServer
 {
     static string Pipe => Paths.Dev ? "cicada-dev" : "cicada";
@@ -1261,6 +1265,7 @@ static class DebugServer
                 app.Ling.SimulateBalance = arg == "lowBalance" ? 0.4 : null;
                 _ = app.Ling.Check();
                 break;
+            case "ai-custom-only": app.Settings.AiCustomOnly = arg == "on"; app.Settings.Save(); app.AIChanged(); break;
             case "ai-model":
             {
                 var kv = arg.Split(' ', 2);
