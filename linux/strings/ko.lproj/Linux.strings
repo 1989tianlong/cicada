@@ -204,3 +204,5 @@
 "这场会议没存录音 ·" = "이 회의는 녹음이 없음 ·";
 "只存在这台电脑上" = "이 컴퓨터에만 저장됨";
 "这台电脑缺少 AAC 编码器，装上“第三方媒体格式”后可用" = "이 컴퓨터에는 AAC 인코더가 없음. 서드파티 미디어 형식을 설치하면 사용 가능";
+/* The mic row under the notes window header (notes_window.py › _fill_source): the Mac's says Mac. */
+"关着 · 只听电脑声音" = "꺼짐 · 컴퓨터 소리만";

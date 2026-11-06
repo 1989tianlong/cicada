@@ -220,6 +220,14 @@
       {
         "kind": "fixed",
         "platforms": [
+          "linux"
+        ],
+        "title": "英文、日文、韩文界面下，纪要窗口里麦克风关着时写“只听电脑声音”，不再写成只听 Mac。",
+        "text": ""
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
           "android"
         ],
         "title": "刚开完会时，AI 服务的状态在英文界面里说“just now”，不再像是正在用。",

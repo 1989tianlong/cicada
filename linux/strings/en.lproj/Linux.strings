@@ -204,3 +204,5 @@
 "这场会议没存录音 ·" = "No recording of this meeting ·";
 "只存在这台电脑上" = "Kept only on this computer";
 "这台电脑缺少 AAC 编码器，装上“第三方媒体格式”后可用" = "This computer has no AAC encoder. Available once third-party media formats are installed";
+/* The mic row under the notes window header (notes_window.py › _fill_source): the Mac's says Mac. */
+"关着 · 只听电脑声音" = "Off · computer audio only";
