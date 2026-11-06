@@ -98,13 +98,13 @@ Intel 版 Mac 以及 Windows、Linux 和 Android 版在云端识别：说话的�
 
 ## 用到的模型
 
-不填 Ling key 时全部由 Apple 本机模型加 Google 翻译完成，填了 key 后由 Ling 和 Ming 模型负责并支持失败自动退回。
+不填 Ling key 时全部由 Apple 本机模型加 Google 翻译完成，填了 key 后由 Ling 和 Ming 模型负责并支持失败自动退回。正在说的半句话一直用 Google 翻译；用自己的服务（“其他（兼容 OpenAI）”）时，可以在“设置 › AI 服务”打开“语音和文字只发给你的服务”，语音和文字就都不经过 Google。
 
 | 功能 | 填了 Ling key | 不填 key / 退回 |
 |---|---|---|
 | 语音识别、语言识别 | Apple `SpeechAnalyzer` / `SpeechTranscriber`（本机）；macOS 14.4–15 是 `SFSpeechRecognizer`（本机，要打开听写） | 同左 |
 | 整句翻译 | Ling `Ling-3.1-flash`（可在“设置 › AI 服务”改为 `Ling-3.0-flash`） | Google 翻译 → Apple `Translation`（本机，仅 macOS 26） |
-| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度） | 无：只显示原文，说完一句换成整句翻译；连不上时暂停一分钟再试 |
+| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度；用自己的服务时可以关掉） | 无：只显示原文，说完一句换成整句翻译；连不上时暂停一分钟再试 |
 | 实时纪要、会后完整版 | Ling `Ling-3.1-flash`（同上设置） | 不可用 |
 | 检查 key 是否有效 | Ling `Ling-3.0-tiny`（只用一个 token） | — |
 | 同声传译：听懂并翻译你说的话 | Ming `Ming-3.0-audio-flash`，一步完成 | Apple 本机识别，再走上面的翻译链 |

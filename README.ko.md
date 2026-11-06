@@ -100,13 +100,13 @@ Windows, Linux, Android 버전은 클라우드에서 음성을 인식합니다. 
 
 ## 사용 모델
 
-키가 없으면 Apple 기기 내 모델과 Google 번역만으로 작동합니다. Ling 키를 입력하면 아래 작업을 Ling과 Ming 모델이 처리하고, 요청이 실패하면 자동으로 대체 수단으로 넘어갑니다. OpenRouter, ZenMux, OpenAI를 쓰면 번역과 회의록은 해당 서비스에서 고른 모델이 Ling을 대신하고, 동시통역 시 내 말은 Mac에서 직접 인식합니다.
+키가 없으면 Apple 기기 내 모델과 Google 번역만으로 작동합니다. Ling 키를 입력하면 아래 작업을 Ling과 Ming 모델이 처리하고, 요청이 실패하면 자동으로 대체 수단으로 넘어갑니다. OpenRouter, ZenMux, OpenAI를 쓰면 번역과 회의록은 해당 서비스에서 고른 모델이 Ling을 대신하고, 동시통역 시 내 말은 Mac에서 직접 인식합니다. 말하는 중인 문장은 항상 Google 번역을 사용합니다. 내 서비스(기타(OpenAI 호환))를 쓸 때는 "설정 › AI 서비스"에서 "음성과 텍스트를 내 서비스로만 전송"을 켜면 음성과 텍스트 모두 Google을 거치지 않습니다.
 
 | 기능 | Ling 키 사용 시 | 키 없음 / 대체 작동 시 |
 |---|---|---|
 | 음성 인식 및 언어 감지 | Apple `SpeechAnalyzer` / `SpeechTranscriber`(기기 내), macOS 14.4–15: `SFSpeechRecognizer`(기기 내, 받아쓰기 켜야 함) | 왼쪽과 같음 |
 | 끝난 문장 번역 | Ling `Ling-3.1-flash`(또는 **설정 › AI 서비스**에서 `Ling-3.0-flash`로 변경 가능) | Google 번역 → Apple `Translation`(기기 내, macOS 26 전용) |
-| 말하는 중인 문장 번역 | Google 번역(Ling 호출 한도 절약) | 없음: 문장이 끝나 번역될 때까지 원문 표시. Google에 연결되지 않으면 1분 일시중지 |
+| 말하는 중인 문장 번역 | Google 번역(Ling 호출 한도 절약, 내 서비스를 쓸 때는 끌 수 있음) | 없음: 문장이 끝나 번역될 때까지 원문 표시. Google에 연결되지 않으면 1분 일시중지 |
 | 실시간 회의록 및 최종본 | Ling `Ling-3.1-flash`(위 설정과 같음) | 사용 불가 |
 | 키 유효성 확인 | Ling `Ling-3.0-tiny`(1토큰 사용) | — |
 | 동시통역: 내 말 인식 및 번역 | Ming `Ming-3.0-audio-flash`, 원스텝 처리 | Apple 기기 내 음성 인식 후 위 번역 순서대로 처리 |
