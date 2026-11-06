@@ -263,7 +263,7 @@ class NotesEngine:
             # Without its topics: given them, the merge wrote them all back out and was cut off.
             root.pop("topics", None)
             notes.append(jsonfmt.write(root, pretty=False))
-            topics += spread(parsed.topics, part_topics(len(ranges)))
+            topics += thinned(parsed.topics, part_topics(len(ranges)), lines[ranges[i].stop - 1].t)
         p = merge_prompt(notes, lines, lang, voices and bool(speakers.numbers(lines)))
         for attempt in (1, 2):
             try:
@@ -493,16 +493,33 @@ def part_topics(n: int) -> int:
     return max(2, MAX_TOPICS // max(1, n))
 
 
-def spread(topics: list, count: int) -> list:
-    """`count` of `topics`, spread evenly from the first to the last: a part's reply often has more
-    topics than asked, and keeping the first ones (or folding the rest into the last) lost the end of
-    each part."""
-    if len(topics) <= count or count <= 0:
-        return topics
-    if count == 1:
-        return [topics[0]]
-    # Rounded half up, as Swift's rounded() does for these non-negative positions.
-    return [topics[int(k * (len(topics) - 1) / (count - 1) + 0.5)] for k in range(count)]
+def thinned(topics: list, count: int, end: float) -> list:
+    """At most `count` of a part's `topics`, neighbours joined: a part's reply often has more topics
+    than asked. Keeping the first ones lost the end of the part, and keeping some spread from first to
+    last kept a topic's "（续）" stub at the part's end and dropped the topic itself. The same subject
+    twice is joined first, under the first one's title; then the pair spanning the least time (to the
+    next topic's start, or `end` for the last), as live notes do."""
+    topics = list(topics)
+    while len(topics) > max(1, count):
+        pairs = range(len(topics) - 1)
+        same = next((i for i in pairs if subject(topics[i].title) == subject(topics[i + 1].title)), None)
+        # min() keeps the first of equal spans, as the Mac does.
+        i = same if same is not None else min(
+            pairs, key=lambda j: (topics[j + 2].start if j + 2 < len(topics) else end) - topics[j].start)
+        one = joined(topics[i], topics[i + 1])
+        if same is not None:
+            one = replace(one, title=topics[i].title, summary=topics[i].summary)
+        topics[i:i + 2] = [one]
+    return topics
+
+
+def subject(title: str) -> str:
+    """A topic title without a trailing bracket ("预算评审（续）", "Budget (cont.)"): what it is about."""
+    t = title.strip()
+    if not t or t[-1] not in "）)":
+        return t
+    open_at = max(t.rfind("（"), t.rfind("("))
+    return t[:open_at].strip() if open_at > 0 else t
 
 
 def merge_prompt(parts: list, lines: list, language: str, voices: bool) -> str:

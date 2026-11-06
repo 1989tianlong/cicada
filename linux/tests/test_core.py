@@ -724,11 +724,29 @@ class Notes(Base):
           {"start": 300, "title": "no evidence", "summary": "s", "points": ["c"]}]}"""
         self.assertEqual([51 * 60, 300], [t.start for t in notesmod.parse(raw, times, 0.0).topics])
 
-    def test_part_topics_spread_over_the_part(self):
+    def test_part_topics_joined_not_dropped(self):
         ten = [self._topic(i * 300, "t%d" % i) for i in range(10)]
-        self.assertEqual(["t0", "t3", "t6", "t9"], [t.title for t in notesmod.spread(ten, 4)])
-        self.assertEqual(["t0"], [t.title for t in notesmod.spread(ten, 1)])
-        self.assertEqual(3, len(notesmod.spread(ten[:3], 4)))
+        four = notesmod.thinned(ten, 4, 3000)
+        self.assertEqual(4, len(four))
+        self.assertEqual(0, four[0].start)
+        self.assertTrue(all(any(t.title in k.title.split(" / ") for k in four) for t in ten))
+        self.assertEqual([0], [t.start for t in notesmod.thinned(ten, 1, 3000)])
+        self.assertEqual(3, len(notesmod.thinned(ten[:3], 4, 3000)))
+
+    def test_part_topics_keep_a_topic_over_its_continuation(self):
+        # A 2.5-hour meeting's last part, asked for 2 topics, came back with 3: the budget topic's
+        # end as its own. Kept first and last, the budget topic at 125 min was lost.
+        part = [self._topic(6000, "营销发布安排", ["a"]), self._topic(7500, "预算评审", ["b"]),
+                self._topic(8982, "预算评审（续）", ["c"])]
+        kept = notesmod.thinned(part, 2, 8990)
+        self.assertEqual(["营销发布安排", "预算评审"], [t.title for t in kept])
+        self.assertEqual([6000, 7500], [t.start for t in kept])
+        self.assertEqual(["b", "c"], list(kept[1].points))
+        # Told apart by time alone, the stub still joins the topic it ends.
+        other = [self._topic(6000, "营销发布安排"), self._topic(7500, "预算评审"), self._topic(8982, "收尾")]
+        self.assertEqual([6000, 7500], [t.start for t in notesmod.thinned(other, 2, 8990)])
+        self.assertEqual("Budget review", notesmod.subject("Budget review (cont.)"))
+        self.assertEqual("(续)", notesmod.subject("(续)"))
 
     def test_long_final_in_parts_then_merged(self):
         # Four hours: four part calls at once, then one merge; topics come from the parts.
@@ -756,7 +774,8 @@ class Notes(Base):
         self.assertIn("Part 4 of 4:", asked[-1])
         self.assertNotIn("话题1-0", asked[-1], "the parts go to the merge without their topics")
         self.assertEqual("全程讨论", n.summary)
-        self.assertEqual(["话题%d-%d" % (k, j) for k in range(1, 5) for j in (0, 2)], [t.title for t in n.topics])
+        # Three topics a part, two asked for: the pair spanning the least time is joined.
+        self.assertEqual([t for k in range(1, 5) for t in ("话题%d-0 / 话题%d-1" % (k, k), "话题%d-2" % k)], [t.title for t in n.topics])
         self.assertTrue(n.final)
 
     def test_notes_prompt_matches_the_android_port(self):
