@@ -435,6 +435,9 @@ object ProviderTests {
         check(ListenEngine.problem(LingException(LingException.Kind.Network), "ZenMux").second!!.contains("ZenMux"), "named")
         equal("network" to "连不上 Ling，检查网络", ListenEngine.problem(LingException(LingException.Kind.Timeout), "Ling"), "Ling's own words")
         equal(null, ListenEngine.problem(LingException(LingException.Kind.Http, 400), "Ling").first, "Ling's 400 is not the model")
+        // A gateway's 502 in front of the server: the service erring, not the network or the key.
+        equal("busy" to "ZenMux 暂时出错（HTTP 502），稍后再试。", ListenEngine.problem(LingException(LingException.Kind.Http, 502), "ZenMux"), "a 5xx is the service's trouble")
+        equal("busy" to "Ling 暂时出错（HTTP 503），稍后再试。", ListenEngine.problem(LingException(LingException.Kind.Http, 503), "Ling"), "Ling's too")
     }
 
     fun finalNotesRetry() {

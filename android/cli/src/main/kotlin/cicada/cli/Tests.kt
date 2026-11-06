@@ -80,6 +80,7 @@ object Tests {
             "lingMarksABadKey" to ::lingMarksABadKey,
             "lingGateSpacesStartsAndServesPriorityFirst" to ::lingGate,
             "listenEngineEndToEndWithAFakeMing" to ::listenEndToEnd,
+            "listenSaysServerErrorsInARowAndClearsThem" to ::listenServerErrors,
         ) + ProviderTests.tests + AICheckTests.tests
         var passed = 0; var failed = 0
         for ((name, test) in tests) {
@@ -882,6 +883,41 @@ object Tests {
             equal("第一句。", s.lines[0].dst, "translation from the same call")
             equal("h1-1", s.lines[0].id, "Mac-style ids")
             check(s.endedAt != null, "ended")
+        } finally { LingClient.spacing = old }
+    }
+
+    fun listenServerErrors() {
+        // A gateway answering 502 to every stretch: no subtitles, so from the third in a row the banner
+        // says the service is erring (not after one or two); the next stretch heard clears it.
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val fake = Fake { body ->
+            if (!body.contains("Ming-3.0-audio-flash")) reply("{}")
+            else if (calls.incrementAndGet() <= 3) Transport.Response(502, "Bad Gateway")
+            else reply("LANG: en\nORIGINAL: Back again.\nTRANSLATION: 回来了。")
+        }
+        val old = LingClient.spacing
+        LingClient.spacing = 0.05
+        try {
+            val ling = client(fake)
+            val store = SessionStore()
+            val engine = ListenEngine(ling, Translator(ling), store, NotesEngine(ling, store), AppSettings(target = "zh-CN"))
+            val seen = java.util.Collections.synchronizedList(mutableListOf<Pair<String?, Int>>())
+            engine.onChange { seen.add(engine.problem to calls.get()) }
+            // Four times real time: each reply is back before the next stretch goes, as in a meeting.
+            val src = PcmAudioSource({ concat(*Array(4) { concat(tone(1.0), silence(3.0)) }) }, speed = 4.0)
+            val ended = CountDownLatch(1)
+            src.onEnded = { ended.countDown() }
+            engine.start(src, "file")
+            ended.await()
+            Thread.sleep(300)
+            engine.stop()
+            equal(4, calls.get(), "four stretches sent")
+            val said = synchronized(seen) { seen.filter { it.first != null } }
+            check(said.isNotEmpty(), "three 502s in a row are said")
+            check(said.all { it.second >= 3 }, "not after one or two")
+            equal(setOf("Ling 暂时出错（HTTP 502），稍后再试。"), said.map { it.first }.toSet(), "in the service's words")
+            equal(null, engine.problem, "the next stretch heard clears it")
+            equal("Back again.", store.get(engine.sessionId!!)!!.lines.joinToString("|") { it.src }, "its line is there")
         } finally { LingClient.spacing = old }
     }
 

@@ -47,6 +47,8 @@ class ListenEngine(
     @Volatile var problem: String? = null; private set
     /// What kind it is ("key", "busy", "network"), for the screens to pick an icon by.
     @Volatile var problemKind: String? = null; private set
+    /// Stretches in a row the service answered with a 5xx (under `gate`).
+    private var serverErrors = 0
     @Volatile var level = 0.0; private set
     /// Seconds of audio heard this meeting (the capture is alive while this grows).
     @Volatile var heardSeconds = 0.0; private set
@@ -144,7 +146,7 @@ class ListenEngine(
         synchronized(gate) {
             done.clear(); segments.clear(); inFlight.clear()
             nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0.0
-            hint = null; candidate = null; candidateVotes = 0; problem = null; problemKind = null
+            hint = null; candidate = null; candidateVotes = 0; problem = null; problemKind = null; serverErrors = 0
         }
         holding = false; saying = false; muted = false; sayProblem = null; saidCount = 0
         heardSeconds = 0.0; peak = 0.0
@@ -284,10 +286,19 @@ class ListenEngine(
                 heard = translator.hear(clip, asked, lang, seg.seconds)?.let { h ->
                     if (settings.targetFor(h.lang) == asked) h else h.copy(translation = null)
                 }
+                synchronized(gate) { serverErrors = 0 }
                 problem = null; problemKind = null
             } catch (e: LingException) {
-                val (kind, text) = problem(e, ling.hearName)
-                problemKind = kind; problem = text
+                // A server error (a gateway's 502) is said from the third in a row, as on the Mac: one
+                // isn't worth a banner, but a meeting with no subtitles and no reason is worse.
+                val shown = synchronized(gate) {
+                    serverErrors = if (serverError(e)) serverErrors + 1 else 0
+                    !serverError(e) || serverErrors >= SERVER_ERRORS_SHOWN
+                }
+                if (shown) {
+                    val (kind, text) = problem(e, ling.hearName)
+                    problemKind = kind; problem = text
+                }
                 Log.d("listen: segment ${seg.index} failed ${e.message}")
             } catch (e: Exception) {
                 Log.d("listen: segment ${seg.index} failed ${e.javaClass.simpleName}")
@@ -364,12 +375,19 @@ class ListenEngine(
     }
 
     companion object {
+        /// Server errors in a row before listening says so (ListenEngine.swift's cloudFailures).
+        const val SERVER_ERRORS_SHOWN = 3
+
+        fun serverError(e: LingException) = e.kind == LingException.Kind.Http && e.status >= 500
+
         /// (kind, what to say) for a stretch that couldn't be heard. Ling keeps its own words; another
         /// service is named. A hear model that refuses audio (400 / 404) is a key-like problem: 设置 fixes it.
         fun problem(e: LingException, service: String): Pair<String?, String?> {
             val ling = service == "Ling"
             if (e.kind == LingException.Kind.Http && (e.status == 400 || e.status == 404) && !ling)
                 return "key" to Strings.L("这个模型听不了声音，换一个支持音频输入的")
+            // It answered, with an error: like busy, it passes by itself (AICheck's serverError words).
+            if (serverError(e)) return "busy" to Strings.LF("%@ 暂时出错（HTTP %lld），稍后再试。", Strings.L(service), e.status)
             val kind = when (e.kind) {
                 LingException.Kind.NoKey, LingException.Kind.InvalidKey -> "key"
                 LingException.Kind.RateLimited -> "busy"
