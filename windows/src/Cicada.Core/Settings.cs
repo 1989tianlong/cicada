@@ -23,8 +23,9 @@ public sealed class AppSettings
     [JsonPropertyName("aiCustomVoice")] public string AiCustomVoice { get; set; } = "";
     /// A custom service's hear model at its own address (the Mac's key); empty: the same one.
     [JsonPropertyName("aiCustomHearBase")] public string AiCustomHearBase { get; set; } = "";
-    /// 听哪里 (the Mac's key): "system" (电脑声音), "room" (会议室) or "both" (电脑和会议室).
-    [JsonPropertyName("listenSource")] public string ListenSourceValue { get; set; } = ListenSource.System;
+    /// 打开麦克风: "both" while the mic is on, else "system" (the Mac's listenSource values; "room",
+    /// the mic alone, is the Mac's on macOS 14/15). Not saved: every launch starts with the mic off.
+    [JsonIgnore] public string ListenSourceValue { get; set; } = ListenSource.System;
     [JsonIgnore] public string Listens => ListenSource.Parse(ListenSourceValue);
     [JsonIgnore] public bool ListensToRoom => Listens == ListenSource.Room;
     [JsonIgnore] public bool HearsBoth => Listens == ListenSource.Both;

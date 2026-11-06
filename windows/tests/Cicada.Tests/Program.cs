@@ -1101,6 +1101,37 @@ static class Tests
         Check(got is [0, 0], "silence while you hold the talk key");
     }
 
+    public static void EchoGateOnlyForSpeechThatReachesTheMic()
+    {
+        double now = 0;
+        var g = new EchoGate(() => now);
+        // Music: loud, and no words for EchoGate.Music seconds.
+        for (; now < EchoGate.Music - 1; now += 0.1) g.Hold();
+        Check(g.Closed && !g.PlayingMusic, "no words yet: still taken for speech");
+        for (; now < EchoGate.Music + 1; now += 0.1) g.Hold();
+        Check(g.PlayingMusic, "no words for long: music");
+        now += EchoGate.Hang + 0.01; g.Hold(); now += 0.01;
+        Check(!g.Closed, "music doesn't close the gate");
+        g.HeardWords(); g.Hold(); now += 0.1;
+        Check(g.Closed, "words close it again");
+
+        // Headphones: the room mic stays at its floor while the computer plays.
+        now = 1000;
+        var h = new EchoGate(() => now);
+        Check(h.Echo, "echo until measured");
+        for (var t = 0; t < 60; t++) { h.Hold(); now += 0.05; h.RoomLevel(0.001, 0.1); now += 0.05; }
+        for (var t = 0; t < 60; t++) { now += 0.1; h.RoomLevel(0.001, 0.1); }
+        Check(!h.Echo, "no echo measured with headphones");
+        h.Hold(); now += 0.1;
+        Check(!h.Closed, "the room stays open with headphones");
+        // Speakers: the mic hears the computer.
+        now += 100;
+        for (var t = 0; t < 60; t++) { h.Hold(); now += 0.05; h.RoomLevel(0.03, 0.1); now += 0.05; }
+        for (var t = 0; t < 60; t++) { now += 0.1; h.RoomLevel(0.001, 0.1); }
+        Check(h.Echo, "echo again once the speakers reach the mic");
+        Check(EchoGate.Ratio([(0.001, 1)], [(0.001, 10)]) is null, "not enough to tell");
+    }
+
     sealed class Pump : IAudioSource
     {
         public event Action<short[]>? Samples;
@@ -1118,7 +1149,6 @@ static class Tests
         Check(Places.HeardBoth([L("a", via: "room"), L("b")]), "both");
         var starts = Places.Starts([L("a"), L("b"), L("c", via: "room"), L("d", "me"), L("e", via: "room"), L("f")]);
         Check(starts.SetEquals(["a", "c", "e", "f"]), "a change of place starts a run: " + string.Join(",", starts));
-        Check(RoomPrompt.AsksOnline(true, false, true) && !RoomPrompt.AsksOnline(true, true, true) && !RoomPrompt.AsksOnline(false, false, true) && !RoomPrompt.AsksOnline(true, false, false), "线上也有人？ once, in a call, in the room");
     }
 
     public static async Task TheRoomSideDropsTheSpeakersAndKeepsTheTable()

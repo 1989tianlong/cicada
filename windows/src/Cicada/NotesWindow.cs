@@ -130,10 +130,7 @@ sealed class NotesWindow : Window
         if (app.ConfirmingEnd) return ConfirmEnd();
         if (app.Ending is not { } p)
         {
-            if (app.OnlinePrompt is not { } meetingApp) return new Border();
-            var strip = TrayFlyout.OnlineStrip(app, meetingApp);
-            strip.Margin = new Thickness(12, 0, 12, 8);
-            return strip;
+            return new Border();
         }
         Detach(endingDetail);
         var buttons = Ui.Row(8, Ui.Button(L("继续记录"), app.KeepRecording, Ui.Kind.Primary, height: 32),
@@ -176,11 +173,11 @@ sealed class NotesWindow : Window
             scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(20, 16, 16, 12) };
             Content = Subtitles ? SubtitleFrame() : PanelFrame();
         }
-        var key = $"{app.Listen.Listening}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
+        var key = $"{app.Listen.Listening}|{app.MicOn}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (key != headerKey) { headerKey = key; header.Content = Header(); }
         Tick();
         if (Subtitles) { live.Content = SubtitleLine(); return; }
-        var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : app.OnlinePrompt is { } o ? "online " + o : null;
+        var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
         var bk = $"{app.Listen.Problem}|{app.Listen.ProblemStatus}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited or NotesEngine.State.Unreachable or NotesEngine.State.Updating ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Settings.AiProvider}|{app.CanSwitchToLing}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
@@ -228,6 +225,11 @@ sealed class NotesWindow : Window
             buttons.Children.Add(Ui.IconButton(Icons.Notes, L("换成纪要"), () => app.SetView("notes"), Palette.NightText, 32, 16, onDark: true));
             if (listen.Listening)
             {
+                // 打开麦克风 (the Mac's bar has it while editing; this bar takes clicks anyway).
+                var mic = Ui.IconButton(Icons.Mic, app.MicOn ? L("关闭麦克风") : L("打开麦克风"), () => app.SetMic(!app.MicOn),
+                                        app.MicOn ? NightAccent : Palette.NightText, 32, 15, onDark: true);
+                if (app.MicOn) mic.Background = new SolidColorBrush(Color.FromArgb(0x33, 0xE8, 0x55, 0x2B));
+                buttons.Children.Add(Gap(mic, 6));
                 var stop = Ui.IconButton("M7,7 H13 V13 H7 Z", L("结束"), app.RequestStop, NightAccent, 32, 14, fill: true, onDark: true);
                 stop.Background = new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
                 buttons.Children.Add(Gap(stop, 6));
@@ -255,6 +257,7 @@ sealed class NotesWindow : Window
             ? Ui.Button(L("结束"), app.RequestStop, Ui.Kind.Pale, Icons.Stop, 32, iconFill: true)
             : Ui.Button(L("开始听"), () => _ = app.ToggleListening(), Ui.Kind.Accent, Icons.Wave, 32);
         main.MinWidth = 0; main.Padding = new Thickness(12, 0, 12, 0);
+        if (listen.Listening) right.Children.Add(Gap(TrayFlyout.MicButton(app, panel: false), 8));
         right.Children.Add(Gap(main, 8));
         right.Children.Add(Gap(Ui.IconButton("M5,10 H15", L("收起（继续听）"), Collapse, Palette.Body, 34, 16), 4));
         var row = Ui.Spread(left, right);

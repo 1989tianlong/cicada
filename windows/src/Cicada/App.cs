@@ -322,6 +322,10 @@ sealed class Controller
             if (Settings.View == "notes") menu.Items.Add(NotesVisible ? Item(L("隐藏纪要窗"), ToggleNotes) : Item(L("显示纪要"), ShowNotes));
         }
         else menu.Items.Add(Item(L("开始听"), () => _ = ToggleListening(), Hotkey.Label.Replace('+', ' ')));
+        // 麦克风: one checkable item for what 听哪里's three were.
+        var micItem = Item(L("麦克风"), () => SetMic(!MicOn));
+        micItem.IsCheckable = true; micItem.IsChecked = MicOn;
+        menu.Items.Add(micItem);
         menu.Items.Add(Settings.View == "subtitles" ? Item(L("换成纪要"), () => SetView("notes")) : Item(L("换成字幕条"), () => SetView("subtitles")));
         menu.Items.Add(new Separator());
         if (Updates.Available is { } update) menu.Items.Add(Item(LF("有新版本 %@", update.Version), InstallUpdate, ink: Palette.AccentText));
@@ -365,21 +369,30 @@ sealed class Controller
     /// Dev builds: a WAV the room mic hears instead of a microphone.
     string? fakeRoom;
     public void SetFakeRoom(string? path) { fakeRoom = path; Log.Debug($"room: fake mic {(path is null ? "off" : "on")}"); }
+    /// Dev builds: what the echo measurement says, instead of measuring (the VM has no speakers).
+    bool? fakeEcho;
+    public void SetFakeEcho(bool? on) { fakeEcho = on; if (Listen.Echo is { } e) e.Gate.Forced = on; Log.Debug($"room: echo sim {on?.ToString() ?? "real"}"); }
 
-    /// 听哪里 changed. While listening the same meeting goes on from the new source.
-    public void SetListenSource(string value)
+    /// 打开麦克风 / 关闭麦克风 (AppModel.setMic on the Mac): the PC's audio is always heard; the mic
+    /// adds the people in the room to the same meeting. Not kept for the next launch: listening
+    /// never starts with the microphone open. Turning it on while nothing is heard starts listening.
+    public bool MicOn => Settings.HearsBoth;
+
+    public void SetMic(bool on)
     {
-        value = ListenSource.Parse(value);
-        if (value == Settings.Listens) return;
+        var value = on ? ListenSource.Both : ListenSource.System;
+        if (value == Settings.Listens)
+        {
+            if (on && !Listen.Listening) _ = StartChecked(NewSource);
+            return;
+        }
         Settings.ListenSourceValue = value;
-        Settings.Save();
-        Log.Debug($"listen source: {value}");
+        Log.Debug($"mic {(on ? "on" : "off")}");
         if (Listen.Listening)
         {
-            if (!Settings.HearsBoth) _ = StopRoomSide();
-            if (Listen.Room != Settings.ListensToRoom) Listen.SwitchSource(Watch(NewSource()), Settings.ListensToRoom);
-            if (Settings.HearsBoth) StartRoomSide();
+            if (on) StartRoomSide(); else _ = StopRoomSide();
         }
+        else if (on) _ = StartChecked(NewSource);
         Changed();
     }
 
@@ -387,15 +400,9 @@ sealed class Controller
 
     /// The room side of 电脑和会议室: its own engine on the room mic, adding to the same meeting.
     public readonly ListenEngine RoomListen;
-    /// 线上也有人？: the meeting app in a call while only the room is heard; answered once a meeting.
-    public string? OnlinePrompt { get; private set; }
-    bool onlinePromptAnswered;
     /// 电脑和会议室 but Windows won't give Cicada the microphone: the PC's side keeps recording.
     public bool HybridMicDenied { get; private set; }
 
-    /// The grey line under 听哪里 while both are heard: without echo cancellation the room pauses
-    /// while the PC plays speech (HybridNote on the Mac, whose other cases Windows doesn't have).
-    public string? HybridNote => Listen.Listening && RoomListen.Listening ? L("线上有人说话时，先不听会议室") : null;
 
     void StartRoomSide()
     {
@@ -405,6 +412,8 @@ sealed class Controller
         RoomListen.Echo = echo;
         var mic = RoomSource();
         mic.Silenced = () => echo.Gate.Closed;
+        mic.Heard = echo.Gate.RoomLevel;
+        echo.Gate.Forced = fakeEcho;
         roomSources.Add(mic);
         mic.Ended += reason =>
         {
@@ -433,24 +442,6 @@ sealed class Controller
         if (!RoomListen.Listening) return;
         await RoomListen.Stop();
         Log.Debug("hybrid: room side stopped");
-    }
-
-    /// 也听电脑 / 不用 on 线上也有人？.
-    public void AnswerOnlinePrompt(bool both)
-    {
-        onlinePromptAnswered = true;
-        OnlinePrompt = null;
-        Log.Debug($"hybrid: online prompt answered {(both ? "both" : "no")}");
-        if (both) SetListenSource(ListenSource.Both); else Changed();
-    }
-
-    void UpdateOnlinePrompt(Dictionary<string, string> calls)
-    {
-        var app = RoomPrompt.AsksOnline(Listen.Listening && Settings.ListensToRoom, onlinePromptAnswered, calls.Count > 0) ? calls.Values.First() : null;
-        if (app == OnlinePrompt) return;
-        OnlinePrompt = app;
-        if (app is not null) Log.Debug($"hybrid: online prompt for {app}");
-        Changed();
     }
 
     /// A source about to be listened to: a room mic is remembered (the talk key mutes it), and one
@@ -577,8 +568,6 @@ sealed class Controller
         problemNotified = false;
         endWatch = new MeetingEndWatch(EndConfig(), DateTimeOffset.Now);
         Listen.Start(source, room: source is GatedSource);
-        onlinePromptAnswered = false;
-        OnlinePrompt = null;
         if (Settings.HearsBoth && source is SystemAudioTap) StartRoomSide();
         ShowNotes();
     }
@@ -590,7 +579,6 @@ sealed class Controller
         Ending = null;
         ConfirmingEnd = false;
         AutoEnded = auto;
-        OnlinePrompt = null;
         HybridMicDenied = false;
         await StopRoomSide();
         roomSources.Clear();
@@ -623,13 +611,10 @@ sealed class Controller
         bool live = Listen.Listening && endWatch is not null, after = !Listen.Listening && AutoEnded;
         if (readingCalls || !(live || after) || (!live && !Settings.EndWithApp)) return;
         readingCalls = true;
-        // 线上也有人？ needs the calls too, whatever 结束会议 says.
-        var asking = live && Settings.ListensToRoom && !onlinePromptAnswered;
-        Dictionary<string, string> found = Settings.EndWithApp || asking ? FakeCalls ?? await Task.Run(MicReaders.Calls) : new();
+        Dictionary<string, string> found = Settings.EndWithApp ? FakeCalls ?? await Task.Run(MicReaders.Calls) : new();
         readingCalls = false;
         var calls = Settings.EndWithApp ? found : new();
         var now = DateTimeOffset.Now;
-        UpdateOnlinePrompt(asking ? found : new());
         if (Listen.Listening && endWatch is { } w)
         {
             w.Settings = EndConfig();
@@ -1157,6 +1142,9 @@ sealed class Controller
         ["updateChecked"] = Updates.LastChecked?.ToString("o"),
         ["inCall"] = endWatch is { } w ? string.Join(",", w.InCall.Values) : null,
         ["listenSource"] = Settings.Listens,
+        ["mic"] = MicOn,
+        ["roomEcho"] = Listen.Echo?.Gate.Echo,
+        ["roomMusic"] = Listen.Echo?.Gate.PlayingMusic,
         ["room"] = Listen.Room,
     };
 }
@@ -1219,7 +1207,9 @@ static class DebugServer
                 _ => Opened(app),
             };
             case "start": _ = app.StartChecked(app.NewSource); break;
-            case "listensource": app.SetListenSource(arg); break;
+            // mic:<on|off> is the button; listenSource:<system|room|both> the old names for it.
+            case "mic" or "listensource": app.SetMic(arg is "on" or "both" or "room"); break;
+            case "roomechosim": app.SetFakeEcho(arg is "real" or "" ? null : arg != "off"); break;
             case "fakeroom": app.SetFakeRoom(arg is "" or "off" ? null : arg); break;
             case "stop": _ = app.StopListening(); break;
             case "end": app.RequestStop(); break;  // the user's 结束: asks first when anything was said

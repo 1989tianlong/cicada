@@ -312,6 +312,8 @@ public sealed class ListenEngine
         foreach (var (seg, heard) in ready)
         {
             if (heard is null) continue;
+            // Words in the computer's audio: speech, which the room mic is silenced for (EchoGate).
+            if (!RoomSide && Echo is { } words && !string.IsNullOrWhiteSpace(heard.Original)) words.Gate.HeardWords();
             if (RoomSide && held is { } h && Echo is { } echo) h.Writer.TryWrite((seg, heard, EmittedAt(seg), echo.Gate.Clock()));
             else Record(seg, heard);
         }
