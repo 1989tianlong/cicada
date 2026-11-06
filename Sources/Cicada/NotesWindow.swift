@@ -674,23 +674,31 @@ struct NotesWindowView: View {
         case .noKey where session?.lines.isEmpty == false || live:
             keyEntry
         case .invalidKey:
-            notice(lastCovered > 0 ? L("key 已失效（被删或额度用完），纪要暂停在 \(NotesEngine.clock(lastCovered))。")
-                                   : L("key 已失效（被删或额度用完），换个 key 就能开始写纪要。"), tint: Palette.errorPale) {
-                SoftButton(L("更换 key"), dark: true) { model.openSettings(.ai) }
-            }
+            StatusLine(tone: .needsYou, text: lastCovered > 0 ? L("key 失效了 · 纪要停在 \(NotesEngine.clock(lastCovered))")
+                                                              : L("key 失效了 · 纪要等新的 key"),
+                       action: (L("换 key"), { model.openSettings(.ai) }))
         // The rest is about a round of the meeting going on now: a record opened later has none.
         case .rateLimited where live:
-            notice(L("\(serviceLabel) 很忙，纪要稍后补上。字幕照常。"), tint: Palette.warnPale) { EmptyView() }
+            StatusLine(tone: .waiting, text: L("\(serviceLabel) 很忙 · 纪要稍后补上，字幕照常"))
         // Both: the notes' own request failed, and the service doesn't answer anything. Notes that
         // only timed out while translations still came back aren't "can't reach"; the next round retries.
-        case .unreachable where live && model.ling.aiCheck.failure?.reason == .unreachable:
-            // The network or the proxy, not the notes: say which, and that it picks up by itself.
-            notice(lastCovered > 0 ? L("连不上 \(serviceLabel)，纪要暂停在 \(NotesEngine.clock(lastCovered))，连上后自动继续。")
-                                   : L("连不上 \(serviceLabel)，连上后开始写纪要。"), tint: Palette.errorPale) {
-                SoftButton(L("设置")) { model.openSettings(.ai) }
+        // The retry that follows (`updating`) hangs as long as a timeout: the line stays meanwhile.
+        case .unreachable where live && model.ling.aiCheck.failure?.reason == .unreachable,
+             .updating where live && model.ling.aiCheck.failure?.reason == .unreachable:
+            if model.ling.aiCheck.localNetworkDenied {
+                StatusLine(tone: .needsYou, text: L("连不上 \(serviceLabel) · 缺本地网络权限"),
+                           action: (L("去开启"), { model.openLocalNetworkSettings() }))
+            } else {
+                // The network or the proxy, not the notes: it picks up by itself. Where the service
+                // also hears the meeting (Intel) the subtitles wait too.
+                StatusLine(tone: .waiting, text: Recognition.cloudOnly
+                           ? L("字幕和纪要等 \(serviceLabel) 恢复 · 连上后自动继续")
+                           : lastCovered > 0 ? L("纪要等 \(serviceLabel) 恢复 · 停在 \(NotesEngine.clock(lastCovered))，字幕照常")
+                                             : L("纪要等 \(serviceLabel) 恢复 · 字幕照常"),
+                           action: model.canSwitchToLing ? (L("改用 Ling"), { model.switchToLing() }) : nil)
             }
         case .failed where live:
-            notice(L("这轮没整理好，下一轮会自动重试。"), tint: Palette.fill) { EmptyView() }
+            StatusLine(tone: .info, text: L("这轮纪要没写好 · 下轮自动补上"))
         default:
             EmptyView()
         }
@@ -750,14 +758,6 @@ struct NotesWindowView: View {
         return s.lines[engine.notes.covered - 1].t
     }
 
-    private func notice<Trailing: View>(_ text: String, tint: Color, @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: 10) {
-            Text(text).font(.system(size: 12)).lineSpacing(2).frame(maxWidth: .infinity, alignment: .leading)
-            trailing()
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(tint))
-    }
 
     /// Without a key, finished sentences rely on Google too: when it can't be reached and nothing
     /// stands in, the key panel says so, since a key is the fix (Ling needs no proxy in China).

@@ -1120,6 +1120,16 @@ final class AppModel: ObservableObject {
         Task { await ling.setKey(key) }
     }
 
+    /// "改用 Ling" where another service is out of reach: only when a Ling key is already saved,
+    /// so the one click works without a trip to the settings.
+    var canSwitchToLing: Bool { settings.provider.id != .ling && AIKey.read("ling") != nil }
+
+    func switchToLing() {
+        guard canSwitchToLing else { return }
+        settings.aiProvider = AIProvider.Kind.ling.rawValue
+        applyAIService()
+    }
+
     /// Settings changed the AI service, its address or a model: voices follow, the key is checked again.
     func applyAIService() {
         let c = settings.aiConfig
@@ -1927,6 +1937,8 @@ final class AppModel: ObservableObject {
         // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>, aiCustomHearModel:<name>,
         // aiCustomHearBase:<url|"">, aiCustomRecognize:on|off.
         case "aiProvider": settings.aiProvider = AIProvider.named(arg).id.rawValue; applyAIService()
+        // switchToLing: the 改用 Ling on a status line (logs why when it isn't offered).
+        case "switchToLing": debugLog("switchToLing offered=\(canSwitchToLing)"); switchToLing()
         case "aiTextModel":
             if settings.provider.id == .ling { settings.aiModel = arg } else { settings.aiModels[settings.aiProvider] = arg }
             applyAIService()

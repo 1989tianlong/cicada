@@ -32,7 +32,7 @@ enum CloudHearing {
         case .invalidKey?: L("key 已失效，到设置 › AI 服务里重填")
         case .noKey?: L("请先在设置 › AI 服务里填入 Ling key")
         case .http(let code)? where code >= 500: L("\(service) 暂时出错（HTTP \(code)），稍后再试。")
-        default: L("\(service) 暂时连不上，正在重试")
+        default: L("字幕和纪要等 \(service) 恢复 · 连上后自动继续")
         }
     }
 
