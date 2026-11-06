@@ -24,6 +24,7 @@ public sealed class Segmenter
     public static double Dips = 2.5;             // …unless the median is this far over the 10th, quiet ones held at gate / 8
     public static double Short = 2.0;            // a sound up to this long, with real quiet (gate / 4) on both sides…
     public static double Swell = Math.Pow(10, 10 / 20.0); // …that swells and fades by 10 dB is a word: see IsWord
+    public static double Fade = Math.Pow(10, 30 / 20.0);  // its rise and fade reach this far under its loudest frame (or gate / 4 if lower)
     public static double Above = 0.25;           // under this share of its loud frames' energy over 100 Hz: rumble, not speech
     const double PreRoll = 0.15, Tail = 0.15, CutWindow = 2.0;
     // A first-order high-pass at 100 Hz, for how much of a sound is above it (IsRumble).
@@ -188,7 +189,8 @@ public sealed class Segmenter
 
     /// A short word on its own: a sound up to `Short` that rises out of real quiet and falls back
     /// into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after), and
-    /// that swells and fades by 10 dB or more (90th / 10th percentile of its frames over gate / 4).
+    /// that swells and fades by 10 dB or more (90th / 10th percentile of its frames from where it
+    /// rises to where it fades: over gate / 4, or 30 dB under its loudest frame if that's lower).
     /// Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run of voiced
     /// ones, so the steady test, which looks for dips inside, dropped it even at -26 dBFS; and a
     /// quiet one ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it needs `MinWord` over
@@ -196,13 +198,19 @@ public sealed class Segmenter
     /// both sides; a short burst of one in silence stays within about 9 dB (brown noise), 5 dB (the
     /// rest), and Ming makes up a sentence for a hum or fan burst. Not for a forced cut, whose end
     /// isn't a pause.
+    /// Measured over gate / 4 alone, a quiet word lost its rise and fade (an "s" or breath at -55
+    /// dBFS) and only its flat top was left: Samantha's "Thanks." was dropped at -33 dBFS (loudest
+    /// 0.1 s) and a meeting's quiet opening "Good morning everyone." at -34; now both are kept to
+    /// about -38 to -40 dBFS, where the gate itself stops them. A hiss faded in and out over 0.3 s
+    /// passes from -40 dBFS (was -36); brown noise still never does.
     internal bool IsWord(List<double> frameLevels, double gate)
     {
         int first = frameLevels.FindIndex(l => l >= gate), last = frameLevels.FindLastIndex(l => l >= gate);
         if (first < 0 || (last - first + 1) * Frame > Short * Rate) return false;
         double quiet = gate / 4;
         if (lead is not { } q || q > quiet || last + 1 >= frameLevels.Count || frameLevels.Skip(last + 1).Min() > quiet) return false;
-        int from = frameLevels.FindIndex(l => l >= quiet), to = frameLevels.FindLastIndex(l => l >= quiet);
+        double rise = Math.Min(quiet, frameLevels.Max() / Fade);
+        int from = frameLevels.FindIndex(l => l >= rise), to = frameLevels.FindLastIndex(l => l >= rise);
         var body = frameLevels.GetRange(from, to - from + 1).Select(l => Math.Max(l, gate / 8)).Order().ToList();
         return body[(int)(0.9 * (body.Count - 1))] >= Swell * body[(int)(0.1 * (body.Count - 1))];
     }
