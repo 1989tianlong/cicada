@@ -234,7 +234,7 @@ class ListenEngine(
             Log.d("listen: said ${heard.lang} -> $their, ${if (text != null) "speaking" else "not spoken"}")
             // As on the Mac: a sentence that didn't translate is neither sent nor recorded. One
             // already in their language was heard as it is, so it is kept.
-            if (text == null && !sameLanguage) { sayProblem = Strings.L("翻译失败，这句话未发送"); return }
+            if (text == null && !sameLanguage) { sayProblem = Strings.L("这句没翻译成 · 没有说出去"); return }
             val n = synchronized(gate) { ++saidCount }
             val line = TranscriptLine(id = "m$n", t = t, speaker = "me", src = heard.original, dst = dst,
                                       srcLang = heard.lang, dstLang = their)
@@ -249,8 +249,9 @@ class ListenEngine(
                 e.kind == LingException.Kind.Http && e.status in listOf(400, 404) && name != "Ling" -> Strings.L("这个模型听不了声音，换一个支持音频输入的")
                 e.kind == LingException.Kind.NoKey || e.kind == LingException.Kind.InvalidKey ->
                     if (name == "Ling") Strings.L("Ling key 无效") else Strings.LF("%@ 的 key 无效", Strings.L(name))
+                // One held sentence: say it didn't go out and why; the meeting's own line covers the rest.
                 e.kind == LingException.Kind.Network || e.kind == LingException.Kind.Timeout ->
-                    if (name == "Ling") Strings.L("连不上 Ling，检查网络") else Strings.LF("连不上 %@", Strings.L(name))
+                    Strings.LF("这句没说出去 · 连不上 %@", Strings.L(name))
                 else -> Strings.L("没听清，再说一次")
             }
             Log.d("listen: saying failed ${e.message}")
@@ -399,7 +400,8 @@ class ListenEngine(
                 LingException.Kind.NoKey -> if (ling) Strings.L("需要 Ling key 才能听") else Strings.LF("需要 %@ 的 key 才能听", name)
                 LingException.Kind.InvalidKey -> if (ling) Strings.L("Ling key 无效") else Strings.LF("%@ 的 key 无效", name)
                 LingException.Kind.RateLimited -> if (ling) Strings.L("Ling 太忙，稍后再试") else Strings.LF("%@ 太忙，稍后再试", name)
-                LingException.Kind.Network, LingException.Kind.Timeout -> if (ling) Strings.L("连不上 Ling，检查网络") else Strings.LF("连不上 %@", name)
+                // Hearing goes through the service: the subtitles wait with the notes, then go on by themselves.
+                LingException.Kind.Network, LingException.Kind.Timeout -> Strings.LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", name)
                 else -> null
             }
             return kind to text

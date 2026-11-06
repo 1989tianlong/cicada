@@ -24,13 +24,9 @@
 "句" = "lines";
 "%@ 个待办" = "To-dos: %@";
 "%@ 分钟前更新" = "Updated %@ min ago";
-"连不上 Ling，检查网络" = "Can't reach Ling; check your network";
-"连不上 Ling，联网后继续出字幕" = "Can't reach Ling. Subtitles will resume when back online.";
-"连不上 %@，字幕和纪要暂停，连上后自动继续。" = "Can't reach %@. Subtitles and notes are paused and resume once it's back.";
 "20 秒没听到声音。通话和会议 app 的声音系统不让录" = "No sound for 20s. Call & meeting apps block audio capture.";
 "换成面对面" = "Switch to In person";
 "正在听下一句…" = "Listening for next line…";
-"这个 Ling key 无效，看看有没有复制全，或换一个新的" = "Invalid Ling key. Check if it's complete, or create a new one.";
 "返回" = "Back";
 "要粘贴 sk- 开头的 Ling key" = "Paste a Ling key starting with sk-";
 "连不上 Ling，检查一下网络" = "Can't reach Ling. Check your connection.";
@@ -224,3 +220,4 @@
 "没填，用手机的声音" = "Not set: the phone's voice";
 "本机和局域网服务可不填" = "Optional on this phone or your local network";
 "刚刚开会时用过" = "used in a meeting just now";
+"这句没说出去 · 连不上 %@" = "This line wasn't said · can't reach %@";

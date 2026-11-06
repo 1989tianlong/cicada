@@ -1022,7 +1022,7 @@ object Tests {
             engine.hold(); src.push(tone(1.2)); engine.release(); src.push(silence(0.3))
             val until = System.currentTimeMillis() + 4000
             while (engine.sayProblem == null && System.currentTimeMillis() < until) Thread.sleep(20)
-            equal("翻译失败，这句话未发送", engine.sayProblem, "the Mac's message")
+            equal("这句没翻译成 · 没有说出去", engine.sayProblem, "the Mac's message")
             equal(null, spoken, "nothing spoken")
             check(store.get(engine.sessionId!!)!!.lines.none { it.speaker == "me" }, "nothing recorded")
             engine.stop()

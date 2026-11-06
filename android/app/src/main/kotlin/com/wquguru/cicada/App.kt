@@ -408,6 +408,15 @@ class CicadaApp : Application() {
         aiChanged(check)
     }
 
+    /// "改用 Ling" where another service is out of reach: only when a Ling key is already saved,
+    /// so the one tap works without a trip to the settings.
+    val canSwitchToLing: Boolean get() = settings.aiProvider != "ling" && Paths.keyFile("ling").isFile
+
+    fun switchToLing() {
+        if (!canSwitchToLing) return
+        setAiProvider("ling")
+    }
+
     /// A model chosen over the recommended one ("text", "hear" or "voice"; "" goes back to it).
     fun setAiModel(kind: String, model: String) {
         val s = settings
