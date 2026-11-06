@@ -39,4 +39,5 @@ What it found: with the plain mic (`VP=off`) the meeting's English came back fro
 
 - **Sounds that aren't speech.** In a quiet room a silent press with typing nearby went out as "The sound of typing on a computer keyboard." (Ming described the sound). The on-device recognizer can't vote it down: it heard 0 characters of a real sentence too.
 - **Voice output stalls.** Now and then a sentence's voice to BlackHole stops until the next one's stall check rebuilds the output (`voice output stalled … rebuilt`): seen with echo cancellation on and off, once a sentence going out 8 s late. Count `voiced` against `sent`.
+- **The ports** have no echo cancellation on the talk key: Windows (b155b46) and Linux drop a press the computer played through for more than half, so talking over the other side isn't sent there. Their silent-press and filler checks are unit-tested and, on Windows, checked in the VM with `cicadactl speak silence.wav` / `me-zh.wav`; real echo needs a real PC.
 - **Not measured yet:** a real voice; AirPods as the talk mic (only that it no longer crashes); Windows and Linux (no audio in the VMs).
