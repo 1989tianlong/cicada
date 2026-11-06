@@ -571,7 +571,7 @@ public sealed class NotesEngine
             {
                 var branches = Objects(f["branches"]).Select(br => new FishboneBranch
                 {
-                    Label = Str(br["label"]), Detail = Str(br["detail"]), T = Num(br["t"]), Support = Support(br["evidence"]),
+                    Label = Str(br["label"]), Detail = Str(br["detail"]), T = Time(br["evidence"]) ?? Num(br["t"]), Support = Support(br["evidence"]),
                 }).Where(br => br.Label.Length > 0).ToList();
                 if (branches.Count >= 2) fish = new Fishbone { Question = Str(f["question"]), Branches = branches };
             }
