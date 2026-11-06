@@ -881,21 +881,24 @@ class NotesWindow(Gtk.Window):
         ui.retext(self.footer_time, L("刚刚更新") if ago < 10 else LF("%lld 秒前更新", ago) if ago < 60 else LF("%lld 分钟前更新", ago // 60))
 
     def _banner(self, body, engine) -> None:
-        """Why the notes stopped, above them, notes or not (the Mac's banner): a dead key, too many
-        requests, or a round that failed; each says where the notes stop."""
+        """Why the notes stopped, above them, notes or not (the Mac's banner): one status line for a
+        dead key, a busy or unreachable service, or a round that failed; each says what waits and
+        what still works."""
         s = self._session()
         covered = engine.notes.covered
         last = s.lines[covered - 1].t if s is not None and 0 < covered <= len(s.lines) else 0.0
         reason = self._reason()
         ling = self.app.ling
-        # Who the banners name: a custom service by its address, which says more than 这个服务.
+        # Who the line names: a custom service by its address, which says more than 这个服务.
         name = ling.service_host if ling.provider.id == "custom" and ling.service_host else ling.service_name
         # All but the key are about a round of the meeting going on now: a record opened later has none.
         live = self.app.listen.listening
-        if engine.status == notesmod.INVALID_KEY:
-            text = (LF("key 已失效（被删或额度用完），纪要暂停在 %@。", clock(last)) if last > 0
-                    else L("key 已失效（被删或额度用完），换个 key 就能开始写纪要。"))
-            tone = "error"
+        status = engine.status
+        action = on_action = None
+        if status == notesmod.INVALID_KEY:
+            tone = "needsyou"
+            text = LF("key 失效了 · 纪要停在 %@", clock(last)) if last > 0 else L("key 失效了 · 纪要等新的 key")
+            action, on_action = L("换 key"), lambda: self.app.show_settings(ai=True)
         elif problem.blocking(reason) and (reason in problem.NOTES_ONLY or not self.live_box.get_visible()):
             # Only the user can fix it (the live card says it too, when it shows): what, and 打开设置.
             from .aicheck_view import blocking, blocking_detail
@@ -908,30 +911,24 @@ class NotesWindow(Gtk.Window):
             row.pack_end(b, False, False, 0)
             body.pack_start(ui.pad(ui.panel(ui.pad(row, 12), "notice", "error"), 0, 0, 10, 0), False, False, 0)
             return
-        elif engine.status == notesmod.RATE_LIMITED and live:
-            text, tone = LF("%@ 很忙，纪要稍后补上。字幕照常。", name), "busy"
-        elif engine.status == notesmod.UNREACHABLE and live and ling.check_result.reason == "unreachable":
-            # The network or the proxy, not the notes: say which, and that it picks up by itself. Both:
-            # the notes' own request failed and the service answers nothing; notes that only timed out
-            # while translations still came back retry on the next round.
-            text = (LF("连不上 %@，纪要暂停在 %@，连上后自动继续。", name, clock(last)) if last > 0
-                    else LF("连不上 %@，连上后开始写纪要。", name))
-            tone = "error"
-        elif engine.status == notesmod.FAILED and live:
-            text, tone = L("这轮没整理好，下一轮会自动重试。"), ""
+        elif status == notesmod.RATE_LIMITED and live:
+            # A 429 holds hearing at the start gate and its retries wait it out: subtitles come late
+            # for a moment, not lost; the live card says so if hearing itself stays busy.
+            tone, text = "waiting", LF("%@ 很忙 · 纪要稍后补上，字幕照常", name)
+        elif status in (notesmod.UNREACHABLE, notesmod.UPDATING) and live and ling.check_result.reason == "unreachable":
+            # The network or the proxy, not the notes: it picks up by itself. Both: the notes' own
+            # request failed and the service answers nothing (notes that only timed out while
+            # translations came back retry next round). The retry that follows (UPDATING) hangs as
+            # long as a timeout: the line stays meanwhile. The service hears the meeting here, so the
+            # subtitles wait too.
+            tone, text = "waiting", LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", name)
+            if self.app.can_switch_to_ling():
+                action, on_action = L("改用 Ling"), self.app.switch_to_ling
+        elif status == notesmod.FAILED and live:
+            tone, text = "info", L("这轮纪要没写好 · 下轮自动补上")
         else:
             return
-        row = ui.hbox(10)
-        row.pack_start(ui.text(text, 12, "ink", width_chars=24), True, True, 0)
-        if tone == "error":
-            unreachable = engine.status == notesmod.UNREACHABLE
-            b = ui.button(L("设置") if unreachable else L("更换 key"), lambda: self.app.show_settings(ai=True),
-                          "outline" if unreachable else "darkbtn")
-            b.set_can_focus(False)
-            b.set_valign(Gtk.Align.CENTER)
-            row.pack_end(b, False, False, 0)
-        card = ui.panel(ui.pad(row, 12), "notice", *([tone] if tone else []))
-        body.pack_start(ui.pad(card, 0, 0, 10, 0), False, False, 0)
+        body.pack_start(ui.pad(ui.status_line(tone, text, action, on_action), 0, 0, 10, 0), False, False, 0)
 
     def _listening_view(self) -> Gtk.Widget:
         """NotesListeningView: one quiet status row, then the notes' own shape waiting to be filled, so

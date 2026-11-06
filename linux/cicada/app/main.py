@@ -337,6 +337,15 @@ class Controller:
         self.settings.save()
         self.ai_changed()
 
+    def can_switch_to_ling(self) -> bool:
+        """改用 Ling where another service is out of reach: only when a Ling key is already saved, so
+        the one click works without a trip to the settings. Read fresh: the key may have just been saved."""
+        return self.settings.aiProvider != "ling" and AIKey(service=lambda: "ling").read() is not None
+
+    def switch_to_ling(self) -> None:
+        if self.can_switch_to_ling():
+            self.set_ai_provider("ling")
+
     def set_ai_model(self, kind: str, model: str) -> None:
         """A model chosen over the recommended one ("text", "hear" or "voice"; "" goes back to it)."""
         s = self.settings

@@ -108,6 +108,12 @@ spinner { color: #6B7080; }
 .notice { background-color: #F2F3F5; border-radius: 12px; }
 dialog.endask { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 12px; }
 .notice.error { background-color: #FDECEA; }
+/* StatusLine (Views.swift): a service in trouble in one line on the plain fill; colour only in the dot. */
+.statusline { background-color: #F2F3F5; border-radius: 10px; min-height: 36px; }
+.statusdot { border-radius: 3px; min-width: 6px; min-height: 6px; background-color: #6B7080; }
+.statusdot.waiting { background-color: #C98A00; }
+.statusdot.needsyou { background-color: #B42318; }
+button.quietbtn.statusaction, button.quietbtn.statusaction:hover { background-color: transparent; padding: 4px 0; min-width: 0; }
 .panel.dark .endingstrip { background-color: rgba(232,85,43,0.16); }
 entry.notes-search { min-height: 32px; font-size: 13px; border-radius: 9px; }
 .panel.dark entry.notes-search { background-color: #2A2C32; color: #F2F3F5; }
@@ -147,7 +153,6 @@ button.iconbtn.on { background-color: #F3F4F6; color: #15171C; }
 .proxybox label { color: #3D4149; }
 .warnstrip { background-color: #FFF4D6; border-radius: 10px; }
 .warnstrip label { color: #8A5A00; }
-.notice.busy { background-color: #FFF4D6; }
 .busyline { color: #8A5A00; }
 .chip { background-color: #F2F3F5; border-radius: 5px; padding: 1px 6px; color: #15171C; }
 .chip.now { background-color: #E8552B; color: #FFFFFF; }
@@ -529,6 +534,33 @@ def link(label: str, on_click) -> Gtk.Button:
     b.set_relief(Gtk.ReliefStyle.NONE)
     b.connect("clicked", lambda *_: on_click())
     return b
+
+
+def status_line(tone: str, s: str, action: str | None = None, on_action=None) -> Gtk.EventBox:
+    """A service in trouble, said the same way wherever it shows (the Mac's StatusLine): a dot, what
+    waits for what · what still works, and at most one action. Colour sits in the dot only, so a
+    passing wait doesn't read as a fault: "waiting" (yellow) comes back by itself, "needsyou" (red)
+    needs the user, "info" (grey) is just so they know."""
+    row = hbox(8)
+    d = Gtk.Box()
+    d.set_size_request(6, 6)
+    d.set_valign(Gtk.Align.CENTER)
+    d.set_halign(Gtk.Align.CENTER)
+    classes(d, "statusdot", tone)
+    row.pack_start(d, False, False, 0)
+    label = text(s, 12, "secondary", width_chars=24)
+    label.set_valign(Gtk.Align.CENTER)
+    row.pack_start(label, True, True, 0)
+    if action:
+        b = Gtk.Button()
+        b.add(text(action, 12, "ink", bold=True, wrap=False, ellipsize=False))
+        classes(b, "quietbtn", "statusaction")
+        b.set_relief(Gtk.ReliefStyle.NONE)
+        b.set_can_focus(False)  # the notes window never takes focus
+        b.set_valign(Gtk.Align.CENTER)
+        b.connect("clicked", lambda *_: on_action())
+        row.pack_end(b, False, False, 0)
+    return panel(pad(row, 7, 12), "statusline")
 
 
 def dot(live: bool) -> Gtk.Widget:
