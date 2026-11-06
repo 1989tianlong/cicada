@@ -107,6 +107,18 @@ struct AISettingsView: View {
         .buttonStyle(.plain)
     }
 
+    /// Under an address on the local network (not this Mac): macOS asks once before the first
+    /// connection, and a "Don't Allow" there reads like a dead server.
+    @ViewBuilder private func localNetworkNote(_ address: String) -> some View {
+        // Once it said no, macOS won't ask again: the check's own line says what to do then.
+        if !ling.aiCheck.needsLocalNetwork, let host = AIProvider.customBase(address)?.host,
+           AIProvider.isNearby(host), !AIProvider.isLocal(host) {
+            Text("局域网里的服务器：macOS 会问一次能否访问本地网络，点“允许”。")
+                .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                .fixedSize(horizontal: false, vertical: true).padding(.leading, 42)
+        }
+    }
+
     private var textHost: String { AIProvider.customBase(baseDraft)?.host ?? settings.aiConfig.base?.host ?? "" }
 
     @ViewBuilder private var textSection: some View {
@@ -123,6 +135,8 @@ struct AISettingsView: View {
                 if !baseDraft.isEmpty, AIProvider.customBase(baseDraft) == nil {
                     Text("地址要用 https；这台 Mac 和局域网里的服务可以用 http。").font(.system(size: 11)).foregroundStyle(Palette.error)
                         .padding(.leading, 42)
+                } else {
+                    localNetworkNote(baseDraft)
                 }
                 HStack(spacing: 8) {
                     Text("模型").font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(minWidth: 34, alignment: .leading).fixedSize()
@@ -224,6 +238,7 @@ struct AISettingsView: View {
                     settings.aiCustomVoiceBase = $0
                     model.applyAIService()
                 }
+                localNetworkNote(settings.aiCustomVoiceBase)
             }
             .padding(.leading, 34).padding(.trailing, 16).padding(.bottom, 14)
         }
@@ -263,10 +278,17 @@ struct AISettingsView: View {
                     settings.aiCustomHearBase = $0
                     model.applyAIService()
                 }
+                localNetworkNote(settings.aiCustomHearBase)
                 if hearModel.isEmpty {
                     Text("填上模型才会用它识别。").font(.system(size: 12)).foregroundStyle(Palette.warn)
                 } else if let line = ling.aiCheck.hearLine(host: host, model: hearModel) {
                     Text(line).font(.system(size: 12)).foregroundStyle(Palette.error).fixedSize(horizontal: false, vertical: true)
+                    if hear == .localNetworkDenied {
+                        HStack(spacing: 8) {
+                            SoftButton(L("打开系统设置"), dark: true) { model.openLocalNetworkSettings() }
+                            SoftButton(L("重新检查")) { Task { await ling.check() } }
+                        }
+                    }
                 } else if case .ok(let s)? = hear {
                     Text(L("听一秒音频 \(String(format: "%.1f", s)) 秒")).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
@@ -441,7 +463,7 @@ struct AISettingsView: View {
         // Named after the step that failed: a missing model is not a connection problem.
         if let f = ling.aiCheck.failure, f.reason != .busy, !ling.aiCheck.running {
             switch f.step {
-            case .reach: return L("暂时连不上")
+            case .reach: return ling.aiCheck.localNetworkDenied ? L("没有本地网络权限") : L("暂时连不上")
             case .key: return L("这个 key 用不了")
             case .text: return L("模型用不了")
             }

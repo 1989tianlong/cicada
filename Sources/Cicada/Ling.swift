@@ -168,11 +168,16 @@ final class LingClient: ObservableObject {
     private var listed: Set<String>?
     /// Reads this device's proxy settings to word the "can't reach" hint (never used to connect).
     var proxyHint: (() async -> AICheck.ProxyHint)?
+    /// Whether the local network permission holds back a connection to this address (Mac only;
+    /// asked only after a request to a local network server failed).
+    var localNetworkProbe: ((URL) async -> Bool)?
 
     /// Debug control only: the next checks end this way (for screenshots of every state).
     var simulateCheck: AICheck.Reason?
     /// Debug control only: report this OpenRouter balance instead of the real one.
     var simulateBalance: Double?
+    /// Debug control only: a server that can't be reached is held back by the local network permission.
+    var simulateLocalNetwork = false
     /// The service in use, its address and models. Set by the app from settings.
     var config: () -> AIConfig = { AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash",
                                             voiceModel: "Ming-3.0-tts-0.5B", voiceBase: AIProvider.ling.base) }
@@ -331,7 +336,10 @@ final class LingClient: ObservableObject {
                 do { _ = try await postChat(json, key: key, timeout: 30) } catch Failure.http(let code) {
                     r.fail(.text, .noJSON, code: code)
                 }
-                if r.failure == nil, c.transcribes { r.hear = await checkHearing(c, key: key) }
+                if r.failure == nil, c.transcribes {
+                    r.hear = await checkHearing(c, key: key)
+                    if r.hear == .unreachable, await localNetworkDenied(c.hearBase) { r.hear = .localNetworkDenied }
+                }
             }
         } catch let failure as Failure {
             if let (step, reason, code) = AICheck.classify(failure, at: AICheck.firstStep(c.provider.id)) {
@@ -356,7 +364,8 @@ final class LingClient: ObservableObject {
 
     private func finishCheck(_ result: AICheck, _ c: AIConfig, _ generation: Int) async {
         var r = result
-        if r.failure?.reason == .unreachable, r.proxy == nil { r.proxy = await proxyHint?() }
+        if r.failure?.reason == .unreachable, !r.localNetworkDenied { r.localNetworkDenied = await localNetworkDenied(c.base) }
+        if r.failure?.reason == .unreachable, r.proxy == nil, !r.localNetworkDenied { r.proxy = await proxyHint?() }
         guard generation == checkGeneration else {
             debugLog("ai \(c.provider.id.rawValue): an older check finished late, dropped")
             return
@@ -421,14 +430,38 @@ final class LingClient: ObservableObject {
         let wasUnreachable = aiCheck.failure?.reason == .unreachable
         r.at = Date()
         r.passive = true
-        if r.failure?.reason != .unreachable { r.proxy = nil }
+        if r.failure?.reason != .unreachable { r.proxy = nil; r.localNetworkDenied = false }
         if r.steps == aiCheck.steps, aiCheck.passive { aiCheck.at = r.at; return }
         aiCheck = r
         syncKeyState()
         debugLog("ai: from a real request → \(r.summary)")
-        if r.failure?.reason == .unreachable, !wasUnreachable, let proxyHint {
-            Task { let hint = await proxyHint(); if aiCheck.failure?.reason == .unreachable { aiCheck.proxy = hint } }
+        if r.failure?.reason == .unreachable, !wasUnreachable {
+            let base = config().base
+            Task {
+                let denied = await localNetworkDenied(base)
+                let hint = denied ? nil : await proxyHint?()
+                guard aiCheck.failure?.reason == .unreachable else { return }
+                aiCheck.localNetworkDenied = denied
+                aiCheck.proxy = hint
+                syncKeyState()
+            }
         }
+    }
+
+    /// A server on the local network (not this Mac) that failed: is it the permission?
+    private func localNetworkDenied(_ url: URL?) async -> Bool {
+        if simulateLocalNetwork { return true }
+        guard let url, let host = url.host, AIProvider.isNearby(host), !AIProvider.isLocal(host),
+              let localNetworkProbe else { return false }
+        return await localNetworkProbe(url)
+    }
+
+    /// Back from System Settings (or from the permission prompt): look again if the local network
+    /// permission was what stopped it; turning it on doesn't change the network path.
+    func recheckLocalNetwork() {
+        guard hasKey, aiCheck.needsLocalNetwork, !aiCheck.running else { return }
+        debugLog("ai: back while the local network was denied, checking again")
+        Task { await check() }
     }
 
     /// The network came back (or changed) while the service was unreachable: look again.

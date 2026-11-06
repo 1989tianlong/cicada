@@ -234,6 +234,7 @@ final class AppModel: ObservableObject {
         }
         ling.onCall = { [weak self] in self?.diagnostics.record($0) }
         ling.proxyHint = { await ProxyProbe.hint() }
+        ling.localNetworkProbe = { await LocalNetworkProbe.denied($0) }
         watchNetwork()
         translator.onDraft = { [weak self] in self?.diagnostics.recordDraft(seconds: $0, ok: $1) }
 
@@ -626,6 +627,8 @@ final class AppModel: ObservableObject {
             refreshPermissions()
         }
     }
+
+    func openLocalNetworkSettings() { openSettingsPane("Privacy_LocalNetwork") }
 
     private func openSettingsPane(_ anchor: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
@@ -1093,6 +1096,10 @@ final class AppModel: ObservableObject {
             }
         }
         networkMonitor.start(queue: DispatchQueue(label: "cicada.ai-network"))
+        // Turning the local network permission on doesn't change the path: look again on coming back.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.ling.recheckLocalNetwork() }
+        }
     }
 
     /// One click on "换成推荐的": the service's first recommended text model, then a fresh check.
@@ -1900,9 +1907,14 @@ final class AppModel: ObservableObject {
                      + " check=[\(ling.aiCheck.summary)]")
         case "aiCheckSim":
             // aiCheckSim:<reason|lowBalance|off>: every check ends this way (screenshots of each state).
-            ling.simulateCheck = AICheck.Reason(rawValue: arg)
+            // localNetwork: can't reach it, and the local network permission is off.
+            ling.simulateCheck = arg == "localNetwork" ? .unreachable : AICheck.Reason(rawValue: arg)
             ling.simulateBalance = arg == "lowBalance" ? 0.4 : nil
+            ling.simulateLocalNetwork = arg == "localNetwork"
             Task { await ling.check() }
+        case "localNetworkProbe":
+            // localNetworkProbe:<url>: whether the local network permission holds back a connection to it (log).
+            if let url = URL(string: arg) { Task { _ = await LocalNetworkProbe.denied(url) } }
         // AI service: aiProvider:<ling|openrouter|zenmux|openai|custom>, aiTextModel:<id>, aiVoiceModel:<id|"">,
         // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>, aiCustomHearModel:<name>,
         // aiCustomHearBase:<url|"">, aiCustomRecognize:on|off.

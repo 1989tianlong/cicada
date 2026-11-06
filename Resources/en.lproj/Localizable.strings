@@ -1218,3 +1218,9 @@
 "听不到会议室 · 麦克风没允许" = "Can't hear the room · microphone not allowed";
 "听不到会议室" = "Can't hear the room";
 "麦克风没允许，现在只在记电脑声音。点按去设置" = "The microphone isn't allowed, so only the Mac's audio is being recorded. Click to open Settings";
+"知了没有本地网络权限，连不上 %@。" = "Cicada isn't allowed on the local network, so it can't reach %@.";
+"知了没有本地网络权限，连不上 %@，开会时先用本机识别。" = "Cicada isn't allowed on the local network, so it can't reach %@. Meetings use this Mac's recognition for now.";
+"打开系统设置" = "Open System Settings";
+"知了没有本地网络权限" = "Cicada isn't allowed on the local network";
+"没有本地网络权限" = "Local network not allowed";
+"局域网里的服务器：macOS 会问一次能否访问本地网络，点“允许”。" = "A server on your local network: macOS asks once whether Cicada may use the local network. Click Allow.";

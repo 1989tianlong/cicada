@@ -91,4 +91,23 @@ struct AICheckTests {
         m.fail(.text, .noModel, code: 404)
         #expect(m.message(service: "ZenMux", host: "zenmux.ai", model: "x/y")?.contains("x/y") == true)
     }
+
+    @Test func theLocalNetworkPermissionIsItsOwnFixAndClearsOnTheNextResult() {
+        var c = AICheck()
+        c.fail(.reach, .unreachable)
+        c.localNetworkDenied = true
+        #expect(c.needsLocalNetwork)
+        #expect(c.message(service: "s", host: "192.168.1.20", model: "m") == "知了没有本地网络权限，连不上 192.168.1.20。")
+        #expect(c.proxyLine(service: "s", host: "192.168.1.20") == nil)
+        c.pass(upTo: .text, seconds: 1)
+        #expect(!c.localNetworkDenied && !c.needsLocalNetwork)
+        c.fail(.reach, .unreachable)
+        c.localNetworkDenied = true
+        c.fail(.text, .noModel)
+        #expect(!c.localNetworkDenied)
+        var h = AICheck()
+        h.hear = .localNetworkDenied
+        #expect(h.needsLocalNetwork)
+        #expect(h.hearLine(host: "192.168.1.20", model: "m")?.contains("本地网络") == true)
+    }
 }
