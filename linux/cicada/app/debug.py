@@ -15,7 +15,9 @@ per connection, one JSON line back. Never in release builds.
   pill (the records window capsule's widget sizes)
   listen-source system|room|both (听哪里) | room-mic [<source>|auto] | lines [<record id>] (each line's via)
   online both|no (answer 线上也有人？) | room-mic-force <source>|"" (a null sink's monitor as the room mic)
-  hide notes | problem-wait <seconds>|off (how long unreachable lasts before its notification; off: 2 min)"""
+  hide notes | problem-wait <seconds>|off (how long unreachable lasts before its notification; off: 2 min)
+  codecs (AAC encoder / decoders here) | play [<seconds>] | pause | rate (next speed) | playstate (the shown record's
+  recording: state, time, length, rate, the highlighted line) | settings-general (设置 at 通用)"""
 from __future__ import annotations
 
 import os
@@ -295,6 +297,31 @@ def command(app, line: str) -> dict:
         if (arg == "on") != app.speak.active:
             app.toggle_speaking()
         return {"ok": True, "speaking": app.speak.active}
+    if cmd == "codecs":
+        from . import media
+        return {"ok": True, **media.codecs(), "recordAudio": app.settings.recordAudio, "recording": listen.recording}
+    if cmd in ("play", "pause", "rate", "playstate"):
+        w = app.records_window
+        p = w.player if w is not None else None
+        if cmd != "playstate" and p is None:
+            return {"ok": False, "error": "no recording shown"}
+        if cmd == "play":
+            p.play_from(float(arg)) if arg else p.play()
+        elif cmd == "pause":
+            p.pause()
+        elif cmd == "rate":
+            p.next_rate()
+        hl = w._hl_row if w is not None else None
+        sid = w.selected if w is not None else None
+        s = app.store.get(sid) if sid else None
+        return {"ok": True, "record": sid, "audio": w._built_key[3] if w is not None and w._built_key else None,
+                "hasAudio": s.hasAudio if s else None, "playing": p.playing if p else None,
+                "time": round(p.time, 2) if p else None, "length": round(p.length, 2) if p else None,
+                "rate": p.rate if p else None,
+                "line": next((i for i, (_k, r) in enumerate(w._rows) if r is hl), None) if hl is not None else None}
+    if cmd == "settings-general":
+        app.show_settings(general=True)
+        return {"ok": True}
     if cmd == "select":
         app.show_records()
         app.records_window.selected = arg

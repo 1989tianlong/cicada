@@ -200,9 +200,12 @@ class SettingsWindow(Gtk.Window):
         page.pack_start(self._group(L("正在听时"), ui.boxed([
             ui.prow(L("悬浮窗"), ui.segmented([("notes", L("实时纪要")), ("subtitles", L("字幕条"))], s.view, app.set_view)),
             ui.prow(L("登录时打开"), switch, L("登录后在顶栏待命")),
-            self._voices_row(),
             self._shortcut_row(),
             warn_row])), False, False, 0)
+
+        # 通用, the Mac's records section: what each meeting keeps.
+        self.general = self._group(L("通用"), ui.boxed([self._record_row(), self._voices_row()]))
+        page.pack_start(self.general, False, False, 0)
 
         room_group, room_combos = self._room_group()
         page.pack_start(room_group, False, False, 0)
@@ -310,6 +313,37 @@ class SettingsWindow(Gtk.Window):
             button.set_visible(False)
             button.set_no_show_all(True)
         return ui.prow(title, box, L("在任何窗口里都能用"))
+
+    def _record_row(self) -> Gtk.Widget:
+        """保存会议录音: on by default, as on the Mac; greyed out, saying why, without an AAC encoder."""
+        app = self.app
+        sw = Gtk.Switch()
+        sw.set_valign(Gtk.Align.CENTER)
+        ok = app.can_record
+        sw.set_active(ok and app.settings.recordAudio)
+        sw.set_sensitive(ok)
+
+        def toggled(w, _p):
+            if not ok:
+                return
+            app.settings.recordAudio = w.get_active()
+            app.settings.save()
+            app.settings_changed()
+        sw.connect("notify::active", toggled)
+        return ui.prow(L("保存会议录音"), sw, L("只存在这台电脑上") if ok else L("这台电脑缺少 AAC 编码器，装上“第三方媒体格式”后可用"))
+
+    def scroll_to_general(self) -> None:
+        """Brings 通用 into view (the records window's 保存会议录音 link), once it is laid out."""
+        def go():
+            # In the page's own coordinates (the viewport's are shifted by the current scroll).
+            pos = self.general.translate_coordinates(self.scroll.get_child().get_child(), 0, 0)
+            if pos is not None:
+                self.scroll.get_vadjustment().set_value(max(0, pos[1] - 8))
+            return False
+        # A window just shown isn't laid out yet, and its show handlers then hide rows above 通用: once
+        # it has a size, and again once those are gone.
+        GLib.timeout_add(150, go)
+        GLib.timeout_add(500, go)
 
     def _voices_row(self) -> Gtk.Widget:
         """说话人识别: on by default, as on the Mac; off when this build has no voiceprint library."""

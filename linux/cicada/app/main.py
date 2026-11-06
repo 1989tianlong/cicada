@@ -97,6 +97,9 @@ class Controller:
         self.listen.speakers = self.speakers
         self.namer = speakers.Namer(self.ling, self.store, self.changed)
         self.listen.on_voice = self.namer.guess
+        # 保存会议录音: only where GStreamer can write AAC (stock Ubuntu can't, see media.py).
+        self.listen.recorder = self._recorder
+        threading.Thread(target=self._finish_recordings, name="Rewrap", daemon=True).start()
         self.notes.voices = lambda: self.settings.speakerVoices
         self.speak.on_change(self.changed)
         self.listen.on_change(self.changed)
@@ -128,6 +131,28 @@ class Controller:
         self._notified = False
         GLib.timeout_add_seconds(1, self._tick)
         GLib.timeout_add_seconds(2, self._watch_end)
+
+    @property
+    def can_record(self) -> bool:
+        from . import media
+        return media.encoder() is not None
+
+    def _recorder(self, sid: str):
+        """The new meeting's recorder, or None (setting off, or no AAC encoder here)."""
+        from . import media
+        if not self.settings.recordAudio or media.encoder() is None:
+            return None
+        rec = media.Recorder(self.store.audio_path(sid))
+        rec.on_finished = lambda: GLib.idle_add(lambda: self.changed() and False)
+        return rec
+
+    def _finish_recordings(self) -> None:
+        """A meeting the app didn't get to close: its system.aac becomes system.m4a now (the Mac's load())."""
+        from . import media
+        for sid in self.store.unfinished_audio():
+            if media.finish(self.store.audio_path(sid)):
+                self.store.set_has_audio(sid)
+        GLib.idle_add(lambda: self.changed() and False)
 
     def _tick(self) -> bool:
         if self.tray is not None and self.listen.listening:
@@ -248,8 +273,9 @@ class Controller:
         self.records_window.present()
         self.records_window.set_focus(None)  # not the search box: its placeholder would vanish
 
-    def show_settings(self, ai: bool = False) -> None:
-        """设置; `ai`: at AI 服务 (its first section), where every AI problem is fixed."""
+    def show_settings(self, ai: bool = False, general: bool = False) -> None:
+        """设置; `ai`: at AI 服务 (its first section), where every AI problem is fixed; `general`: at 通用
+        (保存会议录音, from a record that has none)."""
         if self.settings_window is None:
             from .settings_window import SettingsWindow
             self.settings_window = SettingsWindow(self)
@@ -261,6 +287,8 @@ class Controller:
         self.settings_window.present()
         if ai:
             self.settings_window.scroll.get_vadjustment().set_value(0)
+        elif general:
+            self.settings_window.scroll_to_general()
 
     # Setup (会议记录 › 还差几步 and the capsule)
 

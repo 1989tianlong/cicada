@@ -198,3 +198,9 @@
 "没填，同声传译用不了" = "Not set: no voice for interpreting";
 "填上听的模型" = "Add a listening model";
 "本机和局域网服务可不填" = "Optional on this computer or your local network";
+/* 保存会议录音 and the recording's player (media.py, records_window.py). */
+"会议结束后可以回放录音" = "The recording plays back once the meeting ends";
+"找不到录音，没法播放" = "Can't find the recording to play";
+"这场会议没存录音 ·" = "No recording of this meeting ·";
+"只存在这台电脑上" = "Kept only on this computer";
+"这台电脑缺少 AAC 编码器，装上“第三方媒体格式”后可用" = "This computer has no AAC encoder. Available once third-party media formats are installed";
