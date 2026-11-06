@@ -16,17 +16,23 @@ private final class MicFrames: RecognitionStream, @unchecked Sendable {
     func cancel() async {}
 }
 
-@MainActor @Suite struct SpeakMicTests {
-    // Requires microphone permission and a virtual system input with a different format from
-    // the real mic. Opt in locally: CI has neither these devices nor microphone permission.
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["CICADA_TEST_MIC"] == "1"))
-    func repeatedPressesCaptureFromTheRealMic() async throws {
+// Requires microphone permission and a virtual system input with a different format from
+// the real mic. Opt in locally: CI has neither these devices nor microphone permission.
+@MainActor @Suite(.enabled(if: ProcessInfo.processInfo.environment["CICADA_TEST_MIC"] == "1"))
+struct SpeakMicTests {
+    /// The system input (BlackHole) and this Mac's own microphone.
+    private func devices() throws -> (original: OutputDevice, mic: OutputDevice) {
         let original = try #require(AudioDevices.defaultInput)
         try #require(original.isVirtualMic, "Select BlackHole as the system input before this hardware test")
         // A continuity microphone may be listed first: hardware tests must only open this Mac's mic.
-        let device = try #require(AudioDevices.inputs().first {
+        let mic = try #require(AudioDevices.inputs().first {
             AudioDevices.transport($0.id) == kAudioDeviceTransportTypeBuiltIn
         })
+        return (original, mic)
+    }
+
+    @Test func repeatedPressesCaptureFromTheRealMic() async throws {
+        let (original, device) = try devices()
         let frames = MicFrames()
         let previousHost = Recognition.host
         Recognition.host = { _, _ in frames }
@@ -46,6 +52,18 @@ private final class MicFrames: RecognitionStream, @unchecked Sendable {
             #expect(frames.count > before)
             #expect(speak.phase == .idle)
         }
+        #expect(AudioDevices.defaultInput?.uid == original.uid)
+    }
+
+    @Test func roomMicCapturesFromTheRealMic() async throws {
+        let (original, device) = try devices()
+        let room = RoomMic(device: device)
+        let frames = MicFrames()
+        room.onAudio = { frames.append($0) }
+        try room.start()
+        try await Task.sleep(for: .milliseconds(500))
+        room.stop()
+        #expect(frames.count > 0)
         #expect(AudioDevices.defaultInput?.uid == original.uid)
     }
 }
