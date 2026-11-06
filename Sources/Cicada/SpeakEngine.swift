@@ -106,8 +106,11 @@ final class SpeakEngine {
     /// The mic with echo cancellation, shared with 电脑和会议室's room (`VoiceMic`): used when
     /// `echoCancel` is on, or whenever the room already has it running.
     private let voiceMic: VoiceMic
-    /// Debug (`speakVP:on`) until a person has checked it with a real voice; off: the plain mic.
-    var echoCancel = false {
+    /// On by default (`speakVP:off` for the plain mic). With the meeting on the speakers and the
+    /// plain mic, Ming took the meeting's own English for what I said and sent it back into the
+    /// meeting, every press, even one nobody spoke in; through the unit my sentences came through
+    /// whole (an ESP32 speaker 10 cm from the mic as me, the MacBook's speakers at 56 %).
+    var echoCancel = true {
         didSet {
             if echoCancel, let d = echoInput { voiceMic.prepare(input: d) } else if !echoCancel, !voiceMic.inUse { voiceMic.release() }
         }
