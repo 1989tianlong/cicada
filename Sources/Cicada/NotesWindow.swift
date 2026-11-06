@@ -354,6 +354,7 @@ struct NotesWindowView: View {
                         .lineLimit(1).minimumScaleFactor(0.75)
                     Spacer(minLength: 8)
                     if live {
+                        MicButton(model: model, settings: settings, inHeader: true).padding(.trailing, 2)
                         Button(action: askToEnd) {
                             Text("结束").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
                                 .padding(.horizontal, 12).frame(height: 28)
@@ -713,16 +714,9 @@ struct NotesWindowView: View {
                 SoftButton(L("去设置"), dark: true) { model.openMicrophoneSettings() }
             }
         }
-        if model.roomPrompt {
-            ask(L("在会议室里开会？"), L("电脑里 1 分钟没放出声音")) {
-                SoftButton(L("改听会议室"), dark: true) { model.answerRoomPrompt(true) }
-                SoftButton(L("不是")) { model.answerRoomPrompt(false) }
-            }
-        }
-        if let app = model.onlinePrompt {
-            ask(L("线上也有人？"), L("\(app) 正在通话")) {
-                SoftButton(L("也听电脑"), dark: true) { model.answerOnlinePrompt(true) }
-                SoftButton(L("不用")) { model.answerOnlinePrompt(false) }
+        if model.roomMicSilent {
+            ask(L("麦克风没声音"), L("重开了一次也没好")) {
+                SoftButton(L("换麦克风"), dark: true) { model.openSoundInputSettings() }
             }
         }
     }
