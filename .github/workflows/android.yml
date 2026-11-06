@@ -40,7 +40,7 @@ jobs:
         run: python3 scripts/strings.py
       # 说话人识别's voiceprint library: the NDK app/build.gradle.kts pins (sdkmanager checks it).
       - name: NDK
-        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" > /dev/null
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;29.0.14206865" > /dev/null
       - name: Build
         run: gradle --console=plain -q :app:assembleDebug
       - uses: actions/upload-artifact@v4
