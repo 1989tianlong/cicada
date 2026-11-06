@@ -229,7 +229,7 @@ class ListenEngine(
             if (heard == null) { sayProblem = Strings.L("没听清，再说一次"); return }
             if (PressSpeech.filler(heard.original)) { Log.d("listen: only a filler heard, not said"); return }
             var dst = heard.translation
-            if (dst == null && !Languages.same(heard.lang, their)) dst = translator.translate(heard.original, heard.lang, their, Translator.Kind.Sentence)
+            if (dst == null && !Languages.same(heard.lang, their)) dst = translator.translate(heard.original, heard.lang, their, Translator.Kind.Speak)
             val sameLanguage = Languages.same(heard.lang, their)
             val probe = TranscriptLine(speaker = "me", src = heard.original, dst = dst, srcLang = heard.lang, dstLang = their)
             val text = speakable(probe)
@@ -358,6 +358,8 @@ class ListenEngine(
             lastEnd = seg.start + seg.seconds
         }
         val copy = synchronized(gate) { line.copy() }
+        // A line the hear model translated itself: finished sentences are being translated again.
+        if (!joined && heard.translation != null) translator.sentencesUntranslated = false
         if (joined) store.replace(id, copy) else store.append(id, copy)
         onWords?.invoke()
 
@@ -366,6 +368,8 @@ class ListenEngine(
             val src = line.src
             pool.execute {
                 val dst = translator.translate(src, line.srcLang, target, Translator.Kind.Sentence)
+                // Untranslated: the live screens may now say why (translator.sentencesUntranslated).
+                if (dst == null) { changed(); return@execute }
                 val updated = synchronized(gate) {
                     if (dst == null || line.src != src) return@execute
                     line.dst = dst
