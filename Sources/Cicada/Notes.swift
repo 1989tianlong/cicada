@@ -682,7 +682,8 @@ final class NotesEngine: ObservableObject {
             if let f = t["fishbone"] as? [String: Any] {
                 let branches = (f["branches"] as? [[String: Any]] ?? []).compactMap { b -> FishboneBranch? in
                     let label = str(b["label"])
-                    return label.isEmpty ? nil : FishboneBranch(label: label, detail: str(b["detail"]), t: num(b["t"]),
+                    // From its lines, as a point's: the model's own "t" came back past the meeting's end.
+                    return label.isEmpty ? nil : FishboneBranch(label: label, detail: str(b["detail"]), t: time(b["evidence"]) ?? num(b["t"]),
                                                                 support: support(b["evidence"]))
                 }
                 if branches.count >= 2 { fish = Fishbone(question: str(f["question"]), branches: branches) }

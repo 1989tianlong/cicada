@@ -14,6 +14,13 @@ import Testing
 
     /// A rewritten topic cites only its newest lines; its points keep when they were first said,
     /// and the topic starts no later than they do (a 35-minute replay showed 17:20 for points at 12:50).
+    @Test func fishboneBranchTimeComesFromItsLines() {
+        // The model's own "t" came back past the meeting's end (12300 s in a 9000 s meeting).
+        let raw = #"{"topics":[{"title":"预算","evidence":["L1"],"points":[],"fishbone":{"question":"q","branches":[{"label":"a","t":12300,"evidence":["L2"]},{"label":"b","t":40}]}}]}"#
+        let n = NotesEngine.parse(raw, times: [100, 200, 300], startedAt: 0)!
+        #expect(n.topics[0].fishbone?.branches.map(\.t) == [200, 40])
+    }
+
     @Test func topicStartsNoLaterThanItsFirstPoint() {
         var old = MeetingNotes()
         old.topics = [topic(770, "油价", ["A", "B"], [678, 700])]
