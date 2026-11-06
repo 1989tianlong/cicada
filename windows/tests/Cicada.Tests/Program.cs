@@ -177,8 +177,9 @@ static class Tests
             ("C:#Program Files (x86)#Tencent#WeMeet#wemeetapp.exe", 133_000_000_000), // used earlier, closed now
             ("C:#Program Files#Google#Chrome#Application#chrome.exe", 0),               // a browser isn't a meeting app
             ("MSTeams_8wekyb3d8bbwe", 0),
+            ("C:#Program Files (x86)#WXWork#WXWork.exe", 0),
         ]);
-        Equal("Teams=msteams,Zoom=zoom.exe", string.Join(",", calls.OrderBy(p => p.Value).Select(p => $"{p.Value}={p.Key}")), "meeting apps reading a mic");
+        Equal("Teams=msteams,Zoom=zoom.exe,企业微信=wxwork.exe", string.Join(",", calls.OrderBy(p => p.Value).Select(p => $"{p.Value}={p.Key}")), "meeting apps reading a mic");
         Equal(0, MicUse.Calls([]).Count, "none");
     }
 
