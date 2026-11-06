@@ -133,10 +133,28 @@ import Testing
         #expect(n?.topics.map(\.start) == [51 * 60, 300])
     }
 
-    @Test func partTopicsSpreadOverThePart() {
+    @Test func partTopicsJoinedNotDropped() {
         let ten = (0..<10).map { topic(Double($0 * 300), "t\($0)") }
-        #expect(NotesEngine.spread(ten, to: 4).map(\.title) == ["t0", "t3", "t6", "t9"])
-        #expect(NotesEngine.spread(ten, to: 1).map(\.title) == ["t0"])
-        #expect(NotesEngine.spread(Array(ten.prefix(3)), to: 4).count == 3)
+        let four = NotesEngine.thinned(ten, to: 4, end: 3000)
+        #expect(four.count == 4)
+        #expect(four.first?.start == 0)
+        #expect(ten.allSatisfy { t in four.contains { $0.title.components(separatedBy: " / ").contains(t.title) } })
+        #expect(NotesEngine.thinned(ten, to: 1, end: 3000).map(\.start) == [0])
+        #expect(NotesEngine.thinned(Array(ten.prefix(3)), to: 4, end: 3000).count == 3)
+    }
+
+    @Test func partTopicsKeepATopicOverItsContinuation() {
+        // A 2.5-hour meeting's last part, asked for 2 topics, came back with 3: the budget topic's
+        // end as its own. Kept first and last, the budget topic at 125 min was lost.
+        let part = [topic(6000, "营销发布安排", ["a"]), topic(7500, "预算评审", ["b"]), topic(8982, "预算评审（续）", ["c"])]
+        let kept = NotesEngine.thinned(part, to: 2, end: 8990)
+        #expect(kept.map(\.title) == ["营销发布安排", "预算评审"])
+        #expect(kept.map(\.start) == [6000, 7500])
+        #expect(kept[1].points == ["b", "c"])
+        // Told apart by time alone, the stub still joins the topic it ends.
+        let other = [topic(6000, "营销发布安排"), topic(7500, "预算评审"), topic(8982, "收尾")]
+        #expect(NotesEngine.thinned(other, to: 2, end: 8990).map(\.start) == [6000, 7500])
+        #expect(NotesEngine.subject("Budget review (cont.)") == "Budget review")
+        #expect(NotesEngine.subject("(续)") == "(续)")
     }
 }
