@@ -1658,6 +1658,7 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated { self?.debugCommand(cmd) }
         }
         debugLog("debug control ready")
+        MainThreadWatchdog.shared.start()
     }
 
     private func debugCommand(_ cmd: String) {
@@ -2024,6 +2025,8 @@ final class AppModel: ObservableObject {
         // talkDown / talkUp: the talk key held and let go, with the real microphone (audio tests).
         case "talkDown": speak.pressBegan()
         case "talkUp": speak.pressEnded()
+        // stall:<seconds> blocks the main thread, to check the watchdog samples it.
+        case "stall": Thread.sleep(forTimeInterval: Double(arg) ?? 3)
         case "speakVP": speak.echoCancel = arg != "off"
         case "voiceMicRun":
             // voiceMicRun:<on|off> runs the echo-cancelling unit with nobody listening (what it does to the rest).
