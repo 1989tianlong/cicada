@@ -282,6 +282,10 @@ class ListenEngine:
         hears silence while the computer plays speech."""
         if not self.listening or self._room is not None:
             return
+        # Another meeting may be another room or another output: echo is assumed until measured.
+        forced = self.echo_gate.forced
+        self.echo_gate = EchoGate()
+        self.echo_gate.forced = forced
         lane = _Lane(via="room", first=ROOM_IDS)
         lane.gate = VoiceGate(adaptive=True)
         lane.muted = any(l.muted for l in self._lanes())
