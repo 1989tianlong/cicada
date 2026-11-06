@@ -1150,9 +1150,7 @@ final class ListenEngine {
                         self.setStatus(L("\(self.cloudService ?? "AI") 暂时连不上，先用本机识别"))
                     } else if !Recognition.cloudOnly { self.stopCloud() }
                     // Nothing to go back to on an Intel Mac: say why it's quiet, and keep trying.
-                    else if case LingClient.Failure.invalidKey = error { self.setStatus(L("key 已失效，到设置 › AI 服务里重填")) }
-                    else if case LingClient.Failure.noKey = error { self.setStatus(L("请先在设置 › AI 服务里填入 Ling key")) }
-                    else { self.setStatus(L("\(self.cloudService ?? "AI") 暂时连不上，正在重试")) }
+                    else { self.setStatus(CloudHearing.trouble(error, service: self.cloudService ?? "AI")) }
                 }
                 return nil
             }
