@@ -320,5 +320,3 @@
 /* The talk key: the computer was playing through the press, so what the mic heard may be its echo. */
 "对方在说话时说的，没有说出去" = "상대방이 말하는 중이라 보내지 않았어요";
 "只存在这台电脑上" = "이 PC에만 저장됨";
-"例如 kokoro" = "예: kokoro";
-"例如 af_heart" = "예: af_heart";

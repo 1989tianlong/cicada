@@ -320,5 +320,3 @@
 /* The talk key: the computer was playing through the press, so what the mic heard may be its echo. */
 "对方在说话时说的，没有说出去" = "Said while they were talking, so not sent";
 "只存在这台电脑上" = "Stored only on this PC";
-"例如 kokoro" = "e.g. kokoro";
-"例如 af_heart" = "e.g. af_heart";
