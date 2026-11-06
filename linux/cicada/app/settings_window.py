@@ -422,7 +422,6 @@ class SettingsWindow(Gtk.Window):
 
         def phones_toggled(sw, _p):
             self.app.set_headphones(sw.get_active())
-            self.room_phones.set_active(sw.get_active())  # 会议室's 戴着耳机 is the same setting
         phones.connect("notify::active", phones_toggled)
         self.speak_phones = phones
         phones_row = ui.prow(L("戴着耳机"), phones, L("和对方同时说的话也会传出去"))
@@ -443,13 +442,12 @@ class SettingsWindow(Gtk.Window):
         return ui.vbox(6, self._group(L("同声传译"), ui.boxed(rows)), ui.pad(self.speak_status, 0, 4, 0, 4))
 
     def _room_group(self):
-        """会议室: 听哪里, and the microphone that hears the room (自动 picks as roommic.pick does)."""
+        """会议室: the microphone 打开麦克风 hears the room with (自动 picks as roommic.pick does). Whether
+        it hears the speakers is measured (roommic.EchoGate), not asked."""
         from ..core import roommic
         from . import capture
-        from .tray import sources
         app = self.app
         s = app.settings
-        where = choice(sources(), s.listenSource, app.set_listen_source)
         inputs = [i for i in roommic.parse_sources(capture.sources_text()) if not i.virtual]
         default = capture.default_source()
         if default == "cicada_mic":
@@ -464,19 +462,8 @@ class SettingsWindow(Gtk.Window):
         if s.roomMic and all(v != s.roomMic for v, _ in options):
             options.append((s.roomMic, s.roomMic))  # chosen before, not plugged in now
         mic = choice(options, s.roomMic, set_mic)
-        # 戴着耳机, the same setting as 同声传译's: nothing comes out of the speakers, so no echo to take out.
-        phones = Gtk.Switch()
-        phones.set_active(s.speakHeadphones)
-        phones.set_valign(Gtk.Align.CENTER)
-        def toggled(sw, _p):
-            app.set_headphones(sw.get_active())
-            if getattr(self, "speak_phones", None) is not None:
-                self.speak_phones.set_active(sw.get_active())
-        phones.connect("notify::active", toggled)
-        self.room_phones = phones
-        rows = [ui.prow(L("听哪里"), where), ui.prow(L("麦克风"), mic, L("戴着蓝牙耳机时，自动用电脑自带的麦克风")),
-                ui.prow(L("戴着耳机"), phones, L("戴着就不用防回声，桌边的话不会被丢；和同声传译共用这个开关"))]
-        return self._group(L("会议室"), ui.boxed(rows)), [where, mic]
+        rows = [ui.prow(L("麦克风"), mic, L("戴着蓝牙耳机时，自动用电脑自带的麦克风"))]
+        return self._group(L("会议室"), ui.boxed(rows)), [mic]
 
     def _group(self, title, body, footer=None) -> Gtk.Widget:
         box = ui.vbox(6, ui.pad(ui.text(title, 12, "group-title", bold=True, wrap=False), 0, 0, 0, 2), body)

@@ -221,8 +221,11 @@ class ListenEngine:
                     # Silence rather than nothing keeps the segmenter's clock in step.
                     buf = array("h", bytes(len(buf) * 2))
                 now = time.monotonic()
-                if lane is not self._main and self.gated and self.echo_gate.closed(now):
-                    buf = array("h", bytes(len(buf) * 2))
+                if lane is not self._main and self.gated:
+                    # What the mic really hears, for EchoGate's measurement, before any silencing.
+                    self.echo_gate.room_level(Wav.rms(buf), seconds, now)
+                    if self.echo_gate.closed(now):
+                        buf = array("h", bytes(len(buf) * 2))
                 level = Wav.rms(buf)
                 gate = lane.gate
                 if gate is not None:
@@ -420,6 +423,8 @@ class ListenEngine:
                 else:
                     self._record(lane, seg, heard)
                     self._heard_online(heard.original, seg.seconds)
+                    if heard.original.strip():  # speech, which the room mic is silenced for (EchoGate)
+                        self.echo_gate.heard_words(time.monotonic())
         if ready:
             self._changed()
 

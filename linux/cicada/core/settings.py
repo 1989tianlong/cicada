@@ -42,9 +42,9 @@ class AppSettings:
         "speakTo": "room",           # what the room hears; "room" = the language they have been speaking
         "speakVoices": {},           # Ming voice per language key ("en": "US_Emma")
         "speakHeadphones": False,    # 戴着耳机: skip the echo guard, talking over them is fine
-        # 听哪里 (the Mac's listenSource): "system" (what the computer plays), "room" (a real
-        # microphone, for a meeting in the room) or "both" (电脑和会议室: people online and in the
-        # room, each heard on its own); roomMic: the room's microphone, "" = 自动.
+        # 打开麦克风 (the Mac's listenSource): "both" while the mic is on (people online and in the
+        # room, each heard on its own), else "system"; never kept for the next launch. roomMic: the
+        # room's microphone, "" = 自动.
         "listenSource": "system",
         "roomMic": "",
         # 结束会议 (meeting_end.py), the Mac's keys: end when the meeting app hangs up; when nobody
@@ -116,8 +116,8 @@ class AppSettings:
                     # 纪要语言 was "system" or a language code before it took the Mac's two choices.
                     if kw.get("notesLanguage") not in (None, "mine", "source"):
                         kw["notesLanguage"] = "mine"
-                    if kw.get("listenSource") not in (None,) + AppSettings.SOURCES:
-                        kw["listenSource"] = "system"
+                    # Every launch starts with the microphone off.
+                    kw.pop("listenSource", None)
                     return AppSettings(**kw)
         except OSError as e:
             Log.d("settings: unreadable, defaults used (%s)" % type(e).__name__)

@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import socket
 import threading
+import time
 
 from gi.repository import GLib
 
@@ -132,8 +133,9 @@ def command(app, line: str) -> dict:
                 "pending": listen.pending, "problem": listen.problem, "problemKind": listen.problem_kind, "heardSeconds": round(listen.heard_seconds, 1),
                 "peak": round(listen.peak, 4), "notes": {"title": n.title, "topics": len(n.topics), "status": app.notes.status, "final": n.final},
                 "key": app.ling.key_state, "ai": _ai(app), "view": app.settings.view, "listenSource": app.settings.listenSource,
+                "mic": app.mic_on,
                 "hybrid": {"roomSide": listen.hears_room_too, "echoCancel": app.echo.on, "gated": listen.gated,
-                           "note": app.hybrid_note(), "onlinePrompt": app.online_prompt},
+                           "echo": listen.echo_gate.echo, "music": listen.echo_gate.playing_music(time.monotonic())},
                 "target": app.settings.target_code,
                 "ui": __import__("cicada.core.strings", fromlist=["language"]).language, "records": len(app.store.all()),
                 "tray": app.tray is not None, "home": Paths.data(),
@@ -185,12 +187,15 @@ def command(app, line: str) -> dict:
     if cmd == "settings-ai":
         app.show_settings(ai=True)
         return {"ok": True}
-    if cmd == "listen-source":  # 听哪里 (system|room|both), mid-meeting too
-        app.set_listen_source(arg)
-        return {"ok": True, "listenSource": app.settings.listenSource, "source": listen.source_kind}
-    if cmd == "online":  # answer 线上也有人？ (both|no)
-        app.answer_online(arg == "both")
-        return {"ok": True, "listenSource": app.settings.listenSource}
+    if cmd in ("mic", "listen-source"):  # 打开麦克风 (on|off); listen-source both|room|system, the old names
+        app.set_mic(arg in ("on", "both", "room"))
+        return {"ok": True, "mic": app.mic_on, "source": listen.source_kind}
+    if cmd == "room-echo-sim":  # pretend the speakers do (on) or don't (off) reach the room mic; real
+        listen.echo_gate.forced = None if arg in ("", "real") else arg != "off"
+        return {"ok": True, "echo": listen.echo_gate.echo}
+    if cmd == "room-echo":  # the sound server's echo cancellation for the room mic (on|off), next start
+        app.room_echo_cancel = arg == "on"
+        return {"ok": True}
     if cmd == "room-mic-force":  # any source as the room mic, e.g. a null sink's monitor ("" = off)
         app.forced_room_mic = arg or None
         return {"ok": True, "forced": app.forced_room_mic}
