@@ -48,7 +48,7 @@ All four share one version number and one meeting record format; downloads are o
 
 ### Live notes and bilingual transcript
 
-While the meeting runs, the notes window organizes a summary, topics and key points, conclusions, to-dos, a fishbone diagram, and a glossary of names and terms, and every conclusion or to-do clicks straight back to the supporting lines in the bilingual transcript. Cicada unifies names and terms across the notes and remembers misrecognized spellings, so `⌘F` searches both the canonical spelling and the variants. When the AI service has a problem only you can fix (key, credit, model), the notes window says so and the menu bar icon gets an orange dot; when **Mac + Room** can't use the microphone, the notes window, the subtitle bar and the menu bar icon all say so.
+While the meeting runs, the notes window organizes a summary, topics and key points, conclusions, to-dos, a fishbone diagram, and a glossary of names and terms, and every conclusion or to-do clicks straight back to the supporting lines in the bilingual transcript. Cicada unifies names and terms across the notes and remembers misrecognized spellings, so `⌘F` searches both the canonical spelling and the variants. When the AI service has a problem only you can fix (key, credit, model), the notes window says so and the menu bar icon gets an orange dot; when **Turn on mic** can't get the microphone, the notes window, the subtitle bar and the menu bar icon all say so.
 
 ### Live subtitles and language detection
 
@@ -56,11 +56,11 @@ Cicada detects the spoken language on device within seconds and translates into 
 
 ### Meetings in the room
 
-For a meeting around a table, set **Listen to** in the menu bar panel to **Room** and Cicada listens through the Mac's microphone, with the same subtitles, notes and records as an online meeting. Speak-back then reads the translation out of the speakers, no virtual mic needed, and the microphone stops listening while it does so the translation isn't recorded as someone else. If nothing plays on the Mac for a minute while it listens to the computer, the panel asks whether to listen to the room instead; every launch starts with the computer again.
+For a meeting around a table, click **Turn on mic** in the menu bar panel or the notes window and Cicada listens to the people at the table through the Mac's microphone, with the same subtitles, notes and records as an online meeting; the Mac's audio is still heard, and when it plays nothing only the table is recorded. While speak-back reads a translation out, the microphone stops listening so the translation isn't recorded as someone else. Every launch starts with the microphone off.
 
-When some people are in the room and others are online, choose **Mac + Room** (macOS 26): the online side is heard from the Mac's audio and the table from the microphone, each in its own language, in one meeting record. The online voices coming out of the speakers reach the microphone too; Cicada takes them out with macOS echo cancellation, so people at the table can talk over a remote speaker and both are kept. When echo cancellation isn't available, the microphone pauses while someone online is talking. As a last check, a room line that is almost the same as what the Mac just played isn't recorded twice.
+When some people are in the room and others are online, it's the same button: the online side is heard from the Mac's audio and the table from the microphone, each in its own language, in one meeting record (on macOS 14 and 15 the microphone takes the place of the Mac's audio). The online voices coming out of the speakers reach the microphone too, so Cicada measures whether they do: if they do, the microphone pauses while someone online is talking; with headphones or a meeting microphone nothing pauses and people talking over each other are all kept, and music playing on the Mac doesn't pause it either. As a last check, a room line that is almost the same as what the Mac just played isn't recorded twice.
 
-In such a meeting each line is marked **In room** or **Online**. While you listen to the room alone and a meeting app is in a call, the panel asks whether to hear the Mac too; if an external microphone is unplugged mid-meeting, Cicada moves to the microphone that's left and says so. **Listen to** has the same three options on Windows and Linux: Linux uses the sound server's own echo cancellation, and on Windows the microphone pauses while someone online is talking.
+In such a meeting each line is marked **In room** or **Online**. If an external microphone is unplugged mid-meeting, Cicada moves to the microphone that's left and says so; if the microphone stays silent, Cicada opens it again once and otherwise asks you to change it in the notes window. Windows and Linux have the same **Turn on mic** and the same rules.
 
 ### Speak back in their language
 
@@ -89,7 +89,7 @@ The rest of this section is about the Mac app. Cicada asks for a permission only
 | Permission | What it's for | When it's asked | Without it |
 |---|---|---|---|
 | System audio recording (Screen & System Audio Recording) | Hearing what your Mac plays, for subtitles. Never records the screen or its own sound | Onboarding step 1, or the first time it listens | No subtitles or notes |
-| Microphone | Your voice while you hold the talk key, for speak-back; the people in the room when **Listen to** is **Room** | When you turn on speak-back or first listen to the room | No speak-back, no listening to the room |
+| Microphone | Your voice while you hold the talk key, for speak-back; the people in the room after **Turn on mic** | When you turn on speak-back or first turn on the mic | No speak-back, no listening to the room |
 | Input Monitoring | Only to tell whether the right `⌥` was pressed on its own (listen-only; nothing is blocked or logged) | The first time you talk with right `⌥` | Pick a `⌃`/`⌘` combination in Settings instead; it needs no permission |
 | Administrator password | Installing the BlackHole 2ch virtual microphone and restarting the system audio service | When you click Install in onboarding or Settings, once | The room can't hear your translation; everything else works |
 
