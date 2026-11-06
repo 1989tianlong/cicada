@@ -31,7 +31,8 @@ What 279d045, 08f316b and 7106021 were measured with. `scripts/speak-round.sh <l
 | Meeting playing | `speak-round.sh meeting meeting 56` | mine ≥ 80 %; `english_in_mine` 0 and no meeting content in the `me|` lines |
 | Silent, meeting playing | `speak-round.sh sm silent 56` | sent 0 |
 | Silent, quiet room | `speak-round.sh sq silent 0` | sent 0 (see below) |
-| Room mic on | `MIC=on speak-round.sh mm meeting 56` | as meeting; `in_room_lines` 0 % |
+| Room mic on, quiet | `MIC=on speak-round.sh mq quiet 56` | as quiet; `in_room_lines` 0 % |
+| Room mic on, meeting playing | `MIC=on speak-round.sh mm meeting 56` | sent 0 (log `played through … (echo)`): the plain room mic leaves the talk key no echo cancellation, so a press over the meeting is dropped, as on the ports |
 
 What it found: with the plain mic (`VP=off`) the meeting's English came back from the speakers and Ming interpreted it as me — my sentences 50/27/23 %, the meeting sent back into itself, and a silent press sent the meeting back 3 of 3 times. Through echo cancellation: 86–100 %, none of the meeting. A silent press in a quiet room came back as 嗯 → "Hmm." until PressSpeech and the filler check.
 
