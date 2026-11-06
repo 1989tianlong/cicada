@@ -95,6 +95,22 @@
         ],
         "title": "刚开完会时，AI 服务的状态在英文界面里说“just now”，不再像是正在用。",
         "text": "原来写成“used in a meeting now”。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "让 Ling 代听会议时，Ling 一时太忙也不会漏掉那段话。",
+        "text": "Intel Mac 和点了“先用 Ling 听”时，Ling 回“请求太多”会等一会儿再试，最多约 15 秒，原来只再试一次就丢掉；这期间别的翻译直接改用 Google，不排队等。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "会议结束后的“改用 English 重新整理”按钮，英文名两边有空格了。",
+        "text": "原来挤成“改用English重新整理”；中文名照旧不加空格。"
       }
     ]
   },
