@@ -320,3 +320,6 @@
 /* The talk key: the computer was playing through the press, so what the mic heard may be its echo. */
 "对方在说话时说的，没有说出去" = "相手が話している間の発言なので、送っていません";
 "只存在这台电脑上" = "このPCにのみ保存";
+/* 打开麦克风: the Mac's words name the Mac. */
+"关着 · 只听电脑声音" = "オフ · PC の音だけ";
+"电脑声音照常在记" = "PC の音声はそのまま記録中";
