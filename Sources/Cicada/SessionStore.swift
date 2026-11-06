@@ -211,6 +211,14 @@ final class SessionStore: ObservableObject {
         scheduleSave(id)
     }
 
+    /// The record's own recognizer's words for a line (`RecordRefiner`), which may land after the
+    /// meeting ended.
+    func setSource(in id: String, lineID: String, _ text: String) {
+        guard let i = index(id), let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
+        sessions[i].lines[j].src = text
+        scheduleSave(id)
+    }
+
     func setVoice(lineID: String, _ voice: Int) {
         guard let id = liveID, let i = index(id),
               let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }

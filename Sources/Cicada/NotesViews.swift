@@ -532,6 +532,8 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     var marked: Int?
     /// 电脑和会议室 heard both: each paragraph says 现场 or 线上 (RecordList.heardBoth).
     var places = false
+    /// Lines the meeting record's own recognizer is still settling: their words may change.
+    var settling: Set<String> = []
     var onAssign: ((Set<String>, Int) -> Void)?
     @ViewBuilder var partial: Partial
 
@@ -545,7 +547,7 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         a.lines == b.lines && a.topics == b.topics && a.terms == b.terms && a.currentMatch == b.currentMatch
             && a.bilingual == b.bilingual && a.live == b.live && a.partialShown == b.partialShown
             && a.jumpTo == b.jumpTo && a.speakers == b.speakers && a.startedAt == b.startedAt && a.voices == b.voices && a.marked == b.marked
-            && a.identifying == b.identifying && a.places == b.places
+            && a.identifying == b.identifying && a.places == b.places && a.settling == b.settling
     }
 
     private var searching: Bool { !terms.isEmpty }
@@ -774,6 +776,11 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                     else if let n = speakers[l.id] { SpeakerTag(number: n) }
                     else if !speakers.isEmpty { UnknownSpeakerTag() }
                     if places, label, l.speaker != "me" { PlaceTag(line: l) }
+                    if live, ls.contains(where: { settling.contains($0.id) }) {
+                        Spacer(minLength: 4)
+                        Text("校准中").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                            .help(L("文字稍后会再校准一次，字幕不受影响"))
+                    }
                 }
                 Text(highlighted(src, current: isMatch)).font(.system(size: 14)).lineSpacing(2).textSelection(.enabled)
                 if bilingual, !dst.isEmpty {

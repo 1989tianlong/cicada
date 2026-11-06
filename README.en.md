@@ -52,7 +52,7 @@ While the meeting runs, the notes window organizes a summary, topics and key poi
 
 ### Live subtitles and language detection
 
-Cicada detects the spoken language on device within seconds and translates into your system language, and pressing `⌃⌥S` switches between the notes window, a compact subtitle bar, and hidden. The subtitle bar appears only when someone speaks and turns see-through under your pointer so you can click right through it.
+Cicada detects the spoken language on device within seconds and translates into your system language, and pressing `⌃⌥S` switches between the notes window, a compact subtitle bar, and hidden. The subtitle bar appears only when someone speaks and turns see-through under your pointer so you can click right through it. On macOS 26 with Apple silicon, the Transcript also hears the meeting a second time on the Mac and refines each line 15–30 seconds after it is said: fewer misheard words and none lost where the subtitles cut a line, while subtitles stay as fast.
 
 ### Meetings in the room
 

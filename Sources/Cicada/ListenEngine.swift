@@ -14,6 +14,8 @@ struct Segment {
     /// and whether Cicada ended it at a pause: what deciding a join needs (`HeardText.continues`).
     var start = 0.0, end = 0.0, clock = 0
     var cut = false
+    /// The record's own recognizer heard it too and will settle its words (`onRefined`).
+    var refining = false
 }
 
 /// System audio → language detection → on-device transcription → translation.
@@ -34,6 +36,9 @@ final class ListenEngine {
     /// A finished sentence; `secondsAgo` ≈ how long ago it started.
     var onFinal: ((Segment, _ secondsAgo: Double) -> Void)?
     var onTranslated: ((_ segmentID: Int, _ translation: String) -> Void)?
+    /// The record's own recognizer settled segment `id` (`RecordRefiner`): its text for the meeting
+    /// record, "" when it heard nothing there.
+    var onRefined: ((_ segmentID: Int, _ text: String) -> Void)?
     /// Diagnostics: how long a sentence took from its last new words to its translation on screen.
     var onTiming: ((SentenceTiming) -> Void)?
     /// The recognizer heard words (a draft or a line), whether or not they are shown.
@@ -130,6 +135,11 @@ final class ListenEngine {
     private var startedAt = Date()
     private var recognizer: RecognitionStream?
     private var resultsTask: Task<Void, Never>?
+    /// The record's recognizer for the current transcriber (`Recognition.recordTrack`). Its lines
+    /// keep settling after `stop()`, so it has a generation of its own.
+    private var refiner: RecordRefiner?
+    private var refinerGen = 0
+    private var recordTask: Task<Void, Never>?
     /// The room engine's clocks and segment ids start far above the main one's, so lines from the two
     /// never look like one recognizer's (joins, translations).
     private var generation: Int
@@ -395,7 +405,13 @@ final class ListenEngine {
         router.reset()
         resultsTask?.cancel()
         resultsTask = nil
-        if let recognizer {
+        if let tee = recognizer as? TeeStream {
+            // The record's recognizer hears out what it has, and its last lines settle.
+            Task {
+                await tee.live.cancel()
+                await tee.record.finish()
+            }
+        } else if let recognizer {
             Task { await recognizer.cancel() }
         }
         recognizer = nil
@@ -700,9 +716,21 @@ final class ListenEngine {
                 await stream.cancel()
                 return
             }
-            router.attach(stream, replaySeconds: replaySeconds)
+            var listening: RecognitionStream = stream
+            if let record = try? await Recognition.startRecord(lang.locale, format: stream.format) {
+                guard isRunning, gen == generation else {
+                    await stream.cancel()
+                    await record.cancel()
+                    return
+                }
+                listening = TeeStream(live: stream, record: record)
+                startRefining(record)
+            } else {
+                refiner = nil
+            }
+            router.attach(listening, replaySeconds: replaySeconds)
             updateHold()
-            self.recognizer = stream
+            self.recognizer = listening
             resultsTask = Task { [weak self] in
                 do {
                     for try await piece in stream.results {
@@ -773,6 +801,8 @@ final class ListenEngine {
             seg.clock = gen
             seg.cut = cutAsked
             cutAsked = false
+            seg.refining = refiner != nil
+            if refiner != nil { settled(refiner!.emitted(id: seg.id, start: seg.start, end: seg.end, text: seg.text)) }
             if settings.speakerVoices {
                 seg.voiceSamples = router.voiceSamples(from: result.start, to: result.end)
             }
@@ -1374,6 +1404,33 @@ final class ListenEngine {
         finalTiming[id] = nil
         translateSegment(id: into)
         renderSubtitles()
+    }
+
+    // MARK: The record's recognizer
+
+    private func startRefining(_ record: RecordHearing) {
+        recordTask?.cancel()
+        refinerGen += 1
+        let gen = refinerGen
+        refiner = RecordRefiner()
+        recordTask = Task { [weak self] in
+            do {
+                for try await sentence in record.sentences {
+                    guard let self, gen == self.refinerGen, self.refiner != nil else { return }
+                    contentLog("RECORD \(sentence.runs.map(\.text).joined())")
+                    self.settled(self.refiner!.heard(sentence.runs, through: sentence.through))
+                }
+            } catch {
+                debugLog("record track: \(error)")
+            }
+            guard let self, gen == self.refinerGen, self.refiner != nil else { return }
+            self.settled(self.refiner!.finish())
+            self.refiner = nil
+        }
+    }
+
+    private func settled(_ lines: [(id: Int, text: String)]) {
+        for l in lines { onRefined?(l.id, l.text) }
     }
 
     /// SpeechTranscriber ends a sentence only at a clear pause; in a quick conversation that can

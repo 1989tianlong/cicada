@@ -124,6 +124,8 @@ final class AppModel: ObservableObject {
     var listenReady: Bool { systemAudioOK && speechOK }
     @Published var micStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published var liveSource = ""
+    /// Lines whose words the record's own recognizer hasn't settled yet (the notes window says 校准中).
+    @Published private(set) var settling: Set<String> = []
     @Published var liveTranslation = ""
     @Published var onboardingStep = 1
     /// Step 3 is showing what skipping the key leaves out (debug: `onboarding:3,skip`).
@@ -174,6 +176,15 @@ final class AppModel: ObservableObject {
     /// A line that may carry on `lastHeard`, waiting to hear whose voice it is; its translation if
     /// that comes first.
     private var heldJoin: (seg: Segment, t: Double, translation: String?)?
+    /// Lines the record's own recognizer is still settling (`ListenEngine.onRefined`): each line's
+    /// meeting and its segments in order (several after a join), each with the live recognizer's text.
+    private var refining: [String: (session: String, segs: [(id: Int, text: String, settled: String?)])] = [:]
+    private var refiningOrder: [String] = []
+    private var lineOfSegment: [Int: String] = [:]
+    /// Settled before its line was recorded (a line waiting for its voice, the language or an echo check).
+    private var settledEarly: [Int: String] = [:]
+    /// Lines with their record text: the live recognizer's translations no longer replace theirs.
+    private var refinedLines: Set<String> = []
 
     init() {
         // A meeting or speaking holds the update notification until it ends (see stop()).
@@ -219,6 +230,8 @@ final class AppModel: ObservableObject {
         }
         listen.onTranslated = { [weak self] segID, text in self?.translated(segID, text) }
         roomListen.onTranslated = { [weak self] segID, text in self?.translated(segID, text) }
+        listen.onRefined = { [weak self] segID, text in self?.refined(segID, text) }
+        roomListen.onRefined = { [weak self] segID, text in self?.refined(segID, text) }
 
         diagnostics.enabled = { [weak self] in self?.settings.diagnostics ?? false }
         diagnostics.folder = { [weak self] in
@@ -651,6 +664,12 @@ final class AppModel: ObservableObject {
         lineForSegment = [:]
         lastHeard = nil
         heldJoin = nil
+        refining = [:]
+        settling = []
+        refiningOrder = []
+        lineOfSegment = [:]
+        settledEarly = [:]
+        refinedLines = []
         recentOnline = []
         heldRoom = []
         liveMain = ("", "", .distantPast)
@@ -1390,8 +1409,55 @@ final class AppModel: ObservableObject {
     private func translated(_ segID: Int, _ text: String) {
         if heldJoin?.seg.id == segID { heldJoin?.translation = text }
         if let i = heldRoom.firstIndex(where: { $0.id == segID }) { heldRoom[i].seg.translation = text }
-        guard let line = lineForSegment[segID] else { return }
+        guard let line = lineForSegment[segID], !refinedLines.contains(line) else { return }
         store.setTranslation(lineID: line, text)
+    }
+
+    /// A line starts settling with its first segment; a joined one adds its own.
+    private func trackRefining(_ seg: Segment, line: String) {
+        guard seg.refining, let session = store.liveID else { return }
+        lineOfSegment[seg.id] = line
+        if refining[line] == nil {
+            refiningOrder.append(line)
+            // Old lines no longer join or settle: keep the last few hundred.
+            if refiningOrder.count > 300 {
+                let old = refiningOrder.removeFirst()
+                refining[old] = nil
+                settling.remove(old)
+            }
+        }
+        refining[line, default: (session, [])].segs.append((seg.id, seg.text, nil))
+        settling.insert(line)
+        if let early = settledEarly.removeValue(forKey: seg.id) { refined(seg.id, early) }
+    }
+
+    /// The record's recognizer settled segment `segID`. Once every segment of its line has, the line
+    /// takes the record's words and is translated again; a segment it heard nothing in keeps its own.
+    private func refined(_ segID: Int, _ text: String) {
+        guard let line = lineOfSegment[segID], var entry = refining[line],
+              let k = entry.segs.firstIndex(where: { $0.id == segID }) else {
+            settledEarly[segID] = text
+            if settledEarly.count > 60, let oldest = settledEarly.keys.min() { settledEarly[oldest] = nil }
+            return
+        }
+        let heard = HeardText.clean(text)
+        entry.segs[k].settled = heard.contains(where: \.isLetter) ? heard : entry.segs[k].text
+        refining[line] = entry
+        guard entry.segs.allSatisfy({ $0.settled != nil }) else { return }
+        settling.remove(line)
+        let parts = entry.segs.map { $0.settled! }
+        let whole = parts.dropFirst().reduce(parts[0]) { HeardText.join($0, $1) }
+        guard let rec = store.session(entry.session)?.lines.first(where: { $0.id == line }), whole != rec.src else { return }
+        store.setSource(in: entry.session, lineID: line, whole)
+        refinedLines.insert(line)
+        contentLog("REFINE \(line): \(rec.src) => \(whole)")
+        guard rec.dst != nil else { return }
+        Task { [weak self] in
+            guard let self, let out = await self.listen.translate(whole, source: rec.srcLang, target: rec.dstLang) else { return }
+            // Joined again meanwhile: that line's own settling translates it.
+            guard self.store.session(entry.session)?.lines.first(where: { $0.id == line })?.src == whole else { return }
+            self.store.setTranslation(in: entry.session, lineID: line, out)
+        }
     }
 
     /// The line in progress: the engine that changed it last and still has words, so the room and the
@@ -1460,6 +1526,7 @@ final class AppModel: ObservableObject {
         joined.cut = seg.cut
         lastHeard = (joined, prev.line)
         store.setSource(lineID: prev.line, text)
+        trackRefining(seg, line: prev.line)
         listen.join(seg.id, into: prev.seg.id, text: text)
         contentLog("JOIN \(prev.line) += \(seg.text)")
         heardWords()
@@ -1474,6 +1541,7 @@ final class AppModel: ObservableObject {
                                     // 会议室 alone too: a meeting switched to it from 电脑和会议室
                                     // would otherwise mark its later room lines 线上.
                                     via: seg.id >= ListenEngine.roomIDs || settings.listensToRoom ? "room" : nil))
+        trackRefining(seg, line: id)
         var kept = seg
         kept.voiceSamples = nil
         lastHeard = (kept, id)
@@ -1610,6 +1678,11 @@ final class AppModel: ObservableObject {
             listen.simulatedModels = arg == "off" ? nil : Set(p.first ?? [])
             listen.simulatedSystemLanguages = arg == "off" || p.count < 2 ? nil : p[1]
             Task { await listen.refreshInstalledLocales() }
+        case "recordTrack":
+            // recordTrack:off compares the meeting record without its own recognizer (next start).
+            Recognition.recordTrackOff = arg == "off"
+            debugLog("record track: \(Recognition.recordTrack ? "on" : "off")")
+        case "recordState": debugLog("record track: \(Recognition.recordTrack ? "on" : "off") settling=\(settling.count) tracked=\(refining.count)")
         case "recognizer":
             // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26; recognizer:cloud
             // hears as an Intel Mac does; recognizer:auto ends either. Takes effect from the next start.

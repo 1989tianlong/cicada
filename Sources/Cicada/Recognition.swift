@@ -78,6 +78,29 @@ enum Recognition {
         var translation: String? = nil
     }
 
+    /// A few characters of a finished sentence and when they were said, from the meeting record's
+    /// own recognizer (`RecordHearing`), so its text can be laid over the lines already recorded.
+    struct Run: Sendable, Equatable {
+        var text: String
+        var start: Double
+        var end: Double
+    }
+
+    /// Dev builds compare the record with and without its own recognizer: `lsctl recordTrack:off`.
+    nonisolated(unsafe) static var recordTrackOff = DevBuild.isDev && ProcessInfo.processInfo.environment["CICADA_RECORD_TRACK"] == "off"
+
+    /// The meeting record gets a second recognizer that is never hurried: no `.fastResults` and no
+    /// lines cut short for the subtitles. Both cost Chinese about a third more wrong characters
+    /// (meeting audio: 20% offline, 25–30% live). macOS 26's `SpeechTranscriber` only.
+    static var recordTrack: Bool { host == nil && !cloudOnly && !legacy && !dictationModel && !recordTrackOff }
+
+    /// The record's recognizer for `locale`, taking the same audio as the live one (`format`). Nil
+    /// where there is none (`recordTrack`).
+    static func startRecord(_ locale: String, format: AVAudioFormat) async throws -> RecordHearing? {
+        guard recordTrack, #available(macOS 26, *) else { return nil }
+        return try await RecordTrack.start(locale, format: format)
+    }
+
     enum ModelStatus { case installed, downloadable, unsupported }
 
     static var isAvailable: Bool {
@@ -782,5 +805,117 @@ final class DeferredStream: RecognitionStream, @unchecked Sendable {
     func cancel() async {
         lock.withLock { closed = true; pending = [] }
         await opening?.value?.cancel()
+    }
+}
+
+// MARK: - The meeting record's recognizer
+
+/// Finished sentences only, each as runs with their times (`Recognition.Run`) and the end of the
+/// audio it covers.
+protocol RecordHearing: AnyObject, Sendable {
+    var sentences: AsyncThrowingStream<(runs: [Recognition.Run], through: Double), Error> { get }
+    func append(_ buffer: AVAudioPCMBuffer)
+    /// No more audio: returns once every sentence has come back.
+    func finish() async
+    func cancel() async
+}
+
+@available(macOS 26, *)
+final class RecordTrack: RecordHearing, @unchecked Sendable {
+    let sentences: AsyncThrowingStream<(runs: [Recognition.Run], through: Double), Error>
+    private let analyzer: SpeechAnalyzer
+    private let input: AsyncStream<AnalyzerInput>.Continuation
+    private let reader: Task<Void, Never>
+
+    static func start(_ locale: String, format: AVAudioFormat) async throws -> RecordTrack {
+        let t = SpeechTranscriber(locale: Locale(identifier: locale), transcriptionOptions: [],
+                                  reportingOptions: [], attributeOptions: [.audioTimeRange])
+        let analyzer = SpeechAnalyzer(modules: [t])
+        try await analyzer.prepareToAnalyze(in: format)
+        let (stream, input) = AsyncStream.makeStream(of: AnalyzerInput.self, bufferingPolicy: .unbounded)
+        let me = RecordTrack(t, analyzer: analyzer, input: input)
+        try await analyzer.start(inputSequence: stream)
+        return me
+    }
+
+    private init(_ t: SpeechTranscriber, analyzer: SpeechAnalyzer, input: AsyncStream<AnalyzerInput>.Continuation) {
+        self.analyzer = analyzer
+        self.input = input
+        let (sentences, out) = AsyncThrowingStream.makeStream(of: (runs: [Recognition.Run], through: Double).self)
+        self.sentences = sentences
+        reader = Task {
+            do {
+                for try await r in t.results where r.isFinal {
+                    let runs = Self.runs(r.text, r.range)
+                    if !runs.isEmpty { out.yield((runs, CMTimeGetSeconds(r.range.end))) }
+                }
+                out.finish()
+            } catch {
+                out.finish(throwing: error)
+            }
+        }
+    }
+
+    /// Punctuation comes without a time: it stays with the run before it.
+    static func runs(_ text: AttributedString, _ range: CMTimeRange) -> [Recognition.Run] {
+        var out: [Recognition.Run] = []
+        for run in text.runs {
+            let piece = String(text[run.range].characters)
+            if let r = run.audioTimeRange {
+                out.append(.init(text: piece, start: CMTimeGetSeconds(r.start), end: CMTimeGetSeconds(r.end)))
+            } else if !out.isEmpty {
+                out[out.count - 1].text += piece
+            } else {
+                let t = CMTimeGetSeconds(range.start)
+                out.append(.init(text: piece, start: t, end: t))
+            }
+        }
+        return out.filter { $0.start.isFinite && $0.end.isFinite }
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) { input.yield(AnalyzerInput(buffer: buffer)) }
+
+    func finish() async {
+        input.finish()
+        do { try await analyzer.finalizeAndFinishThroughEndOfInput() } catch { debugLog("record track finish: \(error)") }
+        await reader.value
+    }
+
+    func cancel() async {
+        input.finish()
+        await analyzer.cancelAndFinishNow()
+    }
+}
+
+/// The live recognizer and the record's, fed the same audio from the same moment so their clocks
+/// agree. Only the live one is cut short for the subtitles.
+final class TeeStream: RecognitionStream, @unchecked Sendable {
+    let live: RecognitionStream
+    let record: RecordHearing
+    var format: AVAudioFormat { live.format }
+    var results: AsyncThrowingStream<Recognition.Piece, Error> { live.results }
+
+    init(live: RecognitionStream, record: RecordHearing) {
+        self.live = live
+        self.record = record
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        live.append(buffer)
+        record.append(buffer)
+    }
+
+    func finalize(through seconds: Double) async throws { try await live.finalize(through: seconds) }
+
+    func finish() async {
+        async let a: Void = live.finish()
+        async let b: Void = record.finish()
+        _ = await (a, b)
+    }
+
+    func cancel() async {
+        async let a: Void = live.cancel()
+        async let b: Void = record.cancel()
+        _ = await (a, b)
     }
 }
