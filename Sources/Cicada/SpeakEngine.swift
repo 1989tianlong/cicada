@@ -490,6 +490,7 @@ final class SpeakEngine {
             volatile = ""
             if !text.isEmpty { onLive?(.translating, text, "") }
             let heard = await ming.value
+            debugLog("speak: on-device heard \(text.count) chars, Ming \(heard.map { "\($0.original.count)" } ?? "-") chars")
             if let heard { text = heard.original }
             // Ming answers recognition and translation together: its whole call counts as `recognize`.
             let textAt = Date()

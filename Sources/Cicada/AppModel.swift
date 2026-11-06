@@ -1936,6 +1936,9 @@ final class AppModel: ObservableObject {
         case "speakOff": enableSpeaking(false)
         case "speakOut": speak.debugOutputURL = arg.isEmpty ? nil : URL(fileURLWithPath: arg)
         case "speakFile": speak.speakFile(URL(fileURLWithPath: arg))
+        // talkDown / talkUp: the talk key held and let go, with the real microphone (audio tests).
+        case "talkDown": speak.pressBegan()
+        case "talkUp": speak.pressEnded()
         case "speakVP": speak.echoCancel = arg != "off"
         case "voiceMicRun":
             // voiceMicRun:<on|off> runs the echo-cancelling unit with nobody listening (what it does to the rest).
