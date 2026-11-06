@@ -483,6 +483,9 @@ class Segmenting(Base):
         # smooth run of voice ("Good morning everyone,", no dips inside) is still a word…
         self.assertEqual(1, len(cut(silence(1.0), word(0.4, 0.028), silence(1.0))))
         self.assertEqual(1, len(cut(silence(1.0), word(1.2, 0.022), silence(1.0))))
+        # A quiet word's flat top whose fade (an "s", a breath) falls under gate / 4 still swells:
+        # Samantha's "Good morning everyone." opening a meeting at -34 dBFS was dropped.
+        self.assertEqual(1, len(cut(silence(1.0), tone(0.5, 0.022, syllables=False), tone(0.15, 0.0025, syllables=False), silence(1.0))))
         # …a short hum in silence, which doesn't swell and fade, isn't; nor is a knock.
         self.assertEqual(0, len(cut(silence(1.0), tone(1.0, 0.03, syllables=False), silence(1.0))))
         self.assertEqual(0, len(cut(silence(1.0), word(0.15, 0.3), silence(1.0))))

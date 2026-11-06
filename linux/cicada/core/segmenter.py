@@ -46,6 +46,7 @@ class Segmenter:
     dips = 2.5  # …unless the median is this far over the 10th percentile, quiet ones held at gate / 8
     short = 2.0  # a sound up to this long, with real quiet (gate / 4) on both sides…
     swell = 10 ** (10 / 20)  # …that swells and fades by 10 dB is a word: see _isolated
+    fade = 10 ** (30 / 20)  # its rise and fade reach this far under its loudest frame (or gate / 4 if lower)
     above = 0.25  # under this share of its loud frames' energy over 100 Hz: rumble, not speech
 
     def __init__(self):
@@ -170,14 +171,20 @@ class Segmenter:
     def _isolated(self, levels) -> bool:
         """A short word on its own: a sound up to `short` that rises out of real quiet and falls back
         into it (under gate / 4, about -52 dBFS, in the 0.6 s before it and in the pause after),
-        and that swells and fades by 10 dB or more (90th / 10th percentile of its frames over
-        gate / 4). Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run
+        and that swells and fades by 10 dB or more (90th / 10th percentile of its frames from where it
+        rises to where it fades: over gate / 4, or 30 dB under its loudest frame if that's lower).
+        Such a word ("Thanks.", "Good morning everyone,") is one smooth syllable or a run
         of voiced ones, so the steady test, which looks for dips inside, dropped it even at
         -26 dBFS; and a quiet one ("Thanks." at -36 dBFS) has under 0.25 s over the gate, so it
         needs `min_word` over gate / 4 instead (a knock with a 150 ms tail has 0.15 s). A fan,
         hum or hiss is there on both sides; a short burst of one in silence stays within about
         9 dB (brown noise), 5 dB (the rest), and Ming makes up a sentence for a hum or fan burst.
-        Not for a forced cut, whose end isn't a pause."""
+        Not for a forced cut, whose end isn't a pause.
+        Measured over gate / 4 alone, a quiet word lost its rise and fade (an "s" or breath at -55
+        dBFS) and only its flat top was left: Samantha's "Thanks." was dropped at -33 dBFS (loudest
+        0.1 s) and a meeting's quiet opening "Good morning everyone." at -34; now both are kept to
+        about -38 to -40 dBFS, where the gate itself stops them. A hiss faded in and out over 0.3 s
+        passes from -40 dBFS (was -36); brown noise still never does."""
         loud = [i for i, l in enumerate(levels) if l >= self.threshold]
         if not loud or (loud[-1] - loud[0] + 1) * FRAME > self.short * RATE:
             return False
@@ -185,7 +192,8 @@ class Segmenter:
         after = levels[loud[-1] + 1:]
         if self.lead is None or self.lead > quiet or not after or min(after) > quiet:
             return False
-        sound = [i for i, l in enumerate(levels) if l >= quiet]
+        rise = min(quiet, max(levels) / self.fade)
+        sound = [i for i, l in enumerate(levels) if l >= rise]
         body = sorted(max(l, self.threshold / 8) for l in levels[sound[0]:sound[-1] + 1])
         return body[int(0.9 * (len(body) - 1))] >= self.swell * body[int(0.1 * (len(body) - 1))]
 
