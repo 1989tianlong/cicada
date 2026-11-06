@@ -135,6 +135,26 @@
         ],
         "title": "自己的 AI 服务连不上时，字幕不再每句先等几秒才出来。",
         "text": "连不上期间翻译直接用 Google，每 15 秒才再试一次那台服务器，连上后自动换回。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "windows",
+          "android",
+          "linux"
+        ],
+        "title": "AI 服务出问题时，会议中只用一行说清在等谁、什么还照常。",
+        "text": "连不上时写明字幕和纪要在等哪个服务、连上后自动继续；存过 Ling key 时可以一键“改用 Ling”。很忙、key 失效、这轮纪要没写好也都是同样的一行。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "android",
+          "linux"
+        ],
+        "title": "自己的 AI 服务连不上时，翻译不再每句先等几秒。",
+        "text": "连不上期间直接用 Google 翻译，每 15 秒才再试一次那台服务器。"
       }
     ]
   },
