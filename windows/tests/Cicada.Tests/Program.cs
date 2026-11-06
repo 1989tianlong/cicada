@@ -449,6 +449,25 @@ static class Tests
         Equal("Done.", Translator.CleanTranslation("<think>x</think>Done.", "en"), "leaked reasoning");
     }
 
+    /// While the check says the service is unreachable, a sentence doesn't wait on its timeout
+    /// every time: one in 15 s still tries it, the rest go straight to Google.
+    public static async Task AnUnreachableServiceIsTriedOnceIn15Seconds()
+    {
+        var fake = new Fake(_ => Reply("你好"));
+        var ling = Client(fake);
+        var translator = new Translator(ling, new Fake(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        Equal("你好", await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence), "a healthy service translates");
+        ling.SimulateCheck = AICheck.Reason.Unreachable;
+        await ling.Check();
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        Equal(2, fake.Calls.Count, "one try while unreachable, the next sentence skips it");
+        ling.SimulateCheck = AICheck.Reason.Deaf;
+        await ling.Check();
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        Equal(3, fake.Calls.Count, "tried again once the check says it answers");
+    }
+
     public static void JoinsCutSentences()
     {
         var last = new TranscriptLine { Src = "We finished the migration and", SrcLang = "en" };

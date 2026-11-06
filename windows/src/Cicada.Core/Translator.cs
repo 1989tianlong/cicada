@@ -164,11 +164,26 @@ public sealed class Translator(LingClient ling, HttpMessageHandler? google = nul
 
     public enum Kind { Draft, Sentence }
 
+    long lastUnreachableTry = DateTime.MinValue.Ticks;
+
+    /// A text service that answers nothing (a home server switched off, its hear model served
+    /// elsewhere) costs every sentence its timeout before Google gets it, so subtitles run seconds
+    /// late. While the check says unreachable, one sentence in 15 s still goes to it, so a server
+    /// that is back is noticed without waiting for a check. (Only the hear address unreachable:
+    /// text is fine, it goes on being tried.)
+    bool LingWorthTrying()
+    {
+        if (ling.Health.Failure is not { Why: AICheck.Reason.Unreachable, Step: not AICheck.StepId.Hear }) return true;
+        var last = Interlocked.Read(ref lastUnreachableTry);
+        var now = DateTime.UtcNow.Ticks;
+        return now - last >= TimeSpan.TicksPerSecond * 15 && Interlocked.CompareExchange(ref lastUnreachableTry, now, last) == last;
+    }
+
     /// The AI service (finished sentences only) → Google. Null when both fail.
     public async Task<string?> Translate(string text, string source, string target, Kind kind, Priority priority = Priority.Translate)
     {
         if (source == target) return text;
-        if (kind != Kind.Draft && ling.Usable)
+        if (kind != Kind.Draft && ling.Usable && LingWorthTrying())
         {
             try
             {
