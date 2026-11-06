@@ -629,7 +629,12 @@ struct NotesWindowView: View {
                 }
                 HStack(spacing: 8) {
                     if let id = session?.id, let other = otherNotesLanguage(id) {
-                        SoftButton(L("改用\(targetName(other.code))重新整理")) { model.regenerateNotes(id, choice: other.choice) }
+                        // A Latin name gets spaces in Chinese ("改用 English 重新整理"), a Chinese one
+                        // doesn't ("改用简体中文重新整理"). Both keys translate alike.
+                        let name = targetName(other.code)
+                        SoftButton(name.first?.isASCII == true ? L("改用 \(name) 重新整理") : L("改用\(name)重新整理")) {
+                            model.regenerateNotes(id, choice: other.choice)
+                        }
                             .disabled(engine.state == .updating)
                     }
                     if let id = session?.id {
