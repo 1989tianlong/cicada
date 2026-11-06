@@ -484,6 +484,8 @@ object Tests {
         equal(0, cut(tone(4.0, 0.016, syllables = false, wobble = 0.3), silence(1.0)).size, "a hum at the gate that slowly rises and falls doesn't")
         equal(1, cut(silence(1.0), word(0.4, 0.028), silence(1.0)).size, "a quiet word on its own, 0.2 s over the gate")
         equal(1, cut(silence(1.0), word(1.2, 0.022), silence(1.0)).size, "one smooth run of voice on its own, no dips inside")
+        equal(1, cut(silence(1.0), tone(0.5, 0.022, syllables = false), tone(0.15, 0.0025, syllables = false), silence(1.0)).size,
+            "a quiet word whose fade (an \"s\", a breath) falls under gate / 4 still swells: a meeting's quiet opening line")
         equal(0, cut(silence(1.0), tone(1.0, 0.03, syllables = false), silence(1.0)).size, "a short hum in silence doesn't swell and fade")
         equal(0, cut(silence(1.0), word(0.15, 0.3), silence(1.0)).size, "nor is a knock a word")
         equal(0, cut(silence(1.0), hz(12.0, 3.0, 0.1), silence(1.0)).size, "rumble far under 100 Hz is no voice however it swells")
