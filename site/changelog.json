@@ -55,6 +55,14 @@
       {
         "kind": "fixed",
         "platforms": [
+          "mac"
+        ],
+        "title": "输出设备降到 16 kHz 时（比如蓝牙耳机进入通话），电脑声音不再听不到。",
+        "text": "知了按输出设备当下的格式收音，开会中途格式变了也会自动接上。感谢 lmjmt 在 #17 找到原因。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
           "mac",
           "windows"
         ],
