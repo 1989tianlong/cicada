@@ -24,6 +24,18 @@ enum CloudHearing {
         return p
     }
 
+    /// Why listening is quiet when the service failed to hear three stretches in a row and there is
+    /// nothing on this Mac to go back to. A 5xx (a gateway in front of the server) answered: the
+    /// service is erring, not out of reach (AICheck's serverError words).
+    static func trouble(_ error: Error, service: String) -> String {
+        switch error as? LingClient.Failure {
+        case .invalidKey?: L("key 已失效，到设置 › AI 服务里重填")
+        case .noKey?: L("请先在设置 › AI 服务里填入 Ling key")
+        case .http(let code)? where code >= 500: L("\(service) 暂时出错（HTTP \(code)），稍后再试。")
+        default: L("字幕和纪要等 \(service) 恢复 · 连上后自动继续")
+        }
+    }
+
     /// Tested wording (Windows M0): adding "NONE if there is no speech" or "the same text if already
     /// in it" gets the gateway's canned "作为一个人工智能语言模型…" refusal instead.
     static func instruction(target: String) -> String {

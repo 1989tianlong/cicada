@@ -2,6 +2,7 @@
 "连上 %@" = "Reach %@";
 "key 可以用" = "Key works";
 "纪要和翻译" = "Notes and translation";
+"知了没有本地网络权限，连不上 %@。" = "Cicada isn't allowed on the local network, so it can't reach %@.";
 "这台 Mac 访问不到 %@。" = "This Mac can't reach %@.";
 "地址要用 https；这台 Mac 和局域网里的服务可以用 http。" = "The address must use https; services on this Mac or your local network can use http.";
 "%@ 说这个 key 无效，可能没复制全，或已删除。" = "%@ says this key is invalid. It may be incomplete or deleted.";
@@ -14,6 +15,7 @@
 "这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒会改用 Google。在服务端关掉思考，或换一个不思考的模型。" = "This model thinks before answering: one sentence takes %@ s, and anything over 6 s falls back to Google. Turn thinking off on the server, or pick a model that doesn't think.";
 "翻一句要 %@ 秒，超过 6 秒会改用 Google。换一个更小的模型会快一些。" = "One sentence takes %@ s, and anything over 6 s falls back to Google. A smaller model will be faster.";
 "这台 Mac 访问不到 %@，开会时先用本机识别。" = "This Mac can't reach %@; meetings use on-device recognition for now.";
+"知了没有本地网络权限，连不上 %@，开会时先用本机识别。" = "Cicada isn't allowed on the local network, so it can't reach %@. Meetings use this Mac's recognition for now.";
 "%@ 没接受音频（HTTP %lld），开会时先用本机识别。" = "%@ didn't accept the audio (HTTP %lld); meetings use on-device recognition for now.";
 "开了代理也连不上：换一个节点，或检查代理软件是否放过 %@。" = "A proxy is on but it still can't connect. Try another server, or check that your proxy app routes %@.";
 "代理软件在运行（端口 %@），但没开系统代理。在代理软件里打开“系统代理”。" = "A proxy app is running (port %@), but the system proxy is off. Turn on “System Proxy” in the proxy app.";
@@ -24,17 +26,19 @@
 "%@ 秒" = "%@ s";
 "开会用过一次后确认" = "Confirmed after the first meeting";
 "重新检查" = "Check again";
+"打开系统设置" = "Open System Settings";
 "怎么设置代理" = "How to set up a proxy";
 "更换 key" = "Change Key";
 "打开 %@" = "Open %@";
 "去充值" = "Add credits";
 "换成推荐的 %@" = "Use recommended %@";
 "字幕照常；纪要和整句翻译先停下" = "Subtitles go on; notes and full-sentence translation pause";
+"知了没有本地网络权限" = "Cicada isn't allowed on the local network";
 "连不上 %@" = "Can't reach %@";
-"%@ 的 key 用不了" = "The %@ key doesn't work";
-"AI 服务的设置要改一下" = "AI service settings need a change";
 "打开设置" = "Open Settings";
 "用完后纪要会停下" = "Notes stop when it runs out";
+"%@ 的 key 用不了" = "The %@ key doesn't work";
+"AI 服务的设置要改一下" = "AI service settings need a change";
 "%@ 开会时用过" = "used in a meeting %@";
 "响应约 %@ 秒" = "responds in about %@ s";
 
@@ -66,6 +70,8 @@
 "换一个模型后可用" = "Available with another model";
 "翻译" = "Translation";
 "随语音识别一步翻出；不行时换 Google" = "Translated together with transcription; falls back to Google";
+"连不上" = "Unreachable";
+"填好 key 后用 %@ 翻译" = "Enter a key to translate with %@";
 "整句用它；不行时换 Google、本机" = "Used for full sentences; falls back to Google, then on-device";
 "整句用它；不行时换 Google" = "Used for full sentences; falls back to Google";
 "先用 Google 翻译" = "Google Translate for now";
@@ -101,6 +107,8 @@
 "移除 key" = "Remove key";
 "key 只存在这台 Mac 上（只有你的账户能读），只发给 %@" = "The key is stored only on this Mac (readable only by your account) and sent only to %@";
 "只存在这台 Mac 上（只有你的账户能读），只发给 %@（%@）" = "Stored only on this Mac (readable only by your account) and sent only to %@ (%@)";
+"局域网里的服务器：macOS 会问一次能否访问本地网络，点“允许”。" = "A server on your local network: macOS asks once whether Cicada may use the local network. Click Allow.";
+"没有本地网络权限" = "Local network not allowed";
 "暂时连不上" = "Can't connect right now";
 "这个 key 用不了" = "This key doesn't work";
 "模型用不了" = "The model doesn't work";
@@ -132,6 +140,11 @@
 "填上模型才会用它识别。" = "Add a model to recognize with it.";
 "例如 qwen3-asr" = "e.g. qwen3-asr";
 "听一秒音频 %@ 秒" = "One second of audio in %@ s";
+"新字幕暂时只有原文，连上后自动继续。" = "New subtitles show the original only for now; translation resumes once connected.";
+"说话时的字幕要等说完一句才有翻译。" = "Subtitles are translated once each sentence ends, not while it's spoken.";
+"翻译连不上" = "Can't reach translation";
+"开了代理也连不上：换一个节点，或让代理软件放过 translate.googleapis.com。" = "Still unreachable with the proxy on: switch servers, or let the proxy app route translate.googleapis.com.";
+"这台电脑没开代理。在国内通常要开代理才能翻译。" = "This Mac has no proxy on. In mainland China, translation usually needs one.";
 "在 %@ 创建 key，复制后粘贴到这里。" = "Create a key on %@, then copy and paste it here.";
 "打开 %@ ↗" = "Open %@ ↗";
 "%@ 现在很忙" = "%@ is busy right now";
@@ -149,8 +162,6 @@
 "没有 key 时用本机声音" = "Uses the Mac's voice without a key";
 "没填声音模型，用本机声音" = "No voice model set; using on-device voice";
 "%@ 暂不能出声音，用本机声音" = "%@ doesn't support voice yet; using on-device voice";
-"例如 kokoro" = "e.g. kokoro";
-"例如 af_heart" = "e.g. af_heart";
 "其他（兼容 OpenAI）" = "Other (OpenAI-compatible)";
 "（推荐）" = " (Recommended)";
 "模型名" = "Model name";
@@ -222,6 +233,10 @@
 "，正在整理纪要" = ", writing notes";
 "你正在说…" = "You're speaking…";
 "你：%@" = "You: %@";
+"听不到会议室 · 麦克风没允许" = "Can't hear the room · microphone not allowed";
+"听会议室要先允许麦克风" = "Allow the microphone to hear the room";
+"听不到会议室" = "Can't hear the room";
+"麦克风没允许，现在只在记电脑声音。点按去设置" = "The microphone isn't allowed, so only the Mac's audio is being recorded. Click to open Settings";
 "结束这场会议？" = "End this meeting?";
 "已记录 %@ · %lld 句。结束后停止收听，并整理一份完整版纪要。" = "Recorded %@ · %lld lines. Ending stops listening and writes the full notes.";
 "结束会议" = "End Meeting";
@@ -244,6 +259,11 @@
 "正在记录会议" = "A meeting is being recorded";
 "退出会结束这场记录，已记下的内容会保存。" = "Quitting ends this recording. What has been recorded so far is saved.";
 "退出" = "Quit";
+
+/* CloudHearing */
+"key 已失效，到设置 › AI 服务里重填" = "The key stopped working. Enter a new one in Settings › AI Service";
+"请先在设置 › AI 服务里填入 Ling key" = "Enter a Ling key in Settings › AI Service first";
+"字幕和纪要等 %@ 恢复 · 连上后自动继续" = "Subtitles and notes wait for %@ · they resume once it's back";
 
 /* Diagnostics */
 "%@ %@ 诊断  %@" = "%1$@ %2$@ diagnostics  %3$@";
@@ -291,6 +311,7 @@
 "被搜索劫持" = "Search hijack";
 "限流" = "Rate limited";
 "超时" = "Timeout";
+"连不上，暂停一分钟" = "Unreachable, paused 1 min";
 "回复格式不对" = "Bad reply format";
 "网络错误" = "Network error";
 "未安装语言包" = "Language not installed";
@@ -384,7 +405,6 @@
 "自动识别 → %@" = "Auto-detect → %@";
 "等你允许使用麦克风" = "Waiting for microphone access";
 "正在听" = "Listening";
-"请先在设置 › AI 服务里填入 Ling key" = "Enter a Ling key in Settings › AI Service first";
 "此 Mac 不支持本机语音识别" = "This Mac doesn't support on-device speech recognition";
 "请在系统设置里允许“系统音频录制”，再重新打开知了" = "Allow System Audio Recording in System Settings, then reopen Cicada";
 "无法读取系统音频，请在系统设置里允许“系统音频录制”" = "Can't read system audio. Allow “System Audio Recording” in System Settings";
@@ -395,10 +415,7 @@
 "识别出错，%lld 秒后重试" = "Recognition error; retrying in %lld s";
 "听不出是哪种语言，到菜单栏里选一下" = "Can't tell the language. Pick one from the menu bar";
 "正在识别语言…" = "Detecting language…";
-"%@ 暂时连不上，先用本机识别" = "Can't reach %@; recognizing on this Mac for now";
-"key 已失效，到设置 › AI 服务里重填" = "The key stopped working. Enter a new one in Settings › AI Service";
-"%@ 暂时连不上，正在重试" = "Can't reach %@. Retrying";
-"%@ 在听" = "%@ is listening";
+"%@ 连不上 · 字幕改用本机识别" = "Can't reach %@ · subtitles use this Mac's recognition";
 "翻译暂不可用" = "Translation unavailable for now";
 
 /* ListenPill */
@@ -449,7 +466,6 @@
 "先看原话 →" = "Read the transcript →";
 "%@ 之后的 %lld 句还在整理" = "%2$lld lines after %1$@ not in the notes yet";
 "回到原话" = "Back to transcript";
-"回到顶部" = "Back to top";
 "点击分支跳回原话" = "Click a branch to jump to what was said";
 "鱼骨图" = "Fishbone";
 "为什么" = "Why";
@@ -468,19 +484,28 @@
 "展开全部 %lld 个" = "Show all %lld";
 "原识别 %@" = "Heard as %@";
 "有人开口后，约半分钟出第一版" = "First notes about 30 s after someone speaks";
+"已听到 %lld 句" = "Heard %lld lines";
 "会整理出" = "You'll get";
 "待办" = "To-dos";
-"已听到 %lld 句" = "Heard %lld lines";
 "正在生成纪要" = "Writing notes";
 "现在结束" = "End now";
 
 /* NotesWindow */
-"key 已失效（被删或额度用完），纪要暂停在 %@。" = "The key stopped working (deleted or out of credit). Notes paused at %@.";
-"key 已失效（被删或额度用完），换个 key 就能开始写纪要。" = "The key stopped working (deleted or out of credit). Change it to start the notes.";
-"%@ 很忙，纪要稍后补上。字幕照常。" = "%@ is busy; notes will catch up. Subtitles go on.";
-"连不上 %@，纪要暂停在 %@，连上后自动继续。" = "Can't reach %1$@. Notes paused at %2$@ and resume once it's back.";
-"连不上 %@，连上后开始写纪要。" = "Can't reach %@. Notes start once it's back.";
-"这轮没整理好，下一轮会自动重试。" = "This round failed; the next one will retry.";
+"key 失效了 · 纪要停在 %@" = "Key no longer works · notes stopped at %@";
+"key 失效了 · 纪要等新的 key" = "Key no longer works · notes wait for a new key";
+"换 key" = "Change Key";
+"%@ 很忙 · 纪要稍后补上，字幕照常" = "%@ is busy · notes catch up later, subtitles carry on";
+"连不上 %@ · 缺本地网络权限" = "Can't reach %@ · Local Network not allowed";
+"去开启" = "Turn On";
+"纪要等 %@ 恢复 · 停在 %@，字幕照常" = "Notes wait for %1$@ · stopped at %2$@, subtitles carry on";
+"纪要等 %@ 恢复 · 字幕照常" = "Notes wait for %@ · subtitles carry on";
+"改用 Ling" = "Use Ling";
+"这轮纪要没写好 · 下轮自动补上" = "This round of notes didn't work · the next one catches up";
+"电脑声音照常在记" = "The Mac's audio is still being recorded";
+"在会议室里开会？" = "Meeting in the room?";
+"电脑里 1 分钟没放出声音" = "Nothing has played on this Mac for a minute";
+"线上也有人？" = "Anyone online too?";
+"%@ 正在通话" = "%@ is in a call";
 "会议纪要" = "Meeting notes";
 "结束这场会议" = "End this meeting";
 "收窄" = "Narrow";
@@ -520,15 +545,25 @@
 "会议已结束，文字记录已保存" = "Meeting ended; transcript saved";
 "会议已结束，完整版纪要已整理好 · " = "Meeting ended; full notes ready · ";
 "现在没有在记录" = "Not recording";
+"改用 %@ 重新整理" = "Rewrite in %@";
 "改用%@重新整理" = "Rewrite in %@";
 "在会议记录中查看" = "View in Meetings";
 "开始新会议" = "New Meeting";
+"去设置" = "Open Settings";
+"改听会议室" = "Listen to the room";
+"不是" = "No";
+"也听电脑" = "Hear the Mac too";
+"不用" = "No thanks";
+"连不上翻译，新字幕暂时只有原文" = "Can't reach translation; subtitles show the original only";
+"填 Ling key 后不用代理也能翻译，还会整理出纪要。" = "With a Ling key, translation works without a proxy, and you get notes too.";
+"填好 %@ 的 key 后用它翻译，还会整理出纪要。" = "Enter a %@ key to translate with it, and you get notes too.";
 "识别语音和生成纪要需要 Ling key" = "A Ling key is required for transcription and notes";
 "生成纪要需要 API key" = "Notes need an API key";
 "填好 %@ 的 key 后，立即开始识别语音、出双语字幕和实时纪要。" = "Add your %@ key to start transcribing speech and generating bilingual subtitles and live notes.";
 "文字记录仍在保存。填好 %@ 的 key 后，会从头整理出整场纪要。" = "Transcript is still being saved. Enter a %@ key to generate notes from the beginning.";
-"获取 %@ key ↗" = "Get %@ key ↗";
 "保存并开始" = "Save and Start";
+"获取 %@ key ↗" = "Get %@ key ↗";
+"怎么设置代理 ↗" = "How to set up a proxy ↗";
 "没有进行中的会议" = "No meeting in progress";
 "这场会议还没有纪要" = "No notes for this meeting yet";
 "这 %@ 讲了" = "In these %@";
@@ -551,6 +586,7 @@
 "收起后新增 " = "New: ";
 
 /* Onboarding */
+"%@（需要处理）" = "%@ (needs attention)";
 "%@（有新版本）" = "%@ (update available)";
 "重播" = "Replay";
 "播放示例 · 0:09" = "Play sample · 0:09";
@@ -575,7 +611,6 @@
 "识别语音" = "Recognize speech";
 "打开“听写”，允许“语音识别”" = "Turn on Dictation and allow Speech Recognition";
 "已打开" = "On";
-"去开启" = "Turn On";
 "重新打开" = "Reopen";
 "放一段会议试试" = "Try a meeting";
 "一段 9 秒的英文会议，字幕会跟着声音实时出来。" = "A 9-second meeting in English. Subtitles appear as they talk.";
@@ -816,7 +851,7 @@
 /* SpeakEngine */
 "无法准备语音识别：%@" = "Can't prepare speech recognition: %@";
 "语音识别仍在准备中，请再按一次" = "Speech recognition is still getting ready; press again";
-"翻译失败，这句话未发送" = "Translation failed; this sentence wasn't sent";
+"这句没翻译成 · 没有说出去" = "This line wasn't translated · nothing was said";
 
 /* SpeakTest */
 "语音识别还没准备好，请稍后再试" = "Speech recognition isn't ready yet; try again shortly";
@@ -1002,18 +1037,7 @@
 "再点收起" = "Click to hide";
 "再点打开" = "Click to show";
 "导入文件…" = "Import…";
-"在会议室里开会？" = "Meeting in the room?";
-"电脑里 1 分钟没放出声音" = "Nothing has played on this Mac for a minute";
-"改听会议室" = "Listen to the room";
-"不是" = "No";
-"去设置" = "Open Settings";
-"听会议室要先允许麦克风" = "Allow the microphone to hear the room";
-"电脑声音照常在记" = "The Mac's audio is still being recorded";
 "外接麦克风断开了" = "The microphone was disconnected";
-"线上也有人？" = "Anyone online too?";
-"%@ 正在通话" = "%@ is in a call";
-"也听电脑" = "Hear the Mac too";
-"不用" = "No thanks";
 "后台转写 %@ · %lld%%" = "Transcribing %@ · %lld%%";
 "后台转写 %@ · %lld%%，还有 %lld 个" = "Transcribing %@ · %lld%%, %lld more";
 "屏幕上不出字幕，文字记录照常保存" = "Nothing on screen; the transcript is still saved";
@@ -1068,6 +1092,7 @@
 "导出 Word…" = "Export Word…";
 "导出字幕 SRT…" = "Export SRT Subtitles…";
 "导出…" = "Export…";
+"回到顶部" = "Back to top";
 "完整版纪要" = "Full notes";
 "速记版纪要" = "Draft notes";
 "全部 %lld 句" = "All %lld lines";
@@ -1214,7 +1239,3 @@
 "在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
 "打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
 "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";
-"%@（需要处理）" = "%@ (needs attention)";
-"听不到会议室 · 麦克风没允许" = "Can't hear the room · microphone not allowed";
-"听不到会议室" = "Can't hear the room";
-"麦克风没允许，现在只在记电脑声音。点按去设置" = "The microphone isn't allowed, so only the Mac's audio is being recorded. Click to open Settings";

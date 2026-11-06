@@ -506,7 +506,7 @@ final class SpeakEngine {
                 debugLog("speak: translation failed, nothing sent")
                 if probe == nil { onTiming?(timing(voice: nil)) }
                 phase = .idle
-                onLive?(.idle, text, L("翻译失败，这句话未发送"))
+                onLive?(.idle, text, L("这句没翻译成 · 没有说出去"))
                 probe?.finish()
                 return
             }

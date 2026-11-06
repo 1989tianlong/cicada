@@ -449,6 +449,25 @@ static class Tests
         Equal("Done.", Translator.CleanTranslation("<think>x</think>Done.", "en"), "leaked reasoning");
     }
 
+    /// While the check says the service is unreachable, a sentence doesn't wait on its timeout
+    /// every time: one in 15 s still tries it, the rest go straight to Google.
+    public static async Task AnUnreachableServiceIsTriedOnceIn15Seconds()
+    {
+        var fake = new Fake(_ => Reply("你好"));
+        var ling = Client(fake);
+        var translator = new Translator(ling, new Fake(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        Equal("你好", await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence), "a healthy service translates");
+        ling.SimulateCheck = AICheck.Reason.Unreachable;
+        await ling.Check();
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        Equal(2, fake.Calls.Count, "one try while unreachable, the next sentence skips it");
+        ling.SimulateCheck = AICheck.Reason.Deaf;
+        await ling.Check();
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        Equal(3, fake.Calls.Count, "tried again once the check says it answers");
+    }
+
     public static void JoinsCutSentences()
     {
         var last = new TranscriptLine { Src = "We finished the migration and", SrcLang = "en" };
@@ -486,6 +505,13 @@ static class Tests
     {
         int n = (int)(seconds * 16000);
         return Enumerable.Range(0, n).Select(i => (short)(Math.Sin(2 * Math.PI * 300 * i / 16000) * Math.Pow(Math.Sin(Math.PI * i / n), 2) * amp * 32767)).ToArray();
+    }
+
+    /// A 7 kHz tone faded in and out over 0.3 s: crosses zero like a hiss, swells like a word.
+    static short[] Hiss(double seconds, double amp)
+    {
+        int n = (int)(seconds * 16000);
+        return Enumerable.Range(0, n).Select(i => (short)(Math.Sin(2 * Math.PI * 7000 * i / 16000) * Math.Min(1, Math.Min(i / 4800.0, (n - i) / 4800.0)) * amp * 32767)).ToArray();
     }
 
     static List<Segment> Cut(params short[][] parts)
@@ -536,6 +562,19 @@ static class Tests
         Equal(0, Cut(Tone(4, 0.016, syllables: false, wobble: 0.3), Silence(1)).Count, "a hum at the gate that slowly rises and falls doesn't");
         Equal(1, Cut(Silence(1), Word(0.4, 0.028), Silence(1)).Count, "a quiet word on its own, 0.2 s over the gate");
         Equal(1, Cut(Silence(1), Word(1.2, 0.022), Silence(1)).Count, "one smooth run of voice on its own, no dips inside");
+        Equal(1, Cut(Silence(1), Tone(0.5, 0.022, syllables: false), Tone(0.15, 0.0025, syllables: false), Silence(1)).Count,
+            "a quiet word whose fade (an \"s\", a breath) falls under gate / 4 still swells: a meeting's quiet opening line");
+        // Wherever the 30 ms frames fall (a few ms more lead-in), a quiet phrase with brief dips between
+        // its words stays a word, and a hum or a faded hiss in silence stays out.
+        short[] Flat(double s, double a) => Tone(s, a, syllables: false);
+        short[] phrase = [.. Flat(0.35, 0.022), .. Flat(0.04, 0.0055), .. Flat(0.4, 0.022), .. Flat(0.04, 0.0055), .. Flat(0.35, 0.022), .. Flat(0.06, 0.0025)];
+        for (int ms = 0; ms < 30; ms += 2)
+        {
+            var lead = Silence(1.0 + ms / 1000.0);
+            Equal(1, Cut(lead, phrase, Silence(1)).Count, $"a quiet phrase with dips, {ms} ms more lead-in");
+            Equal(0, Cut(lead, Flat(1, 0.03), Silence(1)).Count, $"a short hum, {ms} ms more lead-in");
+            Equal(0, Cut(lead, Hiss(1, 0.03), Silence(1)).Count, $"a faded hiss, {ms} ms more lead-in");
+        }
         Equal(0, Cut(Silence(1), Tone(1, 0.03, syllables: false), Silence(1)).Count, "a short hum in silence doesn't swell and fade");
         Equal(0, Cut(Silence(1), Word(0.15, 0.3), Silence(1)).Count, "nor is a knock a word");
         Equal(0, Cut(Silence(1), Hz(12, 3, 0.1), Silence(1)).Count, "rumble far under 100 Hz is no voice however it swells");
@@ -724,9 +763,23 @@ static class Tests
         Check(four.Zip(four.Skip(1)).All(x => x.First.End.Value == x.Second.Start.Value), "back to back");
         Equal(0, NotesEngine.Parts([]).Count, "no lines, no parts");
         var ten = Enumerable.Range(0, 10).Select(i => Topic(i * 300, $"t{i}")).ToList();
-        Equal("t0,t3,t6,t9", Titles(NotesEngine.Spread(ten, 4)), "a part's topics spread from first to last");
-        Equal("t0", Titles(NotesEngine.Spread(ten, 1)), "one");
-        Equal(3, NotesEngine.Spread(ten.Take(3).ToList(), 4).Count, "fewer than asked stay");
+        var kept = NotesEngine.Thinned(ten, 4, 3000);
+        Equal(4, kept.Count, "a part's topics thinned to four");
+        Equal(0.0, kept[0].Start, "from the first");
+        Check(ten.All(t => kept.Any(k => k.Title.Split(" / ").Contains(t.Title))), "every topic joined, none dropped");
+        Equal("0", string.Join(",", NotesEngine.Thinned(ten, 1, 3000).Select(t => t.Start)), "one");
+        Equal(3, NotesEngine.Thinned(ten.Take(3).ToList(), 4, 3000).Count, "fewer than asked stay");
+        // A 2.5-hour meeting's last part, asked for 2 topics, came back with 3: the budget topic's
+        // end as its own. Kept first and last, the budget topic at 125 min was lost.
+        var part = new List<NoteTopic> { Topic(6000, "营销发布安排", ["a"]), Topic(7500, "预算评审", ["b"]), Topic(8982, "预算评审（续）", ["c"]) };
+        var two = NotesEngine.Thinned(part, 2, 8990);
+        Equal("营销发布安排,预算评审", Titles(two), "the topic kept over its continuation");
+        Equal("6000,7500", string.Join(",", two.Select(t => t.Start)), "at its own start");
+        Equal("b,c", string.Join(",", two[1].Points), "with the continuation's points");
+        var other = new List<NoteTopic> { Topic(6000, "营销发布安排"), Topic(7500, "预算评审"), Topic(8982, "收尾") };
+        Equal("6000,7500", string.Join(",", NotesEngine.Thinned(other, 2, 8990).Select(t => t.Start)), "a stub joins the topic it ends");
+        Equal("Budget review", NotesEngine.Subject("Budget review (cont.)"), "subject without the bracket");
+        Equal("(续)", NotesEngine.Subject("(续)"), "a bracket alone stays");
     }
 
     public static void PartPromptKeepsLineNumbers()
@@ -2161,9 +2214,54 @@ static class Tests
     public static void ProblemsNameTheService()
     {
         Check(ListenEngine.Words(LingException.Kind.Http, 400, "ZenMux").Settings, "a hear model that refuses audio is fixed in settings");
-        Check(ListenEngine.Words(LingException.Kind.Network, 0, "ZenMux").Title!.Contains("ZenMux"), "named");
-        Equal("连不上 Ling", ListenEngine.Words(LingException.Kind.Timeout, 0, "Ling").Title, "Ling keeps its words");
+        Check(ListenEngine.Words(LingException.Kind.Network, 0, "ZenMux").Body.Contains("ZenMux"), "named");
+        // One status line: subtitles and notes both wait, since the service hears the meeting here.
+        Equal((null, "字幕和纪要等 Ling 恢复 · 连上后自动继续", false), ListenEngine.Words(LingException.Kind.Timeout, 0, "Ling"), "unreachable is one line");
         Check(!ListenEngine.Words(LingException.Kind.Http, 400, "Ling").Settings, "Ling's 400 is the network bar");
+        // A gateway's 502 in front of the server: the service erring, not the network, nothing in settings.
+        Equal((null, "ZenMux 暂时出错（HTTP 502），稍后再试。", false), ListenEngine.Words(LingException.Kind.Http, 502, "ZenMux"), "a 5xx is the service's trouble");
+        Equal("Ling 暂时出错（HTTP 503），稍后再试。", ListenEngine.Words(LingException.Kind.Http, 503, "Ling").Body, "Ling's too");
+    }
+
+    public static async Task ServerErrorsInARowAreSaidAndClearOnTheNextLine()
+    {
+        // Every stretch answered 502 by a gateway: no subtitles, so from the third in a row the bar
+        // says the service is erring; the next stretch heard clears it. Two blips say nothing.
+        var calls = 0;
+        var seen = new List<(LingException.Kind? kind, int status, int calls)>();
+        var fake = new Fake(body =>
+        {
+            if (!body.Contains("Ming-3.0-audio-flash")) return Reply("{}");
+            return Interlocked.Increment(ref calls) <= 3 ? new HttpResponseMessage(HttpStatusCode.BadGateway)
+                : Reply("LANG: en\nORIGINAL: Back again.\nTRANSLATION: 回来了。");
+        });
+        var old = LingClient.Spacing; LingClient.Spacing = 0.05;
+        try
+        {
+            var ling = Client(fake);
+            var store = new SessionStore();
+            var engine = new ListenEngine(ling, new Translator(ling), store, new NotesEngine(ling, store), new AppSettings { Target = "zh-CN" });
+            engine.Changed += () => { lock (seen) seen.Add((engine.Problem, engine.ProblemStatus, Volatile.Read(ref calls))); };
+            var path = Path.Combine(Path.GetTempPath(), $"cicada-502-{Environment.ProcessId}.wav");
+            short[] stretches = [.. Tone(1), .. Silence(3), .. Tone(1), .. Silence(3), .. Tone(1), .. Silence(3), .. Tone(1), .. Silence(3)];
+            File.WriteAllBytes(path, Wav.Bytes(stretches));
+            // Four times real time: each reply is back before the next stretch goes, as in a meeting.
+            var src = new FileAudioSource(path, speed: 4);
+            var ended = new TaskCompletionSource();
+            src.Ended += _ => ended.TrySetResult();
+            engine.Start(src);
+            await ended.Task;
+            await Task.Delay(300);
+            await engine.Stop();
+            Equal(4, calls, "four stretches sent");
+            List<(LingException.Kind? kind, int status, int calls)> shown;
+            lock (seen) shown = seen.Where(p => p.kind is not null).ToList();
+            Check(shown.Count > 0 && shown.All(p => p.kind == LingException.Kind.Http && p.status == 502), "three 502s in a row are said");
+            Check(shown.All(p => p.calls >= 3), "not after one or two");
+            Equal(null, engine.Problem, "the next stretch heard clears it");
+            Equal("Back again.", store.Get(engine.SessionId!)!.Lines.Single().Src, "and its line is there");
+        }
+        finally { LingClient.Spacing = old; }
     }
 
     public static void FinalNotesKeepRetryingForAboutAMinute()

@@ -106,7 +106,7 @@ Windows, Linux, Android 버전은 클라우드에서 음성을 인식합니다. 
 |---|---|---|
 | 음성 인식 및 언어 감지 | Apple `SpeechAnalyzer` / `SpeechTranscriber`(기기 내), macOS 14.4–15: `SFSpeechRecognizer`(기기 내, 받아쓰기 켜야 함) | 왼쪽과 같음 |
 | 끝난 문장 번역 | Ling `Ling-3.1-flash`(또는 **설정 › AI 서비스**에서 `Ling-3.0-flash`로 변경 가능) | Google 번역 → Apple `Translation`(기기 내, macOS 26 전용) |
-| 말하는 중인 문장 번역 | Google 번역(Ling 호출 한도 절약) | Apple `Translation`(기기 내, macOS 26 전용) |
+| 말하는 중인 문장 번역 | Google 번역(Ling 호출 한도 절약) | 없음: 문장이 끝나 번역될 때까지 원문 표시. Google에 연결되지 않으면 1분 일시중지 |
 | 실시간 회의록 및 최종본 | Ling `Ling-3.1-flash`(위 설정과 같음) | 사용 불가 |
 | 키 유효성 확인 | Ling `Ling-3.0-tiny`(1토큰 사용) | — |
 | 동시통역: 내 말 인식 및 번역 | Ming `Ming-3.0-audio-flash`, 원스텝 처리 | Apple 기기 내 음성 인식 후 위 번역 순서대로 처리 |

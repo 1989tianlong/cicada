@@ -133,7 +133,9 @@ object AiCheckViews {
     fun summary(c: AICheck): String? {
         if (!c.passed || c.busy) return null
         val at = c.at
-        if (c.passive && at != null) return L("正常") + " · " + LF("%@ 开会时用过", relative(at))
+        if (c.passive && at != null) return L("正常") + " · " +
+            // Under a minute ICU says "now", which reads as in use right now: "just now", as on Linux.
+            (if (System.currentTimeMillis() - at < 60_000) L("刚刚开会时用过") else LF("%@ 开会时用过", relative(at)))
         val text = (c[StepID.Text] as? State.Ok)?.seconds
         val hear = (c[StepID.Hear] as? State.Ok)?.seconds
         val parts = listOfNotNull(text?.let { LF("文字 %@ 秒", "%.1f".format(Strings.locale, it)) }, hear?.let { LF("听 %@ 秒", "%.1f".format(Strings.locale, it)) })

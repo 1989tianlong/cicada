@@ -1127,8 +1127,9 @@ final class ListenEngine {
                 let heard: CloudHeard?
                 do {
                     heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
-                } catch LingClient.Failure.rateLimited {
-                    // Ling's ~2 requests a second are shared with notes and translation: one more try.
+                } catch LingClient.Failure.rateLimited where translator.ling.transcribes {
+                    // A chat to the audio model retries 429s itself (LingClient.retryWaits); a
+                    // custom speech server's transcription doesn't: one more try.
                     try await Task.sleep(for: .seconds(1))
                     heard = try await translator.hear(wav: wav, seconds: seconds, target: self.resolvedTarget, hint: self.cloudHint)
                 }
@@ -1147,12 +1148,10 @@ final class ListenEngine {
                         self.serverFellBack = true
                         if self.cloudReplaced?.lang == nil { self.cloudReplaced = (self.activeLang, false) }
                         self.stopCloud()
-                        self.setStatus(L("\(self.cloudService ?? "AI") 暂时连不上，先用本机识别"))
+                        self.setStatus(L("\(self.cloudService ?? "AI") 连不上 · 字幕改用本机识别"))
                     } else if !Recognition.cloudOnly { self.stopCloud() }
                     // Nothing to go back to on an Intel Mac: say why it's quiet, and keep trying.
-                    else if case LingClient.Failure.invalidKey = error { self.setStatus(L("key 已失效，到设置 › AI 服务里重填")) }
-                    else if case LingClient.Failure.noKey = error { self.setStatus(L("请先在设置 › AI 服务里填入 Ling key")) }
-                    else { self.setStatus(L("\(self.cloudService ?? "AI") 暂时连不上，正在重试")) }
+                    else { self.setStatus(CloudHearing.trouble(error, service: self.cloudService ?? "AI")) }
                 }
                 return nil
             }
@@ -1296,7 +1295,9 @@ final class ListenEngine {
         let target = target ?? resolvedTarget
         if source == target { return text }
         let out = await translator?.translate(text, source: source, target: target, kind: kind, trace: trace)
-        if out == nil, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
+        // A partial without a translation is fine while the AI service will translate the sentence.
+        let coming = kind == .draft && translator?.ling.usable == true
+        if out == nil, !coming, segments.allSatisfy({ $0.translation == nil }) && volatileTranslation.isEmpty {
             onSubtitle?(volatileText.isEmpty ? (segments.last?.text ?? "") : volatileText, L("翻译暂不可用"))
         }
         return out

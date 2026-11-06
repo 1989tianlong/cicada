@@ -16,6 +16,18 @@ struct CloudHearingTests {
         #expect(CloudHearing.parse("lang: ja-JP\noriginal: はい\ntranslation: 是", target: "zh-CN", hint: nil, seconds: 0)?.lang == "ja")
     }
 
+    /// A gateway answering 502 to every stretch is the service erring, said with its code, not
+    /// "can't reach"; the network and the key keep their own words.
+    @Test func saysWhyHearingStopped() {
+        let erring = CloudHearing.trouble(LingClient.Failure.http(502), service: "ZenMux")
+        let away = CloudHearing.trouble(LingClient.Failure.network, service: "ZenMux")
+        #expect(erring.contains("ZenMux") && erring.contains("HTTP 502"))
+        #expect(away.contains("ZenMux") && !away.contains("HTTP"))
+        #expect(CloudHearing.trouble(LingClient.Failure.http(429), service: "ZenMux") == away)
+        #expect(CloudHearing.trouble(LingClient.Failure.timeout, service: "ZenMux") == away)
+        #expect(CloudHearing.trouble(LingClient.Failure.invalidKey, service: "ZenMux") == L("key 已失效，到设置 › AI 服务里重填"))
+    }
+
     @Test func dropsNoise() {
         for o in ["嗯。", "Mm.", "uh, um", "呃呃呃呃呃", "嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯，嗯。", String(repeating: "滴答", count: 50),
                   "hmmmm", "うーん", "음…", "喂？", "No no no no no no",

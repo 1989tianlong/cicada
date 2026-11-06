@@ -183,6 +183,7 @@ struct DiagnosticsView: View {
         case "hijacked": why = L("被搜索劫持")
         case "rateLimited", "429": why = L("限流")
         case "timeout": why = L("超时")
+        case "down": why = L("连不上，暂停一分钟")
         case "unparsed": why = L("回复格式不对")
         case "network": why = L("网络错误")
         case "unavailable": why = L("未安装语言包")

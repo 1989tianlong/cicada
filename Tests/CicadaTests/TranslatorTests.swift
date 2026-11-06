@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Cicada
 
@@ -73,5 +74,35 @@ import Testing
         #expect(TranslationService.parseInterpretation("ORIGINAL: OK.\nTRANSLATION: OK.", target: "zh-CN") == nil)
         #expect(TranslationService.parseInterpretation("ORIGINAL: 我们周五发布。\nTRANSLATION: 我们周五发布。", target: "en-US") == nil)
         #expect(TranslationService.parseInterpretation("ORIGINAL: We ship on Friday.\nTRANSLATION: We ship on Friday", target: "zh-CN") == nil)
+    }
+}
+
+@Suite struct GoogleHealthTests {
+    @Test func twoNetworkErrorsPauseGoogleForAMinute() {
+        var g = GoogleHealth()
+        let t = Date()
+        g.unreachable(t)
+        #expect(!g.down && g.open(t))
+        g.unreachable(t)
+        #expect(g.down && !g.open(t.addingTimeInterval(59)))
+        // After the minute one call goes through, still marked down until it answers.
+        #expect(g.open(t.addingTimeInterval(60)) && g.down)
+        g.succeeded()
+        #expect(!g.down && g.open(t) && g.failures == 0)
+    }
+
+    @Test func networkChangeTriesAgainAtOnce() {
+        var g = GoogleHealth()
+        let t = Date()
+        g.unreachable(t); g.unreachable(t)
+        g.networkChanged()
+        #expect(g.open(t) && g.down)
+    }
+
+    @Test func rateLimitPausesWithoutMarkingDown() {
+        var g = GoogleHealth()
+        let t = Date()
+        g.rateLimited(t)
+        #expect(!g.open(t.addingTimeInterval(5)) && g.open(t.addingTimeInterval(10)) && !g.down)
     }
 }

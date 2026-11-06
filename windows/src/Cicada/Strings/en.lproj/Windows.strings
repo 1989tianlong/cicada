@@ -85,7 +85,6 @@
 "没找到麦克风" = "No microphone found";
 "没有声音？先确认电脑没静音" = "No sound? Make sure your PC isn't muted.";
 "没有找到" = "No results found";
-"没翻译成功，没有发出去" = "Couldn't translate. Nothing was sent.";
 "没能发出声音" = "Couldn't play audio";
 "清空就用纪要起的名字：%@" = "Leave blank to use the title from notes: %@";
 "点“开始听”，电脑里播放的声音会变成双语字幕和纪要" = "Select \"Start listening\" to turn your PC's audio into live bilingual subtitles and meeting notes.";

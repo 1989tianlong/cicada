@@ -27,6 +27,7 @@ class Translator:
         self.ling = ling
         self.transport = transport
         self._google_backoff_until = 0.0
+        self._last_unreachable_try = 0.0
         # Names and terms the notes have settled on, e.g. "江充 (…; misheard as 江松)".
         self.glossary = lambda: []
 
@@ -51,11 +52,26 @@ class Translator:
 
     DRAFT, SENTENCE = "draft", "sentence"
 
+    def _ling_worth_trying(self) -> bool:
+        """A text model that answers nothing costs every line its timeout before Google gets it
+        (Translator.swift › lingWorthTrying). That happens here when a custom service hears at an
+        address of its own that still answers. While the check says the text side is unreachable,
+        one line in 15 s still goes to it, so a server that is back is noticed without a check.
+        Lines translate on a pool: two in the same instant may both try, which is harmless."""
+        f = self.ling.check_result.failure
+        if f is None or f[1] != "unreachable" or f[0] == "hear":
+            return True
+        now = time.time()
+        if now - self._last_unreachable_try < 15:
+            return False
+        self._last_unreachable_try = now
+        return True
+
     def translate(self, text: str, source: str, target: str, kind: str) -> str | None:
         """Ling (finished sentences only) → Google. None when both fail."""
         if source == target:
             return text
-        if kind != self.DRAFT and self.ling.usable:
+        if kind != self.DRAFT and self.ling.usable and self._ling_worth_trying():
             try:
                 frm = "the spoken language" if source == "auto" else english_name(source)
                 prompt = ("You translate live meeting subtitles from %s into %s.\n" % (frm, english_name(target)) +

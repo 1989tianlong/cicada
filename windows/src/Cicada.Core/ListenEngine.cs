@@ -48,6 +48,11 @@ public sealed class ListenEngine
     public LingException.Kind? Problem { get; private set; }
     /// The HTTP status behind Problem == Http.
     public int ProblemStatus { get; private set; }
+    /// Stretches in a row the service answered with a 5xx; said from the third (ListenEngine.swift's
+    /// cloudFailures): one isn't worth a bar, but a meeting with no subtitles and no reason is worse.
+    int serverErrors;
+    public const int ServerErrorsShown = 3;
+    public static bool IsServerError(LingException.Kind kind, int status) => kind == LingException.Kind.Http && status >= 500;
 
     /// A stretch that couldn't be heard, in words: (title, what to do, whether 设置 fixes it). Ling
     /// keeps its own words; another service is named. A hear model that refuses audio (400, 404,
@@ -60,10 +65,13 @@ public sealed class ListenEngine
             return (Strings.LF("%@ 听不了声音。", hear ?? service), Strings.L("在 设置 › AI 服务 里换一个"), true);
         return kind switch
         {
-            LingException.Kind.RateLimited => ling ? (Strings.L("Ling 太忙"), Strings.L("稍后会自动重试。"), false) : (null, Strings.LF("%@ 太忙，稍后再试", service), false),
+            // It answered, with an error (a gateway's 502): like busy, it passes by itself; not the network.
+            LingException.Kind.Http when status >= 500 => (null, Strings.LF("%@ 暂时出错（HTTP %lld），稍后再试。", service, status), false),
+            LingException.Kind.RateLimited => ling ?(Strings.L("Ling 太忙"), Strings.L("稍后会自动重试。"), false) : (null, Strings.LF("%@ 太忙，稍后再试", service), false),
             LingException.Kind.InvalidKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("%@ 的 key 无效", service), Strings.L("去设置里换一个 key。"), true),
             LingException.Kind.NoKey => (ling ? Strings.L("Ling key 无效") : Strings.LF("需要 %@ 的 key 才能听", service), Strings.L("去设置里换一个 key。"), true),
-            _ => (ling ? Strings.L("连不上 Ling") : Strings.LF("连不上 %@", service), Strings.L("这段时间的话没能识别。网络恢复后自动继续。"), false),
+            // The service hears the meeting here, so the subtitles wait with the notes.
+            _ => (null, Strings.LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", service), false),
         };
     }
 
@@ -148,7 +156,7 @@ public sealed class ListenEngine
         {
             done.Clear(); segments.Clear(); inFlight.Clear(); prints.Clear(); clusterer = new(); emitted.Clear();
             nextToDeliver = 1; lineCount = RoomSide ? RoomIDs : 0; last = null; lastEnd = 0;
-            hint = null; candidate = null; candidateVotes = 0; Problem = null;
+            hint = null; candidate = null; candidateVotes = 0; Problem = null; serverErrors = 0;
         }
         offset = at;
         segmenter = new Segmenter(room ? new VoiceGate() : null);
@@ -267,12 +275,18 @@ public sealed class ListenEngine
             try
             {
                 heard = await translator.Hear(wav, Target, lang);
+                Interlocked.Exchange(ref serverErrors, 0);
                 Problem = null;
             }
             catch (LingException e)
             {
-                Problem = e.Failure is LingException.Kind.Hijacked or LingException.Kind.Parse ? null : e.Failure;
-                ProblemStatus = e.Status;
+                var server = IsServerError(e.Failure, e.Status);
+                if (!server) Interlocked.Exchange(ref serverErrors, 0);
+                if (!server || Interlocked.Increment(ref serverErrors) >= ServerErrorsShown)
+                {
+                    Problem = e.Failure is LingException.Kind.Hijacked or LingException.Kind.Parse ? null : e.Failure;
+                    ProblemStatus = e.Status;
+                }
                 Log.Debug($"listen: segment {seg.Index} failed {e.Message}");
             }
             Log.Debug($"listen: segment {seg.Index} {seg.Seconds:F1}s -> {(heard is null ? "nothing" : heard.Lang)} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms");

@@ -168,11 +168,16 @@ final class LingClient: ObservableObject {
     private var listed: Set<String>?
     /// Reads this device's proxy settings to word the "can't reach" hint (never used to connect).
     var proxyHint: (() async -> AICheck.ProxyHint)?
+    /// Whether the local network permission holds back a connection to this address (Mac only;
+    /// asked only after a request to a local network server failed).
+    var localNetworkProbe: ((URL) async -> Bool)?
 
     /// Debug control only: the next checks end this way (for screenshots of every state).
     var simulateCheck: AICheck.Reason?
     /// Debug control only: report this OpenRouter balance instead of the real one.
     var simulateBalance: Double?
+    /// Debug control only: a server that can't be reached is held back by the local network permission.
+    var simulateLocalNetwork = false
     /// The service in use, its address and models. Set by the app from settings.
     var config: () -> AIConfig = { AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash",
                                             voiceModel: "Ming-3.0-tts-0.5B", voiceBase: AIProvider.ling.base) }
@@ -331,7 +336,10 @@ final class LingClient: ObservableObject {
                 do { _ = try await postChat(json, key: key, timeout: 30) } catch Failure.http(let code) {
                     r.fail(.text, .noJSON, code: code)
                 }
-                if r.failure == nil, c.transcribes { r.hear = await checkHearing(c, key: key) }
+                if r.failure == nil, c.transcribes {
+                    r.hear = await checkHearing(c, key: key)
+                    if r.hear == .unreachable, await localNetworkDenied(c.hearBase) { r.hear = .localNetworkDenied }
+                }
             }
         } catch let failure as Failure {
             if let (step, reason, code) = AICheck.classify(failure, at: AICheck.firstStep(c.provider.id)) {
@@ -356,7 +364,8 @@ final class LingClient: ObservableObject {
 
     private func finishCheck(_ result: AICheck, _ c: AIConfig, _ generation: Int) async {
         var r = result
-        if r.failure?.reason == .unreachable, r.proxy == nil { r.proxy = await proxyHint?() }
+        if r.failure?.reason == .unreachable, !r.localNetworkDenied { r.localNetworkDenied = await localNetworkDenied(c.base) }
+        if r.failure?.reason == .unreachable, r.proxy == nil, !r.localNetworkDenied { r.proxy = await proxyHint?() }
         guard generation == checkGeneration else {
             debugLog("ai \(c.provider.id.rawValue): an older check finished late, dropped")
             return
@@ -421,14 +430,38 @@ final class LingClient: ObservableObject {
         let wasUnreachable = aiCheck.failure?.reason == .unreachable
         r.at = Date()
         r.passive = true
-        if r.failure?.reason != .unreachable { r.proxy = nil }
+        if r.failure?.reason != .unreachable { r.proxy = nil; r.localNetworkDenied = false }
         if r.steps == aiCheck.steps, aiCheck.passive { aiCheck.at = r.at; return }
         aiCheck = r
         syncKeyState()
         debugLog("ai: from a real request → \(r.summary)")
-        if r.failure?.reason == .unreachable, !wasUnreachable, let proxyHint {
-            Task { let hint = await proxyHint(); if aiCheck.failure?.reason == .unreachable { aiCheck.proxy = hint } }
+        if r.failure?.reason == .unreachable, !wasUnreachable {
+            let base = config().base
+            Task {
+                let denied = await localNetworkDenied(base)
+                let hint = denied ? nil : await proxyHint?()
+                guard aiCheck.failure?.reason == .unreachable else { return }
+                aiCheck.localNetworkDenied = denied
+                aiCheck.proxy = hint
+                syncKeyState()
+            }
         }
+    }
+
+    /// A server on the local network (not this Mac) that failed: is it the permission?
+    private func localNetworkDenied(_ url: URL?) async -> Bool {
+        if simulateLocalNetwork { return true }
+        guard let url, let host = url.host, AIProvider.isNearby(host), !AIProvider.isLocal(host),
+              let localNetworkProbe else { return false }
+        return await localNetworkProbe(url)
+    }
+
+    /// Back from System Settings (or from the permission prompt): look again if the local network
+    /// permission was what stopped it; turning it on doesn't change the network path.
+    func recheckLocalNetwork() {
+        guard hasKey, aiCheck.needsLocalNetwork, !aiCheck.running else { return }
+        debugLog("ai: back while the local network was denied, checking again")
+        Task { await check() }
     }
 
     /// The network came back (or changed) while the service was unreachable: look again.
@@ -450,9 +483,10 @@ final class LingClient: ObservableObject {
     // MARK: Chat
 
     /// One chat completion. `content` goes in the system message, `instruction` is the fixed user
-    /// message. Notes retry 429s with backoff; translation and speak-back fail fast so the caller
-    /// can fall back to another translator. `audio` (a WAV) goes in the user message before the
-    /// instruction, for Ming's audio model (Ling only: `hearsAudio`).
+    /// message. Notes and heard audio retry 429s with backoff (`retryWaits`); the rest fail fast so
+    /// the caller can fall back to another translator. A 429 holds every request start for a while
+    /// (`rateLimited`), and a retry keeps its place in the queue, so lines stay in order. `audio` (a
+    /// WAV) goes in the user message before the instruction, for Ming's audio model (Ling only: `hearsAudio`).
     func chat(content: String, instruction: String, priority: Priority, json: Bool = false,
               maxTokens: Int = 1024, timeout: TimeInterval = 30, model: String? = nil, audio: Data? = nil,
               role: String? = nil, patient: Bool = false, onQueued: ((Double) -> Void)? = nil) async throws -> String {
@@ -479,10 +513,13 @@ final class LingClient: ObservableObject {
         ]
         c.shape(&body, maxTokens: maxTokens, templateKwargs: !noTemplateKwargs)
         if json { body["response_format"] = ["type": "json_object"] }
-        let waits = Self.retryWaits(priority, patient: patient)
+        let waits = Self.retryWaits(priority, audio: audio != nil, patient: patient)
+        var ticket: Int?
         for attempt in 1...(waits.count + 1) {
+            // One that wouldn't retry fails at once while the service is cooling down: its caller falls back.
+            if waits.isEmpty && pausedUntil > Date() { throw Failure.rateLimited }
             let asked = Date()
-            await acquire(priority)
+            ticket = await acquire(priority, ticket: ticket)
             let queued = Date().timeIntervalSince(asked)
             onQueued?(queued)
             let started = Date()
@@ -510,25 +547,56 @@ final class LingClient: ObservableObject {
                 report(call, priority, at: started, queued: queued, outcome: Self.name(failure))
                 observe(failure, audio: audio != nil, generation: generation)
                 guard failure == .rateLimited else { throw failure }
-                guard attempt <= waits.count else {
+                let wait = rateLimited(waits.isEmpty ? 1 : waits[min(attempt, waits.count) - 1], retryAfter: lastRetryAfter)
+                guard attempt <= waits.count, let wait else {
                     rateLimitedAt = Date()
                     throw failure
                 }
-                let wait = waits[attempt - 1] + Double.random(in: 0...0.5)
+                // No sleep here: the gate holds every start until the pause is over.
                 debugLog("ling: \(priority) 429, retry in \(String(format: "%.1f", wait)) s")
-                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             }
         }
         throw Failure.rateLimited
     }
 
-    /// Seconds to wait before each retry of a 429. Notes retry a few times; translation and
-    /// speak-back fail fast so the caller can fall back. `patient` (the final notes) keeps at it for
-    /// about a minute: a model limited upstream (OpenRouter's Ling 3.1 by DeepInfra, 2026-11) came
-    /// back after ~15 s, and a meeting left without its notes is worse than notes a little late.
-    nonisolated static func retryWaits(_ priority: Priority, patient: Bool = false) -> [Double] {
-        guard priority == .notes else { return [] }
-        return patient ? [1, 2, 4, 8, 16, 30] : [1, 2, 4]
+    /// Seconds to wait before each retry of a 429. Notes retry a few times; text translation and
+    /// speak-back fail fast so the caller can fall back, except heard audio. A meeting's (先用○○听,
+    /// and every Intel Mac): there a lost reply loses the words, not just their translation, and
+    /// Ling's 429s came in runs of up to ~10 s (2026-11), so it keeps at it for about 15 s. What the
+    /// user says retries once: late into the room is worse than a short "try again". `patient` (the
+    /// final notes) keeps at it for about a minute: a model limited upstream (OpenRouter's Ling 3.1
+    /// by DeepInfra, 2026-11) came back after ~15 s, and a meeting left without its notes is worse
+    /// than notes a little late.
+    nonisolated static func retryWaits(_ priority: Priority, audio: Bool = false, patient: Bool = false) -> [Double] {
+        switch priority {
+        case .notes: return patient ? [1, 2, 4, 8, 16, 30] : [1, 2, 4]
+        case .translate: return audio ? [1, 2, 4, 8] : []
+        case .speak: return audio ? [1] : []
+        }
+    }
+
+    /// Longest Retry-After worth waiting for; longer is an outage, not a busy moment.
+    nonisolated static let maxPause: Double = 30
+
+    /// A Retry-After header in seconds: a number, or an HTTP date. nil when absent or unreadable.
+    nonisolated static func retryAfterSeconds(_ value: String?, now: Date = Date()) -> Double? {
+        guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
+        if let seconds = Double(value) { return max(0, seconds) }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return f.date(from: value).map { max(0, $0.timeIntervalSince(now)) }
+    }
+
+    /// After a 429: no request starts for `backoff` seconds, or as long as the service asked
+    /// (Retry-After; Ling sends none), plus a little jitter. The queue waits at the gate instead of
+    /// each request spending its retries on the same limit. nil when the service asks for longer
+    /// than `maxPause`: that is an outage (the gate still holds for `maxPause`).
+    private func rateLimited(_ backoff: Double, retryAfter: Double?) -> Double? {
+        let wait = max(backoff, retryAfter ?? 0) + Double.random(in: 0...0.5)
+        pausedUntil = max(pausedUntil, Date().addingTimeInterval(min(wait, Self.maxPause)))
+        return wait <= Self.maxPause ? wait : nil
     }
 
     /// Every request, for diagnostics (timings and token counts only).
@@ -695,6 +763,8 @@ final class LingClient: ObservableObject {
             return (text.trimmingCharacters(in: .whitespacesAndNewlines), root["language"] as? String)
         } catch let failure as Failure {
             report(call, .translate, at: started, queued: queued, outcome: Self.name(failure))
+            // The server's limit is shared: the rest of the queue waits it out too.
+            if failure == .rateLimited { _ = rateLimited(1, retryAfter: lastRetryAfter) }
             throw failure
         } catch {
             report(call, .translate, at: started, queued: queued, outcome: "parse")
@@ -795,7 +865,9 @@ final class LingClient: ObservableObject {
         case 401, 403:
             if keyState != .invalid { keyState = .invalid }
             throw Failure.invalidKey
-        case 429: throw Failure.rateLimited
+        case 429:
+            lastRetryAfter = Self.retryAfterSeconds((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After"))
+            throw Failure.rateLimited
         default:
             debugLog("ling: HTTP \(code)")
             throw Failure.http(code)
@@ -808,28 +880,40 @@ final class LingClient: ObservableObject {
     private var waiting: [(priority: Priority, seq: Int, resume: CheckedContinuation<Void, Never>)] = []
     private var seq = 0
     private var pumping = false
+    /// After a 429 no request starts before this (`rateLimited`).
+    private var pausedUntil = Date.distantPast
+    /// The last 429's Retry-After in seconds, nil when it sent none (Ling doesn't). Read right
+    /// after the throw, with no suspension in between, so it is that request's.
+    private var lastRetryAfter: Double?
 
-    private func acquire(_ priority: Priority) async {
-        if waiting.isEmpty && Date().timeIntervalSince(lastStart) >= provider.spacing {
+    /// Waits for this request's turn to start. `ticket` is a retry's first one, which keeps its
+    /// place ahead of requests queued after it. Returns the ticket.
+    @discardableResult
+    private func acquire(_ priority: Priority, ticket: Int? = nil) async -> Int {
+        let n: Int
+        if let ticket { n = ticket } else { seq += 1; n = seq }
+        if waiting.isEmpty && Date().timeIntervalSince(lastStart) >= provider.spacing && pausedUntil <= Date() {
             lastStart = Date()
-            return
+            return n
         }
-        seq += 1
-        let n = seq
         await withCheckedContinuation { cont in
             waiting.append((priority, n, cont))
             pump()
         }
+        return n
     }
 
     private func pump() {
         guard !pumping, !waiting.isEmpty else { return }
         pumping = true
-        let wait = max(0, provider.spacing - Date().timeIntervalSince(lastStart))
+        let now = Date()
+        let wait = max(0, provider.spacing - now.timeIntervalSince(lastStart), pausedUntil.timeIntervalSince(now))
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.pumping = false
+                // A 429 came in while this one waited: wait out the pause first.
+                if self.pausedUntil > Date() { self.pump(); return }
                 guard let i = self.waiting.indices.min(by: {
                     (self.waiting[$0].priority, self.waiting[$0].seq) < (self.waiting[$1].priority, self.waiting[$1].seq)
                 }) else { return }

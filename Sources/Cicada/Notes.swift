@@ -355,7 +355,7 @@ final class NotesEngine: ObservableObject {
             part["topics"] = nil
             guard let data = try? JSONSerialization.data(withJSONObject: part), let text = String(data: data, encoding: .utf8) else { return nil }
             notes.append(text)
-            topics += Self.spread(parsed.topics, to: Self.partTopics(parts.count))
+            topics += Self.thinned(parsed.topics, to: Self.partTopics(parts.count), end: lines[parts[i].upperBound - 1].t)
         }
         let voices = TranscriptExport.voices && !SpeakerLabels.numbers(lines).isEmpty
         let prompt = Self.mergePrompt(parts: notes, lines: lines, language: lang, voices: voices)
@@ -568,13 +568,32 @@ final class NotesEngine: ObservableObject {
     /// Each part's share of the topics: the merge keeps them as they are, so every part has some.
     static func partTopics(_ parts: Int) -> Int { max(2, maxTopics / max(1, parts)) }
 
-    /// `count` of `topics`, spread evenly from the first to the last: a part's reply often has more
-    /// topics than asked, and keeping the first ones (or folding the rest into the last) lost the
-    /// end of each part.
-    static func spread(_ topics: [NoteTopic], to count: Int) -> [NoteTopic] {
-        guard topics.count > count, count > 0 else { return topics }
-        guard count > 1 else { return [topics[0]] }
-        return (0..<count).map { topics[Int((Double($0) * Double(topics.count - 1) / Double(count - 1)).rounded())] }
+    /// At most `count` of a part's `topics`, neighbours joined: a part's reply often has more topics
+    /// than asked. Keeping the first ones lost the end of the part, and keeping some spread from first
+    /// to last kept a topic's "（续）" stub at the part's end and dropped the topic itself. The same
+    /// subject twice is joined first, under the first one's title; then the pair spanning the least
+    /// time (to the next topic's start, or `end` for the last), as live notes do.
+    static func thinned(_ topics: [NoteTopic], to count: Int, end: Double) -> [NoteTopic] {
+        var topics = topics
+        while topics.count > max(1, count) {
+            let pairs = 0..<topics.count - 1
+            func span(_ i: Int) -> Double { (i + 2 < topics.count ? topics[i + 2].start : end) - topics[i].start }
+            let same = pairs.first { subject(topics[$0].title) == subject(topics[$0 + 1].title) }
+            let i = same ?? pairs.min { span($0) < span($1) }!
+            var one = joined(topics[i], topics[i + 1])
+            if same != nil { (one.title, one.summary) = (topics[i].title, topics[i].summary) }
+            topics[i] = one
+            topics.remove(at: i + 1)
+        }
+        return topics
+    }
+
+    /// A topic title without a trailing bracket ("预算评审（续）", "Budget (cont.)"): what it is about.
+    static func subject(_ title: String) -> String {
+        let t = title.trimmingCharacters(in: .whitespaces)
+        guard let close = t.last, "）)".contains(close), let open = t.lastIndex(where: { "（(".contains($0) }),
+              open > t.startIndex else { return t }
+        return t[..<open].trimmingCharacters(in: .whitespaces)
     }
 
     /// The whole meeting's title, summary, conclusions, to-dos and terms from its parts' notes (the
@@ -663,7 +682,8 @@ final class NotesEngine: ObservableObject {
             if let f = t["fishbone"] as? [String: Any] {
                 let branches = (f["branches"] as? [[String: Any]] ?? []).compactMap { b -> FishboneBranch? in
                     let label = str(b["label"])
-                    return label.isEmpty ? nil : FishboneBranch(label: label, detail: str(b["detail"]), t: num(b["t"]),
+                    // From its lines, as a point's: the model's own "t" came back past the meeting's end.
+                    return label.isEmpty ? nil : FishboneBranch(label: label, detail: str(b["detail"]), t: time(b["evidence"]) ?? num(b["t"]),
                                                                 support: support(b["evidence"]))
                 }
                 if branches.count >= 2 { fish = Fishbone(question: str(f["question"]), branches: branches) }

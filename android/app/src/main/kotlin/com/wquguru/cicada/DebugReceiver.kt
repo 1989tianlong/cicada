@@ -92,6 +92,8 @@ class DebugReceiver : BroadcastReceiver() {
                 return mapOf("ok" to true, "ai" to ai(app))
             } else { app.key.reload(); app.ling.keyChanged(); app.background.execute { app.ling.check() } }
             "provider" -> { app.setAiProvider(arg); return mapOf("ok" to true, "ai" to ai(app)) }
+            // The 改用 Ling on a status line (says when it isn't offered).
+            "switchToLing" -> { val offered = app.canSwitchToLing; app.switchToLing(); return mapOf("offered" to offered, "ai" to ai(app)) }
             // ai-check-sim <reason|lowBalance|off>: every check ends this way (screenshots of each state).
             "ai-check-sim" -> {
                 app.ling.simulateCheck = cicada.AICheck.reasonNamed(arg)

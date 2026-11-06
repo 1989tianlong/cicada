@@ -586,7 +586,7 @@ sealed class Onboarding : Window
             SpeakEngine.Phase.Recording => Ui.Text(L("正在听你说 · 松开发送"), 13, Palette.AccentText),
             SpeakEngine.Phase.Translating => Ui.Text(L("正在翻译…"), 13, Palette.Secondary),
             SpeakEngine.Phase.Speaking => Ui.Text(L("正在说给对方听…"), 13, Palette.Secondary),
-            SpeakEngine.Phase.Failed => Ui.Text(app.Speak.Problem ?? L("没翻译成功，没有发出去"), 13, Palette.Danger),
+            SpeakEngine.Phase.Failed => Ui.Text(app.Speak.Problem ?? L("这句没翻译成 · 没有说出去"), 13, Palette.Danger),
             _ when app.Speak.Heard is { } h => Tick(L("对方已听到") + "：" + h),
             _ => new Border(),
         };

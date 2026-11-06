@@ -27,6 +27,7 @@ struct AISettingsView: View {
     private var servicePage: some View {
         VStack(alignment: .leading, spacing: 14) {
             keyCard
+            if model.translationHealth.googleDown { translationCard }
             Text("现在能用的").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
                 .padding(.top, 4)
             SettingsCard { usage }
@@ -107,6 +108,18 @@ struct AISettingsView: View {
         .buttonStyle(.plain)
     }
 
+    /// Under an address on the local network (not this Mac): macOS asks once before the first
+    /// connection, and a "Don't Allow" there reads like a dead server.
+    @ViewBuilder private func localNetworkNote(_ address: String) -> some View {
+        // Once it said no, macOS won't ask again: the check's own line says what to do then.
+        if !ling.aiCheck.needsLocalNetwork, let host = AIProvider.customBase(address)?.host,
+           AIProvider.isNearby(host), !AIProvider.isLocal(host) {
+            Text("局域网里的服务器：macOS 会问一次能否访问本地网络，点“允许”。")
+                .font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                .fixedSize(horizontal: false, vertical: true).padding(.leading, 42)
+        }
+    }
+
     private var textHost: String { AIProvider.customBase(baseDraft)?.host ?? settings.aiConfig.base?.host ?? "" }
 
     @ViewBuilder private var textSection: some View {
@@ -123,6 +136,8 @@ struct AISettingsView: View {
                 if !baseDraft.isEmpty, AIProvider.customBase(baseDraft) == nil {
                     Text("地址要用 https；这台 Mac 和局域网里的服务可以用 http。").font(.system(size: 11)).foregroundStyle(Palette.error)
                         .padding(.leading, 42)
+                } else {
+                    localNetworkNote(baseDraft)
                 }
                 HStack(spacing: 8) {
                     Text("模型").font(.system(size: 12)).foregroundStyle(Palette.secondary).frame(minWidth: 34, alignment: .leading).fixedSize()
@@ -224,6 +239,7 @@ struct AISettingsView: View {
                     settings.aiCustomVoiceBase = $0
                     model.applyAIService()
                 }
+                localNetworkNote(settings.aiCustomVoiceBase)
             }
             .padding(.leading, 34).padding(.trailing, 16).padding(.bottom, 14)
         }
@@ -263,15 +279,66 @@ struct AISettingsView: View {
                     settings.aiCustomHearBase = $0
                     model.applyAIService()
                 }
+                localNetworkNote(settings.aiCustomHearBase)
                 if hearModel.isEmpty {
                     Text("填上模型才会用它识别。").font(.system(size: 12)).foregroundStyle(Palette.warn)
                 } else if let line = ling.aiCheck.hearLine(host: host, model: hearModel) {
                     Text(line).font(.system(size: 12)).foregroundStyle(Palette.error).fixedSize(horizontal: false, vertical: true)
+                    if hear == .localNetworkDenied {
+                        HStack(spacing: 8) {
+                            SoftButton(L("打开系统设置"), dark: true) { model.openLocalNetworkSettings() }
+                            SoftButton(L("重新检查")) { Task { await ling.check() } }
+                        }
+                    }
                 } else if case .ok(let s)? = hear {
                     Text(L("听一秒音频 \(String(format: "%.1f", s)) 秒")).font(.system(size: 11)).foregroundStyle(Palette.tertiary)
                 }
             }
             .padding(.leading, 34).padding(.trailing, 16).padding(.bottom, 14)
+        }
+    }
+
+    // MARK: Translation
+
+    /// Shown only while the translation behind live subtitles can't be reached. No provider names:
+    /// with a key it costs only the half-sentence preview, without one the subtitles themselves.
+    private var translationCard: some View {
+        let health = model.translationHealth
+        return SettingsCard {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Circle().fill(Palette.error).frame(width: 8, height: 8)
+                    Text("翻译连不上").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Spacer()
+                }
+                Text(health.sentencesUntranslated ? L("新字幕暂时只有原文，连上后自动继续。")
+                                                  : L("说话时的字幕要等说完一句才有翻译。"))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let line = Self.proxyLine(health.proxy) {
+                    Text(line).font(.system(size: 12)).foregroundStyle(Palette.body)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.fill))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 8) {
+                    SoftButton(L("怎么设置代理"), dark: true) { NSWorkspace.shared.open(ProxyProbe.helpURL) }
+                }
+                .padding(.top, 2)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    static func proxyLine(_ proxy: AICheck.ProxyHint?) -> String? {
+        guard let proxy else { return nil }
+        return switch proxy {
+        case .systemOn: L("开了代理也连不上：换一个节点，或让代理软件放过 translate.googleapis.com。")
+        // As text: a number would be grouped ("7,890").
+        case .appRunning(let port): L("代理软件在运行（端口 \(String(port))），但没开系统代理。在代理软件里打开“系统代理”。")
+        case .none: L("这台电脑没开代理。在国内通常要开代理才能翻译。")
         }
     }
 
@@ -441,7 +508,7 @@ struct AISettingsView: View {
         // Named after the step that failed: a missing model is not a connection problem.
         if let f = ling.aiCheck.failure, f.reason != .busy, !ling.aiCheck.running {
             switch f.step {
-            case .reach: return L("暂时连不上")
+            case .reach: return ling.aiCheck.localNetworkDenied ? L("没有本地网络权限") : L("暂时连不上")
             case .key: return L("这个 key 用不了")
             case .text: return L("模型用不了")
             }
@@ -486,6 +553,8 @@ struct AISettingsView: View {
         if Recognition.cloudOnly {
             usageRow(L("翻译"), tag: textOn ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: textOn ? .ok : .off,
                      note: textOn ? L("随语音识别一步翻出；不行时换 Google") : later)
+        } else if !textOn, model.translationHealth.googleDown {
+            usageRow(L("翻译"), tag: L("连不上"), style: .warn, note: L("填好 key 后用 \(name) 翻译"))
         } else {
             usageRow(L("翻译"), tag: textOn ? uses : "Google", style: textOn ? .ok : .off,
                      note: textOn ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))

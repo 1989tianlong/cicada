@@ -261,8 +261,20 @@ class Words(Base):
     def test_problems_name_the_service(self):
         self.assertEqual("key", problem(LingError(LingError.HTTP, 400), "ZenMux")[0])
         self.assertIn("ZenMux", problem(LingError(LingError.NETWORK), "ZenMux")[1])
-        self.assertEqual(("network", "连不上 Ling"), problem(LingError(LingError.TIMEOUT), "Ling"))
+        self.assertEqual(("network", "字幕和纪要等 Ling 恢复 · 连上后自动继续"), problem(LingError(LingError.TIMEOUT), "Ling"))
         self.assertIsNone(problem(LingError(LingError.HTTP, 400), "Ling")[0])
+        # A gateway's 502 in front of the server: the service's trouble, not the network or the key.
+        self.assertEqual(("busy", "ZenMux 暂时出错（HTTP 502），稍后再试。"), problem(LingError(LingError.HTTP, 502), "ZenMux"))
+        self.assertEqual(("busy", "Ling 暂时出错（HTTP 503），稍后再试。"), problem(LingError(LingError.HTTP, 503), "Ling"))
+        # 其他（兼容 OpenAI） is UI text: in English it reads as the settings name it.
+        from cicada.core import strings
+        res = [os.path.join(os.path.dirname(__file__), "..", "..", "Resources")]
+        strings.load("en", res)
+        try:
+            self.assertEqual("Other (OpenAI-compatible) has a temporary error (HTTP 502). Try again shortly.",
+                             problem(LingError(LingError.HTTP, 502), "其他（兼容 OpenAI）")[1])
+        finally:
+            strings.load("zh-Hans", res)
 
     def test_final_notes_keep_retrying_for_about_a_minute(self):
         from cicada.core.ling import NOTES, retry_waits

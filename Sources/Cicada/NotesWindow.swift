@@ -629,7 +629,12 @@ struct NotesWindowView: View {
                 }
                 HStack(spacing: 8) {
                     if let id = session?.id, let other = otherNotesLanguage(id) {
-                        SoftButton(L("改用\(targetName(other.code))重新整理")) { model.regenerateNotes(id, choice: other.choice) }
+                        // A Latin name gets spaces in Chinese ("改用 English 重新整理"), a Chinese one
+                        // doesn't ("改用简体中文重新整理"). Both keys translate alike.
+                        let name = targetName(other.code)
+                        SoftButton(name.first?.isASCII == true ? L("改用 \(name) 重新整理") : L("改用\(name)重新整理")) {
+                            model.regenerateNotes(id, choice: other.choice)
+                        }
                             .disabled(engine.state == .updating)
                     }
                     if let id = session?.id {
@@ -669,23 +674,31 @@ struct NotesWindowView: View {
         case .noKey where session?.lines.isEmpty == false || live:
             keyEntry
         case .invalidKey:
-            notice(lastCovered > 0 ? L("key 已失效（被删或额度用完），纪要暂停在 \(NotesEngine.clock(lastCovered))。")
-                                   : L("key 已失效（被删或额度用完），换个 key 就能开始写纪要。"), tint: Palette.errorPale) {
-                SoftButton(L("更换 key"), dark: true) { model.openSettings(.ai) }
-            }
+            StatusLine(tone: .needsYou, text: lastCovered > 0 ? L("key 失效了 · 纪要停在 \(NotesEngine.clock(lastCovered))")
+                                                              : L("key 失效了 · 纪要等新的 key"),
+                       action: (L("换 key"), { model.openSettings(.ai) }))
         // The rest is about a round of the meeting going on now: a record opened later has none.
         case .rateLimited where live:
-            notice(L("\(serviceLabel) 很忙，纪要稍后补上。字幕照常。"), tint: Palette.warnPale) { EmptyView() }
+            StatusLine(tone: .waiting, text: L("\(serviceLabel) 很忙 · 纪要稍后补上，字幕照常"))
         // Both: the notes' own request failed, and the service doesn't answer anything. Notes that
         // only timed out while translations still came back aren't "can't reach"; the next round retries.
-        case .unreachable where live && model.ling.aiCheck.failure?.reason == .unreachable:
-            // The network or the proxy, not the notes: say which, and that it picks up by itself.
-            notice(lastCovered > 0 ? L("连不上 \(serviceLabel)，纪要暂停在 \(NotesEngine.clock(lastCovered))，连上后自动继续。")
-                                   : L("连不上 \(serviceLabel)，连上后开始写纪要。"), tint: Palette.errorPale) {
-                SoftButton(L("设置")) { model.openSettings(.ai) }
+        // The retry that follows (`updating`) hangs as long as a timeout: the line stays meanwhile.
+        case .unreachable where live && model.ling.aiCheck.failure?.reason == .unreachable,
+             .updating where live && model.ling.aiCheck.failure?.reason == .unreachable:
+            if model.ling.aiCheck.localNetworkDenied {
+                StatusLine(tone: .needsYou, text: L("连不上 \(serviceLabel) · 缺本地网络权限"),
+                           action: (L("去开启"), { model.openLocalNetworkSettings() }))
+            } else {
+                // The network or the proxy, not the notes: it picks up by itself. Where the service
+                // also hears the meeting (Intel) the subtitles wait too.
+                StatusLine(tone: .waiting, text: Recognition.cloudOnly
+                           ? L("字幕和纪要等 \(serviceLabel) 恢复 · 连上后自动继续")
+                           : lastCovered > 0 ? L("纪要等 \(serviceLabel) 恢复 · 停在 \(NotesEngine.clock(lastCovered))，字幕照常")
+                                             : L("纪要等 \(serviceLabel) 恢复 · 字幕照常"),
+                           action: model.canSwitchToLing ? (L("改用 Ling"), { model.switchToLing() }) : nil)
             }
         case .failed where live:
-            notice(L("这轮没整理好，下一轮会自动重试。"), tint: Palette.fill) { EmptyView() }
+            StatusLine(tone: .info, text: L("这轮纪要没写好 · 下轮自动补上"))
         default:
             EmptyView()
         }
@@ -745,22 +758,28 @@ struct NotesWindowView: View {
         return s.lines[engine.notes.covered - 1].t
     }
 
-    private func notice<Trailing: View>(_ text: String, tint: Color, @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: 10) {
-            Text(text).font(.system(size: 12)).lineSpacing(2).frame(maxWidth: .infinity, alignment: .leading)
-            trailing()
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(tint))
+
+    /// Without a key, finished sentences rely on Google too: when it can't be reached and nothing
+    /// stands in, the key panel says so, since a key is the fix (Ling needs no proxy in China).
+    private var untranslated: Bool {
+        live && model.translationHealth.googleDown && model.translationHealth.sentencesUntranslated
     }
 
     private var keyEntry: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(Recognition.cloudOnly ? L("识别语音和生成纪要需要 Ling key") : L("生成纪要需要 API key")).font(.system(size: 15, weight: .bold))
-            Text(Recognition.cloudOnly
-                 ? L("填好 \(model.ling.provider.name) 的 key 后，立即开始识别语音、出双语字幕和实时纪要。")
-                 : L("文字记录仍在保存。填好 \(model.ling.provider.name) 的 key 后，会从头整理出整场纪要。"))
-                .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
+            let p = model.ling.provider
+            if untranslated {
+                Text("连不上翻译，新字幕暂时只有原文").font(.system(size: 15, weight: .bold))
+                Text(p.id == .ling ? L("填 Ling key 后不用代理也能翻译，还会整理出纪要。")
+                                   : L("填好 \(p.name) 的 key 后用它翻译，还会整理出纪要。"))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
+            } else {
+                Text(Recognition.cloudOnly ? L("识别语音和生成纪要需要 Ling key") : L("生成纪要需要 API key")).font(.system(size: 15, weight: .bold))
+                Text(Recognition.cloudOnly
+                     ? L("填好 \(p.name) 的 key 后，立即开始识别语音、出双语字幕和实时纪要。")
+                     : L("文字记录仍在保存。填好 \(p.name) 的 key 后，会从头整理出整场纪要。"))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(2)
+            }
             HStack(spacing: 8) {
                 SecureField("sk-…", text: $keyDraft)
                     .textFieldStyle(.plain).font(.system(size: 13, design: .monospaced))
@@ -770,10 +789,15 @@ struct NotesWindowView: View {
                     .onSubmit(saveKey)
                 SoftButton(L("保存并开始"), dark: true, action: saveKey)
             }
-            if let site = model.ling.provider.site {
-                Button(L("获取 \(model.ling.provider.name) key ↗")) { NSWorkspace.shared.open(site) }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            HStack(spacing: 16) {
+                if let site = model.ling.provider.site {
+                    Button(L("获取 \(model.ling.provider.name) key ↗")) { NSWorkspace.shared.open(site) }
+                }
+                if untranslated {
+                    Button(L("怎么设置代理 ↗")) { NSWorkspace.shared.open(ProxyProbe.helpURL) }
+                }
             }
+            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.secondary)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 16).fill(Palette.raised))

@@ -106,7 +106,7 @@ Without a key, everything runs on Apple's on-device models plus Google Translate
 |---|---|---|
 | Speech recognition and language detection | Apple `SpeechAnalyzer` / `SpeechTranscriber` (on device); macOS 14.4–15: `SFSpeechRecognizer` (on device, needs Dictation) | same |
 | Translating finished sentences | Ling `Ling-3.1-flash` (or `Ling-3.0-flash`, set in Settings › AI Service) | Google Translate → Apple `Translation` (on device, macOS 26 only) |
-| Translating the sentence still being spoken | Google Translate (saves Ling's rate limit) | Apple `Translation` (on device, macOS 26 only) |
+| Translating the sentence still being spoken | Google Translate (saves Ling's rate limit) | None: the original shows until the finished sentence is translated; if Google can't be reached it is paused for a minute |
 | Live notes and the final version | Ling `Ling-3.1-flash` (same setting) | not available |
 | Checking the key | Ling `Ling-3.0-tiny` (one token) | — |
 | Interpreting: hearing and translating what you say | Ming `Ming-3.0-audio-flash`, one step | Apple on-device transcript, then the translation chain above |

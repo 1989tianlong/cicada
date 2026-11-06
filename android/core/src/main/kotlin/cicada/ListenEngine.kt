@@ -47,6 +47,8 @@ class ListenEngine(
     @Volatile var problem: String? = null; private set
     /// What kind it is ("key", "busy", "network"), for the screens to pick an icon by.
     @Volatile var problemKind: String? = null; private set
+    /// Stretches in a row the service answered with a 5xx (under `gate`).
+    private var serverErrors = 0
     @Volatile var level = 0.0; private set
     /// Seconds of audio heard this meeting (the capture is alive while this grows).
     @Volatile var heardSeconds = 0.0; private set
@@ -144,7 +146,7 @@ class ListenEngine(
         synchronized(gate) {
             done.clear(); segments.clear(); inFlight.clear()
             nextToDeliver = 1; lineCount = 0; last = null; lastEnd = 0.0
-            hint = null; candidate = null; candidateVotes = 0; problem = null; problemKind = null
+            hint = null; candidate = null; candidateVotes = 0; problem = null; problemKind = null; serverErrors = 0
         }
         holding = false; saying = false; muted = false; sayProblem = null; saidCount = 0
         heardSeconds = 0.0; peak = 0.0
@@ -232,7 +234,7 @@ class ListenEngine(
             Log.d("listen: said ${heard.lang} -> $their, ${if (text != null) "speaking" else "not spoken"}")
             // As on the Mac: a sentence that didn't translate is neither sent nor recorded. One
             // already in their language was heard as it is, so it is kept.
-            if (text == null && !sameLanguage) { sayProblem = Strings.L("翻译失败，这句话未发送"); return }
+            if (text == null && !sameLanguage) { sayProblem = Strings.L("这句没翻译成 · 没有说出去"); return }
             val n = synchronized(gate) { ++saidCount }
             val line = TranscriptLine(id = "m$n", t = t, speaker = "me", src = heard.original, dst = dst,
                                       srcLang = heard.lang, dstLang = their)
@@ -247,8 +249,9 @@ class ListenEngine(
                 e.kind == LingException.Kind.Http && e.status in listOf(400, 404) && name != "Ling" -> Strings.L("这个模型听不了声音，换一个支持音频输入的")
                 e.kind == LingException.Kind.NoKey || e.kind == LingException.Kind.InvalidKey ->
                     if (name == "Ling") Strings.L("Ling key 无效") else Strings.LF("%@ 的 key 无效", Strings.L(name))
+                // One held sentence: say it didn't go out and why; the meeting's own line covers the rest.
                 e.kind == LingException.Kind.Network || e.kind == LingException.Kind.Timeout ->
-                    if (name == "Ling") Strings.L("连不上 Ling，检查网络") else Strings.LF("连不上 %@", Strings.L(name))
+                    Strings.LF("这句没说出去 · 连不上 %@", Strings.L(name))
                 else -> Strings.L("没听清，再说一次")
             }
             Log.d("listen: saying failed ${e.message}")
@@ -284,10 +287,19 @@ class ListenEngine(
                 heard = translator.hear(clip, asked, lang, seg.seconds)?.let { h ->
                     if (settings.targetFor(h.lang) == asked) h else h.copy(translation = null)
                 }
+                synchronized(gate) { serverErrors = 0 }
                 problem = null; problemKind = null
             } catch (e: LingException) {
-                val (kind, text) = problem(e, ling.hearName)
-                problemKind = kind; problem = text
+                // A server error (a gateway's 502) is said from the third in a row, as on the Mac: one
+                // isn't worth a banner, but a meeting with no subtitles and no reason is worse.
+                val shown = synchronized(gate) {
+                    serverErrors = if (serverError(e)) serverErrors + 1 else 0
+                    !serverError(e) || serverErrors >= SERVER_ERRORS_SHOWN
+                }
+                if (shown) {
+                    val (kind, text) = problem(e, ling.hearName)
+                    problemKind = kind; problem = text
+                }
                 Log.d("listen: segment ${seg.index} failed ${e.message}")
             } catch (e: Exception) {
                 Log.d("listen: segment ${seg.index} failed ${e.javaClass.simpleName}")
@@ -364,12 +376,19 @@ class ListenEngine(
     }
 
     companion object {
+        /// Server errors in a row before listening says so (ListenEngine.swift's cloudFailures).
+        const val SERVER_ERRORS_SHOWN = 3
+
+        fun serverError(e: LingException) = e.kind == LingException.Kind.Http && e.status >= 500
+
         /// (kind, what to say) for a stretch that couldn't be heard. Ling keeps its own words; another
         /// service is named. A hear model that refuses audio (400 / 404) is a key-like problem: 设置 fixes it.
         fun problem(e: LingException, service: String): Pair<String?, String?> {
             val ling = service == "Ling"
             if (e.kind == LingException.Kind.Http && (e.status == 400 || e.status == 404) && !ling)
                 return "key" to Strings.L("这个模型听不了声音，换一个支持音频输入的")
+            // It answered, with an error: like busy, it passes by itself (AICheck's serverError words).
+            if (serverError(e)) return "busy" to Strings.LF("%@ 暂时出错（HTTP %lld），稍后再试。", Strings.L(service), e.status)
             val kind = when (e.kind) {
                 LingException.Kind.NoKey, LingException.Kind.InvalidKey -> "key"
                 LingException.Kind.RateLimited -> "busy"
@@ -381,7 +400,8 @@ class ListenEngine(
                 LingException.Kind.NoKey -> if (ling) Strings.L("需要 Ling key 才能听") else Strings.LF("需要 %@ 的 key 才能听", name)
                 LingException.Kind.InvalidKey -> if (ling) Strings.L("Ling key 无效") else Strings.LF("%@ 的 key 无效", name)
                 LingException.Kind.RateLimited -> if (ling) Strings.L("Ling 太忙，稍后再试") else Strings.LF("%@ 太忙，稍后再试", name)
-                LingException.Kind.Network, LingException.Kind.Timeout -> if (ling) Strings.L("连不上 Ling，检查网络") else Strings.LF("连不上 %@", name)
+                // Hearing goes through the service: the subtitles wait with the notes, then go on by themselves.
+                LingException.Kind.Network, LingException.Kind.Timeout -> Strings.LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", name)
                 else -> null
             }
             return kind to text

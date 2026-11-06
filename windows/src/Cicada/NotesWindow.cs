@@ -182,7 +182,7 @@ sealed class NotesWindow : Window
         if (Subtitles) { live.Content = SubtitleLine(); return; }
         var ek = !app.Listen.Listening ? null : app.ConfirmingEnd ? "confirm" : app.Ending is { } p ? p.Reason.ToString() : app.OnlinePrompt is { } o ? "online " + o : null;
         if (ek != endingKey) { endingKey = ek; ending.Content = EndingStrip(); }
-        var bk = $"{app.Listen.Problem}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited or NotesEngine.State.Unreachable ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Ling.Health.Proxy}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
+        var bk = $"{app.Listen.Problem}|{app.Listen.ProblemStatus}|{(app.Listen.Listening && app.Notes.Status is NotesEngine.State.Failed or NotesEngine.State.RateLimited or NotesEngine.State.Unreachable or NotesEngine.State.Updating ? app.Notes.Status : null)}|{app.Ling.Health.Failure?.Why}|{app.Settings.AiProvider}|{app.CanSwitchToLing}|{app.Settings.ShowInCapture}|{hiddenFromCapture}";
         if (bk != barsKey) { barsKey = bk; bars.Content = Bars(); }
         live.Content = LiveCard();
         var count = app.Listen.SessionId is { } sid ? app.Store.Get(sid)?.Lines.Count ?? 0 : 0;
@@ -268,40 +268,50 @@ sealed class NotesWindow : Window
     {
         var stack = new StackPanel { Margin = new Thickness(12, 0, 12, 0) };
         void Add(FrameworkElement bar) { bar.Margin = new Thickness(0, 0, 0, 8); stack.Children.Add(bar); }
-        if (app.Listen.Problem is { } problem)
+        // AI trouble is one status line each (NotesWindow.swift › banner): a dot, what waits for
+        // what · what still works, at most one action. The service hears the meeting here, so its
+        // failing stops the subtitles as well: hearing's line comes first and the notes' own lines
+        // only add what it doesn't already say.
+        (string, Action)? useLing = app.CanSwitchToLing ? (L("改用 Ling"), app.SwitchToLing) : null;
+        var problem = app.Listen.Problem;
+        if (problem is { } p)
         {
             var ling = app.Ling;
-            var (title, body, settings) = ListenEngine.Words(problem, app.Listen.ProblemStatus, ling.Config.Name, ling.HearName);
-            // Can't reach it: what this computer's proxy looks like says what to do.
-            var offline = problem is LingException.Kind.Network or LingException.Kind.Timeout;
-            if (offline && ling.Health.ProxyLine(ling.ServiceName, ling.ServiceHost) is { } proxy) body += "\n" + proxy;
-            if (problem == LingException.Kind.RateLimited) Add(Ui.InfoBar(Ui.Severity.Warning, title, body));
-            else if (settings || offline) Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("设置"), app.ShowAISettings, height: 32)));
-            else Add(Ui.InfoBar(Ui.Severity.Error, title, body, Ui.Button(L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); }, height: 32)));
+            var (title, body, settings) = ListenEngine.Words(p, app.Listen.ProblemStatus, ling.Config.Name, ling.HearName);
+            var text = (title is null ? body : title.TrimEnd('。', '.') + " · " + body).TrimEnd('。', '.');
+            // Can't reach it: picks up by itself once it answers; the proxy hint is in 设置 › AI 服务.
+            if (p is LingException.Kind.Network or LingException.Kind.Timeout) Add(Ui.StatusLine(Ui.Tone.Waiting, text, useLing));
+            // Busy or erring (a 5xx): it passes by itself, nothing to press.
+            else if (p == LingException.Kind.RateLimited || ListenEngine.IsServerError(p, app.Listen.ProblemStatus)) Add(Ui.StatusLine(Ui.Tone.Waiting, text));
+            else if (settings) Add(Ui.StatusLine(Ui.Tone.NeedsYou, text, (p is LingException.Kind.InvalidKey or LingException.Kind.NoKey ? L("换 key") : L("设置"), app.ShowAISettings)));
+            // Anything else (a garbled reply, Ling's 400) also picks up by itself; 重试 asks now.
+            else Add(Ui.StatusLine(Ui.Tone.Waiting, text, (L("重试"), () => { app.Listen.ClearProblem(); _ = app.Ling.Check(); })));
         }
-        // The notes' own trouble (NotesWindow.swift › banner): the last round didn't land.
+        var unreachable = app.Ling.Health.Failure?.Why == AICheck.Reason.Unreachable;
         if (app.Listen.Listening)
             switch (app.Notes.Status)
             {
-                case NotesEngine.State.RateLimited:
-                    Add(Ui.InfoBar(Ui.Severity.Warning, null, LF("%@ 很忙，纪要稍后补上。字幕照常。", ServiceLabel())));
+                // Hearing goes ahead of the notes, so it is usually still fine: unless its line says otherwise.
+                case NotesEngine.State.RateLimited when problem is null:
+                    Add(Ui.StatusLine(Ui.Tone.Waiting, LF("%@ 很忙 · 纪要稍后补上，字幕照常", ServiceLabel())));
                     break;
-                // The network or the proxy, not the notes: say which, and that it picks up by itself.
                 // Both: the notes' own request failed, and the service doesn't answer anything; notes that
-                // only timed out while translations still came back retry on the next round.
-                // (When hearing failed too, its bar above says so already.)
-                case NotesEngine.State.Unreachable when app.Ling.Health.Failure?.Why == AICheck.Reason.Unreachable:
-                    if (app.Listen.Problem is not (LingException.Kind.Network or LingException.Kind.Timeout))
+                // only timed out while translations still came back retry on the next round. The retry
+                // that follows (Updating) hangs as long as a timeout: the line stays meanwhile. When
+                // hearing can't reach it either, its line above says so already.
+                case NotesEngine.State.Unreachable or NotesEngine.State.Updating when unreachable:
+                    if (problem is not (LingException.Kind.Network or LingException.Kind.Timeout))
                     {
+                        // A hear model served at another address still brings subtitles.
                         var until = NotesCoveredUntil();
-                        Add(Ui.InfoBar(Ui.Severity.Error, null,
-                            until > 0 ? LF("连不上 %@，纪要暂停在 %@，连上后自动继续。", ServiceLabel(), Languages.Clock(until))
-                                      : LF("连不上 %@，连上后开始写纪要。", ServiceLabel()),
-                            Ui.Button(L("设置"), app.ShowAISettings, height: 32)));
+                        var text = !app.Ling.Config.HearElsewhere ? LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", ServiceLabel())
+                            : until > 0 ? LF("纪要等 %@ 恢复 · 停在 %@，字幕照常", ServiceLabel(), Languages.Clock(until))
+                                        : LF("纪要等 %@ 恢复 · 字幕照常", ServiceLabel());
+                        Add(Ui.StatusLine(Ui.Tone.Waiting, text, useLing));
                     }
                     break;
                 case NotesEngine.State.Failed:
-                    Add(Ui.InfoBar(Ui.Severity.Warning, null, L("这轮没整理好，下一轮会自动重试。")));
+                    Add(Ui.StatusLine(Ui.Tone.Info, L("这轮纪要没写好 · 下轮自动补上")));
                     break;
             }
         // Shown to others on purpose: the footer's 对方可见 says so. Not hidden though asked: a warning.

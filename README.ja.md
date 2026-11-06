@@ -108,7 +108,7 @@ Windows、Linux、Android 版はクラウドで音声を認識します。話さ
 |---|---|---|
 | 音声認識と言語の検出 | Apple `SpeechAnalyzer` / `SpeechTranscriber`（デバイス上）。macOS 14.4〜15：`SFSpeechRecognizer`（デバイス上、音声入力が必要） | 同じ |
 | 言い終えた文の翻訳 | Ling `Ling-3.1-flash`（または **設定 › AI サービス** で設定する `Ling-3.0-flash`） | Google 翻訳 → Apple `Translation`（デバイス上、macOS 26 のみ） |
-| まだ話している途中の文の翻訳 | Google 翻訳（Ling のレート制限を節約） | Apple `Translation`（デバイス上、macOS 26 のみ） |
+| まだ話している途中の文の翻訳 | Google 翻訳（Ling のレート制限を節約） | なし：文が終わって翻訳されるまで原文を表示。Google につながらないときは 1 分休止 |
 | リアルタイムのメモと最終版 | Ling `Ling-3.1-flash`（同じ設定） | 利用できません |
 | キーの確認 | Ling `Ling-3.0-tiny`（1 トークン） | — |
 | 通訳：あなたの話を聞き取って翻訳 | Ming `Ming-3.0-audio-flash`（ワンステップ） | Apple のデバイス上の書き起こしのあと、上記の翻訳の流れ |

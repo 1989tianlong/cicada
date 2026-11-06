@@ -47,6 +47,9 @@ struct AICheck: Equatable {
     /// The newest result came from a real request in a meeting, not from a check.
     var passive = false
     var proxy: ProxyHint?
+    /// The service is on the local network and macOS holds the connection back: the local network
+    /// permission is off, so the fix is in System Settings, not the server.
+    var localNetworkDenied = false
     /// OpenRouter only: dollars left (the smaller of the key's limit and the account's credits).
     var balance: Double?
     /// A custom service: how long one real sentence took, and whether the model thought first.
@@ -66,6 +69,8 @@ struct AICheck: Equatable {
     enum Hearing: Equatable {
         case ok(seconds: Double)
         case unreachable
+        /// Its server is on the local network and the local network permission is off.
+        case localNetworkDenied
         case fail(code: Int?)
         var ok: Bool { if case .ok = self { true } else { false } }
     }
@@ -107,7 +112,7 @@ struct AICheck: Equatable {
             else if after { steps[i].state = .skipped }
             else if reached, !Self.isOK(steps[i].state) { steps[i].state = .ok(seconds: nil) }
         }
-        if reason != .unreachable { proxy = nil }
+        if reason != .unreachable { proxy = nil; localNetworkDenied = false }
     }
 
     /// One request proved every step up to `step` (a chat proves the address, the key and the
@@ -125,6 +130,12 @@ struct AICheck: Equatable {
             }
         }
         proxy = nil
+        localNetworkDenied = false
+    }
+
+    /// Something only System Settings › Privacy & Security › Local Network fixes.
+    var needsLocalNetwork: Bool {
+        (failure?.reason == .unreachable && localNetworkDenied) || hear == .localNetworkDenied
     }
 
     static func isOK(_ s: State) -> Bool { if case .ok = s { true } else { false } }
@@ -197,6 +208,7 @@ struct AICheck: Equatable {
     func message(service: String, host: String, model: String) -> String? {
         guard let f = failure else { return busy ? L("\(service) 现在很忙，key 没问题。开会时会自动重试。") : nil }
         switch f.reason {
+        case .unreachable where localNetworkDenied: return L("知了没有本地网络权限，连不上 \(host)。")
         case .unreachable: return L("这台 Mac 访问不到 \(host)。")
         case .badAddress: return L("地址要用 https；这台 Mac 和局域网里的服务可以用 http。")
         case .invalidKey: return L("\(service) 说这个 key 无效，可能没复制全，或已删除。")
@@ -221,6 +233,7 @@ struct AICheck: Equatable {
     func hearLine(host: String, model: String) -> String? {
         switch hear {
         case .unreachable?: return L("这台 Mac 访问不到 \(host)，开会时先用本机识别。")
+        case .localNetworkDenied?: return L("知了没有本地网络权限，连不上 \(host)，开会时先用本机识别。")
         case .fail(let code)?: return L("\(model) 没接受音频（HTTP \(code ?? 0)），开会时先用本机识别。")
         default: return nil
         }
@@ -257,7 +270,7 @@ struct AICheck: Equatable {
             case .untested: "untested"
             }
             return "\(s.id.rawValue)=\(v)"
-        }.joined(separator: " ") + (proxy.map { " proxy=\($0)" } ?? "") + (balance.map { " balance=\(String(format: "%.2f", $0))" } ?? "")
+        }.joined(separator: " ") + (proxy.map { " proxy=\($0)" } ?? "") + (localNetworkDenied ? " localNetwork=denied" : "") + (balance.map { " balance=\(String(format: "%.2f", $0))" } ?? "")
             + (passive ? " passive" : "")
             + (translate.map { " translate=\(String(format: "%.1f", $0.seconds))s\($0.thinks ? " thinks" : "")" } ?? "")
             + (hear.map { " hear=\($0)" } ?? "")
