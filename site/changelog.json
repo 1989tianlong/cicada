@@ -87,6 +87,14 @@
         ],
         "title": "英文界面下，自建 AI 服务出错或连不上时，提示里的服务名也是英文。",
         "text": "原来写成“其他（兼容 OpenAI）”夹在英文句子里；还没出第一句时的出错提示也不再被截断。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "android"
+        ],
+        "title": "刚开完会时，AI 服务的状态在英文界面里说“just now”，不再像是正在用。",
+        "text": "原来写成“used in a meeting now”。"
       }
     ]
   },
