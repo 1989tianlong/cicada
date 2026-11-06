@@ -585,6 +585,7 @@ def problem(e: LingError, service: str, hear_model: str = ""):
     设置 fixes it, in the words of the settings' 听对方 step. A 5xx is the service's own trouble."""
     L, LF = strings.L, strings.LF
     ling = service == "Ling"
+    service = service if ling else L(service)  # 其他（兼容 OpenAI） is UI text; brand names stay as they are
     if e.kind == LingError.HTTP and e.status in (400, 404, 415, 422) and not ling:
         return "key", LF("%@ 听不了声音。", hear_model or service)
     # It answered, with an error: like busy, it passes by itself (AICheck's serverError words).
