@@ -102,7 +102,7 @@ final class SpeakEngine {
     let settings: AppSettings
     private(set) var phase: Phase = .idle
 
-    private let mic = AVAudioEngine()
+    private var mic = AVAudioEngine()
     /// The mic with echo cancellation, shared with 电脑和会议室's room (`VoiceMic`): used when
     /// `echoCancel` is on, or whenever the room already has it running.
     private let voiceMic: VoiceMic
@@ -364,6 +364,11 @@ final class SpeakEngine {
         // A unit left over (toggled off mid-press, a virtual mic) would starve the plain mic; one the
         // room is using stays (the talk key is then on another mic).
         if !voiceMic.inUse { voiceMic.release() }
+        // A fresh engine each press: one kept from the last press still reports the input's old
+        // format after the device changed it (AirPods drop to call quality when their mic opens),
+        // and installing a tap in that format raises an exception that ends the app.
+        if mic.isRunning { mic.inputNode.removeTap(onBus: 0); mic.stop() }
+        mic = AVAudioEngine()
         let inputNode = mic.inputNode
         AudioDevices.pinInput(mic, to: inputDevice?())
         // Pinning can leave the client format at BlackHole's rate/channels. A tap must use
