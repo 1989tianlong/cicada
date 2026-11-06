@@ -671,6 +671,21 @@ struct NotesWindowView: View {
 
     @ViewBuilder
     private var banner: some View {
+        // 语音和文字只发给你的服务, and nothing translates finished sentences: it picks up by itself, and
+        // no 改用 Ling, which would send the meeting elsewhere. A dead key or a missing local network
+        // permission is the user's to fix: those lines come first.
+        if live, model.translationHealth.googleOff, model.translationHealth.sentencesUntranslated,
+           engine.state != .invalidKey, !model.ling.aiCheck.localNetworkDenied {
+            let notesWait = [.unreachable, .updating].contains(engine.state) && model.ling.aiCheck.failure?.reason == .unreachable
+            StatusLine(tone: .waiting, text: notesWait ? L("译文和纪要等 \(serviceLabel) 恢复 · 字幕先显示原文")
+                                                       : L("译文等 \(serviceLabel) 恢复 · 字幕先显示原文"))
+        } else {
+            serviceBanner
+        }
+    }
+
+    @ViewBuilder
+    private var serviceBanner: some View {
         switch engine.state {
         case .noKey where session?.lines.isEmpty == false || live:
             keyEntry
