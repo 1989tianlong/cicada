@@ -301,7 +301,7 @@ sealed class NotesWindow : Window
         if (problem is { } p)
         {
             var ling = app.Ling;
-            var (title, body, settings) = ListenEngine.Words(p, app.Listen.ProblemStatus, ling.Config.Name, ling.HearName);
+            var (title, body, settings) = ListenEngine.Words(p, app.Listen.ProblemStatus, ServiceLabel(), ling.HearName);
             var text = (title is null ? body : title.TrimEnd('。', '.') + " · " + body).TrimEnd('。', '.');
             // Can't reach it: picks up by itself once it answers; the proxy hint is in 设置 › AI 服务.
             if (p is LingException.Kind.Network or LingException.Kind.Timeout) Add(Ui.StatusLine(Ui.Tone.Waiting, text, useLing));
