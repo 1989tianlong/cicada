@@ -103,6 +103,43 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         #expect((50...70).contains(patient.reduce(0, +)))
     }
 
+    @Test func heardAudioRetriesAndTextFailsFast() {
+        #expect(LingClient.retryWaits(.translate, audio: true) == [1, 2, 4, 8])
+        #expect(LingClient.retryWaits(.speak, audio: true) == [1])
+        #expect(LingClient.retryWaits(.translate, audio: false).isEmpty)
+    }
+
+    @Test func retryAfterIsSecondsOrADate() {
+        #expect(LingClient.retryAfterSeconds("5") == 5)
+        #expect(LingClient.retryAfterSeconds(nil) == nil)
+        #expect(LingClient.retryAfterSeconds("soon") == nil)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)  // Tue, 14 Nov 2023 22:13:20 GMT
+        #expect(LingClient.retryAfterSeconds("Tue, 14 Nov 2023 22:13:30 GMT", now: now) == 10)
+    }
+
+    @Test func heardAudioOutlastsA429AndTextFallsBackMeanwhile() async throws {
+        LingStub.reset(200, "")
+        var first = true
+        LingStub.respond = { _ in
+            if first { first = false; return (429, "{}") }
+            return (200, LingStub.chatReply("ORIGINAL: hi\nTRANSLATION: 你好"))
+        }
+        let ling = client()
+        async let heard = ling.chat(content: "x", instruction: "Hear.", priority: .translate, audio: Data([0, 1]))
+        // The 429 pauses the gate: a text translation now fails at once (its caller uses Google)
+        // instead of spending the pause in the queue.
+        try await Task.sleep(for: .milliseconds(300))
+        await #expect(throws: LingClient.Failure.rateLimited) {
+            try await ling.chat(content: "y", instruction: "Translate.", priority: .translate)
+        }
+        let reply = try await heard
+        #expect(reply.hasPrefix("ORIGINAL"))
+        #expect(LingStub.seen.count == 2)
+        let gap = LingStub.seen[1].at.timeIntervalSince(LingStub.seen[0].at)
+        #expect(gap >= 1 && gap < 2)
+        #expect(ling.rateLimitedAt == nil)
+    }
+
     // MARK: Key file
 
     @Test func keyFileIsOnlyForThisUser() throws {

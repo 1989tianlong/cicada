@@ -31,6 +31,7 @@ object Tests {
             "theLiveMeetingCantBeDeleted" to ::theLiveMeetingCantBeDeleted,
             "followSystemLikeTheMac" to ::followSystemLikeTheMac,
             "anUntranslatedSentenceIsNeitherSentNorRecorded" to ::anUntranslatedSentenceIsNeitherSentNorRecorded,
+            "anUnreachableServiceIsTriedOncePer15s" to ::anUnreachableServiceIsTriedOncePer15s,
             "storeSavesAndDropsEmptyMeetings" to ::storeSavesAndDropsEmptyMeetings,
             "closesInterruptedMeetings" to ::closesInterruptedMeetings,
             "exportsLikeTheMac" to ::exportsLikeTheMac,
@@ -1003,6 +1004,27 @@ object Tests {
         } finally { LingClient.spacing = old }
     }
 
+    fun anUnreachableServiceIsTriedOncePer15s() {
+        // The service doesn't answer; Google does.
+        val fake = Fake { body -> if (body.contains("Subtitle:")) Transport.Response(500, "") else Transport.Response(200, "[[[\"你好\",\"Hello\"]]]") }
+        val old = LingClient.spacing
+        LingClient.spacing = 0.0
+        try {
+            val ling = client(fake)
+            val translator = Translator(ling, fake)
+            fun lingCalls() = synchronized(fake.calls) { fake.calls.count { it.second.contains("Subtitle:") } }
+            translator.translate("Hello.", "en", "zh-CN", Translator.Kind.Sentence)
+            equal(1, lingCalls(), "tried while the check says nothing")
+            ling.simulateCheck = AICheck.Reason.Unreachable
+            ling.check()
+            equal(AICheck.Reason.Unreachable, ling.aiCheck.failure?.reason, "the check says unreachable")
+            equal("你好", translator.translate("Hello.", "en", "zh-CN", Translator.Kind.Sentence), "Google")
+            equal(2, lingCalls(), "one line still goes to the service")
+            equal("你好", translator.translate("Hello again.", "en", "zh-CN", Translator.Kind.Sentence), "Google at once")
+            equal(2, lingCalls(), "the next lines within 15 s don't wait for it")
+        } finally { LingClient.spacing = old }
+    }
+
     fun anUntranslatedSentenceIsNeitherSentNorRecorded() {
         // Ming hears me but returns no translation, and Ling and Google both fail.
         val fake = Fake { body ->
@@ -1022,7 +1044,7 @@ object Tests {
             engine.hold(); src.push(tone(1.2)); engine.release(); src.push(silence(0.3))
             val until = System.currentTimeMillis() + 4000
             while (engine.sayProblem == null && System.currentTimeMillis() < until) Thread.sleep(20)
-            equal("翻译失败，这句话未发送", engine.sayProblem, "the Mac's message")
+            equal("这句没翻译成 · 没有说出去", engine.sayProblem, "the Mac's message")
             equal(null, spoken, "nothing spoken")
             check(store.get(engine.sessionId!!)!!.lines.none { it.speaker == "me" }, "nothing recorded")
             engine.stop()

@@ -146,6 +146,8 @@ final class AppModel: ObservableObject {
     @Published var mainShow: String?
     /// Hold right ⌥ is chosen but "输入监控" isn't allowed yet.
     @Published var talkNeedsPermission = false
+    /// Google translation unreachable, and whether sentences go untranslated (`TranslationService.health`).
+    @Published var translationHealth = TranslationHealth()
     @Published var toggleKeyTaken = false
     private var permissionPoll: Timer?
     private var shortcutsSuspended = false
@@ -237,6 +239,8 @@ final class AppModel: ObservableObject {
         ling.localNetworkProbe = { await LocalNetworkProbe.denied($0) }
         watchNetwork()
         translator.onDraft = { [weak self] in self?.diagnostics.recordDraft(seconds: $0, ok: $1) }
+        translator.onHealth = { [weak self] in self?.translationHealth = $0 }
+        translator.proxyHint = { await ProxyProbe.hint() }
 
         ling.config = { [weak self] in self?.settings.aiConfig ?? AIConfig(provider: .ling, base: AIProvider.ling.base, textModel: "Ling-3.1-flash") }
         listen.translator = translator
@@ -1089,7 +1093,7 @@ final class AppModel: ObservableObject {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.networkDebounce?.cancel()
-                    let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.ling.networkChanged() } }
+                    let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.ling.networkChanged(); self?.translator.networkChanged() } }
                     self.networkDebounce = work
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                 }
@@ -1114,6 +1118,16 @@ final class AppModel: ObservableObject {
         settings.aiProvider = kind.rawValue
         applyAIService()
         Task { await ling.setKey(key) }
+    }
+
+    /// "改用 Ling" where another service is out of reach: only when a Ling key is already saved,
+    /// so the one click works without a trip to the settings.
+    var canSwitchToLing: Bool { settings.provider.id != .ling && AIKey.read("ling") != nil }
+
+    func switchToLing() {
+        guard canSwitchToLing else { return }
+        settings.aiProvider = AIProvider.Kind.ling.rawValue
+        applyAIService()
     }
 
     /// Settings changed the AI service, its address or a model: voices follow, the key is checked again.
@@ -1895,6 +1909,10 @@ final class AppModel: ObservableObject {
             // translateFail:<n>: the next n sentences fail on every provider (tests the retry).
             translator.failNext = Int(arg) ?? 0
             debugLog("translate fail next=\(translator.failNext)")
+        case "googleDown":
+            // googleDown:<on|off>: Google translation fails as if this Mac had no proxy.
+            translator.simulateGoogleDown = arg != "off"
+            debugLog("google down simulate=\(translator.simulateGoogleDown)")
         case "aiRemove": ling.removeKey()
         case "aiHide":
             // aiHide:<on|off>: the key file stays; the app behaves as if there were none (for screenshots).
@@ -1919,6 +1937,8 @@ final class AppModel: ObservableObject {
         // aiCustomBase:<url>, aiCustomVoiceBase:<url|"">, aiCustomVoice:<name>, aiCustomHearModel:<name>,
         // aiCustomHearBase:<url|"">, aiCustomRecognize:on|off.
         case "aiProvider": settings.aiProvider = AIProvider.named(arg).id.rawValue; applyAIService()
+        // switchToLing: the 改用 Ling on a status line (logs why when it isn't offered).
+        case "switchToLing": debugLog("switchToLing offered=\(canSwitchToLing)"); switchToLing()
         case "aiTextModel":
             if settings.provider.id == .ling { settings.aiModel = arg } else { settings.aiModels[settings.aiProvider] = arg }
             applyAIService()

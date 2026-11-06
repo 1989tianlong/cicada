@@ -433,7 +433,7 @@ object ProviderTests {
     fun problemsNameTheService() {
         equal("key", ListenEngine.problem(LingException(LingException.Kind.Http, 400), "ZenMux").first, "a deaf model is a settings problem")
         check(ListenEngine.problem(LingException(LingException.Kind.Network), "ZenMux").second!!.contains("ZenMux"), "named")
-        equal("network" to "连不上 Ling，检查网络", ListenEngine.problem(LingException(LingException.Kind.Timeout), "Ling"), "Ling's own words")
+        equal("network" to "字幕和纪要等 Ling 恢复 · 连上后自动继续", ListenEngine.problem(LingException(LingException.Kind.Timeout), "Ling"), "what waits and that it goes on")
         equal(null, ListenEngine.problem(LingException(LingException.Kind.Http, 400), "Ling").first, "Ling's 400 is not the model")
         // A gateway's 502 in front of the server: the service erring, not the network or the key.
         equal("busy" to "ZenMux 暂时出错（HTTP 502），稍后再试。", ListenEngine.problem(LingException(LingException.Kind.Http, 502), "ZenMux"), "a 5xx is the service's trouble")

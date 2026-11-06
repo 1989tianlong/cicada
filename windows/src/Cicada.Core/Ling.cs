@@ -35,9 +35,13 @@ public sealed class AIKey(IKeyProtector protector, string? file = null, Func<str
     readonly Dictionary<string, string?> cache = [];
     readonly object gate = new();
 
-    public string? Read()
+    public string? Read() => ReadAt(File_);
+
+    /// Another service's saved key, without switching to it (改用 Ling asks whether Ling has one).
+    public string? Read(string service) => file is null ? ReadAt(Paths.KeyFile(service)) : null;
+
+    string? ReadAt(string path)
     {
-        var path = File_;
         lock (gate)
         {
             if (cache.TryGetValue(path, out var cached)) return cached;

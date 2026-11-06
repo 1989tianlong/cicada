@@ -3,9 +3,25 @@
     "version": "1.3.1",
     "date": null,
     "title": "AI 服务状态、长会议纪要和轻声短句",
-    "summary": "刚开完会就换 AI 服务时，设置里不再把连不上的新服务显示成已连接；长会议生成完整纪要时，不再丢掉某个话题；AI 服务一直出错时会提示；Windows、Linux、Android 上开头轻声的一句短话不再被漏掉。",
+    "summary": "刚开完会就换 AI 服务时，设置里不再把连不上的新服务显示成已连接；长会议生成完整纪要时，不再丢掉某个话题；AI 服务一直出错时会提示；Windows、Linux、Android 上开头轻声的一句短话不再被漏掉；真实麦克风和虚拟麦克风格式不同时，按住说话不再闪退。",
     "image": null,
     "items": [
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "真实麦克风与虚拟麦克风格式不同时，按住说话键和录声音样本不再闪退，会议室麦克风不再没有声音。",
+        "text": "录音使用所选麦克风的实际格式，无需手动统一采样率。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "连不上 Google 翻译时，字幕不再一卡一卡，没有 key 时会告诉你怎么办。",
+        "text": "连续两次连不上就暂停一分钟再试，正在说的半句只显示原文，说完一句照常翻译；网络或代理一变就马上重试。没有 key、整句也翻不了时，纪要窗口会说明，并提示填 Ling key（不用代理）或设置代理。"
+      },
       {
         "kind": "fixed",
         "platforms": [
@@ -95,6 +111,58 @@
         ],
         "title": "刚开完会时，AI 服务的状态在英文界面里说“just now”，不再像是正在用。",
         "text": "原来写成“used in a meeting now”。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "让 Ling 代听会议时，Ling 一时太忙也不会漏掉那段话。",
+        "text": "Intel Mac 和点了“先用 Ling 听”时，Ling 回“请求太多”会等一会儿再试，最多约 15 秒，原来只再试一次就丢掉；这期间别的翻译直接改用 Google，不排队等。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "会议结束后的“改用 English 重新整理”按钮，英文名两边有空格了。",
+        "text": "原来挤成“改用English重新整理”；中文名照旧不加空格。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "mac"
+        ],
+        "title": "AI 服务出问题时，纪要窗口只用一行说清在等谁、什么照常。",
+        "text": "黄点是在等、会自己恢复，红点是要你动手；自己的服务连不上而存过 Ling key 时，点“改用 Ling”纪要马上接着写。说话同传没说出去的一句，也说明是因为没翻译成。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "自己的 AI 服务连不上时，字幕不再每句先等几秒才出来。",
+        "text": "连不上期间翻译直接用 Google，每 15 秒才再试一次那台服务器，连上后自动换回。"
+      },
+      {
+        "kind": "improved",
+        "platforms": [
+          "windows",
+          "android",
+          "linux"
+        ],
+        "title": "AI 服务出问题时，会议中只用一行说清在等谁、什么还照常。",
+        "text": "连不上时写明字幕和纪要在等哪个服务、连上后自动继续；存过 Ling key 时可以一键“改用 Ling”。很忙、key 失效、这轮纪要没写好也都是同样的一行。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "android",
+          "linux"
+        ],
+        "title": "自己的 AI 服务连不上时，翻译不再每句先等几秒。",
+        "text": "连不上期间直接用 Google 翻译，每 15 秒才再试一次那台服务器。"
       }
     ]
   },

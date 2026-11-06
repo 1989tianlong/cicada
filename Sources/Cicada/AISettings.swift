@@ -27,6 +27,7 @@ struct AISettingsView: View {
     private var servicePage: some View {
         VStack(alignment: .leading, spacing: 14) {
             keyCard
+            if model.translationHealth.googleDown { translationCard }
             Text("现在能用的").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.secondary)
                 .padding(.top, 4)
             SettingsCard { usage }
@@ -297,6 +298,50 @@ struct AISettingsView: View {
         }
     }
 
+    // MARK: Translation
+
+    /// Shown only while the translation behind live subtitles can't be reached. No provider names:
+    /// with a key it costs only the half-sentence preview, without one the subtitles themselves.
+    private var translationCard: some View {
+        let health = model.translationHealth
+        return SettingsCard {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Circle().fill(Palette.error).frame(width: 8, height: 8)
+                    Text("翻译连不上").font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
+                    Spacer()
+                }
+                Text(health.sentencesUntranslated ? L("新字幕暂时只有原文，连上后自动继续。")
+                                                  : L("说话时的字幕要等说完一句才有翻译。"))
+                    .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let line = Self.proxyLine(health.proxy) {
+                    Text(line).font(.system(size: 12)).foregroundStyle(Palette.body)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.fill))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 8) {
+                    SoftButton(L("怎么设置代理"), dark: true) { NSWorkspace.shared.open(ProxyProbe.helpURL) }
+                }
+                .padding(.top, 2)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    static func proxyLine(_ proxy: AICheck.ProxyHint?) -> String? {
+        guard let proxy else { return nil }
+        return switch proxy {
+        case .systemOn: L("开了代理也连不上：换一个节点，或让代理软件放过 translate.googleapis.com。")
+        // As text: a number would be grouped ("7,890").
+        case .appRunning(let port): L("代理软件在运行（端口 \(String(port))），但没开系统代理。在代理软件里打开“系统代理”。")
+        case .none: L("这台电脑没开代理。在国内通常要开代理才能翻译。")
+        }
+    }
+
     // MARK: Key
 
     private var keyCard: some View {
@@ -508,6 +553,8 @@ struct AISettingsView: View {
         if Recognition.cloudOnly {
             usageRow(L("翻译"), tag: textOn ? uses : ling.hasKey ? L("暂不可用") : L("需要 key"), style: textOn ? .ok : .off,
                      note: textOn ? L("随语音识别一步翻出；不行时换 Google") : later)
+        } else if !textOn, model.translationHealth.googleDown {
+            usageRow(L("翻译"), tag: L("连不上"), style: .warn, note: L("填好 key 后用 \(name) 翻译"))
         } else {
             usageRow(L("翻译"), tag: textOn ? uses : "Google", style: textOn ? .ok : .off,
                      note: textOn ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))

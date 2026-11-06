@@ -593,12 +593,14 @@ def problem(e: LingError, service: str, hear_model: str = ""):
         return "busy", LF("%@ 暂时出错（HTTP %lld），稍后再试。", service, e.status)
     kind = {LingError.NO_KEY: "key", LingError.INVALID_KEY: "key", LingError.RATE_LIMITED: "busy",
             LingError.NETWORK: "network", LingError.TIMEOUT: "network"}.get(e.kind)
+    # Out of reach: the service hears the meeting here, so subtitles wait along with the notes.
+    away = LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", service)
     if ling:
         text = {LingError.NO_KEY: L("需要 Ling key 才能听"), LingError.INVALID_KEY: L("Ling key 无效"),
-                LingError.RATE_LIMITED: L("Ling 太忙，稍后再试"), LingError.NETWORK: L("连不上 Ling"),
-                LingError.TIMEOUT: L("连不上 Ling")}.get(e.kind)
+                LingError.RATE_LIMITED: L("Ling 太忙，稍后再试"), LingError.NETWORK: away,
+                LingError.TIMEOUT: away}.get(e.kind)
     else:
         text = {LingError.NO_KEY: LF("需要 %@ 的 key 才能听", service), LingError.INVALID_KEY: LF("%@ 的 key 无效", service),
-                LingError.RATE_LIMITED: LF("%@ 太忙，稍后再试", service), LingError.NETWORK: LF("连不上 %@", service),
-                LingError.TIMEOUT: LF("连不上 %@", service)}.get(e.kind)
+                LingError.RATE_LIMITED: LF("%@ 太忙，稍后再试", service), LingError.NETWORK: away,
+                LingError.TIMEOUT: away}.get(e.kind)
     return kind, text

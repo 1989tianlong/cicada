@@ -283,8 +283,9 @@ final class VoiceRecorder: ObservableObject {
         try? FileManager.default.removeItem(at: url)
         let input = engine.inputNode
         AudioDevices.pinInput(engine, to: device)
-        let inFormat = input.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0,
+        // The hardware format, as in `RoomMic.start`: the client one can still be the system mic's.
+        let inFormat = input.inputFormat(forBus: 0)
+        guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
               let f = try? AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatInt16, interleaved: true),
               let conv = AVAudioConverter(from: inFormat, to: format) else {
             phase = .failed(L("麦克风没收到声音，请检查麦克风权限"))

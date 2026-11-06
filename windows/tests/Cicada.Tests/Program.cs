@@ -449,6 +449,25 @@ static class Tests
         Equal("Done.", Translator.CleanTranslation("<think>x</think>Done.", "en"), "leaked reasoning");
     }
 
+    /// While the check says the service is unreachable, a sentence doesn't wait on its timeout
+    /// every time: one in 15 s still tries it, the rest go straight to Google.
+    public static async Task AnUnreachableServiceIsTriedOnceIn15Seconds()
+    {
+        var fake = new Fake(_ => Reply("你好"));
+        var ling = Client(fake);
+        var translator = new Translator(ling, new Fake(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        Equal("你好", await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence), "a healthy service translates");
+        ling.SimulateCheck = AICheck.Reason.Unreachable;
+        await ling.Check();
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        Equal(2, fake.Calls.Count, "one try while unreachable, the next sentence skips it");
+        ling.SimulateCheck = AICheck.Reason.Deaf;
+        await ling.Check();
+        await translator.Translate("Hello", "en", "zh-CN", Translator.Kind.Sentence);
+        Equal(3, fake.Calls.Count, "tried again once the check says it answers");
+    }
+
     public static void JoinsCutSentences()
     {
         var last = new TranscriptLine { Src = "We finished the migration and", SrcLang = "en" };
@@ -2195,8 +2214,9 @@ static class Tests
     public static void ProblemsNameTheService()
     {
         Check(ListenEngine.Words(LingException.Kind.Http, 400, "ZenMux").Settings, "a hear model that refuses audio is fixed in settings");
-        Check(ListenEngine.Words(LingException.Kind.Network, 0, "ZenMux").Title!.Contains("ZenMux"), "named");
-        Equal("连不上 Ling", ListenEngine.Words(LingException.Kind.Timeout, 0, "Ling").Title, "Ling keeps its words");
+        Check(ListenEngine.Words(LingException.Kind.Network, 0, "ZenMux").Body.Contains("ZenMux"), "named");
+        // One status line: subtitles and notes both wait, since the service hears the meeting here.
+        Equal((null, "字幕和纪要等 Ling 恢复 · 连上后自动继续", false), ListenEngine.Words(LingException.Kind.Timeout, 0, "Ling"), "unreachable is one line");
         Check(!ListenEngine.Words(LingException.Kind.Http, 400, "Ling").Settings, "Ling's 400 is the network bar");
         // A gateway's 502 in front of the server: the service erring, not the network, nothing in settings.
         Equal((null, "ZenMux 暂时出错（HTTP 502），稍后再试。", false), ListenEngine.Words(LingException.Kind.Http, 502, "ZenMux"), "a 5xx is the service's trouble");

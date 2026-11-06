@@ -61,7 +61,7 @@ sealed class SpeakBar : Window
                 if (s.State == SpeakEngine.Phase.Idle) hide.Start();
                 break;
             case SpeakEngine.Phase.Failed:
-                var why = Ui.Text(s.Problem ?? L("没翻译成功，没有发出去"), 14, new SolidColorBrush(Color.FromRgb(0xFF, 0x9B, 0x78)), FontWeights.Bold);
+                var why = Ui.Text(s.Problem ?? L("这句没翻译成 · 没有说出去"), 14, new SolidColorBrush(Color.FromRgb(0xFF, 0x9B, 0x78)), FontWeights.Bold);
                 why.MaxWidth = 480;
                 content = Ui.Row(12, Key(false), why);
                 hide.Start();

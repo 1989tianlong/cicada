@@ -104,7 +104,7 @@ Intel 版 Mac 以及 Windows、Linux 和 Android 版在云端识别：说话的�
 |---|---|---|
 | 语音识别、语言识别 | Apple `SpeechAnalyzer` / `SpeechTranscriber`（本机）；macOS 14.4–15 是 `SFSpeechRecognizer`（本机，要打开听写） | 同左 |
 | 整句翻译 | Ling `Ling-3.1-flash`（可在“设置 › AI 服务”改为 `Ling-3.0-flash`） | Google 翻译 → Apple `Translation`（本机，仅 macOS 26） |
-| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度） | Apple `Translation`（本机，仅 macOS 26） |
+| 正在说的半句话的翻译 | Google 翻译（不占 Ling 的频率额度） | 无：只显示原文，说完一句换成整句翻译；连不上时暂停一分钟再试 |
 | 实时纪要、会后完整版 | Ling `Ling-3.1-flash`（同上设置） | 不可用 |
 | 检查 key 是否有效 | Ling `Ling-3.0-tiny`（只用一个 token） | — |
 | 同声传译：听懂并翻译你说的话 | Ming `Ming-3.0-audio-flash`，一步完成 | Apple 本机识别，再走上面的翻译链 |

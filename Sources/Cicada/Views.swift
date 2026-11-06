@@ -31,6 +31,39 @@ enum Palette {
     static let placeholder = Color(red: 0.722, green: 0.741, blue: 0.776)
 }
 
+/// A service in trouble, said the same way wherever it shows: a dot, what waits for what · what
+/// still works, and at most one action. Colour sits in the dot only, so a passing wait doesn't
+/// read as a fault: yellow waits and comes back by itself, red needs you, grey is just so you know.
+struct StatusLine: View {
+    enum Tone { case waiting, needsYou, info }
+    let tone: Tone
+    let text: String
+    var action: (title: String, run: () -> Void)? = nil
+
+    /// #C98A00: the warn ink is too dark to tell from the text at 6 pt.
+    static let waitingDot = Color(red: 0.788, green: 0.541, blue: 0.0)
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(tone == .waiting ? Self.waitingDot : tone == .needsYou ? Palette.error : Palette.tertiary)
+                .frame(width: 6, height: 6)
+            Text(text).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let action {
+                Button(action: action.run) {
+                    Text(action.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                        .padding(.vertical, 4).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).fixedSize()
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .frame(minHeight: 36)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.fill))
+    }
+}
+
 struct LogoTile: View {
     var size: CGFloat = 34
     var body: some View { BrandMark(size: size) }

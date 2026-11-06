@@ -366,8 +366,10 @@ final class SpeakEngine {
         if !voiceMic.inUse { voiceMic.release() }
         let inputNode = mic.inputNode
         AudioDevices.pinInput(mic, to: inputDevice?())
-        let inFormat = inputNode.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0 else {
+        // Pinning can leave the client format at BlackHole's rate/channels. A tap must use
+        // the real hardware format or AVAudioEngine raises an Objective-C exception.
+        let inFormat = inputNode.inputFormat(forBus: 0)
+        guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
             onStatus?(L("没有可用的麦克风"))
             phase = .idle
             return
@@ -504,7 +506,7 @@ final class SpeakEngine {
                 debugLog("speak: translation failed, nothing sent")
                 if probe == nil { onTiming?(timing(voice: nil)) }
                 phase = .idle
-                onLive?(.idle, text, L("翻译失败，这句话未发送"))
+                onLive?(.idle, text, L("这句没翻译成 · 没有说出去"))
                 probe?.finish()
                 return
             }

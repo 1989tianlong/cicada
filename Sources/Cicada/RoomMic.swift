@@ -218,8 +218,10 @@ final class RoomMic: AudioSource {
         startedAt = Date()
         AudioDevices.pinInput(engine, to: device)
         let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0,
+        // The hardware format: after pinning, the client format can still be the system mic's,
+        // and a tap in that format raises an Objective-C exception (issue #12).
+        let format = input.inputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0,
               let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate, channels: 1, interleaved: false) else {
             throw NSError(domain: "RoomMic", code: -1, userInfo: [NSLocalizedDescriptionKey: L("没有可用的麦克风")])
         }

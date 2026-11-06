@@ -32,10 +32,23 @@ class Translator(private val ling: LingClient, private val transport: Transport 
 
     enum class Kind { Draft, Sentence }
 
+    @Volatile private var lastUnreachableTry = 0L
+
+    /// A service that answers nothing costs a line its timeout before Google gets it (a hear model
+    /// on its own server still hearing, 我说's fallback). While the check says unreachable, one line
+    /// in 15 s still goes to it, so a service that is back is noticed without waiting for a check.
+    @Synchronized private fun lingWorthTrying(): Boolean {
+        if (ling.aiCheck.failure?.reason != AICheck.Reason.Unreachable) return true
+        val now = System.currentTimeMillis()
+        if (now - lastUnreachableTry < 15_000) return false
+        lastUnreachableTry = now
+        return true
+    }
+
     /// The AI service (finished sentences only) → Google. Null when both fail.
     fun translate(text: String, source: String, target: String, kind: Kind): String? {
         if (source == target) return text
-        if (kind != Kind.Draft && ling.usable) {
+        if (kind != Kind.Draft && ling.usable && lingWorthTrying()) {
             try {
                 val from = if (source == "auto") "the spoken language" else Languages.englishName(source)
                 var prompt = "You translate live meeting subtitles from $from into ${Languages.englishName(target)}.\n" +

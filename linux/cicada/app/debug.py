@@ -244,6 +244,11 @@ def command(app, line: str) -> dict:
     if cmd == "provider":
         app.set_ai_provider(arg)
         return {"ok": True, "ai": _ai(app)}
+    if cmd == "switch-to-ling":  # the 改用 Ling on a status line (says whether it was offered)
+        offered = app.can_switch_to_ling()
+        Log.d("switchToLing offered=%s" % offered)
+        app.switch_to_ling()
+        return {"ok": True, "offered": offered, "ai": _ai(app)}
     if cmd == "ai-base":
         # A custom service's addresses: text, voice or hear ("" for voice and hear: the text one).
         kind, _, url = arg.partition(" ")

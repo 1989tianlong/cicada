@@ -31,7 +31,7 @@ object NotesViews {
         val line = listen.sessionId?.let { app.store.lines(it).lastOrNull() }
         return listOf(listen.listening, listen.sourceKind, listen.sessionId, listen.pending > 0, listen.problem, app.startProblem, silent(app), app.micSilenced,
                       line?.id, line?.src, line?.dst, app.notes.status, app.notes.notes.updatedAt, app.notes.notes.covered,
-                      app.ending?.deadline, app.ling.blocking).joinToString("|")
+                      app.ending?.deadline, app.ling.blocking, listen.problemKind, app.ling.provider.id).joinToString("|")
     }
 
     /// "正在听 · 03:12" / "面对面 · 03:12".
@@ -96,20 +96,24 @@ object NotesViews {
 
     fun banner(ui: Ui, app: CicadaApp, onMic: (() -> Unit)?): View? {
         val problem = app.listen.problem
-        val network = app.listen.problemKind == "network"
+        val kind = app.listen.problemKind
         // A key, the credit or a model: before the hearing's own words ("Ling key 无效"), which say less.
         val blocking = app.ling.blocking
-        val (iconRes, text) = when {
-            network -> R.drawable.i_wifi_off to
-                (if (app.ling.provider.id == "ling") L("连不上 Ling，联网后继续出字幕")
-                 // Hearing goes through the service too: the subtitles stopped with the notes, so no notes time.
-                 else LF("连不上 %@，字幕和纪要暂停，连上后自动继续。", serviceLabel(app)))
-            app.micSilenced && app.listen.listening -> R.drawable.i_mic to L("麦克风正被通话或其他 app 占用，用完后接着听")
-            blocking != null -> R.drawable.i_info to blocking
-            problem != null -> R.drawable.i_info to problem
-            silent(app) -> R.drawable.i_speaker_off to L("20 秒没听到声音。通话和会议 app 的声音系统不让录")
-            else -> return null
+        val micTaken = app.micSilenced && app.listen.listening
+        // The service's trouble is a status line; the microphone taken or nothing heard is not.
+        when {
+            // Hearing goes through the service too: the subtitles wait with the notes. The network or
+            // the proxy, not the notes: it picks up by itself, or 改用 Ling when that key is saved.
+            kind == "network" -> return statusLine(ui, Tone.Waiting, LF("字幕和纪要等 %@ 恢复 · 连上后自动继续", serviceLabel(app)),
+                                                    if (app.canSwitchToLing) L("改用 Ling") to { app.switchToLing() } else null)
+            micTaken -> {}
+            blocking != null -> return statusLine(ui, Tone.NeedsYou, blocking, openSettings(ui, onMic))
+            problem != null -> return statusLine(ui, when (kind) { "busy" -> Tone.Waiting; "key" -> Tone.NeedsYou; else -> Tone.Info },
+                                                 problem, openSettings(ui, onMic).takeIf { kind == "key" })
+            !silent(app) -> return null
         }
+        val (iconRes, text) = if (micTaken) R.drawable.i_mic to L("麦克风正被通话或其他 app 占用，用完后接着听")
+                              else R.drawable.i_speaker_off to L("20 秒没听到声音。通话和会议 app 的声音系统不让录")
         return LinearLayout(ui.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -118,15 +122,40 @@ object NotesViews {
             minimumHeight = ui.dp(56)
             addView(ui.icon(R.drawable.i_info, 22, Palette.link).apply { setImageDrawable(ui.drawable(iconRes, Palette.link)) })
             addView(ui.text(text, 14f, Palette.ink), ui.weight().apply { leftMargin = ui.dp(12) })
-            if (silent(app) && text != blocking && onMic != null) addView(ui.textButton(L("换成面对面"), onClick = onMic))
-            // The network or the proxy, not the notes: 设置 says which (only on Cicada's own screens).
-            if (blocking != null && text == blocking && onMic != null)
-                addView(ui.textButton(L("打开设置")) { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) })
-            else if (network && onMic != null && app.ling.provider.id != "ling")
-                addView(ui.textButton(L("设置")) { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) })
+            if (!micTaken && onMic != null) addView(ui.textButton(L("换成面对面"), onClick = onMic))
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
     }
+
+    /// 打开设置 › AI 服务, on Cicada's own screens only (`onMic` set): not from the floating window.
+    private fun openSettings(ui: Ui, onMic: (() -> Unit)?): Pair<String, () -> Unit>? = if (onMic == null) null
+        else L("打开设置") to { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) }
+
+    /// How a status line reads at a glance, by its dot alone (a passing wait shouldn't look like a
+    /// fault): Waiting comes back by itself, NeedsYou is the user's to fix, Info is just so you know.
+    enum class Tone { Waiting, NeedsYou, Info }
+
+    /// A service in trouble, said the same way wherever it shows (the Mac's StatusLine): a dot,
+    /// "what waits for what · what still works", and at most one action. The text is child 1:
+    /// the floating window's subtitle bar takes it from there.
+    fun statusLine(ui: Ui, tone: Tone, text: String, action: Pair<String, () -> Unit>? = null): LinearLayout = LinearLayout(ui.context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = ui.rounded(FILL, 10)
+        setPadding(ui.dp(12), ui.dp(7), ui.dp(if (action != null) 4 else 12), ui.dp(7))
+        minimumHeight = ui.dp(36)
+        addView(ui.dot(when (tone) { Tone.Waiting -> WAITING; Tone.NeedsYou -> Palette.link; Tone.Info -> Palette.tertiary }, 6))
+        addView(ui.text(text, 12f, Palette.secondary).apply { leading(1.4f) }, ui.weight().apply { leftMargin = ui.dp(8) })
+        if (action != null) addView(ui.tappable(ui.text(action.first, 12f, Palette.ink, bold = true, lines = 1).apply {
+            gravity = Gravity.CENTER
+            minHeight = ui.dp(36)
+            setPadding(ui.dp(8), 0, ui.dp(8), 0)
+        }, 8, onClick = action.second), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = ui.dp(4) })
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+
+    /// #C98A00, the Mac's waiting dot: AiCheckViews.warn is too dark to tell from the text at 6 dp.
+    private val WAITING = android.graphics.Color.parseColor("#C98A00")
 
     /// Where this meeting's notes stop: the time of the last line they cover.
     /// Who the banner names: a custom service by its address, which says more than 这个服务.
@@ -254,6 +283,7 @@ object NotesViews {
     /// `heard`: this meeting's lines so far, for the listening placeholder.
     fun notesBody(ui: Ui, notes: MeetingNotes, status: NotesEngine.State, listening: Boolean, compact: Boolean = false, heard: Int = 0): LinearLayout {
         val body = ui.stack(0)
+        notesTrouble(ui, notes, status, listening, actions = !compact)?.let { body.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) }) }
         // Listening and no request out yet (the first waits for a few lines or 20 s): the notes'
         // own shape, kept after the first line is heard (the Mac's notesPane).
         if (notes.isEmpty && listening && (status == NotesEngine.State.Idle || status == NotesEngine.State.Failed)) {
@@ -269,23 +299,12 @@ object NotesViews {
         if (notes.isEmpty) {
             val hint = when (status) {
                 NotesEngine.State.NoKey -> CicadaApp.shared.noKeyText()
-                NotesEngine.State.InvalidKey -> CicadaApp.shared.ling.provider.let { p ->
-                    if (p.id == "ling") L("这个 Ling key 无效，看看有没有复制全，或换一个新的")
-                    else cicada.Strings.LF("%@ 说这个 key 无效，可能没复制全，或已删除。", L(p.name))
-                }
-                NotesEngine.State.RateLimited -> LF("%@ 很忙，纪要稍后补上。字幕照常。", serviceLabel(CicadaApp.shared))
                 NotesEngine.State.Updating -> L("正在整理纪要…")
                 else -> ""
             }
             if (hint.isNotEmpty()) body.addView(ui.text(hint, 14f, Palette.secondary))
             return body
         }
-        // A busy service: the notes catch up by themselves, the subtitles never stopped.
-        if (status == NotesEngine.State.RateLimited && listening)
-            body.addView(ui.text(LF("%@ 很忙，纪要稍后补上。字幕照常。", serviceLabel(CicadaApp.shared)), 13f, AiCheckViews.warn).apply {
-                background = ui.rounded(AiCheckViews.warnPale, 10)
-                setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8))
-            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
         if (!compact) {
             val head = LinearLayout(ui.context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -316,6 +335,29 @@ object NotesViews {
             for (t in notes.todos) body.addView(todo(ui, t.text, t.owner), ui.lp(top = 8))
         }
         return body
+    }
+
+    /// What went wrong with the notes' own request, as a status line (the Mac's notes banner), or
+    /// null. What the live banner already says (the service unreachable, busy for the hearing too,
+    /// a key it can't use) isn't said twice. `actions`: 换 key opens the settings, so not from the
+    /// floating window.
+    private fun notesTrouble(ui: Ui, notes: MeetingNotes, status: NotesEngine.State, listening: Boolean, actions: Boolean): View? {
+        val app = CicadaApp.shared
+        val shown = app.listen.problemKind.takeIf { listening }
+        return when {
+            status == NotesEngine.State.InvalidKey && !(listening && app.ling.blocking != null) -> {
+                val stopped = currentLines(app).getOrNull(notes.covered - 1)?.t.takeIf { !notes.isEmpty }
+                statusLine(ui, Tone.NeedsYou, if (stopped != null) LF("key 失效了 · 纪要停在 %@", Languages.clock(stopped)) else L("key 失效了 · 纪要等新的 key"),
+                           if (actions) L("换 key") to { ui.context.startActivity(android.content.Intent(ui.context, AiServiceActivity::class.java)) } else null)
+            }
+            // A busy notes request is its own: the hearing goes on unless it is busy too (then the banner says so).
+            status == NotesEngine.State.RateLimited && (listening || notes.isEmpty) && shown != "busy" ->
+                statusLine(ui, Tone.Waiting, LF("%@ 很忙 · 纪要稍后补上，字幕照常", serviceLabel(app)))
+            // Nothing reached: the banner's 字幕和纪要等 … 恢复 covers this round too.
+            status == NotesEngine.State.Failed && listening && shown != "network" ->
+                statusLine(ui, Tone.Info, L("这轮纪要没写好 · 下轮自动补上"))
+            else -> null
+        }
     }
 
     /// The Mac's NotesListeningView: a quiet status row, then the notes' shape waiting to be
