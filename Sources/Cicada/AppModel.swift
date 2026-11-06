@@ -1814,6 +1814,9 @@ final class AppModel: ObservableObject {
                 try? png.write(to: URL(fileURLWithPath: arg))
             }
         case "mainShow": mainShow = arg
+        case "play":
+            // The shown record plays from <seconds>, as a click on a line's time does.
+            if let t = Double(arg) { NotificationCenter.default.post(name: .debugPlay, object: t) }
         case "mainWindow":
             // Place the records window, floating above other apps' panels while testing clicks (no arg: back to normal).
             guard let w = NSApp.windows.first(where: { $0.contentView is NSHostingView<MainWindowView> }) else { break }

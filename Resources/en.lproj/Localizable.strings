@@ -1232,3 +1232,6 @@
 "在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
 "打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
 "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";
+"找不到录音，没法播放" = "Can't find the recording to play";
+"会议结束后可以回放录音" = "The recording plays back once the meeting ends";
+"这场会议没存录音 ·" = "No recording of this meeting ·";

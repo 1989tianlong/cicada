@@ -812,6 +812,12 @@ struct MainWindowView: View {
 
     private var current: Session? { store.session(selection ?? store.sessions.first?.id) }
 
+    /// The shown record's audio: an imported file, or the meeting's own recording once it has ended.
+    private func loadPlayer() {
+        guard let s = current, s.id != store.liveID else { player.load(nil); return }
+        player.load(s, recording: s.hasAudio ? store.systemAudioURL(s.id) : nil)
+    }
+
     var body: some View {
         // One white sheet; the list sits on a faint tint instead of behind a rule. The listening
         // pill lives in the window's toolbar (`MainToolbar`). With no meetings yet, only the
@@ -837,7 +843,13 @@ struct MainWindowView: View {
             return true
         } isTargeted: { dropping = $0 }
         .overlay { if dropping { ImportDropOverlay() } }
-        .onChange(of: current?.id, initial: true) { _, _ in player.load(current) }
+        .onChange(of: current?.id, initial: true) { _, _ in loadPlayer() }
+        // A meeting that ends while it is shown, and its recording once it is rewrapped into an .m4a.
+        .onChange(of: store.liveID) { _, _ in loadPlayer() }
+        .onChange(of: store.audioFinished) { _, id in if id == current?.id { loadPlayer() } }
+        .onReceive(NotificationCenter.default.publisher(for: .debugPlay)) { n in
+            if let t = n.object as? Double { player.play(from: t) }
+        }
         .onChange(of: model.mainShow) { _, show in
             guard let parts = show?.split(separator: ",").map(String.init), let id = parts.first else { return }
             selection = id
@@ -1205,6 +1217,19 @@ struct MainWindowView: View {
                     if player.sessionID == s.id { RecordingPlayerBar(player: player) }
                 }
                 .padding(.top, 16)
+            } else if live {
+                if settings.recordAudio {
+                    Text("会议结束后可以回放录音").font(.system(size: 12)).foregroundStyle(Palette.tertiary).padding(.top, 10)
+                }
+            } else if player.sessionID == s.id {
+                RecordingPlayerBar(player: player).padding(.top, 16)
+            } else if !s.hasAudio, !s.lines.isEmpty {
+                HStack(spacing: 4) {
+                    Text("这场会议没存录音 ·").foregroundStyle(Palette.tertiary)
+                    Button(L("保存会议录音")) { model.openSettings(.records) }
+                        .buttonStyle(.plain).foregroundStyle(Palette.link)
+                }
+                .font(.system(size: 12)).padding(.top, 10)
             }
             tabsRow(s).padding(.top, 24)
         }
@@ -1296,8 +1321,10 @@ struct MainWindowView: View {
                     // In a meeting that heard the room and the Mac, a change of place starts a new run too.
                     let starts = SpeakerLabels.runStarts(s.lines, speakers).union(both ? RecordList.placeStarts(s.lines) : [])
                     let voices = SpeakerLabels.voiceNumbers(s.lines)
+                    let playingLine = player.lineID(in: s)
                     ForEach(s.lines) { l in
-                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty, place: both, in: s)
+                        lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty, place: both, in: s,
+                                current: l.id == playingLine)
                             .contextMenu { if !speakers.isEmpty, l.speaker == "them" { assignMenu(s, l, voices) } }
                             .id(l.id)
                     }
@@ -1318,6 +1345,10 @@ struct MainWindowView: View {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
+            // The transcript follows the recording while it plays.
+            .onChange(of: player.lineID(in: s)) { _, id in
+                if player.playing, let id { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+            }
             .onAppear {
                 if let t = jumpTo, let l = s.lines.first(where: { $0.t >= t - 1 }) { proxy.scrollTo(l.id, anchor: .top) }
                 jumpTo = nil
@@ -1325,14 +1356,15 @@ struct MainWindowView: View {
         }
     }
 
-    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false, place: Bool = false, in shownSession: Session? = nil) -> some View {
+    private func lineRow(_ l: TranscriptLine, speaker: Int? = nil, label: Bool = true, voices: Bool = false, place: Bool = false, in shownSession: Session? = nil, current: Bool = false) -> some View {
         let me = l.speaker == "me"
         return HStack(alignment: .top, spacing: 16) {
             if let shownSession, player.sessionID == shownSession.id, player.ready {
-                // An imported file plays from this line.
+                // The recording plays from this line.
                 Button { player.play(from: l.t) } label: {
                     Text(TranscriptExport.clock(l.t))
-                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.link)
+                        .font(.system(size: 12, weight: current ? .semibold : .regular).monospacedDigit())
+                        .foregroundStyle(current ? Palette.accent : Palette.link)
                         .frame(width: 52, alignment: .leading).padding(.top, 1).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).help(L("从这里播放"))
@@ -1376,6 +1408,8 @@ struct MainWindowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 12)
+        // The line the recording is playing.
+        .background(RoundedRectangle(cornerRadius: 10).fill(current ? Palette.accentPale : .clear).padding(.horizontal, -10))
     }
 }
 
@@ -1651,4 +1685,9 @@ struct LanguageNotice: View {
         case .other(nil): return nil
         }
     }
+}
+
+extension Notification.Name {
+    /// Debug `play:<seconds>`: the shown record plays from there.
+    static let debugPlay = Notification.Name("cicada.debugPlay")
 }
