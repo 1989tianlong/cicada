@@ -539,7 +539,7 @@ class NotesWindow(Gtk.Window):
         row = ui.vbox(2)
         top = ui.hbox(8)
         if l.speaker == "me":
-            top.pack_start(ui.text(L("你"), 11, "accent", bold=True, wrap=False, ellipsize=False), False, False, 0)
+            top.pack_start(ui.me_tag(), False, False, 0)
         elif l.id in nums:
             n = nums[l.id]
             top.pack_start(ui.text(speakers.label(n, names), 11, "spk%d" % ((n - 1) % 4 + 1), bold=True, wrap=False, ellipsize=False), False, False, 0)
@@ -805,8 +805,9 @@ class NotesWindow(Gtk.Window):
             return
         from ..core.support import TARGETS
         names = {c: n for n, c in TARGETS}
-        stage = {"hearing": L("正在听你说…"), "interpreting": L("正在翻译…"),
-                 "speaking": L("正在说") + " · " + names.get(sp.target, sp.target)}.get(sp.stage, L("同声传译"))
+        # Marked 同传 while on, as the Mac's live labels (theirs end in spaces for the text after them).
+        stage = {"hearing": L("同传 · 你在说…  ").rstrip(), "interpreting": L("同传 · 翻译中…  ").rstrip(),
+                 "speaking": L("同传") + " · " + L("正在说") + " · " + names.get(sp.target, sp.target)}.get(sp.stage, L("同声传译"))
         top = ui.hbox(8)
         mic = ui.icon("audio-input-microphone-symbolic", 14)
         ui.classes(mic, "accent" if sp.active else "secondary")
@@ -817,7 +818,7 @@ class NotesWindow(Gtk.Window):
             original, translation = sp.last
             if not self.subtitles:
                 box.pack_start(ui.text(LF("你说：%@", original), 11, "secondary", width_chars=34, lang=sp.source), False, False, 0)
-            box.pack_start(ui.text(LF("对方听到：%@", translation), 13 if not self.subtitles else 15, "ink", bold=True,
+            box.pack_start(ui.text(LF("线上听到：%@", translation), 13 if not self.subtitles else 15, "ink", bold=True,
                                    width_chars=34 if not self.subtitles else 70, lang=sp.target), False, False, 0)
         if sp.problem:
             box.pack_start(ui.text(sp.problem, 11, "warn", width_chars=34), False, False, 0)

@@ -59,7 +59,6 @@
 "没能建好知了麦克风" = "Couldn't set up the Cicada microphone";
 "停止说" = "Stop speaking";
 "开始说" = "Start speaking";
-"正在听你说…" = "Listening to you…";
 "知了 · 给会议的声音" = "Cicada · Voice for the meeting";
 "知了 麦克风" = "Cicada Microphone";
 "开始 / 停止说的快捷键" = "Start / stop speaking shortcut";
@@ -69,14 +68,15 @@
 "这种语言还没有可用的声音" = "No voice is available for this language yet";
 "对方在说话时说的，没有说出去" = "Said while they were talking, so not sent";
 "你说：%@" = "You said: %@";
-"对方听到：%@" = "They hear: %@";
+"线上听到：%@" = "People online hear: %@";
+"同声传译时说的，对方听到的是译文" = "Said while interpreting; they heard the translation";
 "戴着耳机" = "Wearing headphones";
 "和对方同时说的话也会传出去" = "What you say while they talk goes out too";
 "按声音标出说话人 1、2…，只在这台电脑上处理" = "Labels lines Speaker 1, 2… by voice, on this computer only";
 "这个版本缺少声纹组件，暂时用不了" = "This build lacks the voiceprint component, so this is unavailable";
 /* Onboarding and 结束会议 (canvas 知了 Linux · 补齐 Mac); the last two override the Mac's, which say Mac. */
 "接上 Ling" = "Connect Ling";
-"点一下“开始说”或按快捷键说%@，对方听到翻译后的语音。" = "Click “Start speaking” or press the shortcut and speak %@; they hear it translated.";
+"点一下“开始说”或按快捷键说%@，线上的人听到翻译后的语音。" = "Click “Start speaking” or press the shortcut and speak %@; people online hear it translated.";
 "约 1 分钟，会建一个“知了 麦克风”，不用装驱动" = "About a minute; adds a “Cicada Microphone”, no driver to install";
 "已建好" = "Ready";
 "已添加" = "Added";

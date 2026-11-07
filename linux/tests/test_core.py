@@ -1230,7 +1230,7 @@ class Speaking(Base):
             "# %s\n\n%s · 24 分钟\n\n" % (session_store.display_title(s), when) +
             "## 纪要\n\n定了周五。\n\n### 00:00 上线时间\n\n讨论日期\n\n- 周五\n\n**为什么推迟？**\n\n- 测试：还没跑完\n\n"
             "### 待办\n\n- [ ] 发说明（你）\n\n### 人名和术语\n\n- **Ling** 模型\n\n## 文字记录\n\n"
-            "**[00:01] 对方**  \nHi\n> 你好\n\n**[00:03] 你**  \n我们周五上线\n> We launch on Friday\n\n",
+            "**[00:01] 对方**  \nHi\n> 你好\n\n**[00:03] 你 · 同传**  \n我们周五上线\n> We launch on Friday\n\n",
             session_store.markdown(s))
         s.sourceFile = "call.m4a"
         self.assertIn("**[00:01]**  \nHi\n", session_store.markdown(s), "an imported file names nobody")

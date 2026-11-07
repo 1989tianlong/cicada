@@ -245,9 +245,10 @@ def label(number: int, shown: dict) -> str:
 
 
 def speaker_name(line, nums: dict, shown: dict) -> str:
-    """你, a speaker, 对方 (no voices told apart) or 未识别 (a voice not on show) (TranscriptExport.speakerName)."""
+    """你 · 同传 (said through 同声传译), a speaker, 对方 (no voices told apart) or 未识别 (a voice not on
+    show) (TranscriptExport.speakerName)."""
     if line.speaker == "me":
-        return strings.L("你")
+        return strings.L("你 · 同传")
     if line.id in nums:
         return label(nums[line.id], shown)
     return strings.L("对方") if not nums else strings.L("未识别")

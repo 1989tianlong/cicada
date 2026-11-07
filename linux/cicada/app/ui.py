@@ -160,6 +160,8 @@ button.iconbtn.on { background-color: #F3F4F6; color: #15171C; }
 .placetag { border-radius: 4px; border: 1px solid #E4E6EA; }
 .placetag.room { background-color: #F2F3F5; border-color: #F2F3F5; }
 .placetag label { color: #5A5F6B; }
+.metag { border-radius: 4px; border: 1px solid rgba(232,85,43,0.45); }
+.metag label { color: #B33A14; }
 .badge { background-color: #FDEEE8; border-radius: 5px; padding: 0 6px; color: #B33A14; }
 .softcard { background-color: #F5F6F8; border-radius: 12px; }
 .summarycard { background-color: #F5F6F8; border-radius: 12px; }
@@ -298,6 +300,7 @@ button.pillkeep label { color: #15171C; }
 .panel.dark .placetag { border-color: #44474F; }
 .panel.dark .placetag.room { background-color: #34363D; border-color: #34363D; }
 .panel.dark .placetag label { color: #A3A7B1; }
+.panel.dark .metag label { color: #F08A6C; }
 .panel.dark .link { color: #F08A6C; }
 .panel.dark .badge { background-color: rgba(232,85,43,0.18); color: #F08A6C; }
 .panel.dark button.iconbtn:hover { background-color: rgba(255,255,255,0.08); }
@@ -734,6 +737,22 @@ def place_tag(line) -> Gtk.Widget:
     c.set_valign(Gtk.Align.CENTER)
     c.set_tooltip_text(L("会议室的麦克风听到的") if room else L("电脑里放出来的"))
     return c
+
+
+def me_tag() -> Gtk.Widget:
+    """My own line (the Mac's MeTag): said through 同声传译, so what the other side heard was its
+    translation. 你 in the accent, then an outlined 同传 pill."""
+    pill = text(L("同传"), 10, "", wrap=False, ellipsize=False)
+    pad(pill, 1, 5)  # a margin: GTK 3 ignores CSS padding on an EventBox
+    p = panel(pill, "metag")
+    p.set_valign(Gtk.Align.CENTER)
+    box = hbox(5)
+    box.set_halign(Gtk.Align.START)  # the tooltip covers the tag, not the row
+    box.pack_start(text(L("你"), 11, "accent", bold=True, wrap=False, ellipsize=False), False, False, 0)
+    box.pack_start(p, False, False, 0)
+    # Linux turns it on and off (开始说, the shortcut), it has no key to hold: not the Mac's tooltip.
+    box.set_tooltip_text(L("同声传译时说的，对方听到的是译文"))
+    return box
 
 
 def chip(s: str, now: bool = False) -> Gtk.Widget:

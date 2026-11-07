@@ -693,8 +693,8 @@ class Onboarding(Gtk.Window):
         on = self.speak_setup if self.speak_setup is not None else app.settings.speakEnabled
         lang = dict((c, n) for n, c in TARGETS).get(app.settings.speak_from_code, app.settings.speak_from_code)
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
-        texts = ui.vbox(8, ui.text(L("开会时要说外语吗？"), 26, "heading", bold=True, width_chars=24),
-                        ui.text(LF("点一下“开始说”或按快捷键说%@，对方听到翻译后的语音。", lang), 14, "secondary", width_chars=50))
+        texts = ui.vbox(8, ui.text(L("线上开会时要说外语吗？"), 26, "heading", bold=True, width_chars=24),
+                        ui.text(LF("点一下“开始说”或按快捷键说%@，线上的人听到翻译后的语音。", lang), 14, "secondary", width_chars=50))
         head.pack_start(texts, True, True, 0)
         if on:
             head.pack_end(self._keycaps(), False, False, 0)

@@ -1090,9 +1090,11 @@ class RecordsWindow(Gtk.Window):
         return speakers.speaker_name(l, self._nums, self._shown), "secondary"
 
     def _speaker_label(self, l):
+        if l.speaker == "me":
+            return ui.me_tag()
         text, cls = self._who(l)
         lbl = ui.text(text, 11, cls, bold=True, wrap=False)
-        if l.speaker == "me" or not self._vnums:
+        if not self._vnums:
             return lbl
         # A click on whose line it is: say it was someone else's (这句是谁说的).
         b = Gtk.Button()
