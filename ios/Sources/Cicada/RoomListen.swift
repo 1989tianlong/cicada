@@ -29,6 +29,12 @@ final class RoomListen: ObservableObject {
 
     /// Every finished line, for the Live Activity.
     var onLine: ((Line) -> Void)?
+    /// A line was written or its words changed (a joined sentence): the word list's known
+    /// misheard forms are fixed at once (`LiveFixes.applyKnown`).
+    var onHeard: ((_ session: String, _ lineID: String) -> Void)?
+    /// Debug (`silentListen`): a meeting with no microphone and no recognizer, fed by `heard:`.
+    static var silent = false
+    private var silentClock = 0.0
     var onStateChange: (() -> Void)?
 
     private let store: SessionStore
@@ -88,6 +94,17 @@ final class RoomListen: ObservableObject {
         last = nil
         counter = 0
         speakers.reset()
+        if Self.silent {
+            let s = store.begin()
+            store.markLiveInRoom()
+            sessionID = s.id
+            startedAt = s.startedAt
+            notes.begin(s.id)
+            status = ""
+            debugLog("room: listening silent (debug), no audio, session=\(s.id)")
+            onStateChange?()
+            return
+        }
         guard await AVAudioApplication.requestRecordPermission() else {
             fail(L("请在设置里允许知了使用麦克风"))
             return
@@ -141,7 +158,7 @@ final class RoomListen: ObservableObject {
     func stop() {
         guard isRunning else { return }
         isRunning = false
-        audio.stop()
+        if !Self.silent { audio.stop() }
         let stream = self.stream, reader = self.reader
         self.stream = nil
         self.reader = nil
@@ -182,6 +199,7 @@ final class RoomListen: ObservableObject {
             last = (prev.id, joined, piece.end)
             store.setSource(lineID: prev.id, joined)
             if let i = lines.firstIndex(where: { $0.id == prev.id }) { lines[i].src = joined }
+            if let sid = sessionID { onHeard?(sid, prev.id) }
             translate(prev.id, joined)
             return
         }
@@ -192,12 +210,23 @@ final class RoomListen: ObservableObject {
         store.append(TranscriptLine(id: id, t: t, speaker: "them", src: final, dst: nil,
                                     srcLang: lang.code, dstLang: target))
         lines.append(Line(id: id, src: final, dst: nil, voice: nil, t: t))
+        if let sid = sessionID { onHeard?(sid, id) }
         if lines.count > 60 { lines.removeFirst(lines.count - 60) }
         last = (id, final, piece.end)
         if let samples = audio.voiceSamples(from: piece.start, to: piece.end) {
             speakers.tag(lineID: id, samples: samples)
         }
         translate(id, final)
+    }
+
+    /// Debug (`heard:<text>`): a finished sentence as if the recognizer gave it, in a silent meeting.
+    /// The record, its translation and fixes, and the 字幕 page all follow.
+    func debugHeard(_ text: String) {
+        guard isRunning, Self.silent, sessionID != nil else { return }
+        // Half a minute apart, so two lines are never joined as one sentence a pause cut.
+        silentClock += 30
+        let at = silentClock
+        handle(Recognition.Piece(text: text, isFinal: true, start: at, end: at + 2, confidence: nil))
     }
 
     /// `retry`: every provider failed before (Ling busy while Google answers 429): asked again a

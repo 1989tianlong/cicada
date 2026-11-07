@@ -369,3 +369,5 @@ func debugLog(_ message: String) {
 func contentLog(_ message: @autoclosure () -> String) {
     if UserDefaults.standard.bool(forKey: "debug") { debugLog(message()) }
 }
+
+extension AppSettings: FixSwitches {}

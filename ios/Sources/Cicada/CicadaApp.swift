@@ -31,6 +31,9 @@ enum Pref {
     static let voices = "speakerVoices"
     /// 纪要语言: "mine" (the language meetings are translated into) or "source" (the meeting's own).
     static let notesLanguage = "notesLanguage"
+    /// 会中改正听错的词, and 没见过的名字和专称先问我.
+    static let fixMisheard = "fixMisheard"
+    static let askNames = "askNames"
 
     /// 对方说 on iOS: one language the user picks (detecting it comes later); the Mac's "auto" reads as English.
     static var sourceLang: Lang {
@@ -57,6 +60,13 @@ enum Pref {
     }
 }
 
+/// 改正听错的词's two switches, by the Mac's names (AppSettings).
+@MainActor
+final class FixPrefs: FixSwitches {
+    var fixMisheard: Bool { UserDefaults.standard.bool(forKey: Pref.fixMisheard) }
+    var askNames: Bool { UserDefaults.standard.bool(forKey: Pref.askNames) }
+}
+
 /// Wires the shared engines to the screens, like the Mac's AppModel. M1: the records, the key and
 /// their notes.
 @MainActor
@@ -72,6 +82,9 @@ final class AppModel: ObservableObject {
         return r
     }()
     let liveActivity = LiveActivityController()
+    /// 词表 and 改正听错的词, the Mac's own engines.
+    let vocabulary = Vocabulary(url: Vocabulary.defaultURL)
+    lazy var fixes = makeFixes()
     /// 正在听's 字幕 / 纪要 switch, so a debug command can flip it.
     @Published var livePage: LivePage = .subtitles
     /// The record page's picked speaker (scheme A: only they are drawn in ink).
@@ -95,7 +108,8 @@ final class AppModel: ObservableObject {
     @Published var devWindow: CGSize?
 
     init() {
-        UserDefaults.standard.register(defaults: [Pref.source: "en-US", Pref.voices: true, Pref.model: LingClient.models[0], Pref.notesLanguage: "mine"])
+        UserDefaults.standard.register(defaults: [Pref.source: "en-US", Pref.voices: true, Pref.model: LingClient.models[0], Pref.notesLanguage: "mine",
+                                                  Pref.fixMisheard: true, Pref.askNames: true])
         TranscriptExport.voices = UserDefaults.standard.bool(forKey: Pref.voices)
         // Ling only for now: the Mac's other services (AIProvider) come to iOS with their settings.
         ling.config = {
@@ -103,6 +117,7 @@ final class AppModel: ObservableObject {
                      textModel: UserDefaults.standard.string(forKey: Pref.model) ?? LingClient.models[0])
         }
         wireNotes()
+        wireFixes()
         #if targetEnvironment(simulator)
         HostRecognizer.install()
         #endif
@@ -118,13 +133,14 @@ final class AppModel: ObservableObject {
         selection = nil
         searchPath = []
         tab = .records
+        fixes.meetingStarted()
         room.start(source: Pref.sourceLang.locale, target: Pref.targetCode, voices: UserDefaults.standard.bool(forKey: Pref.voices))
     }
 
     func stopListening() { room.stop() }
 
     /// The Live Activity shows the line as fixed (改正听错的词), like the 字幕 page.
-    private func showOnLockScreen(_ line: RoomListen.Line) {
+    func showOnLockScreen(_ line: RoomListen.Line) {
         var shown = line
         if let rec = store.session(room.sessionID)?.lines.first(where: { $0.id == line.id }) { shown.src = rec.shown }
         liveActivity.update(line: shown)
@@ -144,6 +160,26 @@ final class AppModel: ObservableObject {
         guard ling.hasKey else { return }
         recordPage = .notes
         notes.generate(for: id)
+    }
+
+    /// Each finished sentence's translation also asks which words were misheard (Ling only); the
+    /// word list's known forms are fixed as soon as a line is written. As the Mac's AppModel.
+    func wireFixes() {
+        translator.fixContext = { [weak self] text in self?.fixes.context(for: text) }
+        translator.onFixes = { [weak self] text, edits in self?.fixes.received(text, edits) }
+        room.onHeard = { [weak self] session, line in self?.fixes.applyKnown(lineID: line, in: session) }
+    }
+
+    func makeFixes() -> LiveFixes {
+        let f = LiveFixes(store: store, vocabulary: vocabulary, settings: FixPrefs())
+        f.onChange = { [weak self] in self?.objectWillChange.send() }
+        // The lock screen follows a fix on the line it shows.
+        f.onLineFixed = { [weak self] session, line in
+            guard let self, session == self.room.sessionID, let last = self.room.lines.last, last.id == line.id else { return }
+            self.showOnLockScreen(last)
+        }
+        vocabulary.onChange = { [weak self] in self?.objectWillChange.send() }
+        return f
     }
 
     func wireNotes() {

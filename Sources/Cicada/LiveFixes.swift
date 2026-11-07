@@ -1,5 +1,14 @@
 import Foundation
 
+/// The two switches 改正听错的词 reads: the Mac's `AppSettings`, the iOS app's own preferences.
+@MainActor
+protocol FixSwitches: AnyObject {
+    /// 会中改正听错的词.
+    var fixMisheard: Bool { get }
+    /// 没见过的名字和专称先问我.
+    var askNames: Bool { get }
+}
+
 /// 改正听错的词, between the translation chain and the records: which fixes a line takes, which wait
 /// for the user (待确认), and what the user's answers and edits teach the word list. Who wins: the
 /// user's own decisions, then the word list, then the recheck, then the first live guess. UI-free;
@@ -8,7 +17,7 @@ import Foundation
 final class LiveFixes: ObservableObject {
     let store: SessionStore
     let vocabulary: Vocabulary
-    let settings: AppSettings
+    let settings: FixSwitches
     /// The line changed: the app refreshes the subtitle bar if it is still showing it.
     var onLineFixed: ((_ session: String, _ line: TranscriptLine) -> Void)?
     var onChange: (() -> Void)?
@@ -31,7 +40,7 @@ final class LiveFixes: ObservableObject {
     /// The card asks about at most this many names in a row; the rest wait for after the meeting.
     static let askAtOnce = 3
 
-    init(store: SessionStore, vocabulary: Vocabulary, settings: AppSettings) {
+    init(store: SessionStore, vocabulary: Vocabulary, settings: FixSwitches) {
         self.store = store
         self.vocabulary = vocabulary
         self.settings = settings

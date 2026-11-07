@@ -11,6 +11,8 @@ Sources/Cicada/Localization.swift
 Sources/Cicada/Voices.swift
 Sources/Cicada/SessionStore.swift
 Sources/Cicada/Correction.swift
+Sources/Cicada/Vocabulary.swift
+Sources/Cicada/LiveFixes.swift
 Sources/Cicada/SpeakerID.swift
 Sources/Cicada/AudioFiles.swift
 Sources/Cicada/Translator.swift
