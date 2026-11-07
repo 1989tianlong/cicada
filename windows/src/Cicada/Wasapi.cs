@@ -314,16 +314,17 @@ sealed class DeviceSpeaker : ISpeechSink
                 {
                     lock (queue) { if (queue.Count > 0) { pending = queue.Dequeue(); offset = 0; } }
                 }
+                // Half a sample left over can't be played: without this the loop spun on it forever,
+                // End never returned and the talk key stayed on 正在说给对方听….
+                if (pending.Length - offset == 1) offset = pending.Length;
                 if (offset < pending.Length && room > 0)
                 {
                     int frames = Math.Min(room, (pending.Length - offset) / 2);
-                    if (frames > 0 && render.GetBuffer((uint)frames, out var data) == 0)
-                    {
-                        Marshal.Copy(pending, offset, data, frames * 2);
-                        render.ReleaseBuffer((uint)frames, 0);
-                        offset += frames * 2;
-                        if (!started) { Marshal.ThrowExceptionForHR(client.Start()); started = true; }
-                    }
+                    if (render.GetBuffer((uint)frames, out var data) != 0) { Thread.Sleep(10); continue; }
+                    Marshal.Copy(pending, offset, data, frames * 2);
+                    render.ReleaseBuffer((uint)frames, 0);
+                    offset += frames * 2;
+                    if (!started) { Marshal.ThrowExceptionForHR(client.Start()); started = true; }
                     continue;
                 }
                 bool empty; lock (queue) empty = queue.Count == 0;

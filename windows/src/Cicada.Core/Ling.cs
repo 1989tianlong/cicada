@@ -664,16 +664,25 @@ public sealed class LingClient
             }
             else
             {
-                // Raw PCM: handed on in 0.1 s pieces at 24 kHz, so playback starts early.
+                // Raw PCM: handed on in 0.1 s pieces at 24 kHz, so playback starts early. A read can
+                // end mid-sample (OpenRouter's does): the odd byte waits for the next read, or every
+                // sample after it would be split across two pieces.
                 var buffer = new byte[4800];
+                int held = 0;
                 while (true)
                 {
                     int n;
-                    try { n = await stream.ReadAsync(buffer, cts.Token); }
+                    try { n = await stream.ReadAsync(buffer.AsMemory(held), cts.Token); }
                     catch (OperationCanceledException) when (!cancel.IsCancellationRequested) { throw new LingException(LingException.Kind.Timeout); }
                     if (n == 0) break;
+                    n += held;
+                    var even = n & ~1;
+                    held = n - even;
+                    if (even == 0) continue;
                     if (chunks++ == 0) Log.Debug($"ai {c.Provider.Id}: Speak first audio {(int)(DateTime.UtcNow - started).TotalMilliseconds} ms");
-                    yield return buffer[..n];
+                    var piece = buffer[..even];
+                    if (held > 0) buffer[0] = buffer[even];
+                    yield return piece;
                 }
             }
         }
