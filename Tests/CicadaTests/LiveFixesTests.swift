@@ -83,4 +83,13 @@ import Testing
         fx.received("但质压这种", [.init(from: "质压", to: "质押", confidence: 0.9)])
         #expect(line(store, id, "l0").shown == "但质压这种")
     }
+
+    @Test func yesFixesTheRestOfTheMeetingAtOnce() {
+        let (fx, store, id) = setup(["最近那个开布特提了", "开布特那边也说了"])
+        fx.received("最近那个开布特提了", [.init(from: "开布特", to: "Curve", confidence: 0.9)])
+        fx.answer(fx.pending(in: id)[0].fix, yes: true, in: id)
+        #expect(line(store, id, "l1").shown == "Curve那边也说了")
+        fx.undo()
+        #expect(line(store, id, "l1").shown == "开布特那边也说了")
+    }
 }

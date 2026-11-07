@@ -164,7 +164,8 @@ final class LiveFixes: ObservableObject {
         let c = Correction.core(fix.from, fix.to)
         guard let s = store.session(id) else { return }
         let touched = s.lines.filter { ($0.fixes ?? []).contains { $0.ask == true && Correction.core($0.from, $0.to) == c } }
-        remember(id, lines: touched.map(\.id))
+        let others = yes ? s.lines.filter { $0.src.contains(c.from) && !touched.contains($0) } : []
+        remember(id, lines: (touched + others).map(\.id))
         for l in touched {
             var fixes = l.fixes ?? []
             for k in fixes.indices where fixes[k].ask == true && Correction.core(fixes[k].from, fixes[k].to) == c {
@@ -173,7 +174,13 @@ final class LiveFixes: ObservableObject {
             }
             set(fixes, line: l.id, in: id)
         }
-        if yes { vocabulary.confirm(heard: c.from, word: c.to) } else { refused.insert(Self.pair(c.from, c.to)) }
+        if yes {
+            vocabulary.confirm(heard: c.from, word: c.to)
+            // The rest of the meeting heard the same way follows now, not with the next line.
+            for l in others { applyKnown(lineID: l.id, in: id) }
+        } else {
+            refused.insert(Self.pair(c.from, c.to))
+        }
         debugLog("fix answered \(yes ? "yes" : "no")")
         say(yes ? L("已改 \(c.from) → \(c.to)，记进词表") : L("这场不再问 \(c.from)"))
     }
