@@ -46,6 +46,13 @@ def core(frm: str, to: str) -> tuple:
     return a[i:len(a) - j], b[i:len(b) - j]
 
 
+
+def label(f) -> tuple:
+    """A fix as the UI names it (听成 X → Y, 已改回 X): the changed words, or the whole fix when it
+    only adds or drops words ("in" → "in now", whose changed part alone would be "" → "now")."""
+    cf, ct = core(f.from_, f.to)
+    return (f.from_, f.to) if not cf or not ct else (cf, ct)
+
 def apply(fixes: list, src: str) -> tuple:
     """The line as shown: each applied fix replaces its words where they still are. The marks are the
     replaced words as (start, end) character offsets into the text, for the underline."""

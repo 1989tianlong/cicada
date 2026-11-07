@@ -550,10 +550,10 @@ def fixed(line, size: int = 13, cls: str = "ink", terms: list = (), current: boo
 
 def fixed_words(items, on_revert) -> Gtk.Widget:
     """Under a line: each fixed word, what it was heard as, and 改回. `items`: [(line id, fix)]."""
-    from ..core.correction import core
+    from ..core.correction import label
     w = Wrap(6)
     for line_id, f in items:
-        cf, ct = core(f.from_, f.to)
+        cf, ct = label(f)
         row = hbox(6)
         lab = Gtk.Label()
         lab.set_markup('<span size="%d"><span foreground="#6B7080">%s</span> %s <span foreground="#6B7080">→</span> %s</span>'

@@ -1456,9 +1456,9 @@ class RecordsWindow(Gtk.Window):
         self._banner_key = key
         ui.clear(box)
         if waiting:
-            from ..core.correction import core
+            from ..core.correction import label
             line, fix = waiting[0]
-            cf, ct = core(fix.from_, fix.to)
+            cf, ct = label(fix)
             left = ui.vbox(2)
             left.pack_start(ui.text(LF("改了 %lld 处听错的词，%lld 处等你确认", fixed, len(waiting)), 13, "ink", bold=True, width_chars=40),
                             False, False, 0)

@@ -221,7 +221,7 @@ class LiveFixes:
             if n >= 2:
                 self.vocabulary.forget(c[0], c[1])
         Log.d("fix reverted line=%s" % line_id)
-        self._say(LF("已改回 %@，这场不再改", c[0]))
+        self._say(LF("已改回 %@，这场不再改", correction.label(fix)[0]))
 
     # 改这句…
 
@@ -314,7 +314,7 @@ def fixed_words(lines: list) -> list:
     for l in lines:
         for f in l.fixes or []:
             if f.applied:
-                cf, ct = correction.core(f.from_, f.to)
+                cf, ct = correction.label(f)
                 word = ct.strip()
                 heard, n = out.get(word, ([], 0))
                 if cf not in heard:

@@ -616,8 +616,8 @@ class NotesWindow(Gtk.Window):
             c.show_all()
 
     def _fix_card(self, sid, line, fix, _position, of) -> Gtk.Widget:
-        from ..core.correction import core
-        cf, ct = core(fix.from_, fix.to)
+        from ..core.correction import label
+        cf, ct = label(fix)
         fx = self.app.fixes
         head = ui.hbox(8)
         head.pack_start(ui.text(L("这样改对吗？"), 13, "ink", bold=True, wrap=False, ellipsize=False), False, False, 0)

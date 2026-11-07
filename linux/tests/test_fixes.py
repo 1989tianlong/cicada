@@ -187,6 +187,11 @@ class Correction(unittest.TestCase):
         self.assertEqual(correction.user_edit("我木娜找了一个", "我在 Monad 找了一个", "我木娜找了一个", [])[1], "木娜")
         self.assertIsNone(correction.user_edit("a", " a ", "a", []))
 
+    def test_label_names_an_added_word_whole(self):
+        self.assertEqual(correction.label(LineFix("in", "in now", user=True)), ("in", "in now"))
+        self.assertEqual(correction.label(LineFix("Great", "OK Great", user=True)), ("Great", "OK Great"))
+        self.assertEqual(correction.label(LineFix("解除质压", "解除质押")), ("质压", "质押"))
+
     def test_added_word_stays_on_its_line_and_never_matches_punctuation(self):
         # "now" added before the full stop: the fix is the last word, unique in the line, not ".".
         line = "Great, let's lock that in."
@@ -353,6 +358,8 @@ class Live(Base):
         self.assertEqual(store.line(sid, "l2").shown, "Fine.")
         self.assertEqual(fx.vocabulary.terms, [])
         self.assertEqual(fx.toast_text(), "已改 1 处：in → in now")
+        fx.revert(store.line(sid, "l0").fixes[-1], "l0", sid)
+        self.assertEqual(fx.toast_text(), "已改回 in，这场不再改")
 
     def test_one_off_edit_does_not_teach_the_list(self):
         fx, store, sid = self.setup(["我木娜找了一个", "木娜那边也有"])
