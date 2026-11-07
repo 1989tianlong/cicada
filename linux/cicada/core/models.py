@@ -42,20 +42,60 @@ class TranscriptLine:
     dstLang: str = ""
     voice: int | None = None  # experimental voice id on the Mac; Linux doesn't tell voices apart
     via: str | None = None  # 电脑和会议室: "room" when the room mic heard it; absent for the computer's audio
+    # Words the AI service fixed (correction.py); `src` stays what was heard. None when there are none.
+    fixes: list | None = None
 
     def copy(self) -> "TranscriptLine":
-        return TranscriptLine(self.id, self.t, self.speaker, self.src, self.dst, self.srcLang, self.dstLang, self.voice, self.via)
+        return TranscriptLine(self.id, self.t, self.speaker, self.src, self.dst, self.srcLang, self.dstLang, self.voice, self.via,
+                              [f.copy() for f in self.fixes] if self.fixes is not None else None)
+
+    @property
+    def shown(self) -> str:
+        """What the line says once its fixes are in: shown, searched, exported and read by the notes."""
+        if not self.fixes:
+            return self.src
+        from .correction import apply
+        return apply(self.fixes, self.src)[0]
 
     def to_json(self) -> dict:
         return {"id": self.id, "t": self.t, "speaker": self.speaker, "src": self.src, "dst": self.dst,
-                "srcLang": self.srcLang, "dstLang": self.dstLang, "voice": self.voice, "via": self.via}
+                "srcLang": self.srcLang, "dstLang": self.dstLang, "voice": self.voice, "via": self.via,
+                "fixes": [f.to_json() for f in self.fixes] if self.fixes else None}
 
     @staticmethod
     def from_json(o: dict) -> "TranscriptLine":
         return TranscriptLine(id=string(o.get("id")) or "", t=_num(o.get("t"), 0.0), speaker=string(o.get("speaker")) or "them",
                               src=string(o.get("src")) or "", dst=string(o.get("dst")), srcLang=string(o.get("srcLang")) or "",
                               dstLang=string(o.get("dstLang")) or "", voice=integer(o.get("voice")),
-                              via=string(o.get("via")))
+                              via=string(o.get("via")),
+                              fixes=[LineFix.from_json(f) for f in arr(o.get("fixes")) if isinstance(f, dict)] or None)
+
+
+@dataclass
+class LineFix:
+    """A word the AI service said speech recognition got wrong in a finished line ("莫拉" → "Morpho"),
+    the Mac's LineFix (Correction.swift). The line keeps what was heard, so a reader that doesn't know
+    fixes still shows the heard text; a fix whose words are no longer in the line is skipped."""
+    from_: str = ""
+    to: str = ""
+    ask: bool | None = None  # waiting for the user (a name sound can't check): not applied until confirmed
+    off: bool | None = None  # the user said no (改回 or 不对): kept so the line isn't fixed that way again
+    user: bool | None = None  # the user's own: said 对, or wrote it (改这句…); no later pass drops it
+
+    @property
+    def applied(self) -> bool:
+        return self.ask is not True and self.off is not True
+
+    def copy(self) -> "LineFix":
+        return LineFix(self.from_, self.to, self.ask, self.off, self.user)
+
+    def to_json(self) -> dict:
+        return {"from": self.from_, "to": self.to, "ask": self.ask, "off": self.off, "user": self.user}
+
+    @staticmethod
+    def from_json(o: dict) -> "LineFix":
+        return LineFix(string(o.get("from")) or "", string(o.get("to")) or "", boolean(o.get("ask")),
+                       boolean(o.get("off")), boolean(o.get("user")))
 
 
 def _num(v, fallback):

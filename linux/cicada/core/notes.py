@@ -396,7 +396,7 @@ def prompt(notes: MeetingNotes, lines: list, frm: int, language: str, final: boo
         # A named voice goes as its name: notes then say "George" rather than "说话人2".
         who = "你" if l.speaker == "me" else (
             (names.get(nums[l.id]) or "说话人%d" % nums[l.id]) if l.id in nums else ("对方" if not nums else "未识别"))
-        return "[L%d %s %s] %s" % (i + 1, clock(l.t), who, l.src)
+        return "[L%d %s %s] %s" % (i + 1, clock(l.t), who, l.shown)
     current = "{}" if notes.is_empty else _compact_json(notes, frozen)
     context = max(0, frm - 2)
     if part is not None:

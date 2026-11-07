@@ -354,7 +354,7 @@ class RecordsWindow(Gtk.Window):
             if s.id == self.pending_delete:
                 continue
             if q and q not in session_store.display_title(s).lower() and not any(
-                    q in l.src.lower() or q in (l.dst or "").lower() for l in s.lines):
+                    q in l.shown.lower() or q in (l.dst or "").lower() for l in s.lines):
                 continue
             out.append(s)
         return out
@@ -462,7 +462,7 @@ class RecordsWindow(Gtk.Window):
         # bar keeps the transcript's language choice too).
         trans = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         trans.pack_start(self._section_title("%s %d" % (L("文字记录"), len(s.lines))), True, True, 0)
-        if any(l.dst and l.dst != l.src for l in s.lines):
+        if any(l.dst and l.dst != l.shown for l in s.lines):
             def mode(v):
                 self.mode = v
                 self.show_detail()
@@ -1044,7 +1044,7 @@ class RecordsWindow(Gtk.Window):
         def mode(v):
             self.mode = v
             self.show_detail()
-        has_dst = any(l.dst and l.dst != l.src for l in s.lines)
+        has_dst = any(l.dst and l.dst != l.shown for l in s.lines)
         if has_dst:
             head.pack_end(ui.segmented([("both", L("双语")), ("dst", L("只看译文"))], self.mode, mode), False, False, 0)
         col.pack_start(head, False, False, 0)
@@ -1078,7 +1078,7 @@ class RecordsWindow(Gtk.Window):
                 roommic.heard_both(s.lines))
 
     def _row_key(self, l, start):
-        return (l.id, l.src, l.dst, l.voice, start)
+        return (l.id, l.shown, l.dst, l.voice, start)
 
     def _who(self, l):
         """The label at a change of speaker, and its colour class."""
@@ -1264,11 +1264,11 @@ class RecordsWindow(Gtk.Window):
             if self._places and l.speaker != "me":
                 label = ui.hbox(6, label, ui.place_tag(l))
             texts.pack_start(label, False, False, 0)
-        translated = l.dst and l.dst != l.src
-        texts.pack_start(ui.text(l.dst if translated else l.src, 13, "ink", selectable=True, width_chars=46,
+        translated = l.dst and l.dst != l.shown
+        texts.pack_start(ui.text(l.dst if translated else l.shown, 13, "ink", selectable=True, width_chars=46,
                                  lang=l.dstLang if translated else l.srcLang), False, False, 0)
         if translated and self.mode == "both":
-            texts.pack_start(ui.text(l.src, 12, "tertiary", selectable=True, width_chars=46, lang=l.srcLang), False, False, 0)
+            texts.pack_start(ui.text(l.shown, 12, "tertiary", selectable=True, width_chars=46, lang=l.srcLang), False, False, 0)
         row.pack_start(texts, True, True, 0)
         ui.pad(row, 9, 0, 9, 0)
         panel = ui.panel(row, "transcript-row")

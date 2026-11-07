@@ -468,7 +468,7 @@ class NotesWindow(Gtk.Window):
         low = [t.lower() for t in terms]
 
         def hit(l):
-            return any(t in l.src.lower() or t in (l.dst or "").lower() for t in low)
+            return any(t in l.shown.lower() or t in (l.dst or "").lower() for t in low)
         self.matches = [l.id for l in lines if hit(l)] if terms else []
         if self.matches:
             self.match_index %= len(self.matches)
@@ -547,9 +547,9 @@ class NotesWindow(Gtk.Window):
             top.pack_start(ui.place_tag(l), False, False, 0)
         top.pack_start(ui.text(clock(l.t), 11, "tertiary", wrap=False, ellipsize=False), False, False, 0)
         row.pack_start(top, False, False, 0)
-        if l.dst and l.dst != l.src:
-            row.pack_start(ui.marked(l.src, terms, 12, "secondary", current, lang=l.srcLang), False, False, 0)
-        row.pack_start(ui.marked(l.dst or l.src, terms, 13, "ink", current, lang=l.dstLang if l.dst else l.srcLang), False, False, 0)
+        if l.dst and l.dst != l.shown:
+            row.pack_start(ui.marked(l.shown, terms, 12, "secondary", current, lang=l.srcLang), False, False, 0)
+        row.pack_start(ui.marked(l.dst or l.shown, terms, 13, "ink", current, lang=l.dstLang if l.dst else l.srcLang), False, False, 0)
         return row
 
     # Ending by itself
@@ -779,10 +779,10 @@ class NotesWindow(Gtk.Window):
                     n = nums[line.id]
                     box.pack_start(ui.text(speakers.label(n, speakers.names(session)), 11, "spk%d" % ((n - 1) % 4 + 1),
                                            bold=True, wrap=False), False, False, 0)
-            if line.dst and line.dst != line.src:
-                box.pack_start(ui.text(line.src, 13 if self.subtitles else 12, "secondary",
+            if line.dst and line.dst != line.shown:
+                box.pack_start(ui.text(line.shown, 13 if self.subtitles else 12, "secondary",
                                        wrap=not self.subtitles, width_chars=60, lang=line.srcLang), False, False, 0)
-            box.pack_start(ui.text(line.dst or line.src, big, "ink", bold=True, width_chars=60 if self.subtitles else 30,
+            box.pack_start(ui.text(line.dst or line.shown, big, "ink", bold=True, width_chars=60 if self.subtitles else 30,
                                    lang=line.dstLang if line.dst else line.srcLang), False, False, 0)
             if not self.subtitles and (listen.pending > 0 or kind == "busy"):
                 foot = ui.hbox(6)

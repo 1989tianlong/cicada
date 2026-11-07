@@ -653,12 +653,12 @@ class Onboarding(Gtk.Window):
         playing = listen.listening and listen.source_kind == "file"
         ui.clear(self.stage)
         if line is not None:
-            if line.dst and line.dst != line.src:
-                src = ui.text(line.src, 12, "stage-dim", width_chars=60, lang=line.srcLang)
+            if line.dst and line.dst != line.shown:
+                src = ui.text(line.shown, 12, "stage-dim", width_chars=60, lang=line.srcLang)
                 src.set_justify(Gtk.Justification.CENTER)
                 src.set_xalign(0.5)
                 self.stage.pack_start(src, False, False, 0)
-            dst = ui.text(line.dst or line.src, 17, "stage-ink", bold=True, width_chars=50, lang=line.dstLang)
+            dst = ui.text(line.dst or line.shown, 17, "stage-ink", bold=True, width_chars=50, lang=line.dstLang)
             dst.set_justify(Gtk.Justification.CENTER)
             dst.set_xalign(0.5)
             self.stage.pack_start(dst, False, False, 0)

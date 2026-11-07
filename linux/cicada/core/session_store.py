@@ -119,6 +119,8 @@ class SessionStore:
                     # Whose line it is stays as stored: a joined half sentence keeps the earlier
                     # line's voice, and the user's 这句是谁说的 isn't undone by a retranslation.
                     line.voice = l.voice
+                    # Its fixes too (改正听错的词): the engine's copy of a line never carries them.
+                    line.fixes = l.fixes
                     if len(line.src) > len(l.src):
                         grew.append(True)  # a half sentence joined: new words, not a retranslation
                     s.lines[i] = line
@@ -416,8 +418,8 @@ def markdown(s: Session, voices: bool = False) -> str:
     for l in s.lines:
         # An imported file has no "other side" to name.
         who = (" " + speakers.speaker_name(l, nums, shown)) if s.sourceFile is None else ""
-        out.append("**[%s]%s**  \n%s\n" % (clock(l.t), who, l.src))
-        if l.dst and l.dst != l.src:
+        out.append("**[%s]%s**  \n%s\n" % (clock(l.t), who, l.shown))
+        if l.dst and l.dst != l.shown:
             out.append("> %s\n" % l.dst)
         out.append("\n")
     return "".join(out)
