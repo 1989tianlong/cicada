@@ -213,7 +213,10 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
         val learned = keep && everywhere && Vocabulary.learnable(heard, word) != null
         if (learned) vocabulary.confirm(heard, word, "user")
         Log.d("fix edited lines=${targets.size} learned=$learned")
-        say(if (learned) Strings.LF("已改 %lld 处：%@ → %@，记进词表", targets.size, heard, word) else Strings.LF("已改 %lld 处：%@ → %@", targets.size, heard, word))
+        // A swap reads as the words swapped; an added or dropped word as the span it changed
+        // ("in → in now", not "in → now").
+        val (a, b) = if (e.swap) heard to word else fix.from to fix.to
+        say(if (learned) Strings.LF("已改 %lld 处：%@ → %@，记进词表", targets.size, a, b) else Strings.LF("已改 %lld 处：%@ → %@", targets.size, a, b))
         return targets.size
     }
 

@@ -285,6 +285,13 @@ object FixTests {
         equal("OK我来看一下", t.line("l0").shown, "the edit applies")
         equal("我来吧", t.line("l1").shown, "and stays on its line")
         check(t.fx.vocabulary.terms.isEmpty(), "not taught")
+        equal("已改 1 处：我 → OK我", t.fx.toastNow()?.text, "the toast shows the span the added word changed")
+        val u = setup("lock that in.")
+        u.fx.edit("l0", u.id, "lock that in now.", everywhere = true, keep = true)
+        equal("已改 1 处：in → in now", u.fx.toastNow()?.text, "an added word at the end")
+        val s = setup("我木娜找了")
+        s.fx.edit("l0", s.id, "我Monad找了", everywhere = true, keep = true)
+        equal("已改 1 处：木娜 → Monad，记进词表", s.fx.toastNow()?.text, "a swap reads as the words swapped")
     }
 
     fun addedWordStaysOnItsLineAndNeverMatchesPunctuation() {
