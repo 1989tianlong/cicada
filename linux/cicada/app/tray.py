@@ -143,7 +143,7 @@ class Tray:
         s = self.app.store.get(self.app.listen.session_id) if self.app.listen.session_id else None
         if s is None:
             return ""
-        return "%s · %d %s" % (session_store.display_title(s), len(s.lines), L("句"))
+        return LF("%@ · %lld 句", session_store.display_title(s), len(s.lines))
 
     def tick(self) -> None:
         """Once a second while listening: the clock in the top bar and the menu's header."""

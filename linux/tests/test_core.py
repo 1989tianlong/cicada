@@ -841,6 +841,24 @@ class Notes(Base):
 
 
 class Strings(Base):
+    def test_plurals_from_the_macs_stringsdict(self):
+        res = [os.path.join(REPO, "Resources"), os.path.join(REPO, "linux", "strings")]
+        try:
+            strings.load("en", res)
+            self.assertEqual("1 line", strings.LF("%lld 句", 1))
+            self.assertEqual("2 lines", strings.LF("%lld 句", 2))
+            self.assertEqual("0 lines", strings.LF("%lld 句", 0))
+            self.assertEqual("Heard 1 line", strings.LF("已听到 %lld 句", 1))
+            self.assertEqual("Standup · 1 line", strings.LF("%@ · %lld 句", "Standup", 1))  # positional %2$#@n@
+            self.assertEqual("Recorded 03:15 · 7 lines. Ending stops listening and writes the full notes.",
+                             strings.LF("已记录 %@ · %lld 句。结束后停止收听，并整理一份完整版纪要。", "03:15", 7))
+            self.assertEqual("1 line", strings.LF("说了 %lld 句", 1))
+            self.assertEqual("Live notes", strings.L("实时纪要"))
+            strings.load("ja", res)
+            self.assertEqual("1文", strings.LF("%lld 句", 1))  # no stringsdict: the .strings value
+        finally:
+            strings.load("zh-Hans", res)
+
     def test_loads_the_macs_translations(self):
         res = [os.path.join(REPO, "Resources"), os.path.join(REPO, "linux", "strings")]
         strings.load("en_US.UTF-8", res)
@@ -848,6 +866,7 @@ class Strings(Base):
         self.assertEqual("没有这条", strings.L("没有这条"))
         strings.load("zh-Hans", res)
         self.assertEqual("实时纪要", strings.L("实时纪要"))
+        self.assertEqual("1 句", strings.LF("%lld 句", 1))
         t = strings.parse('/* c */\n"a \\"b\\"" = "x\\ny";\n// line\n"%@ 分钟" = "%@ min";')
         self.assertEqual("x\ny", t['a "b"'])
         self.assertEqual("%@ min", t["%@ 分钟"])
