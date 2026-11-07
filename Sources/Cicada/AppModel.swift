@@ -312,7 +312,8 @@ final class AppModel: ObservableObject {
         listen.roomDevice = roomMic
         roomListen.roomDevice = roomMic
         applyVoice()
-        speak.onStatus = { [weak self] text in self?.speakNotice(text) }
+        speak.onStatus = { [weak self] text in self?.status = text }
+        speak.onNotice = { [weak self] text in self?.speakNotice(text) }
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
             self.muteRoomWhileSpeaking(phase)

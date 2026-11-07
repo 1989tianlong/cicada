@@ -79,6 +79,8 @@ final class SpeakEngine {
     /// A finished utterance for the meeting record.
     var onUtterance: ((_ source: String, _ translation: String, _ from: String, _ to: String, _ secondsAgo: Double) -> Void)?
     var onStatus: ((String) -> Void)?
+    /// Why a press of the talk key went nowhere: shown while the key is held.
+    var onNotice: ((String) -> Void)?
     /// Translator shared with the listening side.
     var translate: ((_ text: String, _ from: String, _ to: String, _ trace: TranslateTrace) async -> String?)?
     /// The press as a WAV → (what was said, translation); nil when Ming is unavailable or its reply is unusable.
@@ -286,12 +288,12 @@ final class SpeakEngine {
         guard settings.speakEnabled || probe != nil, phase == .idle || phase == .speaking else { return }
         if probe == nil {
             // 只听会议室 (older macOS): everyone is at the table and hears you; there is no call to speak into.
-            if settings.listensToRoom { onStatus?(L("同声传译是给线上会议用的")); return }
-            if outputDevice() == nil { onStatus?(L("还没装虚拟麦克风，线上的人听不到你")); return }
+            if settings.listensToRoom { onNotice?(L("同声传译是给线上会议用的")); return }
+            if outputDevice() == nil { onNotice?(L("还没装虚拟麦克风，线上的人听不到你")); return }
         }
         guard let format = analyzerFormat, let input = beginUtterance() else {
             Task { await prepare() }
-            onStatus?(L("语音识别仍在准备中，请再按一次"))
+            onNotice?(L("语音识别仍在准备中，请再按一次"))
             return
         }
         debugLog("speak: press began")
@@ -397,7 +399,7 @@ final class SpeakEngine {
         // the real hardware format or AVAudioEngine raises an Objective-C exception.
         let inFormat = inputNode.inputFormat(forBus: 0)
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
-            onStatus?(L("没有可用的麦克风"))
+            onNotice?(L("没有可用的麦克风"))
             phase = .idle
             return
         }
@@ -419,7 +421,7 @@ final class SpeakEngine {
             try mic.start()
         } catch {
             debugLog("mic start failed: \(error)")
-            onStatus?(L("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风"))
+            onNotice?(L("麦克风无法启动，请在系统设置里允许\(appDisplayName)使用麦克风"))
             phase = .idle
         }
     }
