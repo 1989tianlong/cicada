@@ -47,17 +47,17 @@ sealed class SpeakBar : Window
         switch (s.State)
         {
             case SpeakEngine.Phase.Recording:
-                content = Ui.Row(12, Key(true), Wave(), Ui.Text(L("正在听你说 · 松开发送"), 14, Brushes.White, FontWeights.Bold, wrap: false), target);
+                content = Ui.Row(12, Key(true), Interpreted(), Wave(), Ui.Text(L("正在听你说 · 松开发送"), 14, Brushes.White, FontWeights.Bold, wrap: false), target);
                 break;
             case SpeakEngine.Phase.Translating:
-                content = Ui.Row(12, Key(false), Ui.Text(L("正在翻译…"), 14, Brushes.White, FontWeights.Bold, wrap: false), target);
+                content = Ui.Row(12, Key(false), Interpreted(), Ui.Text(L("正在翻译…"), 14, Brushes.White, FontWeights.Bold, wrap: false), target);
                 break;
             case SpeakEngine.Phase.Speaking or SpeakEngine.Phase.Idle when s.Heard is not null:
                 var said = new StackPanel { VerticalAlignment = VerticalAlignment.Center, MaxWidth = 480 };
                 if (s.Said is not null) said.Children.Add(Ui.Text(s.Said, 12, Palette.NightText));
                 said.Children.Add(Gap(Ui.Text(s.Heard!, 15, Brushes.White, FontWeights.Bold), s.Said is null ? 0 : 2));
                 var done = Ui.Text(s.State == SpeakEngine.Phase.Speaking ? L("正在说给对方听…") : L("对方已听到"), 12, Palette.NightText, wrap: false);
-                content = Fill(Key(false), said, done);
+                content = Fill(Ui.Row(12, Key(false), Interpreted()), said, done);
                 if (s.State == SpeakEngine.Phase.Idle) hide.Start();
                 break;
             case SpeakEngine.Phase.Failed:
@@ -81,6 +81,15 @@ sealed class SpeakBar : Window
         CornerRadius = new CornerRadius(14), Padding = new Thickness(11, 4, 11, 5), VerticalAlignment = VerticalAlignment.Center,
         Background = held ? Palette.Live : new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
         Child = Ui.Text(PushToTalk.Label, 13, Brushes.White, FontWeights.Bold, wrap: false),
+    };
+
+    /// 同传, outlined like the notes' MeTag: what goes out is the translation, as the Mac's subtitle
+    /// bar says with 同传 · 你在说….
+    static FrameworkElement Interpreted() => new Border
+    {
+        BorderBrush = new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0x8A, 0x5C)), BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 0, 5, 1), VerticalAlignment = VerticalAlignment.Center,
+        Child = Ui.Text(L("同传"), 11, new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x5C)), wrap: false),
     };
 
     /// A still level mark: an animated one would redraw this software-rendered window every frame.
