@@ -103,7 +103,7 @@
   "v2_p": "Hold right ⌥ (right Ctrl on Windows) and talk. When you let go, it’s translated into their language and spoken through a virtual microphone. Works in any app you can speak in.",
   "v3_small": "03 · Meeting notes",
   "v3_h": "Remember",
-  "v3_p": "Notes written while the meeting runs: key points, decisions and to-dos, with speakers separated by voice. Afterwards you keep a bilingual record, or import a recording or video to generate notes, exportable to Markdown, Word and SRT.",
+  "v3_p": "Notes written while the meeting runs: key points, decisions and to-dos, with speakers separated by voice. Afterwards you keep a bilingual record, or import a recording or video to generate notes, exportable to Markdown, Word and SRT. Misheard names and terms are fixed as you go, and the spellings you use live in a word list for next time.",
   "rec_more": "See what the meeting leaves behind",
   "sp_more": "See how it speaks for you",
   "sp_h": "You speak English, the room hears Chinese",
