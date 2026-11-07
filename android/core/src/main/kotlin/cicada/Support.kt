@@ -13,6 +13,8 @@ object Paths {
     @Volatile var log: File = File(System.getProperty("java.io.tmpdir"), "cicada-debug.log")
     val sessions get() = File(root, "Sessions")
     val settings get() = File(root, "settings.json")
+    /// 词表, beside the records as on the Mac (not a secret).
+    val vocabulary get() = File(root, "vocabulary.json")
     val keyFile get() = keyFile("ling")
     /// One key file per AI service, named as on the Mac.
     fun keyFile(service: String) = File(root, if (service == "ling") "ling-api-key" else "ai-key-$service")

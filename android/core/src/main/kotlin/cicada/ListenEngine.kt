@@ -39,6 +39,9 @@ class ListenEngine(
 
     /// 说话人识别 (Speakers.kt), set by the app; null or unavailable leaves every line 对方.
     @Volatile var speakers: SpeakerTagger? = null
+    /// 改正听错的词, set by the app: the word list's forms fixed as lines arrive, and the service's
+    /// proposals with each finished line's translation (null: no fixing at all).
+    @Volatile var fixes: LiveFixes? = null
     /// A line got a voice (the meeting's id): the app asks Ling for names.
     @Volatile var onVoice: ((String) -> Unit)? = null
     /// Voiceprints one at a time beside Ming (each already uses up to four cores).
@@ -139,6 +142,17 @@ class ListenEngine(
         while (i < pcm.size) { audio?.offer(pcm.copyOfRange(i, minOf(pcm.size, i + 1600))); i += 1600 }
     }
 
+    /// Debug (the Mac's `heard:`): a finished sentence as if the hear model gave it untranslated, in
+    /// a meeting listening to SilentAudioSource. The record, its translation and fixes, and the
+    /// screens all follow, as for a heard line.
+    fun debugHeard(text: String, lang: String? = null) {
+        val id = sessionId ?: return
+        if (!listening) return
+        val at = store.get(id)?.let { (System.currentTimeMillis() - it.startedAt.toEpochMilli()) / 1000.0 } ?: 0.0
+        val seg = Segment(0, Math.round(at * 10) / 10.0, ShortArray(0))
+        pool.execute { synchronized(deliverLock) { record(seg, Heard(lang ?: spoken ?: "zh-CN", text, null), null) }; changed() }
+    }
+
     fun release() {
         if (!holding) return
         holding = false
@@ -164,6 +178,7 @@ class ListenEngine(
         heardSeconds = 0.0; peak = 0.0
         notes.begin(session.id)
         speakers?.reset()
+        fixes?.meetingStarted()
         val segmenter = Segmenter()
         segmenter.onSegment = ::send
         val queue = LinkedBlockingQueue<ShortArray>()
@@ -205,10 +220,14 @@ class ListenEngine(
         source?.let { it.onSamples = null; it.stop() }
         audio?.offer(END)
         worker?.join(5000)
-        val waiting = synchronized(gate) { inFlight.toList() }
         val deadline = System.currentTimeMillis() + 15_000
-        for (f in waiting) {
-            try { f.get(maxOf(1, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+        // Again until none is left: a stretch Ming answers may start its line's fixing request.
+        while (System.currentTimeMillis() < deadline) {
+            val waiting = synchronized(gate) { inFlight.filter { !it.isDone } }
+            if (waiting.isEmpty()) break
+            for (f in waiting) {
+                try { f.get(maxOf(1, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+            }
         }
         store.end(id, endedAt)
         Log.d("listen: stopped $id, $lineCount lines")
@@ -407,9 +426,27 @@ class ListenEngine(
         // A line the hear model translated itself: finished sentences are being translated again.
         if (!joined && heard.translation != null) translator.sentencesUntranslated = false
         if (joined) store.replace(id, copy) else store.append(id, copy)
+        fixes?.applyKnown(copy.id, id)
         if (voice != null) onVoice?.invoke(id)
         onWords?.invoke()
 
+        // A line Ming translated itself: with 改正听错的词 on, the AI service translates it again with
+        // the misheard words pointed out (Ming's stays when that fails).
+        if (!joined && line.dst != null && line.srcLang != target && fixes != null) {
+            val src = line.src
+            // Waited for like a stretch at Ming: the meeting's last line gets its fixes before it ends.
+            val f = pool.submit {
+                val dst = translator.fixLine(src, line.srcLang, target) ?: return@submit
+                val updated = synchronized(gate) {
+                    if (line.src != src) return@submit
+                    line.dst = dst
+                    line.copy()
+                }
+                store.replace(id, updated)
+                changed()
+            }
+            synchronized(gate) { inFlight.add(f) }
+        }
         // A joined sentence is translated again as a whole; a line Ming didn't translate gets text translation.
         if ((joined || line.dst == null) && line.srcLang != target) {
             val src = line.src

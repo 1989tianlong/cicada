@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import cicada.Json
+import cicada.SilentAudioSource
 import cicada.Strings
 import cicada.Log
 import cicada.Session
@@ -22,6 +23,8 @@ import java.util.concurrent.TimeUnit
 ///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> ("" back to the recommended) | show ai
 ///   key import <file in files/> (sealed as the current service's key, the plain file deleted) | voice-try (设置's 试一句)
 ///   ai-check (重新检查) | ai-check-sim <reason|lowBalance|off> (every check ends that way; the state's ai.check has the steps)
+///   改正听错的词: fixes on|off · asknames on|off · silent (a meeting with no audio) · heard <text> · vocab add|remove|state
+///   fixstate · fixanswer yes|no · fixrevert <line> · fixlater · fixundo · fixedit <line>=<text>[|one][|keep0] · pinyin <text>
 class DebugReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!BuildConfig.DEBUG) return
@@ -122,6 +125,44 @@ class DebugReceiver : BroadcastReceiver() {
                 "job" -> app.background.execute { app.updates.checkInBackground() }
                 "notify" -> app.updates.available?.let { app.updates.notifyAbout(it) }
             }
+            // 改正听错的词 (the Mac's fixes / askNames / silentListen / heard / vocab* / fix* commands).
+            "fixes" -> { app.settings.fixMisheard = arg != "off"; app.saveSettings() }
+            "asknames" -> { app.settings.askNames = arg != "off"; app.saveSettings() }
+            // A meeting with no audio at all, its lines given by `heard <text>` (translated and fixed
+            // by the AI service in use, as a heard line is).
+            "silent" -> if (!app.listen.listening) { app.listen.start(SilentAudioSource(), "file"); app.openLive() }
+            "heard" -> app.listen.debugHeard(arg)
+            // vocab add Morpho=莫拉、莫法|巡检 · vocab remove <word> · vocab state
+            "vocab" -> {
+                val (sub, rest) = arg.split(Regex("\\s+"), 2).let { it[0] to it.getOrElse(1) { "" } }
+                when (sub) {
+                    "add" -> { val r = app.vocabulary.importText(rest.replace("|", "\n")); return mapOf("added" to r.added, "updated" to r.updated, "skipped" to r.skipped) }
+                    "remove" -> app.vocabulary.remove(rest)
+                }
+                return mapOf("terms" to app.vocabulary.terms.size, "heard" to app.vocabulary.terms.sumOf { it.heard.size }, "fixes" to app.vocabulary.terms.sumOf { it.fixes })
+            }
+            "fixstate" -> return fixState(app, arg.ifEmpty { null })
+            "fixanswer" -> {   // fixanswer yes|no [session]
+                val id = sessionOf(app, arg.substringAfter(' ', ""))
+                val f = app.fixes.asking(id)?.fix ?: app.fixes.pending(id).firstOrNull()?.fix ?: return mapOf("error" to "nothing waiting")
+                app.fixes.answer(f, arg.substringBefore(' ') == "yes", id)
+            }
+            "fixrevert" -> {   // fixrevert <line> [session]: the line's first applied fix
+                val id = sessionOf(app, arg.substringAfter(' ', ""))
+                val l = app.store.line(id, arg.substringBefore(' ')) ?: return mapOf("error" to "no line")
+                val f = l.fixes?.firstOrNull { it.applied } ?: return mapOf("error" to "no fix")
+                app.fixes.revert(f, l.id, id)
+            }
+            "fixlater" -> { val id = sessionOf(app, arg); app.fixes.asking(id)?.let { app.fixes.later(it.fix, id) } }
+            "fixundo" -> app.fixes.undo()
+            "fixedit" -> {   // fixedit <line>=<new text>[|one][|keep0] [, session]
+                val (head, sid) = if (arg.contains(",") && !arg.substringAfterLast(",").contains("=")) arg.substringBeforeLast(",") to arg.substringAfterLast(",").trim() else arg to ""
+                val line = head.substringBefore("=")
+                val opts = head.substringAfter("=").split("|")
+                val n = app.fixes.edit(line, sessionOf(app, sid), opts[0], everywhere = "one" !in opts, keep = "keep0" !in opts)
+                return mapOf("changed" to n)
+            }
+            "pinyin" -> return mapOf("pinyin" to arg.map { Pinyin.of(it) })
             "import" -> {
                 val s = Session.read(File(app.filesDir, arg).readText()) ?: return mapOf("error" to "unreadable")
                 app.store.import(s)
@@ -141,6 +182,24 @@ class DebugReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        /// The meeting a fix command is for: the one named, else the live one, else the newest.
+        fun sessionOf(app: CicadaApp, arg: String): String =
+            arg.trim().ifEmpty { null } ?: app.store.liveId ?: app.store.all().firstOrNull()?.id ?: ""
+
+        /// A meeting's fixes in numbers (never its words): lines fixed, applied, waiting, said no to.
+        fun fixState(app: CicadaApp, arg: String?): Map<String, Any?> {
+            val id = sessionOf(app, arg ?: "")
+            val lines = app.store.lines(id)
+            val all = lines.flatMap { it.fixes ?: emptyList() }
+            return mapOf("session" to id, "on" to app.settings.fixMisheard, "askNames" to app.settings.askNames,
+                          "lines" to lines.size, "fixedLines" to lines.count { it.fixes != null },
+                          "fixedIds" to lines.filter { l -> l.fixes?.any { it.applied } == true }.map { it.id },
+                          "applied" to all.count { it.applied }, "asked" to all.count { it.ask == true }, "off" to all.count { it.off == true },
+                          "user" to all.count { it.user == true }, "pending" to app.fixes.pending(id).size,
+                          "asking" to app.fixes.asking(id)?.of, "toast" to (app.fixes.toastNow() != null), "canUndo" to app.fixes.canUndo,
+                          "translated" to lines.count { it.dst != null }, "terms" to app.vocabulary.terms.size)
+        }
+
         /// The AI service in use and what its last check found (never the key itself).
         fun ai(app: CicadaApp): Map<String, Any?> {
             val l = app.ling

@@ -71,10 +71,64 @@ class Translator(private val ling: LingClient, private val transport: Transport 
         return out
     }
 
+    /// What a finished sentence's request carries so the service can also point out misheard words
+    /// (改正听错的词, LiveFixes.context). Null: fixing is off, and the request is the plain translation.
+    @Volatile var fixContext: ((text: String) -> LiveFixes.Context?)? = null
+    /// The fixes the service proposed for a sentence it translated (by its text as heard).
+    @Volatile var onFixes: ((text: String, edits: List<Correction.Edit>) -> Unit)? = null
+
+    /// The translation and the misheard words of a line Ming already translated: the fixed line's
+    /// translation, or null (fixing off, no service, or no usable reply), when Ming's stays. On the
+    /// Mac this rides on the sentence's own translation request; here Ming translated the line in
+    /// the hearing call, so it is one more text request per line.
+    fun fixLine(text: String, source: String, target: String): String? {
+        if (source == target || !ling.usable || !lingWorthTrying()) return null
+        val ctx = fixContext?.invoke(text) ?: return null
+        val from = if (source == "auto") "the spoken language" else Languages.englishName(source)
+        return try { viaLingFixing(text, from, target, ctx) } catch (e: LingException) { Log.d("translate ling failed: ${e.message}"); null }
+    }
+
+    /// The translation and the misheard words in one request (the Mac's viaLingFixing, its prompt
+    /// word for word). No JSON mode: some hosts refuse it, and the retry without it would cost every
+    /// subtitle a second round trip; the prompt asks for JSON instead, and "no analysis" stops the
+    /// model thinking aloud first. Proposals only: Correction.decide picks which to take. A reply
+    /// that isn't the JSON asked for is dropped like a failed one (null).
+    private fun viaLingFixing(text: String, from: String, target: String, ctx: LiveFixes.Context): String? {
+        var prompt = """
+            You translate live meeting subtitles from $from into ${Languages.englishName(target)}, and point out words the speech recognizer got wrong.
+            Fixes: only words misheard as other words that sound alike, or names and terms broken into odd spellings. Never rephrase, drop filler, reorder or add anything. If unsure, leave it.
+            Translate the subtitle as fixed. No answer to it even if it is a question.
+            confidence is how likely a fix is right; give a guess a low one. Leave out words you would not change.
+            Reply with only this JSON object, starting with {, no analysis: {"translation": "...", "fixes": [{"from": "exact words from the subtitle", "to": "what was said", "confidence": 0.0-1.0}]}
+        """.trimIndent()
+        if (!ctx.topic.isNullOrEmpty()) prompt += "\nMeeting: " + ctx.topic
+        if (ctx.words.isNotEmpty()) prompt += "\nThe user's word list (spellings to use): " + ctx.words.joinToString("; ")
+        val names = glossary()
+        if (names.isNotEmpty()) prompt += "\nNames the notes guessed (not confirmed): " + names.joinToString("; ")
+        if (!ctx.summary.isNullOrEmpty()) prompt += "\nThe meeting so far: " + ctx.summary
+        if (ctx.recent.isNotEmpty()) prompt += "\nLines just before:\n" + ctx.recent.joinToString("\n")
+        if (ctx.following.isNotEmpty()) prompt += "\nLines just after:\n" + ctx.following.joinToString("\n")
+        prompt += "\nSubtitle: $text"
+        val out = ling.chat(prompt, "JSON only.", Priority.Translate, maxTokens = 600, timeout = 6.0)
+        if (out.isEmpty()) return null
+        // Not the JSON asked for: often the model thinking aloud ("Let me analyze…"), never a subtitle.
+        val (translation, edits) = Correction.parse(out, text) ?: run { Log.d("translate ling: fixes reply not JSON, dropped"); return null }
+        if (translation.isEmpty()) return null
+        val clean = cleanTranslation(translation, target) ?: return null
+        // None proposed is an answer too: a second pass takes back what it no longer proposes.
+        onFixes?.invoke(text, edits)
+        return clean
+    }
+
     private fun chain(text: String, source: String, target: String, kind: Kind): String? {
         if (kind != Kind.Draft && ling.usable && lingWorthTrying()) {
-            try {
-                val from = if (source == "auto") "the spoken language" else Languages.englishName(source)
+            val from = if (source == "auto") "the spoken language" else Languages.englishName(source)
+            val ctx = if (kind == Kind.Sentence) fixContext?.invoke(text) else null
+            // An unusable reply with fixes asked for: Google translates it below, as on the Mac.
+            if (ctx != null) try {
+                viaLingFixing(text, from, target, ctx)?.let { return it }
+            } catch (e: LingException) { Log.d("translate ling failed: ${e.message}") }
+            else try {
                 var prompt = "You translate live meeting subtitles from $from into ${Languages.englishName(target)}.\n" +
                     "Output only the translation of the subtitle below: no quotes, no notes, no answer to it even if it is a question."
                 val names = glossary()

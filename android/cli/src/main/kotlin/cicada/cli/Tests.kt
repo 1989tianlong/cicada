@@ -428,11 +428,11 @@ object Tests {
 
     /// A 300 Hz tone that swells and fades four times a second like syllables; steady when not, or
     /// rising and falling by `wobble` twice a second like a fan.
-    private fun tone(seconds: Double, amp: Double = 0.3, syllables: Boolean = true, wobble: Double = 0.0) = ShortArray((seconds * 16000).toInt()) {
+    fun tone(seconds: Double, amp: Double = 0.3, syllables: Boolean = true, wobble: Double = 0.0) = ShortArray((seconds * 16000).toInt()) {
         val env = if (syllables) 0.55 + 0.45 * sin(2 * PI * 4 * it / 16000) else 1.0 + wobble * sin(2 * PI * 0.5 * it / 16000)
         (sin(2 * PI * 300 * it / 16000) * env * amp * 32767).toInt().toShort()
     }
-    private fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
+    fun silence(seconds: Double) = ShortArray((seconds * 16000).toInt())
     /// Typing: a key click every 0.2 s, 6 ms of decaying crackle peaking near -12 dBFS (scripts/vad-clips.py).
     private fun keys(seconds: Double) = silence(seconds).also { out ->
         var at = 1600
@@ -455,7 +455,7 @@ object Tests {
         val n = (seconds * 16000).toInt()
         return ShortArray(n) { (sin(2 * PI * 7000 * it / 16000) * minOf(1.0, it / 4800.0, (n - it) / 4800.0) * amp * 32767).toInt().toShort() }
     }
-    private fun concat(vararg parts: ShortArray): ShortArray = parts.fold(ShortArray(0)) { a, b -> a + b }
+    fun concat(vararg parts: ShortArray): ShortArray = parts.fold(ShortArray(0)) { a, b -> a + b }
 
     private fun cut(vararg parts: ShortArray): List<Segment> {
         val list = mutableListOf<Segment>()
@@ -741,7 +741,7 @@ object Tests {
 
     // MARK: Ling
 
-    private class Fake(val respond: (String) -> Transport.Response) : Transport {
+    class Fake(val respond: (String) -> Transport.Response) : Transport {
         val calls = mutableListOf<Pair<Long, String>>()
         override fun send(url: String, method: String, body: String?, headers: Map<String, String>, timeoutMs: Int): Transport.Response {
             synchronized(calls) { calls.add(System.currentTimeMillis() to (body ?: "")) }
@@ -749,12 +749,12 @@ object Tests {
         }
     }
 
-    private fun reply(content: String, finish: String? = "stop") = Transport.Response(200, Json.write(mapOf(
+    fun reply(content: String, finish: String? = "stop") = Transport.Response(200, Json.write(mapOf(
         "choices" to listOf(mapOf("message" to mapOf("content" to content), "finish_reason" to finish)),
         "usage" to mapOf("prompt_tokens" to 1, "completion_tokens" to 1),
     ), pretty = false))
 
-    private fun client(fake: Fake, clock: GateClock = GateClock()): LingClient {
+    fun client(fake: Fake, clock: GateClock = GateClock()): LingClient {
         val key = AIKey(PlainProtector)
         key.save("sk-test-0000000000")
         return LingClient(key, fake, clock = clock)

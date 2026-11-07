@@ -10,6 +10,9 @@ import android.os.Looper
 import android.provider.Settings
 import cicada.AIKey
 import cicada.AppSettings
+import cicada.Correction
+import cicada.LiveFixes
+import cicada.Vocabulary
 import cicada.AudioSource
 import cicada.LingClient
 import cicada.ListenEngine
@@ -41,6 +44,8 @@ class CicadaApp : Application() {
     lateinit var notes: NotesEngine
     lateinit var translator: Translator
     lateinit var listen: ListenEngine
+    lateinit var vocabulary: Vocabulary
+    lateinit var fixes: LiveFixes
     lateinit var namer: SpeakerNamer
     lateinit var overlay: Overlay
     lateinit var voice: Voice
@@ -94,6 +99,15 @@ class CicadaApp : Application() {
         translator = Translator(ling)
         translator.googleOff = settings.customOnly
         listen = ListenEngine(ling, translator, store, notes, settings)
+        // 改正听错的词: the phone's ICU gives the pinyin the sound check compares, as the Mac's system transform does.
+        Correction.pinyinOf = Pinyin::of
+        vocabulary = Vocabulary()
+        fixes = LiveFixes(store, vocabulary, settings)
+        listen.fixes = fixes
+        translator.fixContext = { fixes.context(it) }
+        translator.onFixes = { text, edits -> fixes.received(text, edits) }
+        fixes.onChange(::changed)
+        vocabulary.onChange(::changed)
         // 说话人识别: voiceprints on the phone, names from Ling once two voices are on show.
         listen.speakers = SpeakerTagger(NativeVoiceprints.create(this))
         namer = SpeakerNamer(ling, store)
