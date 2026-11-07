@@ -830,12 +830,19 @@ enum TranscriptParagraphs {
     static func group(_ lines: [TranscriptLine], _ speakers: [String: Int]) -> [[TranscriptLine]] {
         var out: [[TranscriptLine]] = []
         var key: String?
+        // Before any number is on show (two voices with five lines each), a question and its answer
+        // would read as one block: a known voice that differs from the paragraph's starts a new one.
+        // Short lines are left out, as for numbers: their voice is too often wrong.
+        var voice: Int?
         for l in lines {
             let k = (l.speaker == "me" ? "me" : speakers[l.id].map { "n\($0)" } ?? "?") + (l.via ?? "")
-            if k == key, let first = out.last?.first, l.t - first.t <= span {
+            let v = speakers.isEmpty && l.speaker == "them" && SpeakerLabels.substantive(l.src) ? l.voice : nil
+            if k == key, let first = out.last?.first, l.t - first.t <= span, voice == nil || v == nil || v == voice {
                 out[out.count - 1].append(l)
+                voice = voice ?? v
             } else {
                 out.append([l])
+                voice = v
             }
             key = k
         }

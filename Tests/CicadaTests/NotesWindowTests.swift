@@ -39,6 +39,19 @@ import Testing
         #expect(groups.map { $0.map(\.id) } == [["a"], ["b", "c"]])
     }
 
+    @Test func paragraphsSplitBetweenVoicesBeforeNumbersShow() {
+        func said(_ id: String, _ t: Double, _ voice: Int?, _ src: String = "three whole words") -> TranscriptLine {
+            var l = line(id, t, "them", src); l.voice = voice; return l
+        }
+        // A speaks, B asks, A answers; a line with no voice yet and a short "Yeah." heard as A stay put.
+        let lines = [said("a", 0, 1), said("b", 5, nil), said("c", 9, 2), said("d", 12, 1, "Yeah."),
+                     said("e", 14, 1), said("f", 18, 1)]
+        #expect(TranscriptParagraphs.group(lines, [:]).map { $0.map(\.id) } == [["a", "b"], ["c", "d"], ["e", "f"]])
+        // Once numbers show, they decide: lines without one stay together as before.
+        let shown = TranscriptParagraphs.group(lines, ["x": 1])
+        #expect(shown.map { $0.map(\.id) } == [["a", "b", "c", "d", "e", "f"]])
+    }
+
     @Test func joinSpacesWordsNotChinese() {
         #expect(TranscriptParagraphs.join(["Hello.", " World. "]) == "Hello. World.")
         #expect(TranscriptParagraphs.join(["你好。", "再见。"]) == "你好。再见。")
