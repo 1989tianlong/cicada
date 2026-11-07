@@ -29,16 +29,23 @@ AGENTS.md rules still apply (keys, commits, changelog, one VERSION, all four pla
 - Claim a VM before you use it: `ListAgents`, and message any live-subs session that may be using it. Release it as soon as its platform passes: `tools/macos-vm/vm.sh stop`, `windows/vm/vmctl.sh stop`, `linux/vm/vmctl.sh stop`, `adb emu kill`. Don't stop a VM another session still uses.
 - At the end, nothing of yours is left running: VMs, the emulator, the Mac VM's ssh tunnel, dev builds. Disk is tight (check `df -h ~`): delete downloaded drafts from the scratchpad after checking them.
 
+## Time: aim for 2 hours, watch every agent
+
+- Budgets: gather 30 min, pre-release verify 1 h, CI 20 min, draft retest 30 min, publish and in-app update 20 min. A phase over budget twice means stop at the draft and report why.
+- The real test of one platform takes 30–70 min. Most lost time is waiting: in 1.5.0 the Windows agent's first command (a `mkdir`/`ls` under `~/Downloads`) hung 131 min, most likely on a macOS privacy prompt nobody saw, while the other platforms were done and the main session waited.
+- Check each background agent every 10–15 min (its newest screenshot, its output). Silent for 15 min: find what it is stuck on, and stop and restart it rather than wait.
+- Give anything that waits on a VM, the emulator or the network a time limit: macOS has no `timeout`, so use `perl -e 'alarm shift; exec @ARGV' 120 <cmd>`, ssh's `ConnectTimeout`, or the Bash tool's own timeout.
+
 ## 0. Gather
 
-- `ListAgents`: wait for every session still working on this repo, or message it before taking its branch. A peer's message isn't the user's approval. Tell the live-subs sessions a release is under way, and again just before you tag (hold pushes until the tag is up).
+- `ListAgents`: wait at most 30 min for a session still working on this repo, or message it before taking its branch; after that, release without its unfinished work. A peer's message isn't the user's approval. Tell the live-subs sessions a release is under way, and again just before you tag (hold pushes until the tag is up).
 - Bring parked branches onto `origin/main` with `cherry-pick` (a branch checked out in another worktree can't be rebased). Skip commits that belong to another unfinished feature.
 - Work in a release worktree (`git worktree add ../live-subs-rel origin/main`); never touch the main checkout's uncommitted work. Rebase on `origin/main` before each push.
-- Results go to `~/Downloads/cicada-<x.y.z>-verify/results.md` as you go (platform × check × pre-release / post-draft × pass/fail × screenshot): it outlives the context and the scratchpad.
+- Results go to `~/cicada-verify/<x.y.z>/results.md` as you go (platform × check × pre-release / post-draft × pass/fail × screenshot): it outlives the context and the scratchpad.
 
 ## 1. Verify before the draft
 
-Scope: what changed in the last 2 versions plus everything unreleased (`site/changelog.json`'s undated entry, `git log v<last>..`).
+Scope: everything unreleased (`site/changelog.json`'s undated entry, `git log v<last>..`). A platform and feature it changed gets the full check below; everything else gets the smoke check (onboarding, sample meeting, one AI service with a good key, End Meeting writes the record, Chinese and English).
 
 | Platform | Machine | Drive it with |
 |---|---|---|
@@ -48,10 +55,10 @@ Scope: what changed in the last 2 versions plus everything unreleased (`site/cha
 | Android | emulator `cicada` | `android/scripts/` `emulator.sh`, `cicadactl.sh`, `shot.sh` |
 
 - One background agent per port (within the resource budget), the Mac yourself; each gets the change list, its machine, and the stop command to run when done.
-- Each platform: English and Chinese UI, onboarding, sample meeting, a real AI service (ZenMux `ZENMUX_API_KEY_TMP`, OpenRouter `OPENROUTER_API_KEY`, Ling `ANTLING_API_KEY`, all in `~/.zshenv`): bad key, good key, meeting, End Meeting writes the record. Clean install as well as upgrade, on every platform.
+- Full check: English and Chinese UI, onboarding, sample meeting, a real AI service (ZenMux `ZENMUX_API_KEY_TMP`, OpenRouter `OPENROUTER_API_KEY`, Ling `ANTLING_API_KEY`, all in `~/.zshenv`): bad key, good key, meeting, End Meeting writes the record. Clean install as well as upgrade, on every platform.
 - If the release touches the room mic or 同声传译: run `.claude/skills/audio-test` on the Mac.
-- Screenshots: `~/Downloads/cicada-<x.y.z>-verify/<platform>/{pre-release,post-draft}/NN-what.png`. Write them from the shell, not from the release app (it hangs on a TCC prompt for Downloads).
-- Fix every problem: one Conventional Commit each with the platform scope, plus its Chinese item in `site/changelog.json`; re-verify on the machine; run `scripts/test.sh` (Mac) and each port's.
+- Screenshots: `~/cicada-verify/<x.y.z>/<platform>/{pre-release,post-draft}/NN-what.png`. Never under `~/Downloads`, `~/Desktop` or `~/Documents`: macOS asks before a process reads them and the command hangs until someone clicks.
+- Fix every problem: a bug in shared behaviour is fixed on every platform at once (one agent ports the Mac fix to all three ports) and re-verified together, not one platform after another. One Conventional Commit each with the platform scope, plus its Chinese item in `site/changelog.json`; re-verify on the machine; run `scripts/test.sh` (Mac) and each port's.
 - Update `README*.md` (4 languages) and `site/i18n` for the new features.
 
 ## 2. Draft
@@ -62,8 +69,8 @@ Scope: what changed in the last 2 versions plus everything unreleased (`site/cha
 
 ## 3. Retest the draft
 
-- Install the draft's own files on every platform, over the last published version: same bundle id / requirement, settings and records kept, the update check doesn't offer the draft. Before that, put the last published Mac app in the VM's `~/backup` (it may only hold an old one).
-- Screenshots go to `post-draft/`.
+- The smoke check only, on the draft's own files installed over the last published version, on every platform: same bundle id / requirement, settings and records kept, the update check doesn't offer the draft. Before that, put the last published Mac app in the VM's `~/backup` (it may only hold an old one).
+- Screenshots go to `post-draft/`. What a fix changed gets its own check again; the rest was covered before the draft.
 - Any bug: recut. Its Chinese item goes into the now dated `site/changelog.json` entry for this version, not a new undated one. `gh release delete v<x.y.z> -R wquguru/cicada --yes`, `git push --delete origin v<x.y.z>`, `git tag -d v<x.y.z>`; commit the fix (with its changelog item), re-verify it, run `scripts/release.sh <x.y.z>` again (same version: drafts are never public); it rewrites the notes and makes a new release commit. Retest the draft again. If it can't be fixed, leave the draft and report.
 
 ## 4. Publish (only if the gate holds)
@@ -75,7 +82,7 @@ Scope: what changed in the last 2 versions plus everything unreleased (`site/cha
 
 ## 5. Report (Chinese)
 
-Published or draft (and if draft, which gate items failed and what to look at), the release URL, the last commit (`git log -1 origin/main`, should be the release commit; name any peer commit that landed after), per-platform results, bugs fixed, still open, what needs a person, the screenshot folder and `results.md`. Leave the user's installed app and settings as they were (back up before, restore after), stop every VM you started, and remove the release worktree.
+Published or draft (and if draft, which gate items failed and what to look at), the release URL, the last commit (`git log -1 origin/main`, should be the release commit; name any peer commit that landed after), per-platform results, bugs fixed, still open, what needs a person, the screenshot folder and `results.md`, and how long each phase took against its budget. Leave the user's installed app and settings as they were (back up before, restore after), stop every VM you started, and remove the release worktree.
 
 ## Pitfalls
 
