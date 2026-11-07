@@ -55,6 +55,33 @@ def key(s: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", s).lower().split())
 
 
+def _punct(c: str) -> bool:
+    return unicodedata.category(c).startswith("P")
+
+
+def _edge(c: str) -> bool:
+    return c.isspace() or unicodedata.category(c)[0] in "PS"
+
+
+def learnable(heard: str, word: str):
+    """What a fix can teach the list, or None (Vocabulary.swift's learnable): both sides trimmed of
+    spaces and punctuation, no punctuation inside, short, and a real swap. An edit that only adds or
+    drops words around the heard ones ("我来" → "OK我来") or ends on a full stop ("持。" → "讲。")
+    teaches nothing."""
+    def trim(s: str) -> str:
+        a, b = 0, len(s)
+        while a < b and _edge(s[a]):
+            a += 1
+        while b > a and _edge(s[b - 1]):
+            b -= 1
+        return s[a:b]
+    h, w = trim(heard), trim(word)
+    if (not h or not w or len(h) > 20 or len(w) > 40 or key(h) == key(w) or h in w or w in h
+            or any(_punct(c) for c in h) or any(_punct(c) and c not in ".-" for c in w)):
+        return None
+    return h, w
+
+
 def default_path() -> str:
     return os.path.join(Paths.data(), "vocabulary.json")
 
@@ -115,7 +142,13 @@ class Vocabulary:
             return any(key(t.word) == w and any(key(x) == h for x in t.heard) for t in self.terms)
 
     def confirm(self, heard: str, word: str, source: str = "live") -> None:
-        """The user said yes to a fix (or added it): the word, and the form it was heard as."""
+        """The user said yes to a fix (or added it): the word, and the form it was heard as. A pair
+        that isn't a word for a word (`learnable`) adds nothing."""
+        if heard:
+            pair = learnable(heard, word)
+            if pair is None:
+                return
+            heard, word = pair
         with self._gate:
             i = self._find(word)
             if i is not None:

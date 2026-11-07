@@ -212,6 +212,17 @@ class Vocab(Base):
         v.forget("开布特", "Curve")
         self.assertFalse(v.knows("开布特", "Curve"))
 
+    def test_edits_that_arent_a_word_for_a_word_teach_nothing(self):
+        v = Vocabulary(None)
+        v.confirm("持。", "讲。")
+        self.assertTrue(v.knows("持", "讲"))
+        v.confirm("我来", "OK我来", source="user")
+        v.confirm("然后，", "然后")
+        self.assertEqual([t.word for t in v.terms], ["讲"])
+        v.confirm("木娜", "Monad", source="user")
+        v.confirm("Uni斯图 V三", "Uniswap V3")
+        self.assertTrue(v.knows("木娜", "Monad") and v.knows("Uni斯图 V三", "Uniswap V3"))
+
     def test_prompt_puts_recent_first(self):
         v = Vocabulary(None)
         v.import_text("A\nB = b")
@@ -303,6 +314,13 @@ class Live(Base):
         fx.undo()
         self.assertEqual(store.line(sid, "l0").shown, "我木娜找了一个")
         self.assertFalse(fx.vocabulary.knows("木娜", "Monad"))
+
+    def test_edit_that_adds_words_around_is_applied_but_not_learned(self):
+        fx, store, sid = self.setup(["我来说一下", "别的"])
+        fx.edit("l0", sid, "OK我来说一下", everywhere=True, remember=True)
+        self.assertEqual(store.line(sid, "l0").shown, "OK我来说一下")
+        self.assertEqual(fx.vocabulary.terms, [])
+        self.assertNotIn("记进词表", fx.toast_text())
 
     def test_one_off_edit_does_not_teach_the_list(self):
         fx, store, sid = self.setup(["我木娜找了一个", "木娜那边也有"])

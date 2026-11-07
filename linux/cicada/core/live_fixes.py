@@ -10,6 +10,7 @@ import time
 
 from . import correction
 from .correction import Edit
+from .vocabulary import learnable
 from .models import LineFix
 from .strings import L, LF
 from .support import Log
@@ -257,11 +258,13 @@ class LiveFixes:
                     fixes.append(f)
                 self._set(fixes + [fix.copy()], t.id, sid)
             word = correction.core(fix.from_, fix.to)[1].strip()
-            # Only a change made everywhere teaches the word list: a one-off must not.
-            if remember and everywhere:
+            # Only a change made everywhere teaches the word list (a one-off must not), and only a
+            # word for a word (`learnable`).
+            learned = remember and everywhere and learnable(heard, word) is not None
+            if learned:
                 self.vocabulary.confirm(heard, word, source="user")
-        Log.d("fix edited lines=%d keep=%s" % (len(targets), remember))
-        self._say(LF("已改 %lld 处：%@ → %@，记进词表", len(targets), heard, word) if remember
+        Log.d("fix edited lines=%d learned=%s" % (len(targets), learned))
+        self._say(LF("已改 %lld 处：%@ → %@，记进词表", len(targets), heard, word) if learned
                   else LF("已改 %lld 处：%@ → %@", len(targets), heard, word))
         return len(targets)
 
