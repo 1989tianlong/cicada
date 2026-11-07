@@ -92,4 +92,17 @@ import Testing
         fx.undo()
         #expect(line(store, id, "l1").shown == "开布特那边也说了")
     }
+
+    @Test func editRevertEditRevertGoesBack() {
+        let (fx, store, id) = setup(["Great, let's lock that in.", "Design signs off by Friday."])
+        for _ in 0..<2 {
+            fx.edit(lineID: "l0", in: id, to: "Great, let's lock that in now.", everywhere: true, remember: true)
+            #expect(line(store, id, "l0").shown == "Great, let's lock that in now.")
+            let f = line(store, id, "l0").fixes!.first { $0.applied }!
+            fx.revert(f, lineID: "l0", in: id)
+            #expect(line(store, id, "l0").shown == "Great, let's lock that in.")
+        }
+        #expect(line(store, id, "l0").fixes!.count == 1)
+        #expect(line(store, id, "l1").fixes == nil)
+    }
 }

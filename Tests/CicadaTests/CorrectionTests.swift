@@ -164,4 +164,12 @@ import Testing
         #expect(Correction.label(LineFix(from: "Great", to: "OK Great", user: true)) == ("Great", "OK Great"))
         #expect(Correction.label(LineFix(from: "解除质压", to: "解除质押")) == ("质压", "质押"))
     }
+
+    @Test func droppedWordKeepsBothSidesOfTheFix() {
+        let e = Correction.userEdit(shown: "Great, let's lock that in now.", edited: "Great, let's lock that in.", src: "Great, let's lock that in now.", fixes: [])
+        #expect(e != nil && !e!.fix.from.isEmpty && !e!.fix.to.isEmpty)
+        #expect(Correction.apply([e!.fix], to: "Great, let's lock that in now.").text == "Great, let's lock that in.")
+        let l = Correction.label(e!.fix)
+        #expect(!l.from.isEmpty && !l.to.isEmpty)
+    }
 }

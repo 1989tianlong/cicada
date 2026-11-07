@@ -187,8 +187,10 @@ final class LiveFixes: ObservableObject {
 
     /// 改回: this line goes back to what was heard, and the meeting stops making this change.
     func revert(_ fix: LineFix, lineID: String, in id: String) {
+        // The one still on: an earlier, already undone copy of the same change may sit before it.
         guard let l = store.session(id)?.lines.first(where: { $0.id == lineID }), var fixes = l.fixes,
-              let k = fixes.firstIndex(where: { $0.from == fix.from && $0.to == fix.to }) else { return }
+              let k = fixes.firstIndex(where: { $0.from == fix.from && $0.to == fix.to && $0.applied })
+                ?? fixes.firstIndex(where: { $0.from == fix.from && $0.to == fix.to }) else { return }
         remember(id, lines: [lineID])
         fixes[k].off = true
         fixes[k].ask = nil
@@ -226,7 +228,8 @@ final class LiveFixes: ObservableObject {
         remember(id, lines: targets.map(\.id))
         for t in targets {
             // A guess still waiting on the same words is answered by the edit: not that.
-            let fixes = (t.fixes ?? []).map { f -> LineFix in
+            // The same change made again replaces any earlier copy (say, one undone with 改回).
+            let fixes = (t.fixes ?? []).filter { !($0.from == e.fix.from && $0.to == e.fix.to) }.map { f -> LineFix in
                 var f = f
                 if f.ask == true, f.from.contains(e.heard) || e.heard.contains(f.from) { f.ask = nil; f.off = true }
                 return f

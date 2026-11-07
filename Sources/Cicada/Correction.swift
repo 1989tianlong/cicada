@@ -229,13 +229,15 @@ enum Correction {
             while let f = shown.range(of: x, range: r) { n += 1; r = f.upperBound..<shown.endIndex }
             return n
         }
-        while !span().contains(where: { $0.isLetter || $0.isNumber }) || count(span()) != 1 {
+        func replacement() -> String { String(b[start..<(b.count - (a.count - end))]) }
+        // A dropped word ("in now." → "in.") grows too, so neither side of the fix is empty.
+        while !span().contains(where: { $0.isLetter || $0.isNumber }) || count(span()) != 1 || replacement().isEmpty {
             if let t = tokens.last(where: { $0.upperBound <= start }) { start = t.lowerBound }
             else if let t = tokens.first(where: { $0.lowerBound >= end }) { end = t.upperBound }
             else { break }
         }
         let from = span()
-        let to = String(b[start..<(b.count - (a.count - end))])
+        let to = replacement()
         guard !from.isEmpty, from != to else { return nil }
         var heard = from
         if !src.contains(from), let earlier = fixes.first(where: { $0.applied && from.contains($0.to) }) {
