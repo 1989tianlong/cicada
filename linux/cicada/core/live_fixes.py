@@ -176,7 +176,9 @@ class LiveFixes:
         with self._gate:
             touched = [l for l in self.store.lines(sid)
                        if any(f.ask is True and correction.core(f.from_, f.to) == c for f in l.fixes or [])]
-            self._remember(sid, [l.id for l in touched])
+            ids = {l.id for l in touched}
+            others = [l for l in self.store.lines(sid) if c[0] in l.src and l.id not in ids] if yes else []
+            self._remember(sid, [l.id for l in touched + others])
             for l in touched:
                 fixes = [f.copy() for f in l.fixes]
                 for f in fixes:
@@ -189,6 +191,9 @@ class LiveFixes:
                 self._set(fixes, l.id, sid)
             if yes:
                 self.vocabulary.confirm(c[0], c[1])
+                # The rest of the meeting heard the same way follows now, not with the next line.
+                for l in others:
+                    self.apply_known(l.id, sid)
             else:
                 self._refused.add(_pair(*c))
         Log.d("fix answered %s" % ("yes" if yes else "no"))

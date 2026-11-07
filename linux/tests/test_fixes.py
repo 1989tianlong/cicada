@@ -328,6 +328,14 @@ class Live(Base):
         fx.received("但质压这种", [Edit("质压", "质押", 0.9)])
         self.assertEqual(store.line(sid, "l0").shown, "但质压这种")
 
+    def test_yes_fixes_the_rest_of_the_meeting_at_once(self):
+        fx, store, sid = self.setup(["最近那个开布特提了", "开布特那边也说了"])
+        fx.received("最近那个开布特提了", [Edit("开布特", "Curve", 0.9)])
+        fx.answer(fx.pending(sid)[0][1], True, sid)
+        self.assertEqual(store.line(sid, "l1").shown, "Curve那边也说了")
+        fx.undo()
+        self.assertEqual(store.line(sid, "l1").shown, "开布特那边也说了")
+
     def test_toast_says_what_was_done(self):
         fx, store, sid = self.setup(["但质压这种"])
         fx.received("但质压这种", [Edit("质压", "质押", 0.9)])
