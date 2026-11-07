@@ -89,6 +89,14 @@
       {
         "kind": "fixed",
         "platforms": [
+          "android"
+        ],
+        "title": "Android 英文、日文、韩文界面的词表里，改写法的提示说“点按”，不再说“用鼠标点击”。",
+        "text": "手机上没有鼠标，提示跟着改成 Tap / タップ / 탭。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
           "windows"
         ],
         "title": "在 Mac 上改过听错的词的会议记录，Windows 版也显示改后的文字，再保存也不会丢掉这些改动。",
