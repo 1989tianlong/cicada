@@ -108,7 +108,10 @@
       {
         "kind": "fixed",
         "platforms": [
-          "mac"
+          "mac",
+          "windows",
+          "android",
+          "linux"
         ],
         "title": "用 OpenRouter 的默认模型时，纪要不再因为服务商不支持 JSON 格式而写不出来，设置里也不再说这个模型不能用。",
         "text": "OpenRouter 有时把 Ling 3.1 Flash 交给不支持 JSON 格式的服务商；现在被拒时会换个问法再问一次。"

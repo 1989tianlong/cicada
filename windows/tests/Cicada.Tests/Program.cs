@@ -1921,6 +1921,59 @@ static class Tests
         finally { LingClient.Spacing = old; }
     }
 
+    public static async Task ARefusalForSomethingElseKeepsThinkingOff()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            // No JSON mode on this server (OpenRouter's Novita for Ling 3.1 Flash): 400 with or
+            // without the kwargs. Asked again without JSON mode.
+            var fake = new Service((url, body) => body.Contains("response_format") ? Status(400) : Reply("好"));
+            var (ling, _) = Using(fake, "custom", key: null, new AppSettings { AiCustomBase = "http://192.168.1.20:8000/v1", AiModels = { ["custom"] = "m" } });
+            Equal("好", await ling.Chat("x", "Notes.", Priority.Translate, json: true), "answered without JSON mode");
+            var last = fake.Sent[^1].body;
+            Check(!last.Contains("response_format") && last.Contains("chat_template_kwargs"), "thinking stays off");
+            await ling.Chat("y", "Translate.", Priority.Translate);
+            Check(fake.Sent[^1].body.Contains("chat_template_kwargs"), "and is not dropped for later requests");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static async Task ACheckPassesAModelThatAnswersJSONWithoutJSONMode()
+    {
+        var old = LingClient.Spacing; LingClient.Spacing = 0;
+        try
+        {
+            var s = new AppSettings { AiCustomBase = "http://192.168.1.20:8000/v1", AiModels = { ["custom"] = "m" }, AiHearModels = { ["custom"] = "m" } };
+            var fake = new Service((url, body) => url.EndsWith("/models") ? Status(404) : body.Contains("response_format") ? Status(400)
+                : body.Contains("JSON object") ? Reply("```json\n{\"ok\": true}\n```") : Reply("周五发布。"));
+            var (ling, _) = Using(fake, "custom", key: null, s);
+            await ling.Check();
+            Check(ling.Health[AICheck.StepId.Text].Kind == AICheck.Kind.Ok && ling.Health.Failure?.Why != AICheck.Reason.NoJSON, ling.Health.Summary);
+            // One that can't answer JSON at all still fails.
+            var plain = new Service((url, body) => url.EndsWith("/models") ? Status(404) : body.Contains("response_format") ? Status(400) : Reply("ok"));
+            var (other, _) = Using(plain, "custom", key: null, s);
+            await other.Check();
+            Equal(AICheck.Reason.NoJSON, other.Health.Failure?.Why, "no JSON either way");
+            Equal(400, other.Health.Failure?.Code, "the refusal's code");
+        }
+        finally { LingClient.Spacing = old; }
+    }
+
+    public static void AJSONObjectInPlainTextCountsAsJSON()
+    {
+        Check(LingClient.AnswersJSON("{\"ok\": true}"), "bare");
+        Check(LingClient.AnswersJSON("```json\n{\"ok\": true}\n```"), "fenced");
+        Check(LingClient.AnswersJSON("Sure: {\"ok\": true}."), "in a sentence");
+        Check(!LingClient.AnswersJSON("ok") && !LingClient.AnswersJSON("[1]") && !LingClient.AnswersJSON("} {") && !LingClient.AnswersJSON(null), "none");
+    }
+
+    public static void NotesTakeJSONOutOfAFence()
+    {
+        var n = NotesEngine.Parse("```json\n{\"summary\": \"周五发布\", \"topics\": []}\n```", [0.0], 0);
+        Check(n is not null, "fenced notes parse");
+    }
+
     // 语音和文字只发给你的服务 (issue #15; the Mac's GoogleOffTests): Google is never asked.
 
     public static void CustomOnlyActsWithTheCustomServiceAlone()

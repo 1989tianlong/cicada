@@ -301,8 +301,16 @@ public sealed class LingClient
             r.Pass(AICheck.StepId.Text, Since(t));
             if (c.Provider.Id == "custom")
             {
-                try { await Chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json: true, maxTokens: 20, timeout: 30); }
-                catch (LingException e) when (e.Failure == LingException.Kind.Http) { r.Fail(AICheck.StepId.Text, AICheck.Reason.NoJSON, e.Status); }
+                const string ask = "Reply with the JSON object {\"ok\": true}.";
+                try { await Chat(ask, "Reply.", Priority.Speak, json: true, maxTokens: 20, timeout: 30, jsonFallback: false); }
+                catch (LingException e) when (e.Failure == LingException.Kind.Http)
+                {
+                    // JSON mode refused (some hosts of a model do): meetings then ask without it, so
+                    // what counts is whether the model still answers with a JSON object.
+                    string? said = null;
+                    try { said = await Chat(ask, "Reply.", Priority.Speak, maxTokens: 20, timeout: 30); } catch (LingException) { }
+                    if (!AnswersJSON(said)) r.Fail(AICheck.StepId.Text, AICheck.Reason.NoJSON, e.Status);
+                }
             }
         }
         catch (LingException e) { Failed(e, AICheck.StepId.Text); }
@@ -471,9 +479,11 @@ public sealed class LingClient
     /// holds every request start for a while (RateLimited), and a retry keeps its place in the
     /// queue, so lines stay in order. Audio goes to the hear model's address (a custom service's own
     /// one for it). `reply` sees the whole reply before its text is read (the check's thinking test).
+    /// A JSON request refused with 400 is asked again without JSON mode unless `jsonFallback` is
+    /// off (the check asks again itself).
     public async Task<string> Chat(string content, string instruction, Priority priority, bool json = false,
         int maxTokens = 1024, double timeout = 30, string? model = null, byte[]? audio = null, bool patient = false,
-        CancellationToken cancel = default, Action<JsonNode>? reply = null)
+        CancellationToken cancel = default, Action<JsonNode>? reply = null, bool jsonFallback = true)
     {
         var k = CurrentKey() ?? throw new LingException(LingException.Kind.NoKey);
         if (KeyState == KeyState.Invalid) throw new LingException(LingException.Kind.InvalidKey);
@@ -492,7 +502,6 @@ public sealed class LingClient
         };
         c.Shape(body, maxTokens, templateKwargs: !noTemplateKwargs.ContainsKey(b));
         if (json) body["response_format"] = new JsonObject { ["type"] = "json_object" };
-        var payload = body.ToJsonString();
         var url = new Uri(new Uri(b), "chat/completions");
 
         var waits = RetryWaits(priority, audio is not null, patient);
@@ -507,16 +516,14 @@ public sealed class LingClient
             try
             {
                 JsonNode root;
-                try { root = await Post(url, payload, k, timeout, cancel); }
-                // A strict gateway answers 400 or 422 to a field it doesn't know: asked again
-                // without it, and not sent it again until settings change.
-                catch (LingException e) when (e.Failure == LingException.Kind.Http && e.Status is 400 or 422 && body.ContainsKey("chat_template_kwargs"))
+                try { root = await PostChat(url, body, b, k, timeout, cancel); }
+                catch (LingException e) when (jsonFallback && e.Failure == LingException.Kind.Http && e.Status == 400 && body.ContainsKey("response_format"))
                 {
-                    Log.Debug($"ai custom: chat_template_kwargs refused (HTTP {e.Status}), sent without it from now on");
-                    noTemplateKwargs[b] = true;
-                    body.Remove("chat_template_kwargs");
-                    payload = body.ToJsonString();
-                    root = await Post(url, payload, k, timeout, cancel);
+                    // Some hosts of a model refuse JSON mode (on OpenRouter, Novita for Ling 3.1 Flash)
+                    // while the model answers JSON anyway: the prompt asks for it, the parsers find it.
+                    Log.Debug($"ling: {priority} JSON mode refused (400), asking again without it");
+                    body.Remove("response_format");
+                    root = await PostChat(url, body, b, k, timeout, cancel);
                 }
                 reply?.Invoke(root);
                 var choice = root["choices"]?[0];
@@ -722,6 +729,35 @@ public sealed class LingClient
             at += 8 + size + (size & 1);
         }
         return [];
+    }
+
+    /// A chat completion. A strict gateway answers 400 or 422 to a field it doesn't know: asked
+    /// again without `chat_template_kwargs`, and not sent it again (to `b`) until settings change,
+    /// but only when that request goes through (Ling.swift › postChat): a 400 for something else
+    /// (no JSON mode) must not turn thinking back on for every translation.
+    async Task<JsonNode> PostChat(Uri url, JsonObject body, string b, string k, double timeout, CancellationToken cancel)
+    {
+        try { return await Post(url, body.ToJsonString(), k, timeout, cancel); }
+        catch (LingException e) when (e.Failure == LingException.Kind.Http && e.Status is 400 or 422 && body.ContainsKey("chat_template_kwargs"))
+        {
+            var plain = (JsonObject)body.DeepClone();
+            plain.Remove("chat_template_kwargs");
+            JsonNode root;
+            try { root = await Post(url, plain.ToJsonString(), k, timeout, cancel); }
+            catch (LingException) { throw e; }
+            Log.Debug($"ai custom: chat_template_kwargs refused (HTTP {e.Status}), sent without it from now on");
+            noTemplateKwargs[b] = true;
+            return root;
+        }
+    }
+
+    /// A chat reply's text holds a JSON object (a fence or a sentence around it is fine).
+    public static bool AnswersJSON(string? text)
+    {
+        if (text is null) return false;
+        int a = text.IndexOf('{'), z = text.LastIndexOf('}');
+        if (a < 0 || z <= a) return false;
+        try { return JsonNode.Parse(text[a..(z + 1)]) is JsonObject; } catch (JsonException) { return false; }
     }
 
     async Task<JsonNode> Post(Uri url, string payload, string k, double timeout, CancellationToken cancel)
