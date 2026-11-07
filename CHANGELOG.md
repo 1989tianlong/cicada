@@ -24,6 +24,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([28ab28e](https://github.com/wquguru/cicada/commit/28ab28e0f29219a46a55f3074b64821b16fa7882))
 - Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([bc6cc3c](https://github.com/wquguru/cicada/commit/bc6cc3c5b8e3242a447756c09f103f4fc75fafe9))
 - The toast after Edit line… shows the span an added word changed (in → in now), not a fragment ([194cdd1](https://github.com/wquguru/cicada/commit/194cdd16d7530f771f60aca7d663017d3efe2642))
+- Revert and the heard-as chips name an added word whole (in → in now), not "→ now" with nothing before the arrow ([cc718cc](https://github.com/wquguru/cicada/commit/cc718cc16727c1d9d495cc995eb51ba9c719e52a))
 
 ### Windows
 
@@ -39,6 +40,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([d5fbff2](https://github.com/wquguru/cicada/commit/d5fbff2957f11833eb2e60aedd013cf1c2e4979d))
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([331e094](https://github.com/wquguru/cicada/commit/331e094a6ded82ca32ba5cc152659e2c8fb279df))
 - Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([53846ad](https://github.com/wquguru/cicada/commit/53846adf3d0f08a1a705be768557cebd34aa0bd3))
+- Revert and the heard-as chips name an added word whole (in → in now), not "→ now" with nothing before the arrow ([183f049](https://github.com/wquguru/cicada/commit/183f0491c9aafe5e6e43510349d24267fa0b5502))
 
 ### Android
 
@@ -56,6 +58,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([7a11c5a](https://github.com/wquguru/cicada/commit/7a11c5a4023f64d709fa7f622ddd24dfa22426db))
 - Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([2f51cd8](https://github.com/wquguru/cicada/commit/2f51cd877171023b3ca7ab6a7969d5d55249e0cb))
 - The toast after Edit line… shows the span an added word changed (in → in now), not a fragment ([b842de4](https://github.com/wquguru/cicada/commit/b842de461a5aec59ad31cfc77c2019c10e099190))
+- Revert and the heard-as chips name an added word whole (in → in now), not "→ now" with nothing before the arrow ([f215e24](https://github.com/wquguru/cicada/commit/f215e24e15d55bc86762fd7b5b7fa1cd6b03a9da))
 
 ### Linux
 
@@ -73,6 +76,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([ab28ff7](https://github.com/wquguru/cicada/commit/ab28ff7286535d171e18f61950913c287e300cf5))
 - Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([bd62bda](https://github.com/wquguru/cicada/commit/bd62bda660ff127a1acf273242cfd60f2659cfb3))
 - The toast after Edit line… shows the span an added word changed (in → in now), not a fragment ([4f3f75a](https://github.com/wquguru/cicada/commit/4f3f75a862f1e0ff62956a31d8c0c3bb8cd86978))
+- Revert and the heard-as chips name an added word whole (in → in now), not "→ now" with nothing before the arrow ([db02021](https://github.com/wquguru/cicada/commit/db02021f94f7f7303ec2c845860a3fa60852cea4))
 
 ## 1.5.0 — 2026-11-07
 
