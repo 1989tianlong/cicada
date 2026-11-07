@@ -70,6 +70,7 @@ object Tests {
             "longMeetingsAreNotedInPartsByTime" to ::longMeetingsAreNotedInPartsByTime,
             "topicStartsWhenItsLinesWereSaid" to ::topicStartsWhenItsLinesWereSaid,
             "loadsTheMacsTranslations" to ::loadsTheMacsTranslations,
+            "pluralsFromTheMacsStringsdict" to ::pluralsFromTheMacsStringsdict,
             "keyFileIsPrivate" to ::keyFileIsPrivate,
             "onboardingKeepsAWorkingSavedKey" to ::onboardingKeepsAWorkingSavedKey,
             "lingRequestShape" to ::lingRequestShape,
@@ -696,6 +697,28 @@ object Tests {
         equal("x\ny", t["a \"b\""], "escapes")
         equal("%@ min", t["%@ 分钟"], "placeholders kept")
         equal("3 分钟", Strings.LF("%@ 分钟", 3), "LF fills %@")
+        equal("1 句", Strings.LF("%lld 句", 1), "Chinese has no plural forms")
+    }
+
+    fun pluralsFromTheMacsStringsdict() {
+        loadStrings("en")
+        equal("1 line", Strings.LF("%lld 句", 1), "one")
+        equal("2 lines", Strings.LF("%lld 句", 2), "other")
+        equal("0 lines", Strings.LF("%lld 句", 0), "zero is other in English")
+        equal("Heard 1 line", Strings.LF("已听到 %lld 句", 1), "text around the plural")
+        equal("12:00 · 1 line", Strings.LF("%@ · %lld 句", "12:00", 1), "positional %2$#@n@ after %1$@")
+        equal("Recorded 03:15 · 7 lines. Ending stops listening and writes the full notes.",
+              Strings.LF("已记录 %@ · %lld 句。结束后停止收听，并整理一份完整版纪要。", "03:15", 7), "positional, other")
+        equal("1 point", Strings.LF("%lld 条要点", 1L), "a Long counts too")
+        equal("Live notes", Strings.L("实时纪要"), "plain strings still load")
+        loadStrings("ja")
+        equal("1文", Strings.LF("%lld 句", 1), "no stringsdict: the .strings value")
+        loadStrings("zh-Hans")   // the other tests read the Chinese
+        val p = Strings.parsePlurals("<?xml version=\"1.0\"?>\n<!DOCTYPE plist>\n<plist version=\"1.0\"><dict><key>a &amp; b</key><dict>" +
+            "<key>NSStringLocalizedFormatKey</key><string>%#@x@ &lt;</string><key>x</key><dict><key>one</key><string>%lld y</string>" +
+            "<key>other</key><string>%lld ys</string></dict></dict></dict></plist>")
+        equal("%#@x@ <", p["a & b"]?.format, "entities")
+        equal("%lld ys", p["a & b"]?.forms?.get("x")?.get("other"), "forms")
     }
 
     fun onboardingKeepsAWorkingSavedKey() {

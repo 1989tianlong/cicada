@@ -245,7 +245,7 @@ class RecordActivity : Activity() {
         top.addView(ui.text(meta, 13f, Palette.secondary), ui.lp(top = 6))
         recordingNote(s, live, file, playable)?.let { top.addView(it, ui.lp(top = 6)) }
         speakerChips(s)?.let { top.addView(it, ui.lp(top = 14)) }
-        val tabLabels = listOf(L("纪要"), "${L("文字记录")} · ${s.lines.size} ${L("句")}")
+        val tabLabels = listOf(L("纪要"), "${L("文字记录")} · ${LF("%lld 句", s.lines.size)}")
         val tabs = ui.tabs(tabLabels, tab) { tab = it; render() }
         top.addView(tabs, ui.lp(top = 18))
         headTabs = tabs

@@ -60,12 +60,12 @@ kotlin { jvmToolchain(21) }
 
 dependencies { implementation(project(":core")) }
 
-// The UI text: the Mac's Localizable.strings and the Android-only Android.strings, both keyed by
+// The UI text: the Mac's Localizable.strings (and .stringsdict, its plurals) and the Android-only Android.strings, both keyed by
 // the Chinese, into assets/Resources/<lang>.lproj/.
 val copyStrings by tasks.registering(Sync::class) {
     into(layout.buildDirectory.dir("generated/strings/Resources"))
     for (lang in listOf("zh-Hans", "en", "ja", "ko")) {
-        from(rootProject.file("../Resources/$lang.lproj")) { include("Localizable.strings"); into("$lang.lproj") }
+        from(rootProject.file("../Resources/$lang.lproj")) { include("Localizable.strings", "Localizable.stringsdict"); into("$lang.lproj") }
         from(file("src/main/strings/$lang.lproj")) { include("Android.strings"); into("$lang.lproj") }
     }
 }

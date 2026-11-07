@@ -21,7 +21,6 @@
 "全部" = "See all";
 "还没有会议记录" = "No meetings yet";
 "M月d日" = "MMM d";
-"句" = "lines";
 "%@ 个待办" = "To-dos: %@";
 "%@ 分钟前更新" = "Updated %@ min ago";
 "20 秒没听到声音。通话和会议 app 的声音系统不让录" = "No sound for 20s. Call & meeting apps block audio capture.";

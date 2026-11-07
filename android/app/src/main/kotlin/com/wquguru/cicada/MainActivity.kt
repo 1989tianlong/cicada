@@ -265,7 +265,7 @@ class MainActivity : Activity() {
             // Under a day's heading: the time, how long, how many lines, and where it came from.
             val from = s.sourceFile?.let { L("导入") }
             val meta = if (live) "${time(s.startedAt)} · ${Languages.clock(s.durationSeconds)}"
-                       else listOfNotNull("${time(s.startedAt)}", Languages.clock(s.durationSeconds), "${s.lines.size} ${L("句")}", from).joinToString(" · ")
+                       else listOfNotNull("${time(s.startedAt)}", Languages.clock(s.durationSeconds), LF("%lld 句", s.lines.size), from).joinToString(" · ")
             val todos = s.notes?.todos?.size ?: 0
             val trailing = if (todos > 0) ui.badge(LF("%@ 个待办", todos), Palette.body, Palette.ground) else null
             return ui.listRow(title, meta, trailing = trailing, titleView = titleView) {
