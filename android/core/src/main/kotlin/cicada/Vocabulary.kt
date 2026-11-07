@@ -58,8 +58,15 @@ class Vocabulary(private val file: File? = Paths.vocabulary) {
         return terms.any { key(it.word) == w && it.heard.any { x -> key(x) == h } }
     }
 
-    /// The user said yes to a fix (or added it): the word, and the form it was heard as.
-    fun confirm(heard: String, word: String, source: String = "live") = change { t ->
+    /// The user said yes to a fix (or added it): the word, and the form it was heard as. A pair
+    /// that isn't a word for a word (`learnable`) adds nothing.
+    fun confirm(heard: String, word: String, source: String = "live") {
+        if (heard.isEmpty()) return add("", word, source)
+        val l = learnable(heard, word) ?: return
+        add(l.first, l.second, source)
+    }
+
+    private fun add(heard: String, word: String, source: String) = change { t ->
         val i = t.indexOfFirst { key(it.word) == key(word) }
         if (i >= 0) {
             if (heard.isNotEmpty() && t[i].heard.none { key(it) == key(heard) }) t[i] = t[i].copy(heard = t[i].heard + heard)
@@ -157,6 +164,38 @@ class Vocabulary(private val file: File? = Paths.vocabulary) {
     companion object {
         /// More would make every sentence's request long, and more terms means more wrong swaps.
         const val LIMIT = 300
+
+        /// What a fix can teach the list, or null: both sides trimmed of spaces and punctuation, no
+        /// punctuation inside, short, and a real swap. An edit that only adds or drops words around
+        /// the heard ones ("我来" → "OK我来") or ends on a full stop ("持。" → "讲。") teaches nothing.
+        fun learnable(heard: String, word: String): Pair<String, String>? {
+            val h = trimEdges(heard); val w = trimEdges(word)
+            if (h.isEmpty() || w.isEmpty() || h.codePointCount(0, h.length) > 20 || w.codePointCount(0, w.length) > 40 || key(h) == key(w)) return null
+            if (w.contains(h) || h.contains(w)) return null
+            if (h.codePoints().anyMatch { punctuation(it) }) return null
+            if (w.codePoints().anyMatch { punctuation(it) && it != '.'.code && it != '-'.code }) return null
+            return h to w
+        }
+
+        private fun punctuation(c: Int): Boolean = when (Character.getType(c).toByte()) {
+            Character.CONNECTOR_PUNCTUATION, Character.DASH_PUNCTUATION, Character.START_PUNCTUATION, Character.END_PUNCTUATION,
+            Character.INITIAL_QUOTE_PUNCTUATION, Character.FINAL_QUOTE_PUNCTUATION, Character.OTHER_PUNCTUATION -> true
+            else -> false
+        }
+
+        /// Spaces, punctuation and symbols: what a learned pair is trimmed of at both ends.
+        private fun edge(c: Int): Boolean = Character.isWhitespace(c) || Character.isSpaceChar(c) || punctuation(c) ||
+            when (Character.getType(c).toByte()) {
+                Character.MATH_SYMBOL, Character.CURRENCY_SYMBOL, Character.MODIFIER_SYMBOL, Character.OTHER_SYMBOL -> true
+                else -> false
+            }
+
+        private fun trimEdges(s: String): String {
+            var a = 0; var b = s.length
+            while (a < b && edge(s.codePointAt(a))) a += Character.charCount(s.codePointAt(a))
+            while (b > a && edge(s.codePointBefore(b))) b -= Character.charCount(s.codePointBefore(b))
+            return s.substring(a, b)
+        }
 
         /// Same word whatever its width, case or spacing ("ＡＡＶＥ" is "aave").
         fun key(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFKC).lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")

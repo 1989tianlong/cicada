@@ -202,10 +202,12 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
             set(fixes + fix, t.id, id)
         }
         val word = Correction.core(fix.from, fix.to).second.trim()
-        // Only a change made everywhere teaches the word list: a one-off must not.
-        if (keep && everywhere) vocabulary.confirm(heard, word, "user")
-        Log.d("fix edited lines=${targets.size} keep=$keep")
-        say(if (keep) Strings.LF("已改 %lld 处：%@ → %@，记进词表", targets.size, heard, word) else Strings.LF("已改 %lld 处：%@ → %@", targets.size, heard, word))
+        // Only a change made everywhere teaches the word list (a one-off must not), and only a
+        // word for a word (`Vocabulary.learnable`).
+        val learned = keep && everywhere && Vocabulary.learnable(heard, word) != null
+        if (learned) vocabulary.confirm(heard, word, "user")
+        Log.d("fix edited lines=${targets.size} learned=$learned")
+        say(if (learned) Strings.LF("已改 %lld 处：%@ → %@，记进词表", targets.size, heard, word) else Strings.LF("已改 %lld 处：%@ → %@", targets.size, heard, word))
         return targets.size
     }
 

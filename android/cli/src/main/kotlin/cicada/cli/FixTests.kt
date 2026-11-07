@@ -7,6 +7,8 @@ import cicada.*
 object FixTests {
     val tests: List<Pair<String, () -> Unit>> = listOf(
         "fixesReadAndWrittenLikeTheMac" to ::recordWithFixes,
+        "editsThatArentAWordForAWordTeachNothing" to ::editsThatArentAWordForAWordTeachNothing,
+        "editAroundTheHeardWordsFixesTheLineButTeachesNothing" to ::editAroundTheHeardWordsFixesTheLineButTeachesNothing,
         "yesFixesTheRestOfTheMeetingHeardTheSameWayAtOnce" to ::yesFixesTheRestOfTheMeetingHeardTheSameWayAtOnce,
         "recordFormatUnchangedWithoutFixes" to ::recordFormatUnchangedWithoutFixes,
         "exportsShowTheFixedText" to ::exportsShowTheFixedText,
@@ -261,6 +263,25 @@ object FixTests {
         check(r.updated == 1 && r.added == 0, "updated")
         equal(1, v.terms.size, "one word")
         check(v.knows("阿韦", "Aave"), "knows")
+    }
+
+    fun editsThatArentAWordForAWordTeachNothing() {
+        val v = Vocabulary(null)
+        v.confirm("持。", "讲。")
+        check(v.knows("持", "讲"), "trimmed of the full stop")
+        v.confirm("我来", "OK我来", "user")
+        v.confirm("然后，", "然后")
+        equal(listOf("讲"), v.terms.map { it.word }, "words added around, or only punctuation, teach nothing")
+        v.confirm("木娜", "Monad", "user")
+        v.confirm("Uni斯图 V三", "Uniswap V3")
+        check(v.knows("木娜", "Monad") && v.knows("Uni斯图 V三", "Uniswap V3"), "a word for a word is learned")
+    }
+
+    fun editAroundTheHeardWordsFixesTheLineButTeachesNothing() {
+        val t = setup("我来看一下", "我来吧")
+        equal(2, t.fx.edit("l0", t.id, "OK我来看一下", everywhere = true, keep = true), "edited")
+        equal("OK我来吧", t.line("l1").shown, "the edit still applies")
+        check(t.fx.vocabulary.terms.isEmpty(), "not taught")
     }
 
     fun confirmAndForget() {
