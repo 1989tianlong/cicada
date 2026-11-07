@@ -97,8 +97,9 @@ class ListeningActivity : Activity() {
     /// 在视频上看, which has no video to go back to.
     private fun buildBottom() {
         val kind = cicada.listen.sourceKind
-        if (kind == bottomKind) return
-        bottomKind = kind
+        // Keyed on the language too: one changed in 设置 meanwhile would leave 结束 in the old one.
+        if ("$kind ${L("结束")}" == bottomKind) return
+        bottomKind = "$kind ${L("结束")}"
         bottomHost.removeAllViews()
         sayButton = null; sayLabel = null; sayHelper = null
         if (kind != "mic" || !cicada.settings.speakBack) {
