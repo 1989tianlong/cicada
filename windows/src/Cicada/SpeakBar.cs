@@ -56,8 +56,8 @@ sealed class SpeakBar : Window
                 var said = new StackPanel { VerticalAlignment = VerticalAlignment.Center, MaxWidth = 480 };
                 if (s.Said is not null) said.Children.Add(Ui.Text(s.Said, 12, Palette.NightText));
                 said.Children.Add(Gap(Ui.Text(s.Heard!, 15, Brushes.White, FontWeights.Bold), s.Said is null ? 0 : 2));
-                var done = s.State == SpeakEngine.Phase.Speaking ? L("正在说给对方听…") : L("对方已听到");
-                content = Ui.Row(12, Key(false), said, Ui.Text(done, 12, Palette.NightText, wrap: false));
+                var done = Ui.Text(s.State == SpeakEngine.Phase.Speaking ? L("正在说给对方听…") : L("对方已听到"), 12, Palette.NightText, wrap: false);
+                content = Fill(Key(false), said, done);
                 if (s.State == SpeakEngine.Phase.Idle) hide.Start();
                 break;
             case SpeakEngine.Phase.Failed:
@@ -90,6 +90,22 @@ sealed class SpeakBar : Window
         foreach (var h in new[] { 6.0, 11, 16, 12, 16, 8 })
             row.Children.Add(new System.Windows.Shapes.Rectangle { Width = 2.5, Height = h, RadiusX = 1, RadiusY = 1, Fill = Palette.Live, Margin = new Thickness(0, 0, 2.5, 0), VerticalAlignment = VerticalAlignment.Center });
         return row;
+    }
+
+    /// The key, then what was said taking whatever width is left, then the status at the right: in a
+    /// plain row a long sentence pushed the status out past the bar's edge.
+    static FrameworkElement Fill(FrameworkElement key, FrameworkElement said, FrameworkElement status)
+    {
+        var dock = new DockPanel { LastChildFill = true };
+        foreach (var (e, side) in new[] { (key, Dock.Left), (status, Dock.Right) })
+        {
+            e.VerticalAlignment = VerticalAlignment.Center;
+            DockPanel.SetDock(e, side);
+            dock.Children.Add(e);
+        }
+        key.Margin = new Thickness(0, 0, 12, 0); status.Margin = new Thickness(12, 0, 0, 0);
+        dock.Children.Add(said);
+        return dock;
     }
 
     static FrameworkElement Gap(FrameworkElement e, double top) { e.Margin = new Thickness(0, top, 0, 0); return e; }
