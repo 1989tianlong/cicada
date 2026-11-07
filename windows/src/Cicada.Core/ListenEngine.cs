@@ -150,7 +150,8 @@ public sealed class ListenEngine
         SessionId = session.Id;
         Room = room;
         if (room) store.MarkRoom(session.Id);
-        if (settings.RecordAudio && store.Audio is { } files)
+        // A silent debug meeting has nothing to record: an empty recording would be retried every launch.
+        if (settings.RecordAudio && store.Audio is { } files && from is not SilentSource)
         {
             var path = Recording.Partial(Recording.SystemAudio(session.Id));
             try
