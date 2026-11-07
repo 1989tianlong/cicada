@@ -1284,9 +1284,7 @@ struct MainWindowView: View {
             if !label {
             } else if let speaker { SpeakerTag(number: speaker).padding(.bottom, 2) }
             else if voices, l.speaker != "me" { UnknownSpeakerTag().padding(.bottom, 2) }
-            else if l.speaker == "me" {
-                Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk).padding(.bottom, 2)
-            }
+            else if l.speaker == "me" { MeTag().padding(.bottom, 2) }
             Text(l.src).font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(1)
                 .textSelection(.enabled)
             Text(l.dst ?? L("翻译中…")).font(.system(size: 14)).lineSpacing(2)
@@ -1386,8 +1384,9 @@ struct MainWindowView: View {
                     } else if let speaker { SpeakerTag(number: speaker) }
                     else if shownSession?.sourceFile == nil {
                         // An imported file has no "other side": its lines carry no label.
-                        Text(me ? L("你") : L("对方")).font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(me ? Palette.accentInk : Palette.secondary)
+                        if me { MeTag() } else {
+                            Text("对方").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.secondary)
+                        }
                     }
                     if place, label, !me { PlaceTag(line: l) }
                 }

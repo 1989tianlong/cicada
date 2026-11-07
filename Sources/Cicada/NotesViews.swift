@@ -760,7 +760,7 @@ struct TranscriptListView<Partial: View>: View, Equatable {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     if !label {
-                    } else if l.speaker == "me" { Text("你").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentInk) }
+                    } else if l.speaker == "me" { MeTag() }
                     else if onAssign != nil, !voices.isEmpty {
                         Button { assigning = assigning == l.id ? nil : l.id } label: {
                             HStack(spacing: 4) {

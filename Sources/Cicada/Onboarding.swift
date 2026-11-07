@@ -609,7 +609,7 @@ struct OnboardingView: View {
     private var speaking: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .top, spacing: 24) {
-                title(L("开会时要说外语吗？"), L("按住一个键说\(settings.speakFromLang.name)，对方听到翻译后的语音。"))
+                title(L("线上开会时要说外语吗？"), L("按住一个键说\(settings.speakFromLang.name)，线上的人听到翻译后的语音。"))
                 Spacer()
                 if speakSetupShown { talkKeyHint }
             }

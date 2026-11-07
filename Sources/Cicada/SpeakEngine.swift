@@ -284,6 +284,11 @@ final class SpeakEngine {
 
     func pressBegan() {
         guard settings.speakEnabled || probe != nil, phase == .idle || phase == .speaking else { return }
+        if probe == nil {
+            // 只听会议室 (older macOS): everyone is at the table and hears you; there is no call to speak into.
+            if settings.listensToRoom { onStatus?(L("同声传译是给线上会议用的")); return }
+            if outputDevice() == nil { onStatus?(L("还没装虚拟麦克风，线上的人听不到你")); return }
+        }
         guard let format = analyzerFormat, let input = beginUtterance() else {
             Task { await prepare() }
             onStatus?(L("语音识别仍在准备中，请再按一次"))
@@ -502,7 +507,7 @@ final class SpeakEngine {
         // Pick the voice and ready its output while the sentence is translated: the device switch
         // (and the engine restart it causes) is then over before the first sound.
         let route = route?(to) ?? .system(nil)
-        if case .stream = route { configureOutput(format: Self.streamFormat, device: outputDevice()); try? out.start() }
+        if case .stream = route, let device = outputDevice() { configureOutput(format: Self.streamFormat, device: device); try? out.start() }
         // Ming hears the audio while the on-device transcriber finishes, so its fallback costs nothing.
         let ming = Task { () -> (original: String, translation: String)? in
             guard let wav, let interpret else { return nil }
@@ -557,6 +562,15 @@ final class SpeakEngine {
                 probe?.finish()
                 return
             }
+            // The virtual mic went away during the press: no voice at all rather than the speakers.
+            guard outputDevice() != nil else {
+                debugLog("speak: no virtual mic, nothing sent")
+                if probe == nil { onTiming?(timing(voice: nil)) }
+                phase = .idle
+                onLive?(.idle, text, L("没有虚拟麦克风 · 没有说出去"))
+                probe?.finish()
+                return
+            }
             contentLog("SPEAK [\(from)→\(to)] via=\(trace.via) \(text) => \(translated)")
             debugLog("speak: via=\(trace.via) recognize \(String(format: "%.2f", textAt.timeIntervalSince(released))) s translate \(String(format: "%.2f", translatedAt.timeIntervalSince(textAt))) s fallbacks=\(trace.fallbacks)")
             if probe == nil { onUtterance?(text, translated, from, to, Date().timeIntervalSince(pressStarted)) }
@@ -587,14 +601,12 @@ final class SpeakEngine {
         return voices.max(by: { $0.quality.rawValue < $1.quality.rawValue }) ?? AVSpeechSynthesisVoice(language: lang)
     }
 
+    /// Where a translation goes: a virtual mic, so only the people online hear it. Never the
+    /// speakers: the room already heard you, and a voice after yours only talks over it. A
+    /// `speakOutput` stored before this (the speakers, say) no longer counts. nil: none installed.
     func outputDevice() -> OutputDevice? {
         let all = AudioDevices.outputs()
-        // 会议室: the people are in the room, so the translation comes out of the Mac's speakers.
-        if settings.listensToRoom {
-            if let d = all.first(where: { $0.uid == settings.speakOutput }), !d.isVirtualMic { return d }
-            return AudioDevices.defaultOutput
-        }
-        if !settings.speakOutput.isEmpty, let d = all.first(where: { $0.uid == settings.speakOutput }) { return d }
+        if let d = all.first(where: { $0.uid == settings.speakOutput }), d.isVirtualMic { return d }
         return all.first(where: \.isVirtualMic)
     }
 

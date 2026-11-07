@@ -600,9 +600,9 @@ final class OverlayView: NSView {
             y -= 12 * k(fs)
             let label: String
             switch s.phase {
-            case .listening: label = L("你在说…  ") + s.source
-            case .translating: label = L("翻译中…  ") + s.source
-            case .speaking, .idle: label = L("你：") + s.source
+            case .listening: label = L("同传 · 你在说…  ") + s.source
+            case .translating: label = L("同传 · 翻译中…  ") + s.source
+            case .speaking, .idle: label = L("同传 · 你：") + s.source
             }
             draw(label, font: srcFont(fs), color: orange.withAlphaComponent(0.8), maxLines: 1)
             draw(s.translation, font: speakFont(fs), color: orange, maxLines: 2)

@@ -12,6 +12,8 @@
 "这个服务不支持 JSON，纪要写不了；翻译照常。" = "This service doesn't support JSON, so notes can't be written. Translation still works.";
 "%@ 现在很忙，key 没问题。开会时会自动重试。" = "%@ is busy right now; the key is fine. Meetings retry automatically.";
 "%@ 暂时出错（HTTP %lld），稍后再试。" = "%@ has a temporary error (HTTP %lld). Try again shortly.";
+"这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒这句就不等它了。在服务端关掉思考，或换一个不思考的模型。" = "This model thinks before answering: one sentence takes %@ s, and anything over 6 s isn't waited for. Turn thinking off on the server, or pick a model that doesn't think.";
+"翻一句要 %@ 秒，超过 6 秒这句就不等它了。换一个更小的模型会快一些。" = "One sentence takes %@ s, and anything over 6 s isn't waited for. A smaller model will be faster.";
 "这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒会改用 Google。在服务端关掉思考，或换一个不思考的模型。" = "This model thinks before answering: one sentence takes %@ s, and anything over 6 s falls back to Google. Turn thinking off on the server, or pick a model that doesn't think.";
 "翻一句要 %@ 秒，超过 6 秒会改用 Google。换一个更小的模型会快一些。" = "One sentence takes %@ s, and anything over 6 s falls back to Google. A smaller model will be faster.";
 "这台 Mac 访问不到 %@，开会时先用本机识别。" = "This Mac can't reach %@; meetings use on-device recognition for now.";
@@ -96,6 +98,7 @@
 "一小时会议约 ¥0.15–1（目前优惠价）。发出去的只有文字（用你自己的声音时还有那段录音），语音识别留在本机。" = "About ¥0.15–1 per hour of meeting (current discount pricing). Only text is sent (plus your voice sample if you use your own voice); speech recognition stays on this Mac.";
 "跑在你自己的机器上，不按量计费。" = "Runs on your own machine, with no usage charges. ";
 "费用以这个服务为准。" = "Charges are set by this service. ";
+"会议的语音和文字只发给 %@，不经过 Google 等外部服务。" = "Meeting audio and text go only to %@, never through Google or other outside services.";
 "会议的声音会发给你的服务识别。" = "Meeting audio is sent to your service for recognition.";
 "发出去的只有文字，语音识别留在本机。" = "Only text is sent; speech recognition stays on this Mac.";
 "按所选模型计费。发出去的只有文字，语音识别留在本机。" = "Billed by chosen model. Only text is sent; speech recognition stays on-device.";
@@ -104,10 +107,15 @@
 "正在检查…" = "Checking…";
 "翻译和纪要" = "Translation and notes";
 "没填，用本机声音" = "Not set: the Mac's voice";
+"不用 Google 翻译；说话时要等整句说完才出译文" = "No Google Translate; translation appears after each sentence ends";
+"现在连不上：整句先用本机翻译，半句只显示原文" = "Unreachable: full sentences translate on-device; partial lines show the original";
+"现在连不上：新字幕暂时只有原文" = "Unreachable: new subtitles show the original only for now";
+"语音和文字只发给你的服务" = "Send audio and text only to your service";
 "移除 key" = "Remove key";
 "key 只存在这台 Mac 上（只有你的账户能读），只发给 %@" = "The key is stored only on this Mac (readable only by your account) and sent only to %@";
 "只存在这台 Mac 上（只有你的账户能读），只发给 %@（%@）" = "Stored only on this Mac (readable only by your account) and sent only to %@ (%@)";
 "局域网里的服务器：macOS 会问一次能否访问本地网络，点“允许”。" = "A server on your local network: macOS asks once whether Cicada may use the local network. Click Allow.";
+"你填的地址" = "the URL you entered";
 "没有本地网络权限" = "Local network not allowed";
 "暂时连不上" = "Can't connect right now";
 "这个 key 用不了" = "This key doesn't work";
@@ -153,7 +161,6 @@
 "取消" = "Cancel";
 "改用 %@" = "Switch to %@";
 "移除" = "Remove";
-"你填的地址" = "the URL you entered";
 "%@ · 响应约 %@ 秒" = "%1$@ · responds in about %2$@ s";
 "先用本机声音" = "Using this Mac's voice for now";
 "上次同传时正常" = "Worked last time it interpreted";
@@ -358,6 +365,7 @@
 "这场会议只留下了录音" = "Only the recording was kept";
 "当时没听出是哪种语言。选一下，就按它转成文字" = "The language wasn't recognized at the time. Pick it to turn the recording into text";
 "其他语言…" = "Other…";
+"找不到录音，没法播放" = "Can't find the recording to play";
 "找不到原文件，没法播放" = "Can't find the original file to play";
 "暂停" = "Pause";
 "播放" = "Play";
@@ -493,16 +501,8 @@
 "现在结束" = "End now";
 
 /* NotesWindow */
-"key 失效了 · 纪要停在 %@" = "Key no longer works · notes stopped at %@";
-"key 失效了 · 纪要等新的 key" = "Key no longer works · notes wait for a new key";
-"换 key" = "Change Key";
-"%@ 很忙 · 纪要稍后补上，字幕照常" = "%@ is busy · notes catch up later, subtitles carry on";
-"连不上 %@ · 缺本地网络权限" = "Can't reach %@ · Local Network not allowed";
-"去开启" = "Turn On";
-"纪要等 %@ 恢复 · 停在 %@，字幕照常" = "Notes wait for %1$@ · stopped at %2$@, subtitles carry on";
-"纪要等 %@ 恢复 · 字幕照常" = "Notes wait for %@ · subtitles carry on";
-"改用 Ling" = "Use Ling";
-"这轮纪要没写好 · 下轮自动补上" = "This round of notes didn't work · the next one catches up";
+"译文和纪要等 %@ 恢复 · 字幕先显示原文" = "Translation and notes wait for %@ · subtitles show the original for now";
+"译文等 %@ 恢复 · 字幕先显示原文" = "Translation waits for %@ · subtitles show the original for now";
 "电脑声音照常在记" = "The Mac's audio is still being recorded";
 "麦克风没声音" = "The mic is silent";
 "重开了一次也没好" = "Reopening it didn't help";
@@ -549,6 +549,16 @@
 "改用%@重新整理" = "Rewrite in %@";
 "在会议记录中查看" = "View in Meetings";
 "开始新会议" = "New Meeting";
+"key 失效了 · 纪要停在 %@" = "Key no longer works · notes stopped at %@";
+"key 失效了 · 纪要等新的 key" = "Key no longer works · notes wait for a new key";
+"换 key" = "Change Key";
+"%@ 很忙 · 纪要稍后补上，字幕照常" = "%@ is busy · notes catch up later, subtitles carry on";
+"连不上 %@ · 缺本地网络权限" = "Can't reach %@ · Local Network not allowed";
+"去开启" = "Turn On";
+"纪要等 %@ 恢复 · 停在 %@，字幕照常" = "Notes wait for %1$@ · stopped at %2$@, subtitles carry on";
+"纪要等 %@ 恢复 · 字幕照常" = "Notes wait for %@ · subtitles carry on";
+"改用 Ling" = "Use Ling";
+"这轮纪要没写好 · 下轮自动补上" = "This round of notes didn't work · the next one catches up";
 "去设置" = "Open Settings";
 "换麦克风" = "Change mic";
 "连不上翻译，新字幕暂时只有原文" = "Can't reach translation; subtitles show the original only";
@@ -613,8 +623,8 @@
 "一段 9 秒的英文会议，字幕会跟着声音实时出来。" = "A 9-second meeting in English. Subtitles appear as they talk.";
 "听到" = "Hearing";
 "自动 · %@" = "Auto · %@";
-"开会时要说外语吗？" = "Speaking another language in meetings?";
-"按住一个键说%@，对方听到翻译后的语音。" = "Hold a key and speak %@; they hear it translated.";
+"线上开会时要说外语吗？" = "Speaking another language in online meetings?";
+"按住一个键说%@，线上的人听到翻译后的语音。" = "Hold a key and speak %@; people online hear it translated.";
 "要，现在设置" = "Yes, set it up";
 "约 2 分钟，会装一个虚拟麦克风" = "About 2 minutes; installs a virtual mic";
 "先不用" = "Not now";
@@ -693,9 +703,9 @@
 "回去接上" = "Go back and connect";
 
 /* Overlay */
-"你在说…  " = "You're speaking…  ";
-"翻译中…  " = "Translating…  ";
-"你：" = "You: ";
+"同传 · 你在说…  " = "Interpreting · you're speaking…  ";
+"同传 · 翻译中…  " = "Interpreting · translating…  ";
+"同传 · 你：" = "Interpreting · you: ";
 "关闭麦克风" = "Turn off mic";
 "打开麦克风" = "Turn on mic";
 
@@ -738,7 +748,9 @@
 
 /* SessionStore */
 "会议 %@" = "Meeting %@";
+"你 · 同传" = "You · interpreted";
 "未识别" = "Unidentified";
+"同传" = "Interpreted";
 
 /* SettingsWindow */
 "语言" = "Language";
@@ -796,8 +808,8 @@
 "系统麦克风已换好，关掉时换回" = "System mic switched; it goes back when you turn this off";
 "%@已选虚拟麦克风" = "%@ is on the virtual mic";
 "说一句话，听对方听到的声音，看每一步花了多久" = "Say one sentence, hear what they hear, and see how long each step takes";
-"对方听不到你" = "They can't hear you";
-"对方听得到你" = "They can hear you";
+"线上的人听不到你" = "People online can't hear you";
+"线上的人听得到你" = "People online can hear you";
 "同声传译没打开" = "Interpreting is off";
 "上次发言：松开后 %@ 秒，对方听到译文" = "Last time: they heard the translation %@ s after you let go";
 "按住说话，松开后约 1 秒，对方听到译文" = "Hold to talk; about 1 s after you let go, they hear the translation";
@@ -806,6 +818,7 @@
 "打开时把系统麦克风换成 %@" = "Switch the system mic to %@ while on";
 "%@听你说话用" = "%@ listens through";
 "译文送到" = "Send the translation to";
+"只给线上的人听，不从扬声器放" = "Only people online hear it, never the speakers";
 "自动切换系统麦克风" = "Switch the system microphone";
 "自动（%@）" = "Auto (%@)";
 "虚拟麦克风（自动）" = "Virtual microphone (auto)";
@@ -847,7 +860,10 @@
 
 /* SpeakEngine */
 "无法准备语音识别：%@" = "Can't prepare speech recognition: %@";
+"同声传译是给线上会议用的" = "Interpreting is for online meetings";
+"还没装虚拟麦克风，线上的人听不到你" = "No virtual microphone yet, so people online can't hear you";
 "语音识别仍在准备中，请再按一次" = "Speech recognition is still getting ready; press again";
+"没有虚拟麦克风 · 没有说出去" = "No virtual microphone · nothing was said";
 "这句没翻译成 · 没有说出去" = "This line wasn't translated · nothing was said";
 "对方在说话时说的，没有说出去" = "Said while they were talking, so not sent";
 
@@ -942,6 +958,7 @@
 /* SpeakerViews */
 "会议室的麦克风听到的" = "Heard by the room mic";
 "电脑里放出来的" = "Played by the Mac";
+"按住说话键说的，对方听到的是译文" = "Said with the talk key; they heard the translation";
 "没认出是谁：太短，或和已知的声音都不像" = "Not recognised: too short, or unlike the known voices";
 "关掉说话人识别，记录里的名字一起收起" = "Turn off speaker identification; the names in your records are hidden too";
 "Ling 从对话里认出，点一下可以改" = "Ling found this name in the conversation; click to change";
@@ -1090,6 +1107,8 @@
 "回到顶部" = "Back to top";
 "完整版纪要" = "Full notes";
 "速记版纪要" = "Draft notes";
+"会议结束后可以回放录音" = "The recording plays back once the meeting ends";
+"这场会议没存录音 ·" = "No recording of this meeting ·";
 "全部 %lld 句" = "All %lld lines";
 "翻译中…" = "Translating…";
 "从这里播放" = "Play from here";
@@ -1235,15 +1254,3 @@
 "在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
 "打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
 "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";
-"找不到录音，没法播放" = "Can't find the recording to play";
-"会议结束后可以回放录音" = "The recording plays back once the meeting ends";
-"这场会议没存录音 ·" = "No recording of this meeting ·";
-"语音和文字只发给你的服务" = "Send audio and text only to your service";
-"不用 Google 翻译；说话时要等整句说完才出译文" = "No Google Translate; translation appears after each sentence ends";
-"现在连不上：整句先用本机翻译，半句只显示原文" = "Unreachable: full sentences translate on-device; partial lines show the original";
-"现在连不上：新字幕暂时只有原文" = "Unreachable: new subtitles show the original only for now";
-"会议的语音和文字只发给 %@，不经过 Google 等外部服务。" = "Meeting audio and text go only to %@, never through Google or other outside services.";
-"这个模型先思考再回答，翻一句要 %@ 秒，超过 6 秒这句就不等它了。在服务端关掉思考，或换一个不思考的模型。" = "This model thinks before answering: one sentence takes %@ s, and anything over 6 s isn't waited for. Turn thinking off on the server, or pick a model that doesn't think.";
-"翻一句要 %@ 秒，超过 6 秒这句就不等它了。换一个更小的模型会快一些。" = "One sentence takes %@ s, and anything over 6 s isn't waited for. A smaller model will be faster.";
-"译文等 %@ 恢复 · 字幕先显示原文" = "Translation waits for %@ · subtitles show the original for now";
-"译文和纪要等 %@ 恢复 · 字幕先显示原文" = "Translation and notes wait for %@ · subtitles show the original for now";

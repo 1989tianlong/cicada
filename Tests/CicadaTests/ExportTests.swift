@@ -28,8 +28,8 @@ import Testing
         #expect(cues.count == 3)
         // Ends at the next line, at least 1 s and at most 8 s after it starts.
         #expect(cues[0] == "1\n00:00:01,500 --> 00:00:03,250\nHello.\n你好。")
-        // A translation identical to the source isn't repeated.
-        #expect(cues[1] == "2\n00:00:03,250 --> 00:00:11,250\nSame")
+        // A translation identical to the source isn't repeated; your own line says it was 同传.
+        #expect(cues[1] == "2\n00:00:03,250 --> 00:00:11,250\n[同传] Same")
         // The last line gets 4 s.
         #expect(cues[2] == "3\n00:00:20,000 --> 00:00:24,000\nBye.")
     }
@@ -38,7 +38,7 @@ import Testing
         let md = TranscriptExport.markdown(session)
         #expect(md.hasPrefix("# Weekly\n\n"))
         #expect(md.contains("**[00:01] 对方**  \nHello.\n> 你好。\n"))
-        #expect(md.contains("**[00:03] 你**  \nSame\n\n"))
+        #expect(md.contains("**[00:03] 你 · 同传**  \nSame\n\n"))
         #expect(!md.contains("> Same"))
     }
 }

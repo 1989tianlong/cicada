@@ -414,7 +414,7 @@ enum TranscriptExport {
     nonisolated(unsafe) static var voices = false
 
     static func speakerName(_ line: TranscriptLine, _ numbers: [String: Int] = [:], _ names: [Int: String] = [:]) -> String {
-        if line.speaker == "me" { return L("你") }
+        if line.speaker == "me" { return L("你 · 同传") }
         if let n = numbers[line.id] { return SpeakerLabels.label(n, names) }
         return numbers.isEmpty ? L("对方") : L("未识别")
     }
@@ -474,7 +474,9 @@ enum TranscriptExport {
         for (i, l) in s.lines.enumerated() {
             let next = i + 1 < s.lines.count ? s.lines[i + 1].t : l.t + 4
             let end = max(l.t + 1, min(next, l.t + 8))
-            out += "\(i + 1)\n\(ts(l.t)) --> \(ts(end))\n\(l.src)\n"
+            // Your own lines (the talk key) say so, as the record does.
+            let tag = l.speaker == "me" ? "[\(L("同传"))] " : ""
+            out += "\(i + 1)\n\(ts(l.t)) --> \(ts(end))\n\(tag)\(l.src)\n"
             if let d = l.dst, d != l.src { out += "\(d)\n" }
             out += "\n"
         }

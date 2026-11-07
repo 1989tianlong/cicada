@@ -73,7 +73,7 @@ import Testing
         let l = line(3, 1)
         #expect(TranscriptExport.speakerName(l, ["l3": 2]) == L("说话人 2"))
         #expect(TranscriptExport.speakerName(l) == L("对方"))
-        #expect(TranscriptExport.speakerName(line(4, nil, me: true), ["l4": 1]) == L("你"))
+        #expect(TranscriptExport.speakerName(line(4, nil, me: true), ["l4": 1]) == L("你 · 同传"))
     }
 
     private func named(_ voiceNames: [String: String]?) -> Session {

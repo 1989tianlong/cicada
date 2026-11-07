@@ -483,11 +483,10 @@ final class AppModel: ObservableObject {
 
     // MARK: System microphone
 
-    /// Switching the system mic only helps when our voice goes into the virtual mic.
+    /// Switching the system mic only helps when there is a call to speak into.
     var wantsSystemMic: Bool {
-        // In 会议室 the translation is read out of the speakers: nothing goes into a call.
-        guard settings.speakEnabled, settings.autoSystemMic, !settings.listensToRoom, virtualMic != nil else { return false }
-        return settings.speakOutput.isEmpty || (outputs.first { $0.uid == settings.speakOutput }?.isVirtualMic ?? true)
+        // 只听会议室: no call, and the talk key only says it's for online meetings.
+        settings.speakEnabled && settings.autoSystemMic && !settings.listensToRoom && virtualMic != nil
     }
 
     func refreshSystemMic() {
@@ -915,17 +914,18 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
-    /// The room mic hears silence from the talk key going down until the translation has been
-    /// read out, and a moment after, so neither your voice nor the Mac's comes back as the room.
+    /// The room mic hears silence while the talk key is down, and a moment after, so your voice
+    /// doesn't come back as the room. The translation goes into the virtual mic, never the speakers,
+    /// so the room is heard again while it is translated and read out.
     private func muteRoomWhileSpeaking(_ phase: SpeakEngine.Phase) {
-        if phase != .idle {
+        if phase == .listening {
             listen.setRoomMuted(true)
             roomListen.setRoomMuted(true)
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, self.speak.phase == .idle else { return }
+                guard let self, self.speak.phase != .listening else { return }
                 self.listen.setRoomMuted(false)
                 self.roomListen.setRoomMuted(false)
             }
