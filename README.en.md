@@ -50,7 +50,7 @@ All four share one version number and one meeting record format; downloads are o
 
 While the meeting runs, the notes window organizes a summary, topics and key points, conclusions, to-dos, a fishbone diagram, and a glossary of names and terms, and every conclusion or to-do clicks straight back to the supporting lines in the bilingual transcript. Cicada unifies names and terms across the notes and remembers misrecognized spellings, so `⌘F` searches both the canonical spelling and the variants. When the AI service has a problem only you can fix (key, credit, model), the notes window says so and the menu bar icon gets an orange dot; when **Turn on mic** can't get the microphone, the notes window, the subtitle bar and the menu bar icon all say so.
 
-Misheard names and terms are fixed as you go (needs an AI service): sound-alike mistakes are fixed right away, and a name it hasn't seen is asked about once in the notes window, then fixed from then on. Fixed words are underlined with dots; point at the paragraph to see what was heard, or revert it. Paste the spellings you use into Settings › Word list.
+Misheard names and terms are fixed as you go (needs an AI service): sound-alike mistakes are fixed right away, and a name it hasn't seen is asked about once in the notes window, then fixed from then on. Fixed words are underlined with dots; point at the paragraph to see what was heard, or revert it. Paste the spellings you use into Settings › Word list, and edit them in place. After the meeting, Edit line… in the meeting record fixes a word everywhere it was misheard, and every fix can be undone.
 
 ### Live subtitles and language detection
 
