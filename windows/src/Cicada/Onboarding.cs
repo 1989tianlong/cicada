@@ -601,7 +601,7 @@ sealed class Onboarding : Window
                 Numbered(Disc(3), L("按住说一句试试"), L("松开后约 2 秒，对方就会听到译文"), key, tried is Border ? null : tried),
             },
         });
-        return Page(L("要让对方听懂你说的话吗？"), LF("按住%@说话，对方在会议里听到翻译后的声音。不需要可以跳过。", PushToTalk.Label), card);
+        return Page(L("线上开会时要说外语吗？"), LF("按住%@说话，线上的人听到翻译后的声音。不需要可以跳过。", PushToTalk.Label), card);
     }
 
     void SpeakChanged() => Dispatcher.BeginInvoke(() => { if (step == 3 && IsLoaded) page.Content = SpeakStep(); });

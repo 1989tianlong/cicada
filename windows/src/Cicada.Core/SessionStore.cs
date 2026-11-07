@@ -247,7 +247,8 @@ public sealed class SessionStore
         var names = SpeakerLabels.Names(s);
         foreach (var l in s.Lines.OrderBy(x => x.T))
         {
-            var who = l.Speaker == "me" ? Strings.L("你") : numbers.TryGetValue(l.Id, out var num) ? names.GetValueOrDefault(num) ?? Strings.LF("说话人 %lld", num) : null;
+            // Your own lines (the talk key) say so: what the meeting heard was their translation (同传).
+            var who = l.Speaker == "me" ? Strings.L("你 · 同传") : numbers.TryGetValue(l.Id, out var num) ? names.GetValueOrDefault(num) ?? Strings.LF("说话人 %lld", num) : null;
             b.AppendLine($"**{Languages.Clock(l.T)}**{(who is null ? "" : $" {who}：")} {l.Src}  ");
             if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) b.AppendLine($"{l.Dst}");
             b.AppendLine();

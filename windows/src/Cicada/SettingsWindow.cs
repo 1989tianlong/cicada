@@ -267,11 +267,11 @@ sealed class SettingsWindow : Window
         var mine = Languages.Sources.FirstOrDefault(x => x.Code == Languages.FromSystem(System.Globalization.CultureInfo.CurrentUICulture.Name))?.Name ?? "";
         yield return Label(L("说话"));
         yield return Group(
-            Card(null, L("按住说话"), LF("按住%@说话，对方听到的是翻译后的声音", PushToTalk.Label), Ui.Keycap(PushToTalk.Label, big: true)),
+            Card(null, L("按住说话"), LF("按住%@说话，线上的人听到的是翻译后的声音", PushToTalk.Label), Ui.Keycap(PushToTalk.Label, big: true)),
             Card(null, L("我说的语言"), null, Ui.Choice([("system", LF("跟随系统（%@）", mine)), .. Languages.Sources.Select(x => (x.Code, x.Name))], s.SpeakFrom, v => { s.SpeakFrom = v; Save(); Render(); })),
-            Card(null, L("对方听到的语言"), s.SpeakTo == "room" ? LF("现在是 %@", Ui.TargetName(target)) : null,
+            Card(null, L("线上的人听到的语言"), s.SpeakTo == "room" ? LF("现在是 %@", Ui.TargetName(target)) : null,
                 Ui.Choice([("room", L("对方说的语言")), .. Languages.Targets.Select(t => (t.Code, t.Name))], s.SpeakTo, v => { s.SpeakTo = v; Save(); Render(); })),
-            Card(null, LF("对方听到的声音（%@）", Ui.TargetName(target)), null, voice));
+            Card(null, LF("线上的人听到的声音（%@）", Ui.TargetName(target)), null, voice));
         yield return Label(L("麦克风"));
         yield return Group(
             Card(null, L("译文送进会议"), cable ? L("在会议软件里把麦克风选成 CABLE Output") : L("需要装免费的 VB-Cable；装的时候 Windows 会请你确认"), cableControl));

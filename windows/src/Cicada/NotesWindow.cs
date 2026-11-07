@@ -378,7 +378,7 @@ sealed class NotesWindow : Window
         {
             var lines = app.Store.Get(listen.SessionId!)?.Lines ?? [];
             var number = app.Settings.SpeakerVoices && line.Speaker == "them" && SpeakerLabels.Numbers(lines).TryGetValue(line.Id, out var n) ? n : (int?)null;
-            var who = line.Speaker == "me" ? L("你") : number is { } k ? LF("说话人 %lld", k) : Ui.SpokenName(line.SrcLang);
+            var who = line.Speaker == "me" ? L("你 · 同传") : number is { } k ? LF("说话人 %lld", k) : Ui.SpokenName(line.SrcLang);
             var whoRow = Ui.Row(8, Ui.Text(who, 12, NightAccent, wrap: false));
             whoRow.Children.Add(Gap(Ui.Text(listen.Listening && listen.Pending > 0 ? L("正在说") : Languages.Clock(line.T), 12, Palette.NightText, wrap: false), 8));
             stack.Children.Add(whoRow);
@@ -614,13 +614,27 @@ sealed class NotesWindow : Window
         }
         var head = Ui.Row(8, time);
         if (place) head.Children.Insert(0, PlaceTag(l));
-        if (who is not null) head.Children.Insert(0, Ui.Text(who, 12, ink ?? Palette.Secondary, wrap: false));
+        if (who is not null) head.Children.Insert(0, l.Speaker == "me" ? MeTag(who, ink) : Ui.Text(who, 12, ink ?? Palette.Secondary, wrap: false));
         for (int i = 1; i < head.Children.Count; i++) ((FrameworkElement)head.Children[i]).Margin = new Thickness(i == 1 && place && who is not null ? 6 : 8, 0, 0, 0);
         text.Children.Add(head);
         var translated = !string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src;
         text.Children.Add(Gap(Ui.Text(l.Src, translated ? 13 : 15, translated ? Palette.Secondary : Palette.Ink), 3, top: true));
         if (translated) text.Children.Add(Gap(Ui.Text(l.Dst!, 15, Palette.Ink), 2, top: true));
         return text;
+    }
+
+    /// Your own line (SpeakerViews.swift › MeTag): said with the talk key, so what the other side
+    /// heard was its translation; 你 and an outlined 同传.
+    static FrameworkElement MeTag(string who, Brush? ink)
+    {
+        var tag = Ui.Row(5, Ui.Text(who, 12, ink ?? Palette.AccentText, FontWeights.SemiBold, wrap: false), new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x73, 0xE8, 0x55, 0x2B)), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 0, 5, 1), VerticalAlignment = VerticalAlignment.Center,
+            Child = Ui.Text(L("同传"), 10, Palette.AccentText, wrap: false),
+        });
+        tag.ToolTip = L("按住说话键说的，对方听到的是译文");
+        return tag;
     }
 
     /// 现场 / 线上 (SpeakerViews.swift › PlaceTag): the room's filled, the PC's outlined.
@@ -697,7 +711,7 @@ sealed class NotesWindow : Window
         else
         {
             var number = app.Settings.SpeakerVoices && line.Speaker == "them" && SpeakerLabels.Numbers(session!.Lines).TryGetValue(line.Id, out var n) ? n : (int?)null;
-            var who = line.Speaker == "me" ? L("你") : number is { } k ? LF("说话人 %lld", k) : null;
+            var who = line.Speaker == "me" ? L("你 · 同传") : number is { } k ? LF("说话人 %lld", k) : null;
             var top = new TextBlock { FontFamily = Palette.Font, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Palette.NightText };
             if (who is not null) top.Inlines.Add(new System.Windows.Documents.Run(who + "  ") { Foreground = NightAccent });
             if (line.Dst is not null && line.Dst != line.Src) top.Inlines.Add(new System.Windows.Documents.Run(line.Src));

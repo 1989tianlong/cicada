@@ -296,6 +296,17 @@ static class Tests
         Check(SessionStore.Markdown(s).Split('\n')[0].TrimEnd() == "# 我的会", "the export is headed by the shown title");
     }
 
+    public static void ExportMarksTalkKeyLinesAsInterpreted()
+    {
+        // TranscriptExport.speakerName on the Mac: a "me" line was said with the talk key (同传).
+        var s = new Session { Title = "会议 1月1日 10:00", StartedAt = DateTimeOffset.Now, Lines =
+            [new TranscriptLine { Id = "h1-1", T = 1, Src = "Can we ship?", Dst = "能发布吗？", SrcLang = "en", DstLang = "zh-CN" },
+             new TranscriptLine { Id = "m1", T = 5, Speaker = "me", Src = "可以", Dst = "Yes", SrcLang = "zh-CN", DstLang = "en" }] };
+        var md = SessionStore.Markdown(s);
+        Check(md.Contains("你 · 同传： 可以"), "my line says it was interpreted");
+        Check(md.Split('\n').Count(x => x.Contains("同传")) == 1, "only my line");
+    }
+
     public static void KeepsTheMacsImportAndRoomFields()
     {
         // A Mac record of an imported room recording (a line by the room mic), plus a key no version knows yet.
@@ -1368,6 +1379,7 @@ static class Tests
         public void Begin(int rate) => Rate = rate;
         public void Write(byte[] pcm) => Chunks.Add(pcm);
         public Task End() => Task.CompletedTask;
+        public bool Ready { get; init; } = true;
     }
 
     sealed class NoVoice : ISystemVoice
@@ -1440,6 +1452,14 @@ static class Tests
             var e2 = Speaker(Client(echo), voice2, new AppSettings { SpeakFrom = "zh-CN" });
             Check(await e2.Speak(Wav.Bytes(Tone(1)), quiet) is null, "no translation, nothing said");
             Check(quiet.Chunks.Count == 0 && voice2.Calls == 0 && e2.State == SpeakEngine.Phase.Failed, "and no voice at all");
+
+            // The virtual mic went away during the press: nothing is played anywhere (never the speakers).
+            var gone = new Sink { Ready = false };
+            var voice3 = new NoVoice();
+            var e3 = Speaker(Client(fake), voice3, new AppSettings { SpeakFrom = "zh-CN" });
+            Check(await e3.Speak(Wav.Bytes(Tone(1)), gone) is null, "no virtual mic, nothing said");
+            Check(gone.Chunks.Count == 0 && voice3.Calls == 0 && e3.State == SpeakEngine.Phase.Failed, "and no voice at all");
+            Equal("没有虚拟麦克风 · 没有说出去", e3.Problem, "the bar says why");
         }
         finally { LingClient.Spacing = old; }
     }

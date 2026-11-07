@@ -258,7 +258,7 @@ sealed class MainWindow : Window
             (ling.Config.IsLing ? L("接上 Ling") : LF("接上 %@", ling.Config.Name), broken ?? (key ? L("key 已加密存在这台电脑上") : L("识别、翻译和纪要都靠它，约 1 分钟")), key),
             (L("听一下电脑里的声音"), L("放一段测试声音，看音量条动起来"), audio),
             (L("看看效果"), L("一段 9 秒的英文会议，字幕和纪要一句句出来"), sample),
-            (L("同声传译"), LF("按住%@说话，对方听到翻译后的声音", PushToTalk.Label), false),
+            (L("同声传译"), LF("按住%@说话，线上的人听到翻译后的声音", PushToTalk.Label), false),
         ];
         var list = new StackPanel();
         for (int i = 0; i < steps.Length; i++)

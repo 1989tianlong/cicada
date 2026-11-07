@@ -173,7 +173,7 @@ sealed class TrayFlyout : Window
         stack.Children.Add(Rule());
         var cable = Endpoints.Cable() is not null;
         var speakState = s.Speak && cable && app.Ling.HasKey
-            ? (UIElement)Ui.Text(L("对方听得到"), 12, Palette.Success, wrap: false)
+            ? (UIElement)Ui.Text(L("线上的人听得到你"), 12, Palette.Success, wrap: false)
             : Ui.LinkText(s.Speak ? L("去设置") : L("打开"), () => Do(app.ShowSettings), 12);
         stack.Children.Add(Ui.Spread(Ui.Text(L("同声传译"), 14, Palette.Ink, Palette.Strong, wrap: false), speakState));
         var talk = Ui.Row(12, Ui.Keycap(PushToTalk.Label, big: false), Ui.Stack(1,
