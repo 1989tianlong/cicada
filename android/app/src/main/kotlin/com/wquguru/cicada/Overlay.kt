@@ -331,7 +331,9 @@ class Overlay(private val app: CicadaApp) {
                 line == null -> box.addView(ui.text(L("等有人说话…"), 15f, if (dark) Palette.onScrim else Palette.secondary).apply { setPadding(ui.dp(if (dark) 0 else 14), ui.dp(10), 0, ui.dp(10)) })
                 dark -> {
                     val col = ui.stack(4)
-                    if (!line.dst.isNullOrEmpty() && line.dst != line.src) col.addView(ui.text(line.src, 13f, Palette.onScrim, lines = 2))
+                    // My line (我说) says so, as the Mac's subtitle bar does.
+                    if (!line.dst.isNullOrEmpty() && line.dst != line.src) col.addView(ui.text(NotesViews.said(line), 13f, Palette.onScrim, lines = 2))
+                    else if (line.speaker == "me") col.addView(ui.text(L("你 · 同传"), 13f, Palette.onScrim))
                     col.addView(ui.text(line.dst ?: line.src, 20f, Color.WHITE, bold = true, lines = 3).apply { leading(1.2f) })
                     box.addView(col)
                 }
