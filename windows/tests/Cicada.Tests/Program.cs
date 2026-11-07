@@ -959,6 +959,33 @@ static class Tests
         Equal("%@ min", t["%@ 分钟"], "placeholders kept");
         Equal("3 分钟", Strings.LF("%@ 分钟", 3), "LF fills %@");
         Equal("正在下载 1.3.0：59%", Strings.LF("正在下载 %@：%lld%%", "1.3.0", 59), "%% is one percent sign");
+        Equal("1 句", Strings.LF("%lld 句", 1), "Chinese has no plural forms");
+    }
+
+    public static void PluralsFromTheMacsStringsdict()
+    {
+        var res = Path.Combine(AppContext.BaseDirectory, "Resources");
+        try
+        {
+            Strings.Load(res, "en");
+            Equal("1 line", Strings.LF("%lld 句", 1), "one");
+            Equal("2 lines", Strings.LF("%lld 句", 2), "other");
+            Equal("0 lines", Strings.LF("%lld 句", 0), "zero is other in English");
+            Equal("Heard 1 line", Strings.LF("已听到 %lld 句", 1), "text around the plural");
+            Equal("12:00 · 1 line", Strings.LF("%@ · %lld 句", "12:00", 1), "positional %2$#@n@ after %1$@");
+            Equal("Recorded 03:15 · 1 line. Ending stops listening and writes the full notes.",
+                  Strings.LF("已记录 %@ · %lld 句。结束后停止收听，并整理一份完整版纪要。", "03:15", 1), "the end-meeting question");
+            Equal("1 point", Strings.LF("%lld 条要点", 1L), "a long counts too");
+            Equal("Live notes", Strings.L("实时纪要"), "plain strings still load");
+            Strings.Load(res, "ja");
+            Equal("1文", Strings.LF("%lld 句", 1), "no stringsdict: the .strings value");
+            var p = Strings.ParsePlurals("<?xml version=\"1.0\"?>\n<!DOCTYPE plist>\n<plist version=\"1.0\"><dict><key>a &amp; b</key><dict>" +
+                "<key>NSStringLocalizedFormatKey</key><string>%#@x@ &lt;</string><key>x</key><dict><key>one</key><string>%lld y</string>" +
+                "<key>other</key><string>%lld ys</string></dict></dict></dict></plist>");
+            Equal("%#@x@ <", p["a & b"].Format, "entities");
+            Equal("%lld ys", p["a & b"].Forms["x"]["other"], "forms");
+        }
+        finally { Strings.Load(res, "zh-Hans"); }
     }
 
     // MARK: Ling
