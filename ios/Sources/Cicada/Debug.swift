@@ -198,6 +198,28 @@ extension AppModel {
             if let l = store.session(id)?.lines.first(where: { $0.id == parts.first }), let f = l.fixes?.first(where: \.applied) {
                 fixes.revert(f, lineID: l.id, in: id)
             }
+        // The fix screens, for screenshots: a record line tapped open, 改这句… on a line (of the open
+        // record), 设置 › 词表, 粘贴导入 with text ("|" for new lines), a word opened, a word swiped away.
+        case "openLine": openLine = arg.isEmpty ? nil : arg
+        case "scrollTo": NotificationCenter.default.post(name: .debugScroll, object: arg)
+        case "fixEditor":   // fixEditor:<line id>[=<start text>]
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            let sid = selection ?? fixSession
+            if let l = store.session(sid)?.lines.first(where: { $0.id == p.first }) {
+                editingLine = LineEdit(session: sid, line: l.id, start: p.count > 1 ? p[1] : l.shown)
+            }
+        case "closeEditor": editingLine = nil
+        case "wordList":
+            tab = .settings
+            showSettings = true
+            showWordList = arg != "off"
+        case "wordImport": wordImport = arg == "off" ? nil : arg.replacingOccurrences(of: "|", with: "\n")
+        case "wordEdit": editingWord = arg.isEmpty ? nil : arg
+        case "wordHeard":   // wordHeard:<word>=<heard form>, as typed on an opened word
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            if p.count == 2, let t = vocabulary.terms.first(where: { $0.word == p[0] }) { addHeard(p[1], to: t) }
+        case "wordDelete":
+            if let t = vocabulary.terms.first(where: { $0.word == arg }) { deleteWord(t) }
         case "state":
             debugLog("room running=\(room.isRunning) lines=\(room.lines.count) draft=\(room.draft.count) level=\(room.level) status=\(room.status) session=\(room.sessionID ?? "-")")
             debugLog("state tab=\(tab.rawValue) selection=\(selection ?? "-") page=\(recordPage) sessions=\(store.sessions.count) query=\(query) notesLang=\(notesLanguageCode(selection ?? store.sessions.first?.id ?? "")) undo=\(speakerUndo?.text ?? "-")")

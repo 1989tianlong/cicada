@@ -1266,6 +1266,7 @@
 "词表" = "Word list";
 "还没有词。把常用的人名、产品名贴进来，会中就照这些写法改" = "No words yet. Paste in the names and products you often say, and meetings will use these spellings.";
 "最多 %lld 个，满了优先用最近的。只存在这台 Mac 上" = "Up to %lld, recent ones first. Stored only on this Mac";
+"最多 %lld 个，满了优先用最近的。只存在这台设备上" = "Up to %lld, recent ones first. Stored only on this device";
 "会中改正听错的词" = "Fix misheard words live";
 "走 %@，只发文字" = "Text only, via %@";
 "接上 AI 服务后才会改" = "Needs an AI service";

@@ -167,6 +167,7 @@ struct LivePhone: View {
                 HomeTitle()
                 ListenBar()
                 PillSwitch(selection: $page, options: [(.subtitles, "字幕"), (.notes, notesTitle)])
+                if let id = room.sessionID { FixAskCard(fixes: model.fixes, session: id) }
             }
             .padding(.horizontal, 16)
             .padding(.top, 6)
@@ -177,6 +178,8 @@ struct LivePhone: View {
             }
         }
         .background(Ink.ground)
+        .overlay(alignment: .bottom) { FixToast(fixes: model.fixes).padding(.horizontal, 16).padding(.bottom, 8) }
+        .animation(.snappy(duration: 0.2), value: model.fixes.toast)
         .onChange(of: model.livePage) { page = model.livePage }
     }
 
@@ -250,6 +253,10 @@ struct LivePad: View {
     @State private var page: LivePage = .subtitles
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let id = room.sessionID {
+                FixAskCard(fixes: model.fixes, session: id).frame(maxWidth: 560).padding(.horizontal, 20).padding(.top, 18)
+            }
         GeometryReader { g in
             if g.size.width >= 820 {
                 HStack(alignment: .top, spacing: 22) {
@@ -273,7 +280,11 @@ struct LivePad: View {
                 .padding(.horizontal, 20).padding(.top, 18)
             }
         }
+        }
         .background(Ink.ground)
+        .overlay(alignment: .bottom) { FixToast(fixes: model.fixes).frame(maxWidth: 560).padding(.horizontal, 20).padding(.bottom, 12) }
+        .animation(.snappy(duration: 0.2), value: model.fixes.toast)
+        .animation(.snappy(duration: 0.2), value: model.fixes.asking(in: room.sessionID ?? "")?.fix)
         .onChange(of: model.livePage) { page = model.livePage }
     }
 

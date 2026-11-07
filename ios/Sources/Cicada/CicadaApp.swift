@@ -104,6 +104,15 @@ final class AppModel: ObservableObject {
     @Published var speakerUndo: SpeakerUndo?
     /// The speaker number whose 是谁 prompt is open on the record page.
     @Published var namingSpeaker: Int?
+    /// 改正听错的词: the line being rewritten (改这句…), the record line tapped open, and 设置 › 词表's
+    /// state (pushed, 粘贴导入's text, the word being edited, the word just deleted).
+    @Published var editingLine: LineEdit?
+    @Published var openLine: String?
+    @Published var showWordList = false
+    @Published var wordImport: String?
+    @Published var editingWord: String?
+    @Published var deletedWord: DeletedWord?
+    @Published var wordConflict: WordConflict?
     /// Dev only: the iPad window size `window:` lays the app out at (DevWindow in Debug.swift).
     @Published var devWindow: CGSize?
 
@@ -212,6 +221,31 @@ final class AppModel: ObservableObject {
         if speakerUndo?.session == id { speakerUndo = nil }
         store.delete(id)
         debugLog("delete \(id) sessions=\(store.sessions.count)")
+    }
+
+    // MARK: 词表
+
+    /// Swiped away: 撤销 in its place for a few seconds, as on the Mac.
+    func deleteWord(_ t: Vocabulary.Term) {
+        let index = vocabulary.terms.firstIndex(of: t) ?? 0
+        vocabulary.remove(t.word)
+        let d = DeletedWord(term: t, index: index)
+        deletedWord = d
+        if editingWord == t.word { editingWord = nil }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            if self?.deletedWord == d { self?.deletedWord = nil }
+        }
+    }
+
+    /// A heard form typed on a word: added, or, when another word has it, asked about (改给 / 两个都留).
+    func addHeard(_ text: String, to t: Vocabulary.Term) {
+        let h = text.trimmingCharacters(in: .whitespaces)
+        guard !h.isEmpty, h.count <= 40 else { return }
+        if let owner = vocabulary.owners(ofHeard: h, except: t.word).first {
+            wordConflict = WordConflict(word: t.word, heard: h, owner: owner)
+        } else {
+            vocabulary.confirm(heard: h, word: t.word, source: t.source)
+        }
     }
 
     // MARK: Speakers (the Mac's AppModel.renameSpeaker / mergeSpeaker / undoSpeakerEdit)
