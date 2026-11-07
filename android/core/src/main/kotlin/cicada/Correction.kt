@@ -198,13 +198,15 @@ object Correction {
             while (at >= 0) { n++; at = shown.indexOf(x, at + x.length) }
             return n
         }
-        while (span().codePoints().noneMatch { Character.isLetterOrDigit(it) } || count(span()) != 1) {
+        fun replacement() = str(b, start, b.size - (a.size - end))
+        // A dropped word ("in now." → "in.") grows too, so neither side of the fix is empty.
+        while (span().codePoints().noneMatch { Character.isLetterOrDigit(it) } || count(span()) != 1 || replacement().isEmpty()) {
             val before = tokens.lastOrNull { it.last + 1 <= start }
             val after = tokens.firstOrNull { it.first >= end }
             if (before != null) start = before.first else if (after != null) end = after.last + 1 else break
         }
         val from = span()
-        val to = str(b, start, b.size - (a.size - end))
+        val to = replacement()
         if (from.isEmpty() || from == to) return null
         var heard = from
         if (!src.contains(from)) fixes.firstOrNull { it.applied && from.contains(it.to) }?.let { heard = core(it.from, it.to).first }

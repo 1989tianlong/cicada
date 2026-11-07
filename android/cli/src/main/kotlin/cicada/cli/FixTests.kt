@@ -28,6 +28,8 @@ object FixTests {
         "recheckTakesBackWhatItNoLongerProposesButNotTheUsers" to ::recheckTakesBack,
         "userEditOnTopOfAFix" to ::userEditOnTopOfAFix,
         "labelNamesAnAddedWordWhole" to ::labelNamesAnAddedWordWhole,
+        "droppedWordKeepsBothSidesOfTheFix" to ::droppedWordKeepsBothSidesOfTheFix,
+        "editRevertEditRevertGoesBack" to ::editRevertEditRevertGoesBack,
         "addedWordStaysOnItsLineAndNeverMatchesPunctuation" to ::addedWordStaysOnItsLineAndNeverMatchesPunctuation,
         "vocabImportLinesWithHeardForms" to ::importLinesWithHeardForms,
         "vocabSameWordWhateverWidthOrCase" to ::sameWordWhateverWidthOrCase,
@@ -293,6 +295,27 @@ object FixTests {
         val s = setup("我木娜找了")
         s.fx.edit("l0", s.id, "我Monad找了", everywhere = true, keep = true)
         equal("已改 1 处：木娜 → Monad，记进词表", s.fx.toastNow()?.text, "a swap reads as the words swapped")
+    }
+
+    fun droppedWordKeepsBothSidesOfTheFix() {
+        val line = "Great, let's lock that in now."
+        val e = Correction.userEdit(line, "Great, let's lock that in.", line, emptyList())!!
+        check(e.fix.from.isNotEmpty() && e.fix.to.isNotEmpty(), "both sides: ${e.fix}")
+        equal("Great, let's lock that in.", Correction.apply(listOf(e.fix), line).text, "applied")
+        val l = Correction.label(e.fix)
+        check(l.first.isNotEmpty() && l.second.isNotEmpty(), "label both sides: $l")
+    }
+
+    fun editRevertEditRevertGoesBack() {
+        val t = setup("Great, let's lock that in.", "Design signs off by Friday.")
+        repeat(2) { i ->
+            t.fx.edit("l0", t.id, "Great, let's lock that in now.", everywhere = true, keep = true)
+            equal("Great, let's lock that in now.", t.line("l0").shown, "edited, round ${i + 1}")
+            t.fx.revert(t.line("l0").fixes!!.first { it.applied }, "l0", t.id)
+            equal("Great, let's lock that in.", t.line("l0").shown, "reverted, round ${i + 1}")
+        }
+        equal(1, t.line("l0").fixes!!.size, "one copy of the fix")
+        equal(null, t.line("l1").fixes, "the other line untouched")
     }
 
     fun labelNamesAnAddedWordWhole() {

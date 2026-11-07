@@ -163,7 +163,9 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
     @Synchronized fun revert(fix: LineFix, lineId: String, id: String) {
         val l = store.line(id, lineId) ?: return
         val fixes = l.fixes ?: return
-        val k = fixes.indexOfFirst { it.from == fix.from && it.to == fix.to }
+        // The one still on: an earlier, already undone copy of the same change may sit before it.
+        val k = fixes.indexOfFirst { it.from == fix.from && it.to == fix.to && it.applied }
+            .takeIf { it >= 0 } ?: fixes.indexOfFirst { it.from == fix.from && it.to == fix.to }
         if (k < 0) return
         remember(id, listOf(lineId))
         set(fixes.mapIndexed { i, f -> if (i == k) f.copy(off = true, ask = null, user = null) else f }, lineId, id)
@@ -202,7 +204,8 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
         remember(id, targets.map { it.id })
         for (t in targets) {
             // A guess still waiting on the same words is answered by the edit: not that.
-            val fixes = (t.fixes ?: emptyList()).map { f ->
+            // The same change made again replaces any earlier copy (say, one undone with 改回).
+            val fixes = (t.fixes ?: emptyList()).filter { !(it.from == fix.from && it.to == fix.to) }.map { f ->
                 if (f.ask == true && (f.from.contains(heard) || heard.contains(f.from))) f.copy(ask = null, off = true) else f
             }
             set(fixes + fix, t.id, id)
