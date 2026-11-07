@@ -9,7 +9,8 @@ picks it, (windows) (android) (linux) or (site) for the website, (ios) none yet,
 New and fix: under Fixed; chore/docs/build/test/refactor stay out. Every release ships every
 platform, so one with no feat or fix still gets a group saying so. `fix(windows,linux):` lands in both.
 Each line links its commit. Lines written by hand under "## Unreleased" stay on top, as the
-release's one-line summary.
+release's one-line summary. Run again for the same version (a draft recut after a fix), it rewrites
+that version's section and keeps its summary.
 """
 import datetime
 import os
@@ -86,9 +87,13 @@ def main():
     version = sys.argv[1]
     path = os.path.join(ROOT, "CHANGELOG.md")
     text = open(path, encoding="utf-8").read()
-    # The "## Unreleased" block, if any: its text becomes the summary.
+    # The "## Unreleased" block, if any: its text becomes the summary. A recut replaces the
+    # version's own section instead, keeping the summary above its first platform group.
     m = re.search(r"^## Unreleased\n(.*?)(?=^## |\Z)", text, re.M | re.S)
     summary = m.group(1).strip() if m else ""
+    if not m:
+        m = re.search(rf"^## {re.escape(version)} — .*?\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+        summary = m.group(1).split("\n### ", 1)[0].strip() if m else ""
     new = section(version, summary)
     if "--print" in sys.argv:
         print(new)
