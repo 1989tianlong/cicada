@@ -206,7 +206,7 @@ public sealed class LiveFixes
             if (refusals[key] >= 2) Vocabulary.Forget(c.From, c.To);
         }
         Log.Debug($"fix reverted line={lineId}");
-        Say(Strings.LF("已改回 %@，这场不再改", c.From));
+        Say(Strings.LF("已改回 %@，这场不再改", Correction.Label(fix).From));
     }
 
     // MARK: 改这句…

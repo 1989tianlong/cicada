@@ -57,7 +57,7 @@ static class FixViews
         var wrap = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         foreach (var f in (l.Fixes ?? []).Where(f => f.Applied))
         {
-            var c = Correction.Core(f.From, f.To);
+            var c = Correction.Label(f);
             var words = new TextBlock { FontFamily = Palette.Font, FontSize = 11, Foreground = Palette.Ink, VerticalAlignment = VerticalAlignment.Center };
             words.Inlines.Add(new Run(L("听成")) { Foreground = Palette.Tertiary });
             words.Inlines.Add(new Run(" " + c.From));
@@ -88,7 +88,7 @@ static class FixViews
     /// off until after the meeting (稍后再看).
     public static FrameworkElement ConfirmCard(TranscriptLine line, LineFix fix, int count, Action<bool> answer, Action? later)
     {
-        var c = Correction.Core(fix.From, fix.To);
+        var c = Correction.Label(fix);
         var head = new DockPanel();
         if (count > 1)
         {
@@ -136,7 +136,7 @@ static class FixViews
         if (waiting.Count == 0)
             return fixedCount > 0 ? Ui.Text(LF("改了 %lld 处听错的词", fixedCount), 12, Palette.Tertiary) : null;
         var (line, fix) = waiting[0];
-        var c = Correction.Core(fix.From, fix.To);
+        var c = Correction.Label(fix);
         var title = Ui.Text(LF("改了 %lld 处听错的词，%lld 处等你确认", fixedCount, waiting.Count), 13, Palette.Ink, FontWeights.SemiBold);
         var what = new TextBlock { FontFamily = Palette.Font, FontSize = 12, Foreground = Palette.Secondary };
         what.Inlines.Add(new Run($"{c.From} → {c.To}？"));

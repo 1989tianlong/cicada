@@ -2861,6 +2861,22 @@ static class Tests
         Equal(true, Correction.UserEdit("我木娜找了", "我Monad找了", "我木娜找了", [])?.Swap, "swap");
     }
 
+    public static void FixLabelNamesAnAddedWordWhole()
+    {
+        Equal(("in", "in now"), Correction.Label(new LineFix("in", "in now", user: true)), "added at the end");
+        Equal(("Great", "OK Great"), Correction.Label(new LineFix("Great", "OK Great", user: true)), "added at the start");
+        Equal(("质压", "质押"), Correction.Label(new LineFix("解除质压", "解除质押")), "a swap: the changed words");
+    }
+
+    public static void FixesRevertNamesAnAddedWordWhole()
+    {
+        var (fx, store, id) = FixSetup("Great, let's lock that in.");
+        fx.Edit("l0", id, "Great, let's lock that in now.", everywhere: false, remember: false);
+        fx.Revert(FixLine(store, id, "l0").Fixes![0], "l0", id);
+        Equal("Great, let's lock that in.", FixLine(store, id, "l0").Shown, "reverted");
+        Check(fx.Toast?.Text.Contains("已改回 in，") == true, "toast: " + fx.Toast?.Text);
+    }
+
     public static void FixesAddedWordEditStaysOnItsLine()
     {
         var (fx, store, id) = FixSetup("Great, let's lock that in.", "Done.");

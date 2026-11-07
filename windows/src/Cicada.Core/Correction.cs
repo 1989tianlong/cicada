@@ -29,6 +29,14 @@ public static class Correction
 
     static bool Word(string c) => c.Length == 1 && char.IsAsciiLetterOrDigit(c[0]);
 
+    /// A fix as the UI names it (听成 X → Y, 已改回 X): the changed words, or the whole fix when
+    /// it only adds or drops words ("in" → "in now", whose changed part alone would be "" → " now").
+    public static (string From, string To) Label(LineFix f)
+    {
+        var c = Core(f.From, f.To);
+        return c.From.Length == 0 || c.To.Length == 0 ? (f.From, f.To) : c;
+    }
+
     /// The part an edit changes, as a word: "解除质压" → "解除质押" is "质压" → "质押" (at least two
     /// characters, so one refusal doesn't block every 压 → 押), and a Latin word stays whole
     /// ("Un450P三" → "Uniswap V3", not "450P三" → "iswap V3").
