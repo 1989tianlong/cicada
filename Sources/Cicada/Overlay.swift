@@ -602,7 +602,8 @@ final class OverlayView: NSView {
             switch s.phase {
             case .listening: label = L("同传 · 你在说…  ") + s.source
             case .translating: label = L("同传 · 翻译中…  ") + s.source
-            case .speaking, .idle: label = L("同传 · 你：") + s.source
+            // A notice with nothing said (no virtual mic): just the tag over it.
+            case .speaking, .idle: label = s.source.isEmpty ? L("同传") : L("同传 · 你：") + s.source
             }
             draw(label, font: srcFont(fs), color: orange.withAlphaComponent(0.8), maxLines: 1)
             draw(s.translation, font: speakFont(fs), color: orange, maxLines: 2)

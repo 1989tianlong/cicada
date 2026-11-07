@@ -312,7 +312,7 @@ final class AppModel: ObservableObject {
         listen.roomDevice = roomMic
         roomListen.roomDevice = roomMic
         applyVoice()
-        speak.onStatus = { [weak self] text in self?.status = text }
+        speak.onStatus = { [weak self] text in self?.speakNotice(text) }
         speak.onLive = { [weak self] phase, src, dst in
             guard let self else { return }
             self.muteRoomWhileSpeaking(phase)
@@ -912,6 +912,21 @@ final class AppModel: ObservableObject {
         refreshMicUsers()
         refresh()
         objectWillChange.send()
+    }
+
+    /// Why a press of the talk key went nowhere (no virtual mic, 只听会议室): shown where the eyes
+    /// are while it is held, the subtitle bar or the notes window's caption, since nothing shows `status`.
+    private func speakNotice(_ text: String) {
+        status = text
+        debugLog("speak: notice \(text)")
+        if speakTester.busy { return }
+        if settings.displayMode == "bar" {
+            if !overlay.isShown { overlay.show() }
+            overlay.setSpeaking(.init(phase: .idle, source: "", translation: text))
+        } else if running {
+            liveSource = ""
+            liveTranslation = text
+        }
     }
 
     /// The room mic hears silence while the talk key is down, and a moment after, so your voice
