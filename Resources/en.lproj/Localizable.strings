@@ -1262,3 +1262,31 @@
 "确认后整场一起改，以后也照此改" = "Fixes the whole meeting, and future ones";
 "对" = "Yes";
 "不对" = "No";
+
+/* WordListSettings: 词表 */
+"词表" = "Word list";
+"还没有词。把常用的人名、产品名贴进来，会中就照这些写法改" = "No words yet. Paste in the names and products you often say, and meetings will use these spellings.";
+"最多 %lld 个，满了优先用最近的。只存在这台 Mac 上" = "Up to %lld, recent ones first. Stored only on this Mac";
+"会中改正听错的词" = "Fix misheard words live";
+"走 %@，只发文字" = "Text only, via %@";
+"接上 AI 服务后才会改" = "Needs an AI service";
+"没见过的名字和专称先问我" = "Ask before fixing unfamiliar names";
+"关掉就只改词表里的词和同音错字" = "When off, only fixes listed words and sound-alike typos";
+"词" = "Words";
+"搜索词表" = "Search words";
+"粘贴导入…" = "Paste to import…";
+"会中确认" = "Confirmed";
+"你加的" = "Added by you";
+"改过 %lld 次" = "Fixed %lld times";
+"还没用上" = "Not used yet";
+"从词表里删掉" = "Remove from the list";
+"粘贴导入" = "Paste to import";
+"一行一个。常被听错的词，写在 = 后面" = "One per line. Put common mishearings after =";
+"新增 %lld · 更新 %lld · 跳过 %lld" = "%lld added · %lld updated · %lld skipped";
+"第 %@ 行没加进去：超过 40 个字" = "Line %@ not added: over 40 characters";
+
+/* AISettings: 改正听错的词 */
+"改正听错的词" = "Fix misheard words";
+"已关" = "Off";
+"随翻译一起发，几乎不多花" = "Sent with the translation, barely any extra cost";
+"在“词表”里打开" = "Turn on in Word list";

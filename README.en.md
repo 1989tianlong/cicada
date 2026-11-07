@@ -50,6 +50,8 @@ All four share one version number and one meeting record format; downloads are o
 
 While the meeting runs, the notes window organizes a summary, topics and key points, conclusions, to-dos, a fishbone diagram, and a glossary of names and terms, and every conclusion or to-do clicks straight back to the supporting lines in the bilingual transcript. Cicada unifies names and terms across the notes and remembers misrecognized spellings, so `⌘F` searches both the canonical spelling and the variants. When the AI service has a problem only you can fix (key, credit, model), the notes window says so and the menu bar icon gets an orange dot; when **Turn on mic** can't get the microphone, the notes window, the subtitle bar and the menu bar icon all say so.
 
+Misheard names and terms are fixed as you go (needs an AI service): sound-alike mistakes are fixed right away, and a name it hasn't seen is asked about once in the notes window, then fixed from then on. Fixed words are underlined with dots; point at the paragraph to see what was heard, or revert it. Paste the spellings you use into Settings › Word list.
+
 ### Live subtitles and language detection
 
 Cicada detects the spoken language on device within seconds and translates into your system language, and pressing `⌃⌥S` switches between the notes window, a compact subtitle bar, and hidden. The subtitle bar appears only when someone speaks and turns see-through under your pointer so you can click right through it. On macOS 26 with Apple silicon, the Transcript also hears the meeting a second time on the Mac and refines each line 15–30 seconds after it is said: fewer misheard words and none lost where the subtitles cut a line, while subtitles stay as fast.

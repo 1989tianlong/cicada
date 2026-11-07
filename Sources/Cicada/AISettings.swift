@@ -589,6 +589,12 @@ struct AISettingsView: View {
                      note: textOn ? (Recognition.hasOnDeviceTranslation ? L("整句用它；不行时换 Google、本机") : L("整句用它；不行时换 Google"))
                                   : ling.hasKey ? L("先用 Google 翻译") : L("没有 key 时照常可用"))
         }
+        if !Recognition.cloudOnly {
+            let fixOn = textOn && settings.fixMisheard
+            usageRow(L("改正听错的词"), tag: fixOn ? uses : textOn ? L("已关") : ling.hasKey ? L("暂不可用") : L("需要 key"),
+                     style: fixOn ? .ok : .off,
+                     note: fixOn ? L("随翻译一起发，几乎不多花") : textOn ? L("在“词表”里打开") : later)
+        }
         let speaks = ling.speaks && !down
         usageRow(L("同传声音"), tag: speaks ? uses : L("本机"), style: speaks ? .ok : .off, note: voiceNote(down: down))
         if provider.clones {
