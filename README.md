@@ -142,7 +142,7 @@ Intel 版 Mac 以及 Windows、Linux 和 Android 版在云端识别：说话的�
 
 ### Linux
 
-需要 Ubuntu 22.04 或 24.04 桌面版（x86_64 或 arm64）。下载 `Cicada-<版本>-Linux.tar.gz`，在终端里运行 `tar xzf Cicada-<版本>-Linux.tar.gz && cicada-linux/install.sh`，知了会出现在应用菜单里。同声传译会自己建一个“知了 麦克风”，不用装驱动。Linux 没法让窗口避开屏幕共享，纪要窗会一直标着“共享屏幕时此窗口可见”。会议录音要用 AAC 编码器，Ubuntu 默认没有：装了第三方媒体格式（比如 `ubuntu-restricted-extras`）后，“设置 › 通用 › 保存会议录音”才能打开，录音可以在会议记录里回放，点一句的时间就从那里放；没装时这个开关是灰的，其他功能照常。
+需要 Ubuntu 22.04 或 24.04 桌面版（x86_64 或 arm64）。下载 `Cicada-<版本>-Linux.tar.gz`，在终端里运行 `tar xzf Cicada-<版本>-Linux.tar.gz && cicada-linux/install.sh`，知了会出现在应用菜单里。同声传译会自己建一个“知了 麦克风”，不用装驱动。Linux 没法让窗口避开屏幕共享，纪要窗会一直标着“共享屏幕时此窗口可见”。会议录音要用 AAC 编码器，Ubuntu 默认没有：装了第三方媒体格式（比如 `ubuntu-restricted-extras`）后，“设置 › 通用 › 保存会议录音”才能打开，录音可以在会议记录里回放，点一句的时间就从那里放；没装时这个开关是灰的，其他功能照常。听错的人名和术语也会当场改（需要 AI 服务）：Linux 上识别和翻译本来一次完成，所以打开“设置 › 词表 › 会中改正听错的词”后每句会多发一次文字请求；改过的词带下划线，会议记录里也能“改这句…”。
 
 ### Android
 

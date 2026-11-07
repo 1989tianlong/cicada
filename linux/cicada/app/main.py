@@ -261,6 +261,7 @@ class Controller:
                 self.tray.update()
             if self.settings_window is not None:
                 self.settings_window.refresh_version()
+                self.settings_window.word_list.refresh()
             self.check_problem()
             return False
         GLib.idle_add(run)

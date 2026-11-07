@@ -42,6 +42,10 @@ class RecordsWindow(Gtk.Window):
         self._player_sid = None
         self._dragging = False
         self._hl_row = None  # the transcript row at the playhead
+        # 改这句…: the line being rewritten and what its editor opens with; the last fix toast shown.
+        self._editing = None
+        self._edit_start = ""
+        self._fix_toast = None
 
         bar = Gtk.HeaderBar()
         bar.set_show_close_button(True)
@@ -344,6 +348,7 @@ class RecordsWindow(Gtk.Window):
             self._queued = False
             if self.get_visible():
                 self.fill()
+                self.fix_toast()
             return False
         GLib.idle_add(run)
 
@@ -775,6 +780,7 @@ class RecordsWindow(Gtk.Window):
                 self.transcript.reorder_child(row, i + 1)  # after the header
                 row.show_all()
                 self._rows[i] = (k, row)
+        self._fill_fix_banner(s)
         self._more_rows()
 
     # The recording (保存会议录音)
@@ -1047,7 +1053,10 @@ class RecordsWindow(Gtk.Window):
         has_dst = any(l.dst and l.dst != l.shown for l in s.lines)
         if has_dst:
             head.pack_end(ui.segmented([("both", L("双语")), ("dst", L("只看译文"))], self.mode, mode), False, False, 0)
-        col.pack_start(head, False, False, 0)
+        # The review banner rides with the header, so the rows keep their places among col's children.
+        self.fix_banner = ui.vbox(0)
+        self._banner_key = None
+        col.pack_start(ui.vbox(0, head, self.fix_banner), False, False, 0)
         self.transcript = col
         self._both = s.sourceFile is None and any(l.speaker == "me" for l in s.lines)
         self._nums, self._vnums, self._shown = self._speakers(s)
@@ -1058,6 +1067,8 @@ class RecordsWindow(Gtk.Window):
             col.pack_start(self._people(s), False, False, 0)
         self._rows = []
         self._loader = None
+        self._editing = None
+        self._fill_fix_banner(s)
         self._more_rows(first=True)
         return col
 
@@ -1078,7 +1089,8 @@ class RecordsWindow(Gtk.Window):
                 roommic.heard_both(s.lines))
 
     def _row_key(self, l, start):
-        return (l.id, l.shown, l.dst, l.voice, start)
+        fixes = tuple((f.from_, f.to, f.ask, f.off, f.user) for f in l.fixes or [])
+        return (l.id, l.shown, l.dst, l.voice, start, fixes, self._editing == l.id)
 
     def _who(self, l):
         """The label at a change of speaker, and its colour class."""
@@ -1265,15 +1277,216 @@ class RecordsWindow(Gtk.Window):
                 label = ui.hbox(6, label, ui.place_tag(l))
             texts.pack_start(label, False, False, 0)
         translated = l.dst and l.dst != l.shown
-        texts.pack_start(ui.text(l.dst if translated else l.shown, 13, "ink", selectable=True, width_chars=46,
-                                 lang=l.dstLang if translated else l.srcLang), False, False, 0)
-        if translated and self.mode == "both":
-            texts.pack_start(ui.text(l.shown, 12, "tertiary", selectable=True, width_chars=46, lang=l.srcLang), False, False, 0)
+        if self._editing == l.id:
+            texts.pack_start(self._line_editor(l), False, False, 0)
+        else:
+            if translated:
+                texts.pack_start(ui.text(l.dst, 13, "ink", selectable=True, width_chars=46, lang=l.dstLang), False, False, 0)
+            if not translated or self.mode == "both":
+                src = ui.fixed(l, 12 if translated else 13, "tertiary" if translated else "ink")
+                src.set_selectable(True)
+                src.set_max_width_chars(46)
+                texts.pack_start(src, False, False, 0)
+            # Pointing at a line: what its fixed words were heard as, 改回, and 改这句….
+            tools = ui.hbox(8)
+            applied = [(l.id, f) for f in l.fixes or [] if f.applied]
+            if applied:
+                tools.pack_start(ui.fixed_words(applied, lambda i, f: self.app.fixes.revert(f, i, self._sid)), False, False, 0)
+            edit = Gtk.Button(label=L("改这句…"))
+            ui.classes(edit, "fixlink")
+            edit.set_valign(Gtk.Align.CENTER)
+            edit.connect("clicked", lambda *_: self.edit_line(l.id))
+            tools.pack_start(edit, False, False, 0)
+            tools.set_no_show_all(True)
+            for c in tools.get_children():
+                c.show_all()
+            texts.pack_start(ui.gap(tools, 2), False, False, 0)
         row.pack_start(texts, True, True, 0)
         ui.pad(row, 9, 0, 9, 0)
         panel = ui.panel(row, "transcript-row")
         panel.time_label = t
+        if self._editing != l.id:
+            panel.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK | Gdk.EventMask.BUTTON_PRESS_MASK)
+            panel.connect("enter-notify-event", lambda *_: tools.show() or False)
+
+            def left(_w, event):
+                if event.detail != Gdk.NotifyType.INFERIOR:
+                    tools.hide()
+                return False
+            panel.connect("leave-notify-event", left)
+            panel.connect("button-press-event", lambda _w, e: self._line_menu(e, l.id))
         return self._row_key(l, start), panel
+
+    # 改正听错的词: 改这句…, the review banner, the toast
+
+    def _line_menu(self, event, line_id) -> bool:
+        """Right-click on a line: 改这句…."""
+        if event.button != 3:
+            return False
+        menu = Gtk.Menu()
+        item = Gtk.MenuItem(label=L("改这句…"))
+        item.connect("activate", lambda *_: self.edit_line(line_id))
+        menu.append(item)
+        menu.show_all()
+        menu.attach_to_widget(self, None)
+        menu.popup_at_pointer(event)
+        return True
+
+    def edit_line(self, line_id, start: str | None = None) -> None:
+        """Opens 改这句… on a line, with the line as shown (or `start`, the banner's suggestion)."""
+        l = self.app.store.line(self._sid, line_id)
+        if l is None:
+            return
+        before = self._editing
+        self._editing, self._edit_start = line_id, start if start is not None else l.shown
+        if before is not None and before != line_id:
+            self._rebuild_row(before)  # one editor at a time
+        self._rebuild_row(line_id)
+
+    def _rebuild_row(self, line_id) -> None:
+        s = self.app.store.get(self._sid)
+        if s is None:
+            return
+        starts = self._starts(s.lines)
+        for i, l in enumerate(s.lines[:len(self._rows)]):
+            if l.id == line_id:
+                old = self._rows[i][1]
+                k, row = self._row(l, l.id in starts)
+                parent = old.get_parent()
+                pos = parent.get_children().index(old)
+                parent.remove(old)
+                old.destroy()
+                parent.pack_start(row, False, False, 0)
+                parent.reorder_child(row, pos)
+                row.show_all()
+                self._rows[i] = (k, row)
+                if self._editing == line_id:
+                    GLib.idle_add(lambda: self._reveal(row) and False)
+                return
+
+    def _line_editor(self, l) -> Gtk.Widget:
+        """改这句…: the line as shown, to rewrite (the Mac's LineEditor). What changed becomes the user's
+        own fix, on every line heard the same way or only this one, and with 记进词表 the word list's."""
+        fx, sid = self.app.fixes, self._sid
+        box = ui.vbox(8)
+        entry = Gtk.Entry()
+        entry.set_text(self._edit_start)
+        entry.set_placeholder_text(L("改这句"))
+        ui.classes(entry, "fixedit")
+        box.pack_start(entry, False, False, 0)
+        options = ui.vbox(6)
+        box.pack_start(options, False, False, 0)
+        state = {"everywhere": True, "keep": True}
+
+        def close():
+            self._editing = None
+            self._rebuild_row(l.id)
+
+        def apply():
+            same = fx.same_heard(l.id, sid, entry.get_text())
+            if same is None:
+                close()
+                return
+            every = state["everywhere"] if same[1] > 1 else True
+            self._editing = None
+            fx.edit(l.id, sid, entry.get_text(), everywhere=every, remember=state["keep"] and every)
+            self._rebuild_row(l.id)
+
+        def update(*_):
+            ui.clear(options)
+            same = fx.same_heard(l.id, sid, entry.get_text())
+            if same is not None:
+                heard, n = same
+                options.pack_start(ui.hbox(6, ui.text(L("听成"), 12, "tertiary", wrap=False, ellipsize=False),
+                                           ui.text(heard, 12, "ink", wrap=False)), False, False, 0)
+                keep = Gtk.CheckButton(label=L("记进词表，以后自动改"))
+                keep.set_active(state["keep"])
+                keep.connect("toggled", lambda b: state.__setitem__("keep", b.get_active()))
+                if n > 1:
+                    all_ = Gtk.RadioButton.new_with_label(None, LF("整场听成 %@ 的 %lld 处都改", heard, n))
+                    one = Gtk.RadioButton.new_with_label_from_widget(all_, L("只改这一处"))
+                    (all_ if state["everywhere"] else one).set_active(True)
+
+                    def scope(b):
+                        state["everywhere"] = all_.get_active()
+                        keep.set_sensitive(state["everywhere"])
+                    all_.connect("toggled", scope)
+                    keep.set_sensitive(state["everywhere"])
+                    options.pack_start(all_, False, False, 0)
+                    options.pack_start(one, False, False, 0)
+                options.pack_start(keep, False, False, 0)
+            options.show_all()
+        entry.connect("changed", update)
+        entry.connect("activate", lambda *_: apply())
+
+        def key(_w, event):
+            if event.keyval == Gdk.KEY_Escape:
+                close()
+                return True
+            return False
+        entry.connect("key-press-event", key)
+        update()
+        foot = ui.hbox(8)
+        foot.pack_start(ui.text(L("回车 改成 · esc 取消"), 11, "tertiary", wrap=False), True, True, 0)
+        foot.pack_end(ui.soft_button(L("改成"), apply, dark=True), False, False, 0)
+        foot.pack_end(ui.soft_button(L("取消"), close), False, False, 0)
+        box.pack_start(foot, False, False, 0)
+        def focus():
+            entry.grab_focus()
+            entry.set_position(-1)  # the caret at the end, not the whole line selected
+            return False
+        GLib.idle_add(focus)
+        return box
+
+    def _fill_fix_banner(self, s) -> None:
+        """Above a finished meeting's transcript (the Mac's FixReviewBanner): how many words were fixed,
+        and the ones waiting for the user, one at a time (对 / 不对 / 改成…)."""
+        box = getattr(self, "fix_banner", None)
+        if box is None:
+            return
+        live = self.app.listen.listening and self.app.listen.session_id == s.id
+        fx = self.app.fixes
+        waiting = [] if live else fx.pending(s.id)
+        fixed = sum(1 for l in s.lines for f in l.fixes or [] if f.applied)
+        key = (s.id, live, fixed, len(waiting), (waiting[0][0].id, waiting[0][1].from_, waiting[0][1].to) if waiting else None)
+        if key == getattr(self, "_banner_key", None):
+            return
+        self._banner_key = key
+        ui.clear(box)
+        if waiting:
+            from ..core.correction import core
+            line, fix = waiting[0]
+            cf, ct = core(fix.from_, fix.to)
+            left = ui.vbox(2)
+            left.pack_start(ui.text(LF("改了 %lld 处听错的词，%lld 处等你确认", fixed, len(waiting)), 13, "ink", bold=True, width_chars=40),
+                            False, False, 0)
+            what = Gtk.Label()
+            what.set_xalign(0)
+            what.set_markup('<span size="%d">%s → %s？<span foreground="#6B7080"> · %s</span></span>'
+                            % (12 * 768, ui.esc(cf), ui.esc(ct), ui.esc(clock(line.t))))
+            ui.classes(what, "secondary")
+            left.pack_start(what, False, False, 0)
+            row = ui.hbox(10)
+            row.pack_start(left, True, True, 0)
+            row.pack_start(ui.soft_button(L("对"), lambda: fx.answer(fix, True, s.id), dark=True), False, False, 0)
+            row.pack_start(ui.soft_button(L("不对"), lambda: fx.answer(fix, False, s.id)), False, False, 0)
+            # 改成…: the editor on that line, to write what was really said.
+            row.pack_start(ui.soft_button(L("改成…"), lambda: self.edit_line(line.id)), False, False, 0)
+            for b in row.get_children()[1:]:
+                b.set_valign(Gtk.Align.CENTER)
+            box.pack_start(ui.gap(ui.panel(ui.pad(row, 10, 14), "fixbanner"), 10), False, False, 0)
+        elif fixed:
+            box.pack_start(ui.gap(ui.text(LF("改了 %lld 处听错的词", fixed), 12, "tertiary", wrap=False), 6), False, False, 0)
+        box.show_all()
+
+    def fix_toast(self) -> None:
+        """The last fix decision, with 撤销, as this window's toast (once per decision)."""
+        fx = self.app.fixes
+        text = fx.toast_text()
+        if text is None or fx.toast is self._fix_toast:
+            return
+        self._fix_toast = fx.toast
+        self.toasts.show(text, L("撤销") if fx.can_undo else None, fx.undo, seconds=6)
 
     def _starts(self, lines) -> set:
         """Lines whose speaker label shows: a change of speaker, or in 电脑和会议室 of place too."""

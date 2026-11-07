@@ -186,6 +186,12 @@ class SettingsWindow(Gtk.Window):
         page.pack_start(self._group(L("语言"), ui.boxed([ui.prow(L("翻译成"), combos[0]), ui.prow(L("纪要语言"), combos[1], L("实时纪要和完整版同一种语言")), ui_row])),
                         False, False, 0)
 
+        # 词表 (改正听错的词), after 语言 as on the Mac.
+        from .word_list import WordList
+        self.word_list = WordList(app, self._group)
+        self.word_list_group = self.word_list.widget
+        page.pack_start(self.word_list_group, False, False, 0)
+
         # While listening
         switch = Gtk.Switch()
         switch.set_active(autostart_enabled())
@@ -966,6 +972,10 @@ class SettingsWindow(Gtk.Window):
                                            else L("换一个模型后可用") if reason == aicheck.NO_MODEL else later)))
         rows.append((L("翻译"),) + ((uses, "ok", L("整句用它；不行时换 Google")) if text_on else
                                   ("Google", "off", L("先用 Google 翻译") if ling.has_key else L("没有 key 时照常可用"))))
+        # 改正听错的词: on Linux one more text request per sentence (Ming already translated it).
+        fix_on = text_on and self.app.settings.fixMisheard
+        rows.append((L("改正听错的词"), uses if fix_on else L("已关") if text_on else off, "ok" if fix_on else "off",
+                     L("每句多发一次文字请求") if fix_on else L("在“词表”里打开") if text_on else later))
         if ling.speaks and hear_on:
             # 同传 hears me with the hear model first, then speaks with the voice model.
             if ling.last_voice is not None:

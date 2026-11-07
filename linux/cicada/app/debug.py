@@ -411,7 +411,7 @@ def command(app, line: str) -> dict:
         app.show_onboarding()
         app.onboarding.go(int(arg))
         return {"ok": True, "step": app.onboarding.step if app.onboarding is not None else "done"}
-    if cmd.startswith(("fix", "vocab")) or cmd in ("heard", "ask-names", "resettle"):
+    if cmd.startswith(("fix", "vocab")) or cmd in ("heard", "ask-names", "resettle", "word-list"):
         return _fixes(app, cmd, arg)
     if cmd == "quit":
         app.quit()
@@ -438,7 +438,9 @@ def _fixes(app, cmd: str, arg: str) -> dict:
       meeting being listened to: the record, the fixing request, the notes window all follow) |
       fix-state [<id>] | fix-answer yes|no [<id>] | fix-later [<id>] | fix-undo | fix-revert <line> [<id>] |
       fix-edit <line>=<text>[|one][|keep0][|@<id>] | vocab-add Morpho=莫拉、莫法[|…] | vocab-remove <word> |
-      vocab-state | resettle <line>=<text> (the line heard again as <text>, then translated and fixed
+      vocab-state | fix-editor <line>=<text> (改这句… open in the records window) |
+      word-list [import <text>|edit <word>|delete <word>] (设置 › 词表 on screen) |
+      resettle <line>=<text> (the line heard again as <text>, then translated and fixed
       again with the lines after it in view)"""
     words = arg.split()
     fx = app.fixes
@@ -505,6 +507,43 @@ def _fixes(app, cmd: str, arg: str) -> dict:
         return {"ok": a is not None, **_fix_state(app, sid)}
     if cmd == "fix-undo":
         fx.undo()
+        return {"ok": True}
+    if cmd == "fix-editor":
+        # 改这句… open on a line of the record shown, with <text> typed in (the VM can't type Chinese).
+        line_id, _, text = arg.partition("=")
+        w = app.records_window
+        if w is None or not w.get_visible():
+            return {"ok": False, "error": "records window not shown"}
+        w.edit_line(line_id, text or None)
+        return {"ok": True}
+    if cmd == "word-list":
+        # 设置 › 词表 on screen: `word-list` scrolls to it; `word-list import <text>` opens 粘贴导入 with
+        # <text> pasted ("|" for new lines); `word-list edit <word>` opens its spelling.
+        app.show_settings()
+        sw = app.settings_window
+        wl = sw.word_list
+        kind, _, rest = arg.partition(" ")
+        if kind == "import":
+            wl._import()
+            wl.dialog_view.get_buffer().set_text(rest.replace("|", "\n"))
+        elif kind == "edit":
+            wl._edit(rest)
+        elif kind == "heard":  # word-list heard <word>=<form>: typed into its 加一个容易听错的词
+            word, _, form = rest.partition("=")
+            t = next((t for t in app.vocabulary.snapshot() if t.word == word), None)
+            if t is not None:
+                wl._add_heard(t, form)
+        elif kind == "delete":
+            t = next((t for t in app.vocabulary.snapshot() if t.word == rest), None)
+            if t is not None:
+                wl._remove(t)
+
+        def scroll():
+            pos = sw.word_list_group.translate_coordinates(sw.scroll.get_child().get_child(), 0, 0)
+            if pos:
+                sw.scroll.get_vadjustment().set_value(max(0, pos[-1] - 12))
+            return False
+        GLib.timeout_add(200, scroll)
         return {"ok": True}
     if cmd == "fix-revert":
         sid = sid_at(1)
