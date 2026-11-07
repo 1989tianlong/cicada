@@ -602,7 +602,7 @@ class NotesWindow(Gtk.Window):
         a = fx.asking(session.id) if session is not None else None
         toast = fx.toast_text()
         key = (session.id if session else None, a[1].from_ if a else None, a[1].to if a else None, a[3] if a else 0,
-               a[0].id if a else None, toast, fx.can_undo)
+               a[0].id if a else None, fx.toast if toast else None, fx.can_undo)  # the toast with its time
         if key == getattr(self, "_fix_key", None):
             return
         self._fix_key = key

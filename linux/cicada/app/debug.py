@@ -434,7 +434,7 @@ def _fix_state(app, sid: str) -> dict:
 def _fixes(app, cmd: str, arg: str) -> dict:
     """改正听错的词 (the Mac's fixes / heard / fixState / fixAnswer / fixLater / fixUndo / fixEdit /
     fixRevert / vocabAdd / vocabState / resettle):
-      fixes on|off | ask-names on|off | heard <text> (a finished sentence as if Ming heard it, in the
+      fixes on|off | ask-names on|off | heard <text>[|<translation>] (a finished sentence as if Ming heard it, in the
       meeting being listened to: the record, the fixing request, the notes window all follow) |
       fix-state [<id>] | fix-answer yes|no [<id>] | fix-later [<id>] | fix-undo | fix-revert <line> [<id>] |
       fix-edit <line>=<text>[|one][|keep0][|@<id>] | vocab-add Morpho=莫拉、莫法[|…] | vocab-remove <word> |
@@ -465,7 +465,10 @@ def _fixes(app, cmd: str, arg: str) -> dict:
         lang = listen._main.hint or "zh-CN"
         seg = SimpleNamespace(start=listen.heard_seconds, seconds=2.0, index=0, voiceprint=None,
                               asked=app.settings.resolved_target(lang))
-        heard = Heard(lang, arg, None)
+        # `heard <text>|<translation>`: a line Ming translated, the usual path (the fixing request
+        # replaces its translation); without one, the path of a line Ming left untranslated.
+        text, _, dst = arg.partition("|")
+        heard = Heard(lang, text, dst or None)
 
         def run():
             listen._record(listen._main, seg, heard)
