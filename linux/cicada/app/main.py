@@ -660,6 +660,10 @@ class Controller:
             return
 
         source.on_ended = self._source_ended(kind)
+        # A new meeting's notes window starts without the last meeting's interpreted sentence.
+        if not self.speak.active:
+            self.speak.last = None
+            self.speak.problem = None
         self.auto_ended = False
         self.ending = None
         self.end_watch = meeting_end.MeetingEndWatch(self.end_config(), time.time())
