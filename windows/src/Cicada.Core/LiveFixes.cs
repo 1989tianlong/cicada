@@ -193,7 +193,9 @@ public sealed class LiveFixes
         lock (gate)
         {
             if (Line(id, lineId) is not { Fixes: { } fixes }) return;
-            int k = fixes.FindIndex(f => f.From == fix.From && f.To == fix.To);
+            // The one still on: an earlier, already undone copy of the same change may sit before it.
+            int k = fixes.FindIndex(f => f.From == fix.From && f.To == fix.To && f.Applied);
+            if (k < 0) k = fixes.FindIndex(f => f.From == fix.From && f.To == fix.To);
             if (k < 0) return;
             Remember(id, [lineId]);
             var now = fixes.ToList();
@@ -238,7 +240,8 @@ public sealed class LiveFixes
             foreach (var t in targets)
             {
                 // A guess still waiting on the same words is answered by the edit: not that.
-                var fixes = (t.Fixes ?? []).Select(f => f.Ask == true && (f.From.Contains(e.Heard, StringComparison.Ordinal) || e.Heard.Contains(f.From, StringComparison.Ordinal))
+                // The same change made again replaces any earlier copy (say, one undone with 改回).
+                var fixes = (t.Fixes ?? []).Where(f => !(f.From == e.Fix.From && f.To == e.Fix.To)).Select(f => f.Ask == true && (f.From.Contains(e.Heard, StringComparison.Ordinal) || e.Heard.Contains(f.From, StringComparison.Ordinal))
                     ? f with { Ask = null, Off = true } : f).ToList();
                 Set([.. fixes, e.Fix], t.Id, id);
             }

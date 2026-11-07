@@ -252,7 +252,9 @@ public static class Correction
             for (int at = shown.IndexOf(x, StringComparison.Ordinal); at >= 0; at = shown.IndexOf(x, at + x.Length, StringComparison.Ordinal)) n++;
             return n;
         }
-        while (!Span().Any(char.IsLetterOrDigit) || Count(Span()) != 1)
+        string Replacement() => string.Concat(b[start..(b.Length - (a.Length - end))]);
+        // A dropped word ("in now." → "in.") grows too, so neither side of the fix is empty.
+        while (!Span().Any(char.IsLetterOrDigit) || Count(Span()) != 1 || Replacement().Length == 0)
         {
             int before = tokens.FindLastIndex(t => t.Hi <= start), after = tokens.FindIndex(t => t.Lo >= end);
             if (before >= 0) start = tokens[before].Lo;
@@ -260,7 +262,7 @@ public static class Correction
             else break;
         }
         var from = Span();
-        var to = string.Concat(b[start..(b.Length - (a.Length - end))]);
+        var to = Replacement();
         if (from.Length == 0 || from == to) return null;
         var heard = from;
         if (!src.Contains(from, StringComparison.Ordinal) && fixes.FirstOrDefault(f => f.Applied && from.Contains(f.To, StringComparison.Ordinal)) is { } earlier)

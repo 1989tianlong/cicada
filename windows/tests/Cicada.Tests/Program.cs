@@ -2868,6 +2868,31 @@ static class Tests
         Equal(("质压", "质押"), Correction.Label(new LineFix("解除质压", "解除质押")), "a swap: the changed words");
     }
 
+    public static void FixDroppedWordKeepsBothSidesOfTheFix()
+    {
+        const string line = "Great, let's lock that in now.";
+        var e = Correction.UserEdit(line, "Great, let's lock that in.", line, []);
+        Check(e is { } x && x.Fix.From.Length > 0 && x.Fix.To.Length > 0, $"both sides: {e?.Fix.From} → {e?.Fix.To}");
+        Equal("Great, let's lock that in.", Correction.Apply([e!.Value.Fix], line).Text, "applied");
+        var l = Correction.Label(e.Value.Fix);
+        Check(l.From.Length > 0 && l.To.Length > 0, $"label: {l.From} → {l.To}");
+    }
+
+    public static void FixesEditRevertEditRevertGoesBack()
+    {
+        var (fx, store, id) = FixSetup("Great, let's lock that in.", "Design signs off by Friday.");
+        for (int i = 0; i < 2; i++)
+        {
+            fx.Edit("l0", id, "Great, let's lock that in now.", everywhere: true, remember: true);
+            Equal("Great, let's lock that in now.", FixLine(store, id, "l0").Shown, $"edited {i}");
+            var f = FixLine(store, id, "l0").Fixes!.First(x => x.Applied);
+            fx.Revert(f, "l0", id);
+            Equal("Great, let's lock that in.", FixLine(store, id, "l0").Shown, $"reverted {i}");
+        }
+        Equal(1, FixLine(store, id, "l0").Fixes!.Count, "one fix");
+        Equal(null, FixLine(store, id, "l1").Fixes, "other line untouched");
+    }
+
     public static void FixesRevertNamesAnAddedWordWhole()
     {
         var (fx, store, id) = FixSetup("Great, let's lock that in.");
