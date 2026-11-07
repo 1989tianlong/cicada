@@ -64,6 +64,13 @@ object Correction {
         return a.substring(i, maxOf(i, a.length - j)) to b.substring(i, maxOf(i, b.length - j))
     }
 
+    /// A fix as the UI names it (听成 X → Y, 已改回 X): the changed words, or the whole fix when
+    /// it only adds or drops words ("in" → "in now", whose changed part alone would be "" → "now").
+    fun label(f: LineFix): Pair<String, String> {
+        val c = core(f.from, f.to)
+        return if (c.first.isEmpty() || c.second.isEmpty()) f.from to f.to else c
+    }
+
     /// `known`: the user confirmed this heard form for this word (the word list). `rejected`: they
     /// said no to it in this meeting.
     fun decide(e: Edit, known: (String, String) -> Boolean, rejected: (String, String) -> Boolean): Verdict {

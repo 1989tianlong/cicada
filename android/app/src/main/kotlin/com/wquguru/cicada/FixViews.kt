@@ -77,7 +77,7 @@ object FixViews {
         if (applied.isEmpty()) return null
         val box = ui.stack(6)
         for (f in applied) {
-            val (from, to) = Correction.core(f.from, f.to)
+            val (from, to) = Correction.label(f)
             box.addView(LinearLayout(ui.context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -98,7 +98,7 @@ object FixViews {
     /// 这样改对吗？: a name sound can't check, asked about once. 对 fixes every line waiting on it and
     /// adds it to the word list; × (稍后再看) asks again after the meeting.
     fun confirmCard(ui: Ui, a: LiveFixes.Asking, onAnswer: (Boolean) -> Unit, onLater: (() -> Unit)?): View {
-        val (from, to) = Correction.core(a.fix.from, a.fix.to)
+        val (from, to) = Correction.label(a.fix)
         val card = ui.stack(0)
         card.background = ui.rounded(Palette.card, 16, Palette.line, 1)
         card.setPadding(ui.dp(14), ui.dp(10), ui.dp(6), ui.dp(12))
@@ -134,7 +134,7 @@ object FixViews {
         val fixed = fixes.store.lines(s.id).sumOf { l -> (l.fixes ?: emptyList()).count { it.applied } }
         val first = waiting.firstOrNull()
         if (first == null) return if (fixed > 0) ui.text(LF("改了 %lld 处听错的词", fixed), 13f, Palette.tertiary) else null
-        val (from, to) = Correction.core(first.fix.from, first.fix.to)
+        val (from, to) = Correction.label(first.fix)
         val box = ui.stack(8)
         box.background = ui.rounded(Color.parseColor("#FEF6F2"), 16, Palette.accentPale, 1)
         box.setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))

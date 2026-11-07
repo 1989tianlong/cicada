@@ -173,7 +173,7 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
         refusals[pair(c.first, c.second)] = n
         if (n >= 2) vocabulary.forget(c.first, c.second)
         Log.d("fix reverted line=$lineId")
-        say(Strings.LF("已改回 %@，这场不再改", c.first))
+        say(Strings.LF("已改回 %@，这场不再改", Correction.label(fix).first))
     }
 
     // MARK: 改这句…

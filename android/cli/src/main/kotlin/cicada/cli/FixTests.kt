@@ -27,6 +27,7 @@ object FixTests {
         "mergeKeepsRefusals" to ::mergeKeepsRefusals,
         "recheckTakesBackWhatItNoLongerProposesButNotTheUsers" to ::recheckTakesBack,
         "userEditOnTopOfAFix" to ::userEditOnTopOfAFix,
+        "labelNamesAnAddedWordWhole" to ::labelNamesAnAddedWordWhole,
         "addedWordStaysOnItsLineAndNeverMatchesPunctuation" to ::addedWordStaysOnItsLineAndNeverMatchesPunctuation,
         "vocabImportLinesWithHeardForms" to ::importLinesWithHeardForms,
         "vocabSameWordWhateverWidthOrCase" to ::sameWordWhateverWidthOrCase,
@@ -292,6 +293,17 @@ object FixTests {
         val s = setup("我木娜找了")
         s.fx.edit("l0", s.id, "我Monad找了", everywhere = true, keep = true)
         equal("已改 1 处：木娜 → Monad，记进词表", s.fx.toastNow()?.text, "a swap reads as the words swapped")
+    }
+
+    fun labelNamesAnAddedWordWhole() {
+        equal("in" to "in now", Correction.label(LineFix("in", "in now", user = true)), "added at the end")
+        equal("Great" to "OK Great", Correction.label(LineFix("Great", "OK Great", user = true)), "added at the start")
+        equal("质压" to "质押", Correction.label(LineFix("解除质压", "解除质押")), "a swap names the changed words")
+        // 改回 says the whole span too.
+        val t = setup("lock that in.")
+        t.fx.edit("l0", t.id, "lock that in now.", everywhere = false, keep = false)
+        t.fx.revert(t.line("l0").fixes!!.first(), "l0", t.id)
+        equal("已改回 in，这场不再改", t.fx.toastNow()?.text, "revert toast")
     }
 
     fun addedWordStaysOnItsLineAndNeverMatchesPunctuation() {
