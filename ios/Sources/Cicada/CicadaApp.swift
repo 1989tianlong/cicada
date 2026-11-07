@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
     lazy var room: RoomListen = {
         let r = RoomListen(store: store, translator: translator, notes: notes)
         r.onStateChange = { [weak self] in self?.listeningChanged() }
-        r.onLine = { [weak self] line in self?.liveActivity.update(line: line) }
+        r.onLine = { [weak self] line in self?.showOnLockScreen(line) }
         return r
     }()
     let liveActivity = LiveActivityController()
@@ -122,6 +122,13 @@ final class AppModel: ObservableObject {
     }
 
     func stopListening() { room.stop() }
+
+    /// The Live Activity shows the line as fixed (改正听错的词), like the 字幕 page.
+    private func showOnLockScreen(_ line: RoomListen.Line) {
+        var shown = line
+        if let rec = store.session(room.sessionID)?.lines.first(where: { $0.id == line.id }) { shown.src = rec.shown }
+        liveActivity.update(line: shown)
+    }
 
     private func listeningChanged() {
         objectWillChange.send()

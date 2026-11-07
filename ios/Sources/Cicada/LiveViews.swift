@@ -207,11 +207,14 @@ struct LiveLines: View {
                             .frame(maxWidth: .infinity).padding(.top, 40)
                     }
                     ForEach(room.lines) { l in
-                        card(who: numbers[l.id].map { SpeakerLabels.label($0, names) }, time: l.t, src: l.src, dst: l.dst, live: false)
+                        // The record's line, so its fixed words show (改正听错的词); `room.lines` keeps what was heard.
+                        let rec = session?.lines.first { $0.id == l.id }
+                        card(who: numbers[l.id].map { SpeakerLabels.label($0, names) }, time: l.t,
+                             src: rec.map(FixedText.attributed) ?? AttributedString(l.src), dst: l.dst, live: false)
                             .id(l.id)
                     }
                     if !room.draft.isEmpty {
-                        card(who: nil, time: nil, src: room.draft, dst: room.draftTranslation.isEmpty ? nil : room.draftTranslation, live: true)
+                        card(who: nil, time: nil, src: AttributedString(room.draft), dst: room.draftTranslation.isEmpty ? nil : room.draftTranslation, live: true)
                             .id("draft")
                     }
                     Color.clear.frame(height: 40).id("end")
@@ -223,7 +226,7 @@ struct LiveLines: View {
         }
     }
 
-    private func card(who: String?, time: Double?, src: String, dst: String?, live: Bool) -> some View {
+    private func card(who: String?, time: Double?, src: AttributedString, dst: String?, live: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(live ? L("正在说") : [who, time.map(TranscriptExport.clock)].compactMap { $0 }.joined(separator: " · "))
                 .font(.caption.weight(.semibold)).foregroundStyle(live ? Ink.accentText : Ink.ink)

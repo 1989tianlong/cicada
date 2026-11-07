@@ -290,8 +290,8 @@ struct TranscriptList: View {
                                     .foregroundStyle(l.speaker == "me" ? Ink.accentText : (focus == nil || mine ? Ink.ink : Ink.tertiary))
                             }
                         }
-                        Text(l.src).font(.system(size: srcSize)).foregroundStyle(Ink.secondary).lineSpacing(2)
-                        if let d = l.dst, d != l.src {
+                        Text(FixedText.attributed(l)).font(.system(size: srcSize)).foregroundStyle(Ink.secondary).lineSpacing(2)
+                        if let d = l.dst, d != l.src, d != l.shown {
                             Text(d).font(.system(size: dstSize)).foregroundStyle(Ink.ink).lineSpacing(4)
                         }
                     }
