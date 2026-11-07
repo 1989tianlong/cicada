@@ -2980,6 +2980,16 @@ static class Tests
         Equal("但质压这种", FixLine(store, id, "l0").Shown, "stays reverted");
     }
 
+    public static void FixesYesFixesTheRestOfTheMeetingAtOnce()
+    {
+        var (fx, store, id) = FixSetup("最近那个开布特提了", "开布特那边也说了");
+        fx.Received(id, "l0", [new("开布特", "Curve", 0.9)]);
+        fx.Answer(fx.Pending(id)[0].Fix, true, id);
+        Equal("Curve那边也说了", FixLine(store, id, "l1").Shown, "the other line follows at once");
+        fx.Undo();
+        Equal("开布特那边也说了", FixLine(store, id, "l1").Shown, "undo takes it back");
+    }
+
     public static void FixesOffLeavesLinesAsHeard()
     {
         var (fx, store, id) = FixSetup("但质压这种");

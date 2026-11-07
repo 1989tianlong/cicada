@@ -168,10 +168,19 @@ public sealed class LiveFixes
             if (store.Get(id) is not { } s) return;
             bool Waiting(LineFix f) => f.Ask == true && Correction.Core(f.From, f.To) == c;
             var touched = s.Lines.Where(l => (l.Fixes ?? []).Any(Waiting)).ToList();
-            Remember(id, touched.Select(l => l.Id));
+            var others = yes ? s.Lines.Where(l => l.Src.Contains(c.From, StringComparison.Ordinal) && !touched.Contains(l)).ToList() : [];
+            Remember(id, touched.Concat(others).Select(l => l.Id));
             foreach (var l in touched)
                 Set((l.Fixes ?? []).Select(f => Waiting(f) ? f with { Ask = null, User = yes ? true : f.User, Off = yes ? f.Off : true } : f).ToList(), l.Id, id);
-            if (yes) Vocabulary.Confirm(c.From, c.To); else refused.Add(Pair(c.From, c.To));
+            if (yes)
+            {
+                Vocabulary.Confirm(c.From, c.To);
+                // The rest of the meeting heard the same way follows now, not with the next line.
+                if (settings.FixMisheard)
+                    foreach (var l in others)
+                        if (Line(id, l.Id) is { } now) Set(Known(now.Src, now.Fixes ?? []), l.Id, id);
+            }
+            else refused.Add(Pair(c.From, c.To));
         }
         Log.Debug($"fix answered {(yes ? "yes" : "no")}");
         Say(yes ? Strings.LF("已改 %@ → %@，记进词表", c.From, c.To) : Strings.LF("这场不再问 %@", c.From));
