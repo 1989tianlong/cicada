@@ -321,3 +321,7 @@
 /* 打开麦克风: the Mac's words name the Mac. */
 "关着 · 只听电脑声音" = "Off · PC audio only";
 "电脑声音照常在记" = "The PC's audio is still being recorded";
+
+/* 改正听错的词: Ming translates with the audio, so fixing is a request of its own; the list is on this PC. */
+"每句话说完多发一次文字请求" = "One more text request per finished sentence";
+"最多 %lld 个，满了优先用最近的。只存在这台电脑上" = "Up to %lld, recent ones first. Stored only on this PC";

@@ -889,6 +889,9 @@ sealed class Controller
     }
 
     public void SettingsPage(string id) => settingsWindow?.Show(id);
+    /// Debug: 改这句… on a record's line; 词表 › 粘贴导入 with `text` pasted in.
+    public void DebugEditLine(string id, string line) { ShowRecords(id); mainWindow?.DebugEdit(id, line); }
+    public void DebugPaste(string text) { ShowSettings(); SettingsPage("words"); settingsWindow?.DebugImport(text); }
 
     // MARK: AI 服务
 
@@ -1384,6 +1387,8 @@ static class DebugServer
                     return new JsonObject { ["changed"] = app.Fixes.Edit(p[0], id, opts[0], everywhere: !opts.Contains("one"), remember: !opts.Contains("keep0")) };
                 }
             case "fixundo": app.Fixes.Undo(); break;
+            case "fixeditor": { var (id, lineId) = FixTarget(app, arg); app.DebugEditLine(id, lineId); break; }  // fixeditor <line> [@id]
+            case "vocabpaste": app.DebugPaste(arg); break;  // vocabpaste <line|line…>: 粘贴导入, filled in, not imported
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };
         }

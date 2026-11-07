@@ -9,7 +9,7 @@ namespace Cicada.App;
 /// 设置, as the Mac's settings window with no title bar: the categories as plain words on the left,
 /// the chosen one on a white pill, and its page on the right under a big title, the settings in
 /// white cards on the grey ground with each control at the right.
-sealed class SettingsWindow : Window
+sealed partial class SettingsWindow : Window
 {
     readonly Controller app;
     readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(40, 44, 40, 40) };
@@ -61,6 +61,7 @@ sealed class SettingsWindow : Window
             Card(Icons.Globe, L("翻译成"), null, Ui.Choice(Ui.TargetOptions(), app.Settings.Target, app.SetTarget)),
             Card(null, L("纪要语言"), null, Ui.Choice([("system", L("和字幕一样")), .. Languages.Targets.Select(t => (t.Code, t.Name))], app.Settings.NotesLanguage, v => { app.Settings.NotesLanguage = v; Save(); })),
             Card(null, L("界面语言"), L("重新打开知了后生效"), Ui.Choice([("system", L("跟随系统")), ("zh-Hans", "简体中文"), ("en", "English"), ("ja", "日本語"), ("ko", "한국어")], app.Settings.UiLanguage, v => { app.Settings.UiLanguage = v; Save(); }))));
+        if (current == "words") Section(page, "words", L("词表"), WordCards());
         var size = new Slider { Minimum = 18, Maximum = 32, Value = app.Settings.SubtitleSize, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
         System.Windows.Automation.AutomationProperties.SetName(size, L("字幕文字大小"));
         size.ValueChanged += (_, e) => { app.Settings.SubtitleSize = (int)e.NewValue; Save(); };
@@ -146,7 +147,7 @@ sealed class SettingsWindow : Window
         nav.Children.Clear();
         (string id, string icon, string label)[] items =
         [
-            ("ai", Icons.Key, L("AI 服务")), ("lang", Icons.Globe, L("语言")), ("listen", Icons.Wave, L("听的时候")),
+            ("ai", Icons.Key, L("AI 服务")), ("lang", Icons.Globe, L("语言")), ("words", Icons.List, L("词表")), ("listen", Icons.Wave, L("听的时候")),
             ("speak", Icons.Mic, L("同声传译")), ("end", Icons.Stop, L("结束会议")), ("privacy", Icons.Shield, L("隐私与启动")), ("about", Icons.Info, L("关于")),
         ];
         foreach (var (id, icon, label) in items)
@@ -361,6 +362,12 @@ sealed class SettingsWindow : Window
             : notesOn ? Row(L("实时纪要"), uses, "ok", L("会中每 45 秒更新"))
             : Row(L("实时纪要"), off, "off", reason == AICheck.Reason.NoJSON ? L("这个服务不支持 JSON") : reason == AICheck.Reason.NoModel ? L("换一个模型后可用") : later);
         yield return textOn ? Row(L("翻译"), uses, "ok", L("整句用它；不行时换 Google")) : Row(L("翻译"), "Google", "off", ling.HasKey ? L("先用 Google 翻译") : L("没有 key 时照常可用"));
+        // 改正听错的词 (the Mac hides this row where the service hears, as here: Windows has no other
+        // way to hear, so it is shown, and says what it costs: Ming's translation leaves no text
+        // request to ride on, so each finished line is one more).
+        var fixOn = textOn && app.Settings.FixMisheard;
+        yield return Row(L("改正听错的词"), fixOn ? uses : textOn ? L("已关") : off, fixOn ? "ok" : "off",
+            fixOn ? L("每句话说完多发一次文字请求") : textOn ? L("在“词表”里打开") : later);
         // Windows speaks when the service can't, as the Mac does with its own voice.
         var speaks = ling.Speaks && !down;
         yield return speaks ? Row(L("同传声音"), uses, "ok", ling.LastVoice is { } last ? (last.Ok ? L("上次同传时正常") : L("上次同传没出声，用了 Windows 的声音")) : c.IsLing ? L("Ming 的声音") : c.VoiceModel!)

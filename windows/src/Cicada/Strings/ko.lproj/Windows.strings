@@ -321,3 +321,7 @@
 /* 打开麦克风: the Mac's words name the Mac. */
 "关着 · 只听电脑声音" = "꺼짐 · PC 소리만";
 "电脑声音照常在记" = "PC 소리는 계속 기록 중";
+
+/* 改正听错的词: Ming translates with the audio, so fixing is a request of its own; the list is on this PC. */
+"每句话说完多发一次文字请求" = "문장마다 텍스트 요청이 한 번 더 갑니다";
+"最多 %lld 个，满了优先用最近的。只存在这台电脑上" = "최대 %lld개, 최근 것을 우선. 이 PC에만 저장";
