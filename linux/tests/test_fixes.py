@@ -179,12 +179,34 @@ class Correction(unittest.TestCase):
         fixes = [LineFix("莫纳", "Morpho")]
         src = "扩展到这个莫纳的 Link"
         shown = apply(fixes, src)[0]
-        fix, heard = correction.user_edit(shown, "扩展到这个Monad的 Link", src, fixes)
+        fix, heard, swap = correction.user_edit(shown, "扩展到这个Monad的 Link", src, fixes)
+        self.assertTrue(swap)
         self.assertEqual(fix, LineFix("Morpho", "Monad", user=True))
         self.assertEqual(heard, "莫纳")
         self.assertEqual(apply(fixes + [fix], src)[0], "扩展到这个Monad的 Link")
         self.assertEqual(correction.user_edit("我木娜找了一个", "我在 Monad 找了一个", "我木娜找了一个", [])[1], "木娜")
         self.assertIsNone(correction.user_edit("a", " a ", "a", []))
+
+    def test_added_word_stays_on_its_line_and_never_matches_punctuation(self):
+        # "now" added before the full stop: the fix is the last word, unique in the line, not ".".
+        line = "Great, let's lock that in."
+        fix, _, swap = correction.user_edit(line, "Great, let's lock that in now.", line, [])
+        self.assertEqual((fix.from_, fix.to, swap), ("in", "in now", False))
+        self.assertEqual(apply([fix], line)[0], "Great, let's lock that in now.")
+        # A word added at the start.
+        fix, _, swap = correction.user_edit(line, "OK Great, let's lock that in.", line, [])
+        self.assertEqual((fix.from_, fix.to, swap), ("Great", "OK Great", False))
+        # A word that appears twice: grown until the span is unique.
+        line = "in the room in the hall"
+        fix = correction.user_edit(line, "in the room inside the hall", line, [])[0]
+        self.assertEqual(apply([fix], line)[0], "in the room inside the hall")
+        # Chinese: an inserted word takes its neighbour.
+        line = "好的我来看一下"
+        fix, _, swap = correction.user_edit(line, "好的OK我来看一下", line, [])
+        self.assertEqual(apply([fix], line)[0], "好的OK我来看一下")
+        self.assertFalse(swap)
+        # A real swap is still a swap.
+        self.assertTrue(correction.user_edit("我木娜找了", "我Monad找了", "我木娜找了", [])[2])
 
 
 class Vocab(Base):
@@ -321,6 +343,15 @@ class Live(Base):
         self.assertEqual(store.line(sid, "l0").shown, "OK我来说一下")
         self.assertEqual(fx.vocabulary.terms, [])
         self.assertNotIn("记进词表", fx.toast_text())
+
+    def test_added_word_is_never_offered_for_the_whole_meeting(self):
+        fx, store, sid = self.setup(["Great, let's lock that in.", "We are in.", "Fine."])
+        self.assertEqual(fx.same_heard("l0", sid, "Great, let's lock that in now.")[1:], (1, False))
+        self.assertEqual(fx.edit("l0", sid, "Great, let's lock that in now.", everywhere=True, remember=True), 1)
+        self.assertEqual(store.line(sid, "l0").shown, "Great, let's lock that in now.")
+        self.assertEqual(store.line(sid, "l1").shown, "We are in.")
+        self.assertEqual(store.line(sid, "l2").shown, "Fine.")
+        self.assertEqual(fx.vocabulary.terms, [])
 
     def test_one_off_edit_does_not_teach_the_list(self):
         fx, store, sid = self.setup(["我木娜找了一个", "木娜那边也有"])

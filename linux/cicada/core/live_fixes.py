@@ -227,15 +227,16 @@ class LiveFixes:
 
     def same_heard(self, line_id: str, sid: str, edited: str):
         """How many lines of the meeting the same edit would change ("整场同样听成 木娜 的 2 处都改"):
-        (heard, count), or None when the edit changes nothing."""
+        (heard, count, swap), or None when the edit changes nothing. An edit that only adds or drops
+        words stays on its line (count 1, nothing to learn)."""
         l = self.store.line(sid, line_id)
         if l is None:
             return None
         e = correction.user_edit(l.shown, edited, l.src, l.fixes or [])
         if e is None:
             return None
-        n = sum(1 for x in self.store.lines(sid) if e[0].from_ in x.shown)
-        return e[1], max(1, n)
+        n = sum(1 for x in self.store.lines(sid) if e[0].from_ in x.shown) if e[2] else 1
+        return e[1], max(1, n), e[2]
 
     def edit(self, line_id: str, sid: str, edited: str, everywhere: bool, remember: bool) -> int:
         """The user rewrote a line (改这句…): what changed becomes their own fix, on this line or on every
@@ -245,7 +246,8 @@ class LiveFixes:
             e = correction.user_edit(l.shown, edited, l.src, l.fixes or []) if l else None
             if e is None:
                 return 0
-            fix, heard = e
+            fix, heard, swap = e
+            everywhere = everywhere and swap
             targets = [x for x in self.store.lines(sid) if fix.from_ in x.shown] if everywhere else [l]
             self._remember(sid, [t.id for t in targets])
             for t in targets:

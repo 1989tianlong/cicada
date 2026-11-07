@@ -226,18 +226,65 @@ def merge(old: list, new: list) -> list:
 
 
 def user_edit(shown: str, edited: str, src: str, fixes: list):
-    """改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others, and
-    the heard form it replaces (for the word list): the words in `src` when they are there, else the
-    heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad"). None: no change."""
+    """改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others: the
+    changed span grown to whole tokens (a Latin word, or one CJK character), and further, a token at a
+    time, until it holds a letter and is the only such span in the line. An added word ("lock that
+    in." → "lock that in now.") is then "in" → "in now" on this line, never "." on every line.
+    `swap` is whether words were replaced (not only added or dropped): only a swap may go to the rest
+    of the meeting and teach the word list. `heard` is the words in `src` when they are there, else
+    the heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad").
+    (fix, heard, swap), or None: no change (Correction.swift's userEdit)."""
     new = edited.strip()
     if not new or new == shown:
         return None
-    cf, ct = core(shown, new)
-    if not cf or not ct:
+    a, b = shown, new
+    p = 0
+    while p < min(len(a), len(b)) and a[p] == b[p]:
+        p += 1
+    q = 0
+    while q < min(len(a), len(b)) - p and a[len(a) - 1 - q] == b[len(b) - 1 - q]:
+        q += 1
+    swap = len(a) - p - q > 0 and len(b) - p - q > 0
+
+    def latin(c: str) -> bool:
+        return c.isascii() and c.isalnum()
+    # Tokens of the shown line, as (start, end): a run of ASCII letters and digits, else one character.
+    tokens = []
+    k = 0
+    while k < len(a):
+        e = k + 1
+        if latin(a[k]):
+            while e < len(a) and latin(a[e]):
+                e += 1
+        tokens.append((k, e))
+        k = e
+    start, end = p, len(a) - q
+    t = next((t for t in tokens if t[0] <= start < t[1]), None)
+    if t is not None:
+        start = t[0]
+    if end > start:
+        t = next((t for t in tokens if t[0] <= end - 1 < t[1]), None)
+        if t is not None:
+            end = t[1]
+    while True:
+        span = a[start:end]
+        if any(c.isalnum() for c in span) and span and a.count(span) == 1:
+            break
+        before = [t for t in tokens if t[1] <= start]
+        after = [t for t in tokens if t[0] >= end]
+        if before:
+            start = before[-1][0]
+        elif after:
+            end = after[0][1]
+        else:
+            break
+    frm = a[start:end]
+    to = b[start:len(b) - (len(a) - end)]
+    if not frm or frm == to:
         return None
-    heard = cf
-    if cf not in src:
-        earlier = next((f for f in fixes if f.applied and f.to in cf), None)
+    heard = frm
+    if frm not in src:
+        earlier = next((f for f in fixes if f.applied and f.to in frm), None)
         if earlier is not None:
             heard = core(earlier.from_, earlier.to)[0]
-    return LineFix(cf, ct, user=True), heard
+    return LineFix(frm, to, user=True), heard, swap

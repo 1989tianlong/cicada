@@ -1396,7 +1396,7 @@ class RecordsWindow(Gtk.Window):
             ui.clear(options)
             same = fx.same_heard(l.id, sid, entry.get_text())
             if same is not None:
-                heard, n = same
+                heard, n, swap = same
                 options.pack_start(ui.hbox(6, ui.text(L("听成"), 12, "tertiary", wrap=False, ellipsize=False),
                                            ui.text(heard, 12, "ink", wrap=False)), False, False, 0)
                 keep = Gtk.CheckButton(label=L("记进词表，以后自动改"))
@@ -1414,7 +1414,9 @@ class RecordsWindow(Gtk.Window):
                     keep.set_sensitive(state["everywhere"])
                     options.pack_start(all_, False, False, 0)
                     options.pack_start(one, False, False, 0)
-                options.pack_start(keep, False, False, 0)
+                # Only a word for a word can teach the list: an added or dropped word can't.
+                if swap:
+                    options.pack_start(keep, False, False, 0)
             options.show_all()
         entry.connect("changed", update)
         entry.connect("activate", lambda *_: apply())
