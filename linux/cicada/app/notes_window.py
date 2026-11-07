@@ -1069,7 +1069,7 @@ class NotesWindow(Gtk.Window):
             for p in t.points:
                 body.pack_start(ui.gap(ui.text(p, 13, "body", width_chars=30), 4), False, False, 0)
         for title, items in ((L("结论"), [c.text for c in n.conclusions]),
-                             (L("待办"), [t.text + (" · " + t.owner if t.owner else "") for t in n.todos])):
+                             (L("待办"), [t.with_owner for t in n.todos])):
             if not items:
                 continue
             body.pack_start(ui.gap(ui.text(title, 11, "tertiary", bold=True), 16), False, False, 0)

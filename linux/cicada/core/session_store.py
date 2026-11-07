@@ -427,7 +427,7 @@ def notes_markdown(n) -> str:
     if n.conclusions:
         b.append("### %s\n\n" % L("结论") + "".join("- %s\n" % c.text for c in n.conclusions) + "\n")
     if n.todos:
-        b.append("### %s\n\n" % L("待办") + "".join("- [ ] %s%s\n" % (t.text, "（%s）" % t.owner if t.owner else "") for t in n.todos) + "\n")
+        b.append("### %s\n\n" % L("待办") + "".join("- [ ] %s\n" % t.with_owner for t in n.todos) + "\n")
     if n.terms:
         b.append("### %s\n\n" % L("人名和术语") + "".join("- **%s** %s\n" % (t.name, t.note) for t in n.terms) + "\n")
     return "".join(b)

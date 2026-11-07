@@ -859,6 +859,24 @@ class Strings(Base):
         finally:
             strings.load("zh-Hans", res)
 
+    def test_todo_owner_in_the_ui_language(self):
+        # The notes store the transcript's Chinese label; it shows in the UI language (Notes.swift's withOwner).
+        res = [os.path.join(REPO, "Resources"), os.path.join(REPO, "linux", "strings")]
+        todo = lambda owner: NoteItem(text="Ship it", owner=owner)
+        try:
+            strings.load("en", res)
+            self.assertEqual("Ship it (Them)", todo("对方").with_owner)
+            self.assertEqual("Ship it (You)", todo("你").with_owner)
+            self.assertEqual("Ship it (Speaker 2)", todo("说话人2").with_owner)
+            self.assertEqual("Ship it (Priya)", todo("Priya").with_owner)
+            self.assertEqual("Ship it", todo(None).with_owner)
+            self.assertEqual("Misheard words fixed: 1 · 2 to confirm", strings.LF("改了 %lld 处听错的词，%lld 处等你确认", 1, 2))
+            strings.load("zh-Hans", res)
+            self.assertEqual("Ship it（对方）", todo("对方").with_owner)
+            self.assertEqual("Ship it（说话人 2）", todo("说话人2").with_owner)
+        finally:
+            strings.load("zh-Hans", res)
+
     def test_loads_the_macs_translations(self):
         res = [os.path.join(REPO, "Resources"), os.path.join(REPO, "linux", "strings")]
         strings.load("en_US.UTF-8", res)

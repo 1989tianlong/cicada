@@ -131,6 +131,27 @@ class NoteItem:
     def from_json(o: dict) -> "NoteItem":
         return NoteItem(string(o.get("text")) or "", string(o.get("owner")), integer(o.get("support")) or 0, num(o.get("t")))
 
+    @property
+    def owner_shown(self) -> str | None:
+        """The owner as stored ("你", "对方", "说话人2" or a name) in the UI language (Notes.swift's ownerShown)."""
+        from .strings import L, LF
+        o = self.owner
+        if not o:
+            return None
+        if o in ("你", "对方", "未识别"):
+            return L(o)
+        n = o[3:].strip()
+        if o.startswith("说话人") and n.isdigit():
+            return LF("说话人 %lld", int(n))
+        return o
+
+    @property
+    def with_owner(self) -> str:
+        """The to-do with its owner after it: "（对方）" in Chinese, " (Them)" in English."""
+        from .strings import LF
+        shown = self.owner_shown
+        return self.text + (LF("待办的负责人 %@", shown) if shown else "")
+
 
 @dataclass
 class NoteTerm:

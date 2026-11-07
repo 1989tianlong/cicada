@@ -1027,7 +1027,7 @@ class RecordsWindow(Gtk.Window):
         cards = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         cards.set_homogeneous(True)
         for title, items in ((L("结论"), [c.text for c in n.conclusions]),
-                             (L("待办"), ["☐ " + t.text + (" · " + t.owner if t.owner else "") for t in n.todos])):
+                             (L("待办"), ["☐ " + t.with_owner for t in n.todos])):
             if not items:
                 continue
             inner = ui.vbox(6, ui.text(title, 12, "tertiary", bold=True, wrap=False))
