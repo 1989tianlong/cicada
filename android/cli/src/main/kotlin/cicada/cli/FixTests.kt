@@ -27,6 +27,7 @@ object FixTests {
         "mergeKeepsRefusals" to ::mergeKeepsRefusals,
         "recheckTakesBackWhatItNoLongerProposesButNotTheUsers" to ::recheckTakesBack,
         "userEditOnTopOfAFix" to ::userEditOnTopOfAFix,
+        "addedWordStaysOnItsLineAndNeverMatchesPunctuation" to ::addedWordStaysOnItsLineAndNeverMatchesPunctuation,
         "vocabImportLinesWithHeardForms" to ::importLinesWithHeardForms,
         "vocabSameWordWhateverWidthOrCase" to ::sameWordWhateverWidthOrCase,
         "vocabConfirmAndForget" to ::confirmAndForget,
@@ -239,10 +240,10 @@ object FixTests {
         val src = "扩展到这个莫纳的 Link"
         val shown = Correction.apply(fixes, src).text
         val e = Correction.userEdit(shown, "扩展到这个Monad的 Link", src, fixes)
-        equal(LineFix("Morpho", "Monad", user = true), e?.first, "fix on the fix")
-        equal("莫纳", e?.second, "heard form")
-        equal("扩展到这个Monad的 Link", Correction.apply(fixes + e!!.first, src).text, "shown")
-        equal("木娜", Correction.userEdit("我木娜找了一个", "我在 Monad 找了一个", "我木娜找了一个", emptyList())?.second, "plain heard word")
+        equal(LineFix("Morpho", "Monad", user = true), e?.fix, "fix on the fix")
+        equal("莫纳", e?.heard, "heard form")
+        equal("扩展到这个Monad的 Link", Correction.apply(fixes + e!!.fix, src).text, "shown")
+        equal("木娜", Correction.userEdit("我木娜找了一个", "我在 Monad 找了一个", "我木娜找了一个", emptyList())?.heard, "plain heard word")
         equal(null, Correction.userEdit("a", " a ", "a", emptyList()), "unchanged")
     }
 
@@ -279,9 +280,33 @@ object FixTests {
 
     fun editAroundTheHeardWordsFixesTheLineButTeachesNothing() {
         val t = setup("我来看一下", "我来吧")
-        equal(2, t.fx.edit("l0", t.id, "OK我来看一下", everywhere = true, keep = true), "edited")
-        equal("OK我来吧", t.line("l1").shown, "the edit still applies")
+        equal(1, t.fx.sameHeard("l0", t.id, "OK我来看一下")?.count, "an added word offers this line only")
+        equal(1, t.fx.edit("l0", t.id, "OK我来看一下", everywhere = true, keep = true), "edited")
+        equal("OK我来看一下", t.line("l0").shown, "the edit applies")
+        equal("我来吧", t.line("l1").shown, "and stays on its line")
         check(t.fx.vocabulary.terms.isEmpty(), "not taught")
+    }
+
+    fun addedWordStaysOnItsLineAndNeverMatchesPunctuation() {
+        val line = "Great, let's lock that in."
+        // "now" added before the full stop: the fix is the last word, unique in the line, not ".".
+        val e = Correction.userEdit(line, "Great, let's lock that in now.", line, emptyList())!!
+        equal("in", e.fix.from, "from"); equal("in now", e.fix.to, "to"); equal(false, e.swap, "not a swap")
+        equal("Great, let's lock that in now.", Correction.apply(listOf(e.fix), line).text, "applied")
+        // A word added at the start.
+        val s = Correction.userEdit(line, "OK Great, let's lock that in.", line, emptyList())!!
+        equal("Great", s.fix.from, "start from"); equal("OK Great", s.fix.to, "start to"); equal(false, s.swap, "start not a swap")
+        equal("OK Great, let's lock that in.", Correction.apply(listOf(s.fix), line).text, "start applied")
+        // A word that appears twice: grown until the span is unique.
+        val r = "in the room in the hall"
+        val t = Correction.userEdit(r, "in the room inside the hall", r, emptyList())!!
+        equal("in the room inside the hall", Correction.apply(listOf(t.fix), r).text, "unique span")
+        // Chinese: an inserted word takes its neighbour.
+        val c = Correction.userEdit("好的我来看一下", "好的OK我来看一下", "好的我来看一下", emptyList())!!
+        equal("好的OK我来看一下", Correction.apply(listOf(c.fix), "好的我来看一下").text, "Chinese applied")
+        equal(false, c.swap, "Chinese not a swap")
+        // A real swap is still a swap.
+        equal(true, Correction.userEdit("我木娜找了", "我Monad找了", "我木娜找了", emptyList())?.swap, "swap")
     }
 
     fun confirmAndForget() {
@@ -363,7 +388,7 @@ object FixTests {
 
     fun editEverywhereTeachesTheListAndUndoPutsItBack() {
         val t = setup("我木娜找了一个", "木娜那边也有", "别的")
-        equal(2, t.fx.sameHeard("l0", t.id, "我Monad找了一个")?.second, "same heard")
+        equal(2, t.fx.sameHeard("l0", t.id, "我Monad找了一个")?.count, "same heard")
         equal(2, t.fx.edit("l0", t.id, "我Monad找了一个", everywhere = true, keep = true), "edited")
         equal("Monad那边也有", t.line("l1").shown, "everywhere")
         check(t.fx.vocabulary.knows("木娜", "Monad"), "taught")

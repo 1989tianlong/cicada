@@ -186,14 +186,15 @@ object FixViews {
         fun update() {
             val same = app.fixes.sameHeard(line.id, sessionId, field.text.toString())
             heard.visibility = if (same == null) View.GONE else View.VISIBLE
-            keep.visibility = heard.visibility
-            scope.visibility = if (same != null && same.second > 1) View.VISIBLE else View.GONE
+            // Only a word for a word can teach the list: an added or dropped word can't.
+            keep.visibility = if (same != null && same.swap) View.VISIBLE else View.GONE
+            scope.visibility = if (same != null && same.count > 1) View.VISIBLE else View.GONE
             if (same != null) {
-                heard.text = LF("听成 %@", same.first)
-                everywhere.text = LF("整场听成 %@ 的 %lld 处都改", same.first, same.second)
+                heard.text = LF("听成 %@", same.heard)
+                everywhere.text = LF("整场听成 %@ 的 %lld 处都改", same.heard, same.count)
             }
             // Only a change made everywhere teaches the word list.
-            keep.isEnabled = same == null || same.second <= 1 || everywhere.isChecked
+            keep.isEnabled = same == null || same.count <= 1 || everywhere.isChecked
         }
         field.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -209,8 +210,8 @@ object FixViews {
             addView(ui.button(L("改成"), "primary") {
                 d.dismiss()
                 val same = app.fixes.sameHeard(line.id, sessionId, field.text.toString()) ?: return@button
-                val all = same.second <= 1 || everywhere.isChecked
-                app.background.execute { app.fixes.edit(line.id, sessionId, field.text.toString(), everywhere = all, keep = keep.isChecked && all) }
+                val all = same.count <= 1 || everywhere.isChecked
+                app.background.execute { app.fixes.edit(line.id, sessionId, field.text.toString(), everywhere = all, keep = keep.isChecked && all && same.swap) }
             }, ui.weight().apply { leftMargin = ui.dp(10) })
         }, ui.lp(top = 8))
         d = ui.sheet(activity, L("改这句"), body)

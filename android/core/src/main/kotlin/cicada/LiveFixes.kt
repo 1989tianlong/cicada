@@ -178,12 +178,16 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
 
     // MARK: 改这句…
 
+    class Same(val heard: String, val count: Int, val swap: Boolean)
+
     /// How many lines of the meeting the same edit would change ("整场听成 木娜 的 2 处都改").
-    fun sameHeard(lineId: String, id: String, edited: String): Pair<String, Int>? {
+    /// An edit that only adds or drops words stays on its line (count 1, nothing to learn).
+    fun sameHeard(lineId: String, id: String, edited: String): Same? {
         val lines = store.lines(id)
         val l = lines.firstOrNull { it.id == lineId } ?: return null
-        val (fix, heard) = Correction.userEdit(l.shown, edited, l.src, l.fixes ?: emptyList()) ?: return null
-        return heard to maxOf(1, lines.count { it.shown.contains(fix.from) })
+        val e = Correction.userEdit(l.shown, edited, l.src, l.fixes ?: emptyList()) ?: return null
+        val n = if (e.swap) lines.count { it.shown.contains(e.fix.from) } else 1
+        return Same(e.heard, maxOf(1, n), e.swap)
     }
 
     /// The user rewrote a line (改这句…): what changed becomes their own fix, on this line or on
@@ -191,7 +195,9 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
     @Synchronized fun edit(lineId: String, id: String, edited: String, everywhere: Boolean, keep: Boolean): Int {
         val lines = store.lines(id)
         val l = lines.firstOrNull { it.id == lineId } ?: return 0
-        val (fix, heard) = Correction.userEdit(l.shown, edited, l.src, l.fixes ?: emptyList()) ?: return 0
+        val e = Correction.userEdit(l.shown, edited, l.src, l.fixes ?: emptyList()) ?: return 0
+        val (fix, heard) = e
+        val everywhere = everywhere && e.swap
         val targets = if (everywhere) lines.filter { it.shown.contains(fix.from) } else listOf(l)
         remember(id, targets.map { it.id })
         for (t in targets) {

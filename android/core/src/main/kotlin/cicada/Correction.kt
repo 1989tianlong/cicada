@@ -151,17 +151,57 @@ object Correction {
         return kept + fresh
     }
 
-    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others,
-    /// and the heard form it replaces (for the word list): the words in `src` when they are
-    /// there, else the heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad").
-    fun userEdit(shown: String, edited: String, src: String, fixes: List<LineFix>): Pair<LineFix, String>? {
+    data class UserEdit(val fix: LineFix, val heard: String, val swap: Boolean)
+
+    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others: the
+    /// changed span grown to whole tokens (a Latin word, or one CJK character), and further, a token
+    /// at a time, until it holds a letter and is the only such span in the line. An added word
+    /// ("lock that in." → "lock that in now.") is then "in" → "in now" on this line, never "." on
+    /// every line. `swap` is whether words were replaced (not only added or dropped): only a swap
+    /// may go to the rest of the meeting and teach the word list. `heard` is the words in `src`
+    /// when they are there, else the heard words of the fix the user corrected again.
+    fun userEdit(shown: String, edited: String, src: String, fixes: List<LineFix>): UserEdit? {
         val new = edited.trim()
         if (new.isEmpty() || new == shown) return null
-        val (cf, ct) = core(shown, new)
-        if (cf.isEmpty() || ct.isEmpty()) return null
-        var heard = cf
-        if (!src.contains(cf)) fixes.firstOrNull { it.applied && cf.contains(it.to) }?.let { heard = core(it.from, it.to).first }
-        return LineFix(cf, ct, user = true) to heard
+        // Code points, as the Mac's Characters: a span never splits a surrogate pair.
+        val a = shown.codePoints().toArray(); val b = new.codePoints().toArray()
+        fun str(x: IntArray, from: Int, to: Int) = String(x, from, to - from)
+        var p = 0
+        while (p < minOf(a.size, b.size) && a[p] == b[p]) p++
+        var q = 0
+        while (q < minOf(a.size, b.size) - p && a[a.size - 1 - q] == b[b.size - 1 - q]) q++
+        val swap = a.size - p - q > 0 && b.size - p - q > 0
+        // Tokens of the shown line: a run of ASCII letters and digits, else one character.
+        fun latin(c: Int) = c < 128 && Character.isLetterOrDigit(c)
+        val tokens = mutableListOf<IntRange>()   // start until end (exclusive)
+        var k = 0
+        while (k < a.size) {
+            var e = k + 1
+            if (latin(a[k])) while (e < a.size && latin(a[e])) e++
+            tokens.add(k until e)
+            k = e
+        }
+        var start = p; var end = a.size - q
+        tokens.firstOrNull { start in it }?.let { start = it.first }
+        if (end > start) tokens.firstOrNull { end - 1 in it }?.let { end = it.last + 1 }
+        fun span() = str(a, start, end)
+        fun count(x: String): Int {
+            if (x.isEmpty()) return 0
+            var n = 0; var at = shown.indexOf(x)
+            while (at >= 0) { n++; at = shown.indexOf(x, at + x.length) }
+            return n
+        }
+        while (span().codePoints().noneMatch { Character.isLetterOrDigit(it) } || count(span()) != 1) {
+            val before = tokens.lastOrNull { it.last + 1 <= start }
+            val after = tokens.firstOrNull { it.first >= end }
+            if (before != null) start = before.first else if (after != null) end = after.last + 1 else break
+        }
+        val from = span()
+        val to = str(b, start, b.size - (a.size - end))
+        if (from.isEmpty() || from == to) return null
+        var heard = from
+        if (!src.contains(from)) fixes.firstOrNull { it.applied && from.contains(it.to) }?.let { heard = core(it.from, it.to).first }
+        return UserEdit(LineFix(from, to, user = true), heard, swap)
     }
 
     /// The line as shown: each applied fix replaces its words where they still are. `marks` are
