@@ -462,7 +462,7 @@ enum TranscriptExport {
         }
         if !n.conclusions.isEmpty { out += "### \(L("结论"))\n\n" + n.conclusions.map { "- \($0.text)\n" }.joined() + "\n" }
         if !n.todos.isEmpty {
-            out += "### \(L("待办"))\n\n" + n.todos.map { "- [ ] \($0.text)" + ($0.owner.map { "（\($0)）" } ?? "") + "\n" }.joined() + "\n"
+            out += "### \(L("待办"))\n\n" + n.todos.map { "- [ ] \($0.withOwner)\n" }.joined() + "\n"
         }
         if !n.terms.isEmpty {
             out += "### \(L("人名和术语"))\n\n" + n.terms.map { "- **\($0.name)** \($0.note)\n" }.joined() + "\n"
@@ -537,7 +537,7 @@ enum TranscriptExport {
             }
             if !n.todos.isEmpty {
                 add(L("待办"), size: 12, weight: .semibold, after: 3)
-                for t in n.todos { add("☐ \(t.text)" + (t.owner.map { "（\($0)）" } ?? ""), size: 11, after: 2) }
+                for t in n.todos { add("☐ \(t.withOwner)", size: 11, after: 2) }
             }
             add(L("文字记录"), size: 15, weight: .bold, after: 6)
         }

@@ -121,7 +121,7 @@ struct NotesContentView: View {
                         .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
                         .frame(width: 13)
                 }
-                Text(item.text + (item.owner.map { "（\($0)）" } ?? ""))
+                Text(item.withOwner)
                     .font(.system(size: 14)).lineSpacing(2)
                     .foregroundStyle(item.support == 0 ? Palette.tertiary : Palette.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -199,7 +199,7 @@ private struct DocumentNotesView: View {
     /// jumps to the lines behind it. One with little support stays grey.
     private func conclusion(_ item: NoteItem, index: Int, todo: Bool) -> some View {
         let weak = item.support == 0
-        let text = item.text + (item.owner.map { "（\($0)）" } ?? "")
+        let text = item.withOwner
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
             Group {
                 if todo { Image(systemName: "circle").font(.system(size: 11)) } else { Text("\(index)").font(.system(size: 12).monospacedDigit()) }

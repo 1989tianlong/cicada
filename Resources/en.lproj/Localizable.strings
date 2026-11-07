@@ -1297,9 +1297,9 @@
 "只改这一处" = "Just this one";
 "回车 改成 · esc 取消" = "Return to apply · Esc to cancel";
 "改成" = "Apply";
-"改了 %lld 处听错的词" = "Fixed %lld misheard words";
+"改了 %lld 处听错的词" = "Misheard words fixed: %lld";
 "改成…" = "Change to…";
-"改了 %lld 处听错的词，%lld 处等你确认" = "Fixed %lld misheard words · %lld to confirm";
+"改了 %lld 处听错的词，%lld 处等你确认" = "Misheard words fixed: %lld · %lld to confirm";
 "已收进人名和术语，稍后再看" = "Saved to Names and terms for later";
 "已改 %@ → %@，记进词表" = "%@ → %@ · Saved to Word list";
 "这场不再问 %@" = "Won't ask about %@ again in this meeting";
@@ -1321,3 +1321,5 @@
 "删掉这个听错的词" = "Remove this misheard form";
 "新增 %lld · 补充听成 %lld · 跳过 %lld" = "%lld new · %lld updated · %lld skipped";
 "导入 %lld 个" = "Import %lld";
+/* Notes: a to-do's owner after it */
+"待办的负责人 %@" = " (%@)";

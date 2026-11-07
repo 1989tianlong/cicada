@@ -55,6 +55,22 @@ struct NoteItem: Codable, Equatable, Identifiable {
     /// When it was said (first evidence line).
     var t: Double?
     var id: String { text }
+
+    /// The owner as stored ("你", "对方", "说话人2" or a name) in the UI language.
+    var ownerShown: String? {
+        guard let owner else { return nil }
+        switch owner {
+        case "你": return L("你")
+        case "对方": return L("对方")
+        case "未识别": return L("未识别")
+        default: break
+        }
+        if owner.hasPrefix("说话人"), let n = Int(owner.dropFirst(3).trimmingCharacters(in: .whitespaces)) { return L("说话人 \(n)") }
+        return owner
+    }
+
+    /// The to-do with its owner after it: "（对方）" in Chinese, " (Them)" in English.
+    var withOwner: String { text + (ownerShown.map { L("待办的负责人 \($0)") } ?? "") }
 }
 
 /// A name or term as the notes settled on it, and how speech recognition heard it.
