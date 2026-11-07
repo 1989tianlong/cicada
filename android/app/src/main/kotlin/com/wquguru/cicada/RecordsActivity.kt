@@ -147,6 +147,7 @@ class RecordActivity : Activity() {
     // The file is there but MediaPlayer can't open it: said as 找不到录音 instead of a dead bar.
     private var broken = false
     private var playing: String? = null // the line at the playhead, for the highlight
+    private var toast: FixViews.Toast? = null
     private val tickPlayer = object : Runnable {
         override fun run() { updatePlayer(); if (player?.isPlaying == true) list.postDelayed(this, 250) }
     }
@@ -167,6 +168,8 @@ class RecordActivity : Activity() {
             addFooterView(footer, null, false)
             adapter = this@RecordActivity.adapter
             setOnItemClickListener { _, _, pos, _ -> (pos - headerViewsCount).takeIf { it in 0 until this@RecordActivity.adapter.count }?.let { playFrom(this@RecordActivity.adapter.getItem(it).t) } }
+            // 改正听错的词: a long press shows what a line's fixed words were heard as (改回) and 改这句….
+            setOnItemLongClickListener { _, _, pos, _ -> (pos - headerViewsCount).takeIf { it in 0 until this@RecordActivity.adapter.count }?.let { FixViews.lineSheet(this@RecordActivity, ui, cicada, this@RecordActivity.id, this@RecordActivity.adapter.getItem(it)) } != null }
             setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
                 override fun onScrollStateChanged(v: android.widget.AbsListView, state: Int) {}
                 override fun onScroll(v: android.widget.AbsListView, first: Int, visible: Int, total: Int) = pin()
@@ -195,9 +198,16 @@ class RecordActivity : Activity() {
         setContentView(ui.screen(this, null, back = true, ground = Palette.card, body = body, scroll = false, center = barTitle, actions = listOf(
             ui.roundButton(R.drawable.i_share, L("分享"), onWhite = true) { cicada.store.get(id)?.let(::share) },
             ui.roundButton(R.drawable.i_more, L("更多"), onWhite = true) { more() })))
+        toast = FixViews.Toast(this, ui, cicada, above = 140)
     }
 
     private fun audio() = cicada.store.audioFile(id)
+
+    /// The banner's line, in view: the transcript tab, scrolled to it.
+    private fun show(lineId: String) {
+        val i = adapter.indexOf(lineId)
+        if (i >= 0) list.post { list.setSelectionFromTop(i + list.headerViewsCount, ui.dp(160)) }
+    }
 
     /// The title moves into the top bar once the big one is out of sight, and the tabs pin once
     /// theirs scroll under the top edge (the header leaves the list entirely far down a transcript).
@@ -224,13 +234,14 @@ class RecordActivity : Activity() {
     private fun render() {
         val app = cicada
         val s = app.store.get(id) ?: run { if (app.store.loaded) finish(); return }
+        toast?.refresh()
         val generating = app.notes.generating == id
         val live = app.listen.listening && app.listen.sessionId == id
         val file = !live && audio().isFile
         if (!file) releasePlayer() else if (player == null && !broken) broken = ensurePlayer() == null
         val playable = file && !broken
         val key = listOf(SessionStore.displayTitle(s), s.lines.size, s.notes?.updatedAt, generating, app.notes.status, tab, s.lines.lastOrNull()?.dst,
-                         s.voiceNames, app.settings.speakerVoices, live, s.hasAudio, playable, app.settings.recordAudio).joinToString("|")
+                         s.voiceNames, app.settings.speakerVoices, live, s.hasAudio, playable, app.settings.recordAudio, app.store.lines(id).sumOf { it.fixes?.hashCode() ?: 0 }, app.fixes.pending(id).size).joinToString("|")
         if (key == shown) return
         shown = key
         val top = ui.stack(0).apply { setPadding(ui.dp(20), ui.dp(4), ui.dp(20), ui.dp(6)) }
@@ -248,6 +259,9 @@ class RecordActivity : Activity() {
         val tabLabels = listOf(L("纪要"), "${L("文字记录")} · ${LF("%lld 句", s.lines.size)}")
         val tabs = ui.tabs(tabLabels, tab) { tab = it; render() }
         top.addView(tabs, ui.lp(top = 18))
+        // Over a finished meeting's transcript: the words fixed, and those waiting for the user.
+        if (tab == 1 && !live) FixViews.reviewBanner(ui, app.fixes, s, onShow = { show(it) }, onEdit = { l, start -> FixViews.edit(this, ui, app, id, l, start) })
+            ?.let { top.addView(it, ui.lp(top = 14)) }
         headTabs = tabs
         header.removeAllViews(); header.addView(top)
         pinnedTabs.removeAllViews()
@@ -372,8 +386,8 @@ class RecordActivity : Activity() {
                 setTextColor(if (l.speaker == "me") Palette.ink else NotesViews.voiceColor(numbers[l.id]).second.takeIf { numbers[l.id] != null } ?: Palette.secondary)
             }
             val translated = !l.dst.isNullOrEmpty() && l.dst != l.shown
-            (texts.getChildAt(1) as TextView).apply { text = l.shown; visibility = if (translated) View.VISIBLE else View.GONE }
-            (texts.getChildAt(2) as TextView).text = if (translated) l.dst else l.shown
+            (texts.getChildAt(1) as TextView).apply { text = FixViews.text(ui, l); visibility = if (translated) View.VISIBLE else View.GONE }
+            (texts.getChildAt(2) as TextView).text = if (translated) l.dst else FixViews.text(ui, l)
             return row
         }
     }

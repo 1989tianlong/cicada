@@ -223,3 +223,4 @@
 "这句没说出去 · 连不上 %@" = "This line wasn't said · can't reach %@";
 "例如 kokoro" = "e.g. kokoro";
 "例如 af_heart" = "e.g. af_heart";
+"最多 %lld 个，满了优先用最近的。只存在这台手机上" = "Up to %lld, recent ones first. Stored only on this phone";

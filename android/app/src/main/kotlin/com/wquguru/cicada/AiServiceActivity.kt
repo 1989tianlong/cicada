@@ -135,7 +135,13 @@ class AiServiceActivity : Activity() {
             voice != null && ling.lastVoice?.first == true -> Triple(uses, 1, LF("%@ 的声音读给对方", voice) + " · " + L("上次同传时正常"))
             else -> Triple(uses, 1, if (voice != null) LF("%@ 的声音读给对方", voice) else L("手机的声音读给对方"))
         }
-        val rows = mutableListOf(L("听对方") to hear, L("实时纪要") to notes, L("我说 · 面对面") to say)
+        // 改正听错的词 (AISettings.swift's row): a text request per finished line, switched in 词表.
+        val fix = when {
+            !on -> notReady
+            !app.settings.fixMisheard -> Triple(L("已关"), 0, L("在“词表”里打开"))
+            else -> Triple(uses, 1, L("随翻译一起发，几乎不多花"))
+        }
+        val rows = mutableListOf(L("听对方") to hear, L("实时纪要") to notes, L("改正听错的词") to fix, L("我说 · 面对面") to say)
         if (!c.isLing) rows.add(L("你自己的声音") to Triple(L("只有 Ling"), 0, L("换用 Ling 才有")))
         return rows.map { (title, u) ->
             val (tag, style, note) = u

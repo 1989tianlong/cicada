@@ -36,6 +36,8 @@ class Overlay(private val app: CicadaApp) {
     private var live: LinearLayout? = null
     private var notes: FrameLayout? = null
     private var shownKey: String? = null
+    /// The 这样改对吗？ card is up (for the debug state: a secure window can't be screenshotted).
+    private var asking = false
     private val tick = object : Runnable {
         override fun run() { if (root != null) { clockText?.text = NotesViews.clock(app); render(); NotesViews.tickEnding(root, app); app.main.postDelayed(this, 1000) } }
     }
@@ -339,6 +341,29 @@ class Overlay(private val app: CicadaApp) {
                 }
                 else -> box.addView(NotesViews.liveCard(ui, app, line, 18f, Palette.ground, lines = 3, dots = false).apply { setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12)) })
             }
+            // 这样改对吗？ in the live notes, never while the window is shown to the other side (共享屏幕时
+            // 让对方看到): names wait for after the meeting then. Taps reach it; it never takes focus.
+            asking = false
+            val sid = app.listen.sessionId
+            if (!dark && sid != null) {
+                if (!app.settings.showInCapture) app.fixes.asking(sid)?.let { a ->
+                    asking = true
+                    box.addView(FixViews.confirmCard(ui, a, { yes -> app.fixes.answer(a.fix, yes, sid) }, { app.fixes.later(a.fix, sid) }), ui.lp(top = 8))
+                }
+                app.fixes.toastNow()?.let { t ->
+                    box.addView(LinearLayout(app).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = ui.rounded(Palette.ink, 12)
+                        setPadding(ui.dp(12), 0, ui.dp(4), 0)
+                        addView(ui.text(t.text, 13f, Color.WHITE, lines = 2), ui.weight())
+                        if (app.fixes.canUndo) addView(ui.text(L("撤销"), 13f, Color.parseColor("#FFB59B"), bold = true).apply {
+                            gravity = Gravity.CENTER; minHeight = ui.dp(40); setPadding(ui.dp(10), 0, ui.dp(10), 0)
+                            ui.tappable(this, 10, dark = true) { app.background.execute { app.fixes.undo() } }
+                        })
+                    }, ui.lp(top = 8))
+                }
+            }
         }
         notes?.let { box ->
             box.removeAllViews()
@@ -363,6 +388,7 @@ class Overlay(private val app: CicadaApp) {
         "secure" to params?.let { it.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 },
         "focusable" to params?.let { it.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0 },
         "view" to app.settings.view,
+        "fixCard" to (root != null && asking),
         "x" to params?.x, "y" to params?.y,
     )
 }

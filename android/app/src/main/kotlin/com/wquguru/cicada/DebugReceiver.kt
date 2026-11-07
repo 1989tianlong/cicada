@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 /// Android counterpart of the Mac's tools/lsctl and the Windows pipe. One command per broadcast,
 /// one JSON line back as the broadcast's result (never meeting text or the key).
 ///   state | start [playback|mic] | stop | feed <wav in files/> | sample | view notes|subtitles
-///   capture on|off | overlay show|hide | show main|live|records|settings|onboarding|record [id] | overlay collapse|expand | key reload
+///   capture on|off | overlay show|hide | show main|live|records|settings|words|onboarding|record [id] | overlay collapse|expand | key reload
 ///   hear|say <wav in files/> (面对面: the other side / me holding 我说) | tts <lang> <text>
 ///   import <session.json in files/> | importfile <audio or video in files/> | face | onboarded on|off | target <code> | ui <lang> | clip <text>
 ///   provider ling|openrouter|zenmux|custom | ai-model hear|text|voice <id> ("" back to the recommended) | show ai
@@ -169,6 +169,7 @@ class DebugReceiver : BroadcastReceiver() {
             }
             "show" -> when (arg.substringBefore(' ')) {
                 "settings" -> open(SettingsActivity::class.java)
+                "words" -> open(WordListActivity::class.java)
                 "ai" -> open(AiServiceActivity::class.java)
                 "onboarding" -> open(OnboardingActivity::class.java)
                 "record" -> open(RecordActivity::class.java, arg.substringAfter(' ', "").ifEmpty { app.store.all().firstOrNull { it.id != app.listen.sessionId || !app.listen.listening }?.id })
