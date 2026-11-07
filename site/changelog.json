@@ -115,6 +115,17 @@
         ],
         "title": "用 OpenRouter 的默认模型时，纪要不再因为服务商不支持 JSON 格式而写不出来，设置里也不再说这个模型不能用。",
         "text": "OpenRouter 有时把 Ling 3.1 Flash 交给不支持 JSON 格式的服务商；现在被拒时会换个问法再问一次。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "windows",
+          "android",
+          "linux",
+          "mac"
+        ],
+        "title": "英文界面里，只有一句的会议写成 1 line，不再是 1 lines。",
+        "text": "Windows、Android、Linux 的会议列表、文字记录和结束会议的提示都按单复数写；Mac 上说话人卡片里的“说了 1 句”也一样。"
       }
     ]
   },
