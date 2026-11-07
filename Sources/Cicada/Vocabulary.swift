@@ -66,6 +66,52 @@ final class Vocabulary: ObservableObject {
         save()
     }
 
+    /// 词表 › click a word: its spelling changes; what it was heard as stays with it.
+    func rename(_ word: String, to new: String) {
+        let n = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, n.count <= 40, let i = terms.firstIndex(where: { Self.key($0.word) == Self.key(word) }) else { return }
+        if let j = terms.firstIndex(where: { Self.key($0.word) == Self.key(n) }), j != i {
+            // Renamed onto a word already there: the two become one.
+            for h in terms[i].heard where !terms[j].heard.contains(where: { Self.key($0) == Self.key(h) }) { terms[j].heard.append(h) }
+            terms.remove(at: i)
+        } else {
+            terms[i].word = n
+        }
+        save()
+    }
+
+    /// The other words a heard form already belongs to ("莫拉" is Morpho's).
+    func owners(ofHeard heard: String, except word: String? = nil) -> [String] {
+        terms.filter { t in t.heard.contains { Self.key($0) == Self.key(heard) } && Self.key(t.word) != Self.key(word ?? "") }.map(\.word)
+    }
+
+    /// Back where it was, after 撤销 on a delete.
+    func insert(_ term: Term, at index: Int) {
+        guard !terms.contains(where: { Self.key($0.word) == Self.key(term.word) }) else { return }
+        terms.insert(term, at: min(index, terms.count))
+        save()
+    }
+
+    /// What 粘贴导入 would do, before it does it (the sheet's counts and its button).
+    func preview(_ text: String) -> ImportResult {
+        var r = ImportResult()
+        var seen: Set<String> = []
+        for case let entry? in Self.parse(text) {
+            if entry.word.isEmpty { r.skipped.append(entry.line); continue }
+            let k = Self.key(entry.word)
+            if terms.contains(where: { Self.key($0.word) == k }) || seen.contains(k) { r.updated += 1 } else { r.added += 1 }
+            seen.insert(k)
+        }
+        return r
+    }
+
+    /// 撤销: the list as it was.
+    func restore(_ saved: [Term]) {
+        guard saved != terms else { return }
+        terms = saved
+        save()
+    }
+
     func remove(_ word: String) {
         terms.removeAll { Self.key($0.word) == Self.key(word) }
         save()

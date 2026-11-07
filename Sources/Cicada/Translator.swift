@@ -104,6 +104,10 @@ final class TranslationService {
         var words: [String]
         /// The lines just before, as shown.
         var recent: [String]
+        /// On a second pass: the lines after it, which often tell what a word was.
+        var following: [String] = []
+        /// The notes' summary so far, once there is one.
+        var summary: String? = nil
     }
     var fixContext: ((_ text: String) -> FixContext?)?
     /// The fixes the service proposed for a sentence it translated (by its text as heard).
@@ -288,7 +292,9 @@ final class TranslationService {
         if !ctx.words.isEmpty { prompt += "\nThe user's word list (spellings to use): " + ctx.words.joined(separator: "; ") }
         let names = glossary()
         if !names.isEmpty { prompt += "\nNames the notes guessed (not confirmed): " + names.joined(separator: "; ") }
+        if let summary = ctx.summary, !summary.isEmpty { prompt += "\nThe meeting so far: " + summary }
         if !ctx.recent.isEmpty { prompt += "\nLines just before:\n" + ctx.recent.joined(separator: "\n") }
+        if !ctx.following.isEmpty { prompt += "\nLines just after:\n" + ctx.following.joined(separator: "\n") }
         prompt += "\nSubtitle: " + text
         do {
             let out = try await ling.chat(content: prompt, instruction: "JSON only.", priority: kind == .file ? .notes : .translate,
@@ -305,7 +311,8 @@ final class TranslationService {
             guard !parsed.translation.isEmpty, let clean = Self.cleanTranslation(parsed.translation, target: target) else {
                 return (nil, "remark")
             }
-            if !parsed.edits.isEmpty { onFixes?(text, parsed.edits) }
+            // None proposed is an answer too: a second pass takes back what it no longer proposes.
+            onFixes?(text, parsed.edits)
             return (clean, "")
         } catch {
             debugLog("translate ling failed: \(error)")

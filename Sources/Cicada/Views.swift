@@ -797,6 +797,10 @@ struct MainWindowView: View {
     /// The bilingual column beside the notes is opt-in: three full columns of text read as crowded.
     @AppStorage("mainShowQuotes") private var showQuotes = false
     @State private var showOlder = false
+    /// 改这句…: the line being rewritten, and what the editor opens with.
+    @State private var editingLine: String?
+    @State private var editingStart = ""
+    @State private var hoveredLine: String?
 
     /// Wide enough for the notes and the bilingual transcript side by side.
     private var sideBySide: Bool { showQuotes && wideEnough }
@@ -1320,10 +1324,18 @@ struct MainWindowView: View {
                     let starts = SpeakerLabels.runStarts(s.lines, speakers).union(both ? RecordList.placeStarts(s.lines) : [])
                     let voices = SpeakerLabels.voiceNumbers(s.lines)
                     let playingLine = player.lineID(in: s)
+                    if s.id != store.liveID {
+                        FixReviewBanner(fixes: model.fixes, session: s, onShow: { id in withAnimation { proxy.scrollTo(id, anchor: .center) } },
+                                        onEdit: { l, suggestion in editingStart = suggestion; editingLine = l.id; proxy.scrollTo(l.id, anchor: .center) })
+                            .padding(.bottom, 10)
+                    }
                     ForEach(s.lines) { l in
                         lineRow(l, speaker: speakers[l.id], label: speakers.isEmpty || starts.contains(l.id), voices: !speakers.isEmpty, place: both, in: s,
                                 current: l.id == playingLine)
-                            .contextMenu { if !speakers.isEmpty, l.speaker == "them" { assignMenu(s, l, voices) } }
+                            .contextMenu {
+                                Button(L("改这句…")) { editingStart = l.shown; editingLine = l.id }
+                                if !speakers.isEmpty, l.speaker == "them" { assignMenu(s, l, voices) }
+                            }
                             .id(l.id)
                     }
                 }
@@ -1338,6 +1350,7 @@ struct MainWindowView: View {
                 if pinned { pinnedBar(s) { withAnimation { proxy.scrollTo(PinnedHeader.top, anchor: .top) } } }
             }
             .animation(.easeOut(duration: 0.15), value: pinned)
+            .overlay(alignment: .bottom) { FixToast(fixes: model.fixes).padding(.bottom, 18) }
             .onChange(of: s.lines.count) { _, _ in
                 if s.id == store.liveID, let last = s.lines.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -1390,8 +1403,10 @@ struct MainWindowView: View {
                     }
                     if place, label, !me { PlaceTag(line: l) }
                 }
-                if view != "dst" {
-                    Text(l.shown)
+                if editingLine == l.id, let s = shownSession {
+                    LineEditor(line: l, session: s.id, fixes: model.fixes, start: editingStart) { editingLine = nil }
+                } else if view != "dst" {
+                    Text(TranscriptParagraphs.joinFixed([l]))
                         .font(.system(size: view == "src" ? 15 : 13))
                         .foregroundStyle(view == "src" ? Palette.ink : Palette.tertiary)
                         .lineSpacing(2)
@@ -1403,9 +1418,21 @@ struct MainWindowView: View {
                         .foregroundStyle(l.dst == nil ? Palette.tertiary : Palette.ink)
                         .textSelection(.enabled)
                 }
+                // Pointing at a line: what its fixed words were heard as, 改回, and 改这句….
+                if hoveredLine == l.id, editingLine != l.id, let s = shownSession {
+                    HStack(spacing: 8) {
+                        let fixed = (l.fixes ?? []).filter(\.applied).map { (l.id, $0) }
+                        if !fixed.isEmpty { FixedWords(fixes: fixed) { id, f in model.fixes.revert(f, lineID: id, in: s.id) } }
+                        Button(L("改这句…")) { editingStart = l.shown; editingLine = l.id }
+                            .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.link)
+                    }
+                    .padding(.top, 2)
+                }
             }
             Spacer(minLength: 0)
         }
+        .contentShape(Rectangle())
+        .onHover { inside in if inside { hoveredLine = l.id } else if hoveredLine == l.id { hoveredLine = nil } }
         .padding(.vertical, 12)
         // The line the recording is playing.
         .background(RoundedRectangle(cornerRadius: 10).fill(current ? Palette.accentPale : .clear).padding(.horizontal, -10))

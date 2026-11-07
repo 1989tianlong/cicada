@@ -11,6 +11,8 @@ struct LineFix: Codable, Equatable, Hashable {
     var ask: Bool? = nil
     /// The user said no (改回 or 不对): kept so the same line isn't fixed that way again.
     var off: Bool? = nil
+    /// The user's own: said 对, or wrote it (改这句…). A later pass never drops or overrides it.
+    var user: Bool? = nil
 
     var applied: Bool { ask != true && off != true }
 }
@@ -132,7 +134,9 @@ enum Correction {
     static func apply(_ fixes: [LineFix], to src: String) -> (text: String, marks: [Range<String.Index>]) {
         var text = src
         var spans: [(String, Int)] = []   // replacement and its character offset, kept valid as text changes
-        for f in fixes where f.applied && !f.from.isEmpty {
+        // The user's own last: written against the line as it was shown, other fixes in.
+        let ordered = fixes.filter { $0.user != true } + fixes.filter { $0.user == true }
+        for f in ordered where f.applied && !f.from.isEmpty {
             guard let r = text.range(of: f.from) else { continue }
             let start = text.distance(from: text.startIndex, to: r.lowerBound)
             let delta = f.to.count - f.from.count
@@ -169,12 +173,32 @@ enum Correction {
         return (translation.trimmingCharacters(in: .whitespacesAndNewlines), edits)
     }
 
-    /// What the lines' fixes become after the service answered for this text again (a joined or
-    /// refined line): its new fixes, plus every one the user already turned down.
+    /// What a line's fixes become after the service answered for it again (a joined line, or the
+    /// recheck once the record's recognizer settled it, with the lines after it in view): the
+    /// user's decisions stay (said no, said yes, wrote it), and of the rest only what is proposed
+    /// again. So a recheck that no longer proposes a fix takes it back.
     static func merge(_ old: [LineFix], _ new: [LineFix]) -> [LineFix] {
-        let refused = old.filter { $0.off == true }
-        let fresh = new.filter { n in !refused.contains { $0.from == n.from && $0.to == n.to } }
-        return refused + fresh
+        let kept = old.filter { $0.off == true || $0.user == true }
+        let fresh = new.filter { n in
+            let c = core(n.from, n.to)
+            return !kept.contains { $0.from == n.from || core($0.from, $0.to).from == c.from }
+        }
+        return kept + fresh
+    }
+
+    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others,
+    /// and the heard form it replaces (for the word list): the words in `src` when they are
+    /// there, else the heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad").
+    static func userEdit(shown: String, edited: String, src: String, fixes: [LineFix]) -> (fix: LineFix, heard: String)? {
+        let new = edited.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !new.isEmpty, new != shown else { return nil }
+        let c = core(shown, new)
+        guard !c.from.isEmpty, !c.to.isEmpty else { return nil }
+        var heard = c.from
+        if !src.contains(c.from), let earlier = fixes.first(where: { $0.applied && c.from.contains($0.to) }) {
+            heard = core(earlier.from, earlier.to).from
+        }
+        return (LineFix(from: c.from, to: c.to, user: true), heard)
     }
 }
 

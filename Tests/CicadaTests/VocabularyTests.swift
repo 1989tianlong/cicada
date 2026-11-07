@@ -42,4 +42,21 @@ import Testing
         _ = v.importText("Morpho = 莫拉")
         #expect(Vocabulary(url: url).knows(heard: "莫拉", word: "Morpho"))
     }
+
+    @Test func renameKeepsHeardFormsAndMerges() {
+        let v = Vocabulary(url: nil)
+        _ = v.importText("Morfo = 莫拉\nMorpho = 莫法")
+        v.rename("Morfo", to: "Morpho")
+        #expect(v.terms.count == 1)
+        #expect(v.knows(heard: "莫拉", word: "Morpho") && v.knows(heard: "莫法", word: "Morpho"))
+    }
+
+    @Test func ownersAndPreview() {
+        let v = Vocabulary(url: nil)
+        _ = v.importText("Morpho = 莫拉")
+        #expect(v.owners(ofHeard: "莫拉", except: "Mora") == ["Morpho"])
+        #expect(v.owners(ofHeard: "莫拉", except: "Morpho").isEmpty)
+        #expect(v.preview("Morpho = 莫法\nPendle\n" + String(repeating: "长", count: 41)) == .init(added: 1, updated: 1, skipped: [3]))
+        #expect(v.terms.count == 1)
+    }
 }

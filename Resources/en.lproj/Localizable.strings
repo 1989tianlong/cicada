@@ -1259,7 +1259,6 @@
 "听成" = "Heard as";
 "改回" = "Revert";
 "这样改对吗？" = "Is this fix right?";
-"确认后整场一起改，以后也照此改" = "Fixes the whole meeting, and future ones";
 "对" = "Yes";
 "不对" = "No";
 
@@ -1277,12 +1276,11 @@
 "粘贴导入…" = "Paste to import…";
 "会中确认" = "Confirmed";
 "你加的" = "Added by you";
-"改过 %lld 次" = "Fixed %lld times";
+"改过 %lld 次" = "Fixed ×%lld";
 "还没用上" = "Not used yet";
 "从词表里删掉" = "Remove from the list";
 "粘贴导入" = "Paste to import";
 "一行一个。常被听错的词，写在 = 后面" = "One per line. Put common mishearings after =";
-"新增 %lld · 更新 %lld · 跳过 %lld" = "%lld added · %lld updated · %lld skipped";
 "第 %@ 行没加进去：超过 40 个字" = "Line %@ not added: over 40 characters";
 
 /* AISettings: 改正听错的词 */
@@ -1290,3 +1288,35 @@
 "已关" = "Off";
 "随翻译一起发，几乎不多花" = "Sent with the translation, barely any extra cost";
 "在“词表”里打开" = "Turn on in Word list";
+
+/* 改正听错的词: 改这句…, 撤销, 词表 */
+"改这句" = "Edit line";
+"记进词表，以后自动改" = "Save to Word list for next time";
+"整场听成 %@ 的 %lld 处都改" = "All %2$lld places heard as %1$@ in this meeting";
+"只改这一处" = "Just this one";
+"回车 改成 · esc 取消" = "Return to apply · Esc to cancel";
+"改成" = "Apply";
+"改了 %lld 处听错的词" = "Fixed %lld misheard words";
+"改成…" = "Change to…";
+"改了 %lld 处听错的词，%lld 处等你确认" = "Fixed %lld misheard words · %lld to confirm";
+"已收进人名和术语，稍后再看" = "Saved to Names and terms for later";
+"已改 %@ → %@，记进词表" = "%@ → %@ · Saved to Word list";
+"这场不再问 %@" = "Won't ask about %@ again in this meeting";
+"已改回 %@，这场不再改" = "Reverted to %@ for this meeting";
+"已改 %lld 处：%@ → %@，记进词表" = "Changed %lld: %@ → %@ · Saved to Word list";
+"已改 %lld 处：%@ → %@" = "Changed %lld: %@ → %@";
+"确认后整场一起改，以后也这样改" = "Applies to this meeting and future ones";
+"稍后再看" = "Decide later";
+"等你确认，还没改" = "Waiting for you, not changed yet";
+"听成 %@ · 改了 %lld 处" = "Heard as %@ · %lld fixed";
+"听成 %@" = "Heard as %@";
+"改这句…" = "Edit line…";
+"已删除" = "Deleted";
+"点一下改写法" = "Click to change the spelling";
+"加一个容易听错的词" = "Add misheard form";
+"“%@”已经记在 %@ 下" = "“%@” already belongs to %@";
+"改给 %@" = "Move to %@";
+"两个都留" = "Keep both";
+"删掉这个听错的词" = "Remove this misheard form";
+"新增 %lld · 补充听成 %lld · 跳过 %lld" = "%lld new · %lld updated · %lld skipped";
+"导入 %lld 个" = "Import %lld";

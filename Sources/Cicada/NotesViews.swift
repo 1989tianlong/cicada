@@ -24,6 +24,8 @@ struct NotesContentView: View {
     /// Lines heard since `coveredUntil` that the notes don't cover yet (shown under the last topic).
     var behind = 0
     var onJump: (Double) -> Void = { _ in }
+    /// 改正听错的词's part of 人名和术语 (the words fixed, the ones waiting), from the notes window.
+    var fixTerms: AnyView? = nil
 
     var body: some View {
         if document {
@@ -83,10 +85,11 @@ struct NotesContentView: View {
                 }
             }
 
-            if !notes.terms.isEmpty {
+            if !notes.terms.isEmpty || fixTerms != nil {
                 VStack(alignment: .leading, spacing: 10) {
                     title(L("人名和术语"))
-                    TermChips(terms: notes.terms, showHeard: true)
+                    if let fixTerms { fixTerms }
+                    if !notes.terms.isEmpty { TermChips(terms: notes.terms, showHeard: true) }
                 }
             }
         }
@@ -885,6 +888,10 @@ enum TranscriptParagraphs {
                 guard let lo = AttributedString.Index(m.lowerBound, within: a), let hi = AttributedString.Index(m.upperBound, within: a) else { continue }
                 a[lo..<hi].underlineStyle = Text.LineStyle(pattern: .dot, color: Palette.tertiary)
             }
+            // Words waiting for the user (这样改对吗？) get a pale wash, as heard.
+            for f in l.fixes ?? [] where f.ask == true {
+                if let r = a.range(of: f.from) { a[r].backgroundColor = Palette.accentPale }
+            }
             out += a
             plain += text
         }
@@ -1437,13 +1444,15 @@ struct FixConfirmCard: View {
     let fix: LineFix
     let count: Int
     let onAnswer: (Bool) -> Void
+    /// ×: 稍后再看, asked again after the meeting.
+    var onLater: (() -> Void)? = nil
 
     var body: some View {
         let c = Correction.core(fix.from, fix.to)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("这样改对吗？").font(.system(size: 13, weight: .semibold))
-                Text("确认后整场一起改，以后也照此改").font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(1)
+                Text("确认后整场一起改，以后也这样改").font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(1)
                 Spacer(minLength: 4)
                 if count > 1 { Text("1 / \(count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary) }
             }
@@ -1461,11 +1470,91 @@ struct FixConfirmCard: View {
                     Text("不对").font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         .padding(.horizontal, 14).frame(height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
                 }.buttonStyle(.plain)
+                if let onLater {
+                    Button(action: onLater) {
+                        Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.tertiary)
+                            .frame(width: 26, height: 28).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help(L("稍后再看")).accessibilityLabel(L("稍后再看"))
+                }
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black.opacity(0.08), lineWidth: 1))
         .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+    }
+}
+
+/// 人名和术语, the fixing part: each word fixed in this meeting with what it was heard as and how
+/// often (a click shows those lines), and the names still waiting, with ✓ and ×.
+struct FixTermsView: View {
+    @ObservedObject var fixes: LiveFixes
+    let session: Session
+    let onShow: (String) -> Void
+
+    var body: some View {
+        let words = Self.fixedWords(session)
+        let waiting = fixes.pending(in: session.id)
+        VStack(alignment: .leading, spacing: 8) {
+            if !words.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(words, id: \.word) { w in
+                        Button { onShow(w.word) } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(w.word).font(.system(size: 12)).bold().foregroundStyle(Palette.ink)
+                                Text("听成 \(w.heard.prefix(2).joined(separator: "、")) · 改了 \(w.count) 处")
+                                    .font(.system(size: 11)).foregroundStyle(Palette.link)
+                            }
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            if !waiting.isEmpty {
+                Text("等你确认，还没改").font(.system(size: 12)).foregroundStyle(Palette.tertiary).padding(.top, 2)
+                ForEach(Array(waiting.enumerated()), id: \.offset) { _, w in
+                    let c = Correction.core(w.fix.from, w.fix.to)
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(c.to).font(.system(size: 13)).bold()
+                            Text("听成 \(c.from)").font(.system(size: 11)).foregroundStyle(Palette.tertiary)
+                        }
+                        Spacer(minLength: 4)
+                        Button { fixes.answer(w.fix, yes: true, in: session.id) } label: {
+                            Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                                .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Palette.ink))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel(L("对"))
+                        Button { fixes.answer(w.fix, yes: false, in: session.id) } label: {
+                            Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.secondary)
+                                .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel(L("不对"))
+                    }
+                    .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 5)
+                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(Color(white: 0.8)))
+                }
+            }
+        }
+    }
+
+    /// The words fixed in a meeting, most fixed first: what each was heard as, and how often.
+    static func fixedWords(_ s: Session) -> [(word: String, heard: [String], count: Int)] {
+        var out: [String: (heard: [String], count: Int)] = [:]
+        for l in s.lines {
+            for f in l.fixes ?? [] where f.applied {
+                let c = Correction.core(f.from, f.to)
+                let word = c.to.trimmingCharacters(in: .whitespaces)
+                var e = out[word] ?? ([], 0)
+                if !e.heard.contains(c.from) { e.heard.append(c.from) }
+                e.count += 1
+                out[word] = e
+            }
+        }
+        return out.map { ($0.key, $0.value.heard, $0.value.count) }.sorted { $0.count > $1.count }
     }
 }

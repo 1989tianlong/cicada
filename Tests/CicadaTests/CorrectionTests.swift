@@ -103,6 +103,28 @@ import Testing
         #expect(Correction.merge(old, new) == [LineFix(from: "莫拉", to: "Morpho", off: true), LineFix(from: "寻检", to: "巡检")])
     }
 
+    @Test func recheckTakesBackWhatItNoLongerProposesButNotTheUsers() {
+        let old = [LineFix(from: "跑好的", to: "跑跑的"), LineFix(from: "开布特", to: "Curve", user: true)]
+        // The recheck proposes nothing: the model's guess goes, the user's yes stays.
+        #expect(Correction.merge(old, []) == [LineFix(from: "开布特", to: "Curve", user: true)])
+        // Nor can it override the user's word with another.
+        #expect(Correction.merge(old, [LineFix(from: "开布特", to: "Cobalt")]) == [LineFix(from: "开布特", to: "Curve", user: true)])
+    }
+
+    @Test func userEditOnTopOfAFix() {
+        let fixes = [LineFix(from: "莫纳", to: "Morpho")]
+        let src = "扩展到这个莫纳的 Link"
+        let shown = Correction.apply(fixes, to: src).text
+        let e = Correction.userEdit(shown: shown, edited: "扩展到这个Monad的 Link", src: src, fixes: fixes)
+        #expect(e?.fix == LineFix(from: "Morpho", to: "Monad", user: true))
+        #expect(e?.heard == "莫纳")
+        #expect(Correction.apply(fixes + [e!.fix], to: src).text == "扩展到这个Monad的 Link")
+        // A plain heard word.
+        let p = Correction.userEdit(shown: "我木娜找了一个", edited: "我在 Monad 找了一个", src: "我木娜找了一个", fixes: [])
+        #expect(p?.heard == "木娜")
+        #expect(Correction.userEdit(shown: "a", edited: " a ", src: "a", fixes: []) == nil)
+    }
+
     @Test func recordFormatUnchangedWithoutFixes() throws {
         let line = TranscriptLine(id: "1", t: 0, speaker: "them", src: "a", dst: nil, srcLang: "zh", dstLang: "en")
         let json = String(data: try JSONEncoder().encode(line), encoding: .utf8)!

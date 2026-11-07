@@ -1479,6 +1479,7 @@ final class AppModel: ObservableObject {
         let whole = parts.dropFirst().reduce(parts[0]) { HeardText.join($0, $1) }
         guard let rec = store.session(entry.session)?.lines.first(where: { $0.id == line }), whole != rec.src else { return }
         store.setSource(in: entry.session, lineID: line, whole)
+        fixes.applyKnown(lineID: line, in: entry.session)
         refinedLines.insert(line)
         contentLog("REFINE \(line): \(rec.src) => \(whole)")
         guard rec.dst != nil else { return }
@@ -1556,6 +1557,7 @@ final class AppModel: ObservableObject {
         joined.cut = seg.cut
         lastHeard = (joined, prev.line)
         store.setSource(lineID: prev.line, text)
+        if let id = store.liveID { fixes.applyKnown(lineID: prev.line, in: id) }
         trackRefining(seg, line: prev.line)
         listen.join(seg.id, into: prev.seg.id, text: text)
         contentLog("JOIN \(prev.line) += \(seg.text)")
@@ -1571,6 +1573,7 @@ final class AppModel: ObservableObject {
                                     // 会议室 alone too: a meeting switched to it from 电脑和会议室
                                     // would otherwise mark its later room lines 线上.
                                     via: seg.id >= ListenEngine.roomIDs || settings.listensToRoom ? "room" : nil))
+        if let live = store.liveID { fixes.applyKnown(lineID: id, in: live) }
         trackRefining(seg, line: id)
         var kept = seg
         kept.voiceSamples = nil
@@ -1803,7 +1806,34 @@ final class AppModel: ObservableObject {
         case "fixAnswer":  // fixAnswer:yes|no[,<id>]
             let parts = arg.split(separator: ",", maxSplits: 1).map(String.init)
             let id = parts.count > 1 ? parts[1] : store.liveID ?? store.sessions.first?.id ?? ""
-            if let first = fixes.pending(in: id).first { fixes.answer(first.fix, yes: parts.first == "yes", in: id) }
+            if let first = fixes.asking(in: id) ?? fixes.pending(in: id).first.map({ ($0.line, $0.fix, 1, 1) }) {
+                fixes.answer(first.fix, yes: parts.first == "yes", in: id)
+            }
+        // The recheck without audio: line `<id>` settles as `<text>` and is translated (and fixed) again,
+        // with the lines after it in view, as the record's own recognizer would have it.
+        case "resettle":   // resettle:<line id>=<text>
+            let p = arg.split(separator: "=", maxSplits: 1).map(String.init)
+            guard p.count == 2, let id = store.liveID, let rec = store.session(id)?.lines.first(where: { $0.id == p[0] }) else { break }
+            store.setSource(in: id, lineID: rec.id, p[1])
+            fixes.applyKnown(lineID: rec.id, in: id)
+            Task { [weak self] in
+                guard let self, let out = await self.listen.translate(p[1], source: rec.srcLang, target: rec.dstLang) else { return }
+                self.store.setTranslation(in: id, lineID: rec.id, out)
+            }
+        case "fixLater":
+            let id = arg.isEmpty ? store.liveID ?? "" : arg
+            if let a = fixes.asking(in: id) { fixes.later(a.fix, in: id) }
+        case "fixUndo": fixes.undo()
+        case "fixEdit":   // fixEdit:<line id>=<new text>[|one|keep0][,<session id>]
+            let (head, sid) = { () -> (String, String) in
+                if let c = arg.lastIndex(of: ","), !arg[arg.index(after: c)...].contains("=") { return (String(arg[..<c]), String(arg[arg.index(after: c)...])) }
+                return (arg, store.liveID ?? store.sessions.first?.id ?? "")
+            }()
+            let p = head.split(separator: "=", maxSplits: 1).map(String.init)
+            guard p.count == 2 else { break }
+            let opts = p[1].split(separator: "|").map(String.init)
+            let n = fixes.edit(lineID: p[0], in: sid, to: opts[0], everywhere: !opts.contains("one"), remember: !opts.contains("keep0"))
+            debugLog("fix edit changed \(n) lines")
         case "fixRevert":  // fixRevert:<line id>[,<session id>]: the line's first applied fix
             let parts = arg.split(separator: ",", maxSplits: 1).map(String.init)
             let id = parts.count > 1 ? parts[1] : store.liveID ?? store.sessions.first?.id ?? ""
@@ -1974,8 +2004,10 @@ final class AppModel: ObservableObject {
             }
         case "notesRender":
             // The whole notes column as a PNG, for checking what is below the fold.
+            let shownID = notes.shownID ?? store.liveID
+            let fixTerms = shownID.flatMap { store.session($0) }.map { AnyView(FixTermsView(fixes: fixes, session: $0) { _ in }) }
             let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil,
-                                        updating: notes.state == .updating)
+                                        updating: notes.state == .updating, fixTerms: fixTerms)
                 .padding(24).frame(width: 460).background(Color.white)
             let r = ImageRenderer(content: view)
             r.scale = 2

@@ -290,6 +290,7 @@ struct NotesWindowView: View {
                     // The title bar is transparent: start the header beside its buttons, not below a blank band.
                     .ignoresSafeArea(.container, edges: .top)
                     .overlay(alignment: .bottom) { SpeakerUndoToast(model: model, session: session?.id) }
+                    .overlay(alignment: .bottom) { FixToast(fixes: model.fixes).padding(.bottom, 14) }
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -866,7 +867,8 @@ struct NotesWindowView: View {
                                  coveredUntil: lastCovered > 0 ? lastCovered : nil,
                                  endedAt: session?.lines.last?.t,
                                  behind: behind,
-                                 onJump: { t in jumpTo = t; tab = "transcript" })
+                                 onJump: { t in jumpTo = t; tab = "transcript" },
+                                 fixTerms: fixTermsView)
                     .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 12)
             }
             .topFade()
@@ -892,15 +894,18 @@ struct NotesWindowView: View {
         if animated { withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(id, anchor: .top) } } else { proxy.scrollTo(id, anchor: .top) }
     }
 
+    /// Not while the window is shown to the other side: names wait in 人名和术语 then.
     @ViewBuilder private var fixAsk: some View {
-        if let s = session {
-            let waiting = model.fixes.pending(in: s.id)
-            if let first = waiting.first {
-                FixConfirmCard(line: first.line, fix: first.fix, count: waiting.count) { yes in
-                    model.fixes.answer(first.fix, yes: yes, in: s.id)
-                }
-            }
+        if let s = session, !model.settings.notesCapturable, let a = model.fixes.asking(in: s.id) {
+            FixConfirmCard(line: a.line, fix: a.fix, count: a.of, onAnswer: { yes in
+                model.fixes.answer(a.fix, yes: yes, in: s.id)
+            }, onLater: { model.fixes.later(a.fix, in: s.id) })
         }
+    }
+
+    private var fixTermsView: AnyView? {
+        guard let s = session, !FixTermsView.fixedWords(s).isEmpty || !model.fixes.pending(in: s.id).isEmpty else { return nil }
+        return AnyView(FixTermsView(fixes: model.fixes, session: s) { word in query = word; tab = "transcript" })
     }
 
     private var transcript: some View {
