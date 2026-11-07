@@ -42,13 +42,36 @@ final class Vocabulary: ObservableObject {
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
+    /// What a fix can teach the list, or nil: both sides trimmed of spaces and punctuation, no
+    /// punctuation inside, short, and a real swap. An edit that only adds or drops words around the
+    /// heard ones ("我来" → "OK我来") or ends on a full stop ("持。" → "讲。") teaches nothing.
+    nonisolated static func learnable(heard: String, word: String) -> (heard: String, word: String)? {
+        let edge = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters).union(.symbols)
+        let h = heard.trimmingCharacters(in: edge), w = word.trimmingCharacters(in: edge)
+        guard !h.isEmpty, !w.isEmpty, h.count <= 20, w.count <= 40, key(h) != key(w),
+              !w.contains(h), !h.contains(w),
+              h.unicodeScalars.allSatisfy({ !CharacterSet.punctuationCharacters.contains($0) }),
+              w.unicodeScalars.allSatisfy({ !CharacterSet.punctuationCharacters.contains($0) || $0 == "." || $0 == "-" })
+        else { return nil }
+        return (h, w)
+    }
+
     func knows(heard: String, word: String) -> Bool {
         let h = Self.key(heard), w = Self.key(word)
         return terms.contains { Self.key($0.word) == w && $0.heard.contains { Self.key($0) == h } }
     }
 
-    /// The user said yes to a fix (or added it): the word, and the form it was heard as.
+    /// The user said yes to a fix (or added it): the word, and the form it was heard as. A pair
+    /// that isn't a word for a word (`learnable`) adds the word only, or nothing.
     func confirm(heard: String, word: String, source: String = "live") {
+        if !heard.isEmpty {
+            guard let l = Self.learnable(heard: heard, word: word) else { return }
+            return add(heard: l.heard, word: l.word, source: source)
+        }
+        add(heard: "", word: word, source: source)
+    }
+
+    private func add(heard: String, word: String, source: String) {
         let w = Self.key(word)
         if let i = terms.firstIndex(where: { Self.key($0.word) == w }) {
             if !heard.isEmpty, !terms[i].heard.contains(where: { Self.key($0) == Self.key(heard) }) { terms[i].heard.append(heard) }

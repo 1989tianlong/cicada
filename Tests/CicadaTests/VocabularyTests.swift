@@ -59,4 +59,16 @@ import Testing
         #expect(v.preview("Morpho = 莫法\nPendle\n" + String(repeating: "长", count: 41)) == .init(added: 1, updated: 1, skipped: [3]))
         #expect(v.terms.count == 1)
     }
+
+    @Test func editsThatArentAWordForAWordTeachNothing() {
+        let v = Vocabulary(url: nil)
+        v.confirm(heard: "持。", word: "讲。")
+        #expect(v.knows(heard: "持", word: "讲"))
+        v.confirm(heard: "我来", word: "OK我来", source: "user")
+        v.confirm(heard: "然后，", word: "然后")
+        #expect(v.terms.map(\.word) == ["讲"])
+        v.confirm(heard: "木娜", word: "Monad", source: "user")
+        v.confirm(heard: "Uni斯图 V三", word: "Uniswap V3")
+        #expect(v.knows(heard: "木娜", word: "Monad") && v.knows(heard: "Uni斯图 V三", word: "Uniswap V3"))
+    }
 }

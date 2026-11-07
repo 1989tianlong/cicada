@@ -232,11 +232,14 @@ final class LiveFixes: ObservableObject {
             set(fixes + [e.fix], line: t.id, in: id)
         }
         let c = Correction.core(e.fix.from, e.fix.to)
-        // Only a change made everywhere teaches the word list: a one-off must not.
-        if keep, everywhere { vocabulary.confirm(heard: e.heard, word: c.to.trimmingCharacters(in: .whitespaces), source: "user") }
-        debugLog("fix edited lines=\(targets.count) keep=\(keep)")
-        say(keep ? L("已改 \(targets.count) 处：\(e.heard) → \(c.to.trimmingCharacters(in: .whitespaces))，记进词表")
-                 : L("已改 \(targets.count) 处：\(e.heard) → \(c.to.trimmingCharacters(in: .whitespaces))"))
+        // Only a change made everywhere teaches the word list (a one-off must not), and only a
+        // word for a word (`Vocabulary.learnable`).
+        let word = c.to.trimmingCharacters(in: .whitespaces)
+        let learned = keep && everywhere && Vocabulary.learnable(heard: e.heard, word: word) != nil
+        if learned { vocabulary.confirm(heard: e.heard, word: word, source: "user") }
+        debugLog("fix edited lines=\(targets.count) learned=\(learned)")
+        say(learned ? L("已改 \(targets.count) 处：\(e.heard) → \(word)，记进词表")
+                    : L("已改 \(targets.count) 处：\(e.heard) → \(word)"))
         return targets.count
     }
 
