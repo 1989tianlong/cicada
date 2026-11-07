@@ -269,6 +269,8 @@ sealed class DeviceSpeaker : ISpeechSink
 
     public DeviceSpeaker(Func<Endpoints.Device?> device) { this.device = device; }
 
+    public bool Ready => device() is not null;
+
     public void Begin(int rate)
     {
         this.rate = rate;

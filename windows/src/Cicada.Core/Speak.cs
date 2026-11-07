@@ -10,6 +10,8 @@ public interface ISpeechSink
     void Begin(int rate);
     void Write(byte[] pcm);
     Task End();
+    /// Whether there is somewhere to play: the virtual mic can go away between the press and the voice.
+    bool Ready => true;
 }
 
 /// Windows' own voice, for when the AI service's can't speak: 16-bit mono PCM, or null.
@@ -183,6 +185,8 @@ public sealed class SpeakEngine
             // Ming didn't translate it: the text translator gets one try; failing that, silence.
             if (text is null && heard.Lang != to) text = await translator.Translate(heard.Original, heard.Lang, to, Translator.Kind.Sentence, Priority.Speak);
             if (string.IsNullOrWhiteSpace(text)) return Fail(Strings.L("这句没翻译成 · 没有说出去"));
+            // The virtual mic went away during the press: no voice at all, and never the speakers.
+            if (!sink.Ready) return Fail(Strings.L("没有虚拟麦克风 · 没有说出去"));
             var translatedAt = DateTime.UtcNow;
             Heard = text;
             State = Phase.Speaking;
