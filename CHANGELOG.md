@@ -5,6 +5,68 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes. Since 1.1.2 every release ships
 every platform (one with nothing new says No changes); earlier ones shipped only those listed. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
+## 1.5.1 — 2026-11-07
+
+### Mac
+
+#### New
+
+- Misheard names and terms are fixed in subtitles and live notes as the meeting goes, with new names asked about once ([bf9a680](https://github.com/wquguru/cicada/commit/bf9a680258c0148f9c8f1958b84018512a5826da))
+- Settings › Word list keeps the spellings you use, and takes many at once by pasting ([d087810](https://github.com/wquguru/cicada/commit/d0878107672ed193dccd869de31eec4321a292e0))
+- Fix a misheard word yourself from the meeting record, settle waiting fixes after the meeting, and undo any fix ([b6f1f8c](https://github.com/wquguru/cicada/commit/b6f1f8ccd92e5dd164706a0ee3e7da8ac4f322ea))
+- Settings › Word list edits in place: change a spelling, add or remove a misheard form, undo a delete, see counts before pasting ([d7db66f](https://github.com/wquguru/cicada/commit/d7db66fdd81cfe5b14fd82a036a413ae21702cd1))
+
+#### Fixed
+
+- Early in a meeting, the transcript no longer runs several people's lines into one paragraph ([00c57e3](https://github.com/wquguru/cicada/commit/00c57e34346b0a22a845822534e49144b3fc7e7d))
+- Saying yes to a fixed name fixes the rest of the meeting heard the same way at once, not only with the next line ([46dae9f](https://github.com/wquguru/cicada/commit/46dae9fa7cfc77a703a33d162e7ad54b34b96852))
+- In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([5d20f2e](https://github.com/wquguru/cicada/commit/5d20f2e1a7617ebe680be59c31a0679c3839ecbf))
+- Edit line… no longer teaches the word list punctuation or words added around the heard ones ([28ab28e](https://github.com/wquguru/cicada/commit/28ab28e0f29219a46a55f3074b64821b16fa7882))
+
+### Windows
+
+#### New
+
+- Misheard names and terms are fixed in subtitles and live notes as the meeting goes ([40c173d](https://github.com/wquguru/cicada/commit/40c173dca1012f8cc732c5210d9698d8c703a284))
+- Fix a misheard word in the transcript or the meeting record, answer new names in the notes window, and keep a word list in Settings ([b3e4805](https://github.com/wquguru/cicada/commit/b3e48051dd93cb6fc0a3b5a4c75bfd3ee8e3f5b4))
+
+#### Fixed
+
+- A meeting record whose misheard words were fixed on the Mac shows the fixed words on Windows and keeps the fixes when saved ([e588aa0](https://github.com/wquguru/cicada/commit/e588aa0a33f4a58ccbdde6444f7693662b98ed95))
+- Saying yes to a fixed name fixes the rest of the meeting heard the same way at once, not only with the next line ([e38bd1b](https://github.com/wquguru/cicada/commit/e38bd1be856c92610f6475861c0624e311bc52d6))
+- In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([d5fbff2](https://github.com/wquguru/cicada/commit/d5fbff2957f11833eb2e60aedd013cf1c2e4979d))
+- Edit line… no longer teaches the word list punctuation or words added around the heard ones ([331e094](https://github.com/wquguru/cicada/commit/331e094a6ded82ca32ba5cc152659e2c8fb279df))
+
+### Android
+
+#### New
+
+- Misheard names and terms are fixed in subtitles and live notes as the meeting goes, with new names asked about once ([6f9a9ff](https://github.com/wquguru/cicada/commit/6f9a9ff88251b22c0a74b45055082865c0bee944))
+- Fix a misheard word yourself from the meeting record, confirm new names live, and keep your spellings in Settings › Word list ([815a2bf](https://github.com/wquguru/cicada/commit/815a2bfa95258caa913180d2260d54ed425483e5))
+
+#### Fixed
+
+- Meeting records from the Mac keep their fixed words, and show, search and export the fixed text ([481ef8d](https://github.com/wquguru/cicada/commit/481ef8d0900ad6f1556a0a86a8c4dd6c3f671a93))
+- Saying yes to a new name fixes the rest of the meeting heard the same way at once, not only with the next line ([f2e6945](https://github.com/wquguru/cicada/commit/f2e6945e8c90ced76802a133b7816334fa68e26d))
+- The Word list says Tap to change the spelling, not Click, in English, Japanese and Korean ([0e5c8b2](https://github.com/wquguru/cicada/commit/0e5c8b2fe5d231c18295a65fb04919b2fafcc18b))
+- In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([ea9dd62](https://github.com/wquguru/cicada/commit/ea9dd622de5a5ad8c3f25718399de6b520584912))
+- Edit line… no longer teaches the word list punctuation or words added around the heard ones ([7a11c5a](https://github.com/wquguru/cicada/commit/7a11c5a4023f64d709fa7f622ddd24dfa22426db))
+
+### Linux
+
+#### New
+
+- Meeting records keep the words fixed on the Mac and show them fixed ([1f37aac](https://github.com/wquguru/cicada/commit/1f37aac7645502421c50718d8df1fb6cff0a1a0d))
+- Misheard names and terms are fixed in subtitles and live notes as the meeting goes, with new names asked about once ([b179ff0](https://github.com/wquguru/cicada/commit/b179ff0c3cf54f1154d80f4eb4f7ed6ebe952e08))
+- Fixed words are underlined, the notes window asks Is this fix right? without taking focus, Edit line… works in the meeting record, and Settings has a Word list ([aa1563a](https://github.com/wquguru/cicada/commit/aa1563a3a572a5061e7654b6cfea1441293ea75a))
+
+#### Fixed
+
+- The live notes window can be dragged again ([29e353b](https://github.com/wquguru/cicada/commit/29e353bce76bd71d8eeb3385e5bce1af6cf52cad))
+- Saying yes to a fixed name fixes the rest of the meeting heard the same way at once, not only with the next line ([bd14ca1](https://github.com/wquguru/cicada/commit/bd14ca118a7b47f69578fa0445d7bb8702dd912a))
+- In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([75164ec](https://github.com/wquguru/cicada/commit/75164ec08881cfeb038e0bc4206464dae02de15e))
+- Edit line… no longer teaches the word list punctuation or words added around the heard ones ([ab28ff7](https://github.com/wquguru/cicada/commit/ab28ff7286535d171e18f61950913c287e300cf5))
+
 ## 1.5.0 — 2026-11-07
 
 ### Mac
