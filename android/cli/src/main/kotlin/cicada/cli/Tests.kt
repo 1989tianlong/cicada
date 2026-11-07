@@ -313,15 +313,16 @@ object Tests {
         val md = TranscriptExport.markdown(s)
         check(md.contains("**[00:10] 说话人 1**  \nwe should ship it now\n> 我们现在就该发布\n"), "markdown speaker number")
         check(md.contains("**[00:15] Ken**"), "markdown speaker name")
-        check(md.contains("**[01:01] 你**  \n好的\n> OK\n"), "markdown me")
+        check(md.contains("**[01:01] 你 · 同传**  \n好的\n> OK\n"), "markdown me: 同传")
         val srt = TranscriptExport.srt(s)
         check(srt.startsWith("1\n00:00:10,000 --> 00:00:15,000\nwe should ship it now\n我们现在就该发布\n\n2\n"), "srt cue")
-        check(srt.contains("11\n00:01:01,000 --> 00:01:05,000\n好的\nOK\n"), "srt last cue ends 4 s on")
+        check(srt.contains("11\n00:01:01,000 --> 00:01:05,000\n[同传] 好的\nOK\n"), "srt last cue ends 4 s on, my line marked 同传")
         val docx = TranscriptExport.docx(s)
         val names = java.util.zip.ZipInputStream(docx.inputStream()).use { z -> generateSequence { z.nextEntry?.name }.toList() }
         equal(listOf("[Content_Types].xml", "_rels/.rels", "word/document.xml"), names, "docx parts")
         val doc = java.util.zip.ZipInputStream(docx.inputStream()).use { z -> while (z.nextEntry?.name != "word/document.xml") {}; z.readBytes().toString(Charsets.UTF_8) }
         check(doc.contains(">[00:15] Ken<") && doc.contains(">我们现在就该发布<"), "docx text")
+        check(doc.contains(">[01:01] 你 · 同传<"), "docx me: 同传")
         SpeakerLabels.voices = false
         check(TranscriptExport.markdown(s).contains("**[00:15] 对方**"), "说话人识别 off: no numbers")
         SpeakerLabels.voices = true

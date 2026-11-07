@@ -66,9 +66,10 @@ object SpeakerLabels {
 
     fun label(number: Int, names: Map<Int, String>): String = names[number] ?: Strings.LF("说话人 %lld", number)
 
-    /// Who said a line: 你, a speaker's name or number, else 对方 (未识别 once others have numbers).
+    /// Who said a line: 你 · 同传 (said with 我说, so the other side heard its translation), a
+    /// speaker's name or number, else 对方 (未识别 once others have numbers).
     fun speakerName(l: TranscriptLine, numbers: Map<String, Int>, names: Map<Int, String>): String {
-        if (l.speaker == "me") return Strings.L("你")
+        if (l.speaker == "me") return Strings.L("你 · 同传")
         numbers[l.id]?.let { return label(it, names) }
         return if (numbers.isEmpty()) Strings.L("对方") else Strings.L("未识别")
     }
@@ -127,7 +128,9 @@ object TranscriptExport {
         s.lines.forEachIndexed { i, l ->
             val next = if (i + 1 < s.lines.size) s.lines[i + 1].t else l.t + 4
             val end = maxOf(l.t + 1, minOf(next, l.t + 8))
-            b.append("${i + 1}\n${ts(l.t)} --> ${ts(end)}\n${l.src}\n")
+            // Your own lines (我说) say so, as the record does.
+            val tag = if (l.speaker == "me") "[${Strings.L("同传")}] " else ""
+            b.append("${i + 1}\n${ts(l.t)} --> ${ts(end)}\n$tag${l.src}\n")
             l.dst?.takeIf { it != l.src && it.isNotEmpty() }?.let { b.append("$it\n") }
             b.append("\n")
         }

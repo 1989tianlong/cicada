@@ -121,7 +121,8 @@ class FaceActivity : Activity() {
         val translated = line?.dst?.takeIf { it.isNotEmpty() && it != line.src }
         theirLabel.text = NotesViews.languageName(their)
         theirText.text = when { line == null -> "…"; mine -> translated ?: "…"; else -> line.src }
-        myLabel.text = (if (line == null || mine) L("你") else L("对方")) + " · " + NotesViews.languageName(mineLang)
+        // My line was said with 我说: the other side heard its translation (同传, as on the Mac).
+        myLabel.text = (if (mine) L("你 · 同传") else if (line == null) L("你") else L("对方")) + " · " + NotesViews.languageName(mineLang)
         myText.text = when { line == null -> L("按住下面的按钮说话，松开后对方会听到译文"); mine -> line.src; else -> translated ?: line.src }
         myText.setTextColor(if (line == null) Palette.secondary else Palette.ink)
         val live = l.holding || app.voice.speaking
