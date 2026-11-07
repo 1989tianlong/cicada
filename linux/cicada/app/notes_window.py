@@ -80,8 +80,6 @@ class NotesWindow(Gtk.Window):
 
     def _drag(self, _w, event):
         Log.d("notes window: click at %d,%d, active=%s" % (event.x, event.y, self.is_active()))
-        if self.source_open:  # a click anywhere else in the window puts 听哪里's choices away
-            self._toggle_sources(False)
         if event.button == 1:
             x, y = self.get_position()
             self._grab = (event.x_root - x, event.y_root - y)
