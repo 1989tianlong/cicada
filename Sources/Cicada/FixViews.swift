@@ -75,7 +75,7 @@ struct FixReviewBanner: View {
         let waiting = fixes.pending(in: session.id)
         let fixedCount = session.lines.reduce(0) { $0 + ($1.fixes ?? []).filter(\.applied).count }
         if let first = waiting.first {
-            let c = Correction.core(first.fix.from, first.fix.to)
+            let c = Correction.label(first.fix)
             HStack(spacing: 10) {
                 Button { onShow(first.line.id) } label: {
                     VStack(alignment: .leading, spacing: 2) {

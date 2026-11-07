@@ -1423,7 +1423,7 @@ struct FixedWords: View {
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(Array(fixes.enumerated()), id: \.offset) { _, item in
-                let c = Correction.core(item.fix.from, item.fix.to)
+                let c = Correction.label(item.fix)
                 HStack(spacing: 6) {
                     (Text("听成").foregroundStyle(Palette.tertiary) + Text(" " + c.from) + Text(" → ").foregroundStyle(Palette.tertiary) + Text(c.to))
                         .font(.system(size: 11))
@@ -1448,7 +1448,7 @@ struct FixConfirmCard: View {
     var onLater: (() -> Void)? = nil
 
     var body: some View {
-        let c = Correction.core(fix.from, fix.to)
+        let c = Correction.label(fix)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("这样改对吗？").font(.system(size: 13, weight: .semibold))
@@ -1517,7 +1517,7 @@ struct FixTermsView: View {
             if !waiting.isEmpty {
                 Text("等你确认，还没改").font(.system(size: 12)).foregroundStyle(Palette.tertiary).padding(.top, 2)
                 ForEach(Array(waiting.enumerated()), id: \.offset) { _, w in
-                    let c = Correction.core(w.fix.from, w.fix.to)
+                    let c = Correction.label(w.fix)
                     HStack(spacing: 8) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(c.to).font(.system(size: 13)).bold()
@@ -1547,7 +1547,7 @@ struct FixTermsView: View {
         var out: [String: (heard: [String], count: Int)] = [:]
         for l in s.lines {
             for f in l.fixes ?? [] where f.applied {
-                let c = Correction.core(f.from, f.to)
+                let c = Correction.label(f)
                 let word = c.to.trimmingCharacters(in: .whitespaces)
                 var e = out[word] ?? ([], 0)
                 if !e.heard.contains(c.from) { e.heard.append(c.from) }

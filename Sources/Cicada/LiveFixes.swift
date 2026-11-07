@@ -201,7 +201,7 @@ final class LiveFixes: ObservableObject {
         refusals[key, default: 0] += 1
         if refusals[key]! >= 2 { vocabulary.forget(heard: c.from, word: c.to) }
         debugLog("fix reverted line=\(lineID)")
-        say(L("已改回 \(c.from)，这场不再改"))
+        say(L("已改回 \(Correction.label(fix).from)，这场不再改"))
     }
 
     // MARK: 改这句…

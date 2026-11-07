@@ -57,6 +57,13 @@ enum Correction {
         return (String(a[i..<(a.count - j)]), String(b[i..<(b.count - j)]))
     }
 
+    /// A fix as the UI names it (听成 X → Y, 已改回 X): the changed words, or the whole fix when
+    /// it only adds or drops words ("in" → "in now", whose changed part alone would be "" → "now").
+    static func label(_ f: LineFix) -> (from: String, to: String) {
+        let c = core(f.from, f.to)
+        return c.from.isEmpty || c.to.isEmpty ? (f.from, f.to) : c
+    }
+
     /// `known`: the user confirmed this heard form for this word (the word list). `rejected`: they
     /// said no to it in this meeting.
     static func decide(_ e: Edit, known: (String, String) -> Bool, rejected: (String, String) -> Bool) -> Verdict {

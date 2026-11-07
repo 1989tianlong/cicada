@@ -158,4 +158,10 @@ import Testing
         // A real swap is still a swap.
         #expect(Correction.userEdit(shown: "我木娜找了", edited: "我Monad找了", src: "我木娜找了", fixes: [])?.swap == true)
     }
+
+    @Test func labelNamesAnAddedWordWhole() {
+        #expect(Correction.label(LineFix(from: "in", to: "in now", user: true)) == ("in", "in now"))
+        #expect(Correction.label(LineFix(from: "Great", to: "OK Great", user: true)) == ("Great", "OK Great"))
+        #expect(Correction.label(LineFix(from: "解除质压", to: "解除质押")) == ("质压", "质押"))
+    }
 }
