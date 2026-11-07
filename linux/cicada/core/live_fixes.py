@@ -206,7 +206,9 @@ class LiveFixes:
             l = self.store.line(sid, line_id)
             if l is None or not l.fixes:
                 return
-            k = next((i for i, f in enumerate(l.fixes) if f.from_ == fix.from_ and f.to == fix.to), None)
+            # The one still on: an earlier, already undone copy of the same change may sit before it.
+            same = [i for i, f in enumerate(l.fixes) if f.from_ == fix.from_ and f.to == fix.to]
+            k = next((i for i in same if l.fixes[i].applied), same[0] if same else None)
             if k is None:
                 return
             self._remember(sid, [line_id])
@@ -253,6 +255,9 @@ class LiveFixes:
             for t in targets:
                 fixes = []
                 for f in t.fixes or []:
+                    # The same change made again replaces any earlier copy (say, one undone with 改回).
+                    if f.from_ == fix.from_ and f.to == fix.to:
+                        continue
                     f = f.copy()
                     # A guess still waiting on the same words is answered by the edit: not that.
                     if f.ask is True and (heard in f.from_ or f.from_ in heard):

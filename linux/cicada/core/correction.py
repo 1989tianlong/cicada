@@ -273,9 +273,10 @@ def user_edit(shown: str, edited: str, src: str, fixes: list):
         t = next((t for t in tokens if t[0] <= end - 1 < t[1]), None)
         if t is not None:
             end = t[1]
+    # A dropped word ("in now." → "in.") grows too, so neither side of the fix is empty.
     while True:
         span = a[start:end]
-        if any(c.isalnum() for c in span) and span and a.count(span) == 1:
+        if any(c.isalnum() for c in span) and span and a.count(span) == 1 and b[start:len(b) - (len(a) - end)]:
             break
         before = [t for t in tokens if t[1] <= start]
         after = [t for t in tokens if t[0] >= end]

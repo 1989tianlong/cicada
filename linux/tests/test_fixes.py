@@ -187,6 +187,13 @@ class Correction(unittest.TestCase):
         self.assertEqual(correction.user_edit("我木娜找了一个", "我在 Monad 找了一个", "我木娜找了一个", [])[1], "木娜")
         self.assertIsNone(correction.user_edit("a", " a ", "a", []))
 
+    def test_dropped_word_keeps_both_sides_of_the_fix(self):
+        line = "Great, let's lock that in now."
+        fix = correction.user_edit(line, "Great, let's lock that in.", line, [])[0]
+        self.assertTrue(fix.from_ and fix.to)
+        self.assertEqual(apply([fix], line)[0], "Great, let's lock that in.")
+        self.assertTrue(all(correction.label(fix)))
+
     def test_label_names_an_added_word_whole(self):
         self.assertEqual(correction.label(LineFix("in", "in now", user=True)), ("in", "in now"))
         self.assertEqual(correction.label(LineFix("Great", "OK Great", user=True)), ("Great", "OK Great"))
@@ -360,6 +367,17 @@ class Live(Base):
         self.assertEqual(fx.toast_text(), "已改 1 处：in → in now")
         fx.revert(store.line(sid, "l0").fixes[-1], "l0", sid)
         self.assertEqual(fx.toast_text(), "已改回 in，这场不再改")
+
+    def test_edit_revert_edit_revert_goes_back(self):
+        fx, store, sid = self.setup(["Great, let's lock that in.", "Design signs off by Friday."])
+        for _ in range(2):
+            fx.edit("l0", sid, "Great, let's lock that in now.", everywhere=True, remember=True)
+            self.assertEqual(store.line(sid, "l0").shown, "Great, let's lock that in now.")
+            f = next(f for f in store.line(sid, "l0").fixes if f.applied)
+            fx.revert(f, "l0", sid)
+            self.assertEqual(store.line(sid, "l0").shown, "Great, let's lock that in.")
+        self.assertEqual(len(store.line(sid, "l0").fixes), 1)
+        self.assertIsNone(store.line(sid, "l1").fixes)
 
     def test_one_off_edit_does_not_teach_the_list(self):
         fx, store, sid = self.setup(["我木娜找了一个", "木娜那边也有"])
