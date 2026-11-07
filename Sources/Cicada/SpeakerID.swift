@@ -365,7 +365,10 @@ enum SpeakerNameGuess {
     /// `refuted`: voices Ling named on a line they neither said nor spoke next to ("I'm Christina"
     /// in an advert, given to the anchor); such a name is dropped, and an earlier copy of it too.
     static func read(_ reply: String, _ s: Session) -> (found: [Int: VoiceGuess], refuted: [Int: String]) {
-        guard let data = reply.data(using: .utf8),
+        // The object alone: a reply asked again without JSON mode may come in a fence.
+        var text = reply
+        if let a = text.firstIndex(of: "{"), let b = text.lastIndex(of: "}"), a < b { text = String(text[a...b]) }
+        guard let data = text.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let list = obj["speakers"] as? [[String: Any]] else { return ([:], [:]) }
         let voiceOf = Dictionary(uniqueKeysWithValues: SpeakerLabels.voiceNumbers(s.lines).map { ($1, $0) })
