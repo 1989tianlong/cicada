@@ -167,6 +167,13 @@ class LingClient(
         val DEFAULT_MODEL = Providers.LING.textModels[0].id
         val AUDIO_MODEL = Providers.LING.hearModels[0].id
 
+        /// A chat reply's text holds a JSON object (a fence or a sentence around it is fine).
+        fun answersJSON(text: String?): Boolean {
+            if (text == null) return false
+            val a = text.indexOf('{'); val z = text.lastIndexOf('}')
+            return a in 0 until z && Json.parseObject(text.substring(a, z + 1)) != null
+        }
+
         /// Seconds before each retry of a 429 (Ling.swift › retryWaits). Notes retry a few times; the
         /// rest fail fast so the caller can fall back, except heard audio. A meeting's: there a lost
         /// reply loses the words, and Ling's 429s came in runs of up to ~10 s (two in a row lost a line
@@ -382,10 +389,15 @@ class LingClient(
                 }
                 if (c.provider.id == "openrouter") r = r.copy(balance = openRouterBalance(c, k))
                 if (c.provider.id == "custom") {
+                    val ask = "Reply with the JSON object {\"ok\": true}."
                     try {
-                        chat("Reply with the JSON object {\"ok\": true}.", "Reply.", Priority.Speak, json = true, maxTokens = 20, timeout = 30.0)
+                        chat(ask, "Reply.", Priority.Speak, json = true, maxTokens = 20, timeout = 30.0, jsonFallback = false)
                     } catch (e: LingException) {
-                        if (e.kind == LingException.Kind.Http) r = r.fail(AICheck.StepID.Text, AICheck.Reason.NoJSON, e.status) else throw e
+                        if (e.kind != LingException.Kind.Http) throw e
+                        // JSON mode refused (some hosts of a model do): meetings then ask without it, so
+                        // what counts is whether the model still answers with a JSON object.
+                        val said = try { chat(ask, "Reply.", Priority.Speak, maxTokens = 20, timeout = 30.0) } catch (_: LingException) { null }
+                        if (!answersJSON(said)) r = r.fail(AICheck.StepID.Text, AICheck.Reason.NoJSON, e.status)
                     }
                 }
                 if (r.failure == null) {
@@ -546,11 +558,13 @@ class LingClient(
     /// `patient` (the final notes) keeps retrying for about a minute. A 429 holds every request
     /// start for a while (rateLimited), and a retry keeps its place in the queue, so lines stay in order.
     /// Audio goes to the hear model's address (a custom service may name its own). `reply` sees the
-    /// whole reply (the check reads whether the model thought).
+    /// whole reply (the check reads whether the model thought). A JSON request refused with 400 is
+    /// asked again without JSON mode unless `jsonFallback` is off (the check asks again itself).
     fun chat(
         content: String, instruction: String, priority: Priority, json: Boolean = false,
         maxTokens: Int = 1024, timeout: Double = 30.0, model: String? = null, audio: ByteArray? = null,
-        audioType: String = "audio/wav", patient: Boolean = false, reply: ((Map<String, Any?>) -> Unit)? = null,
+        audioType: String = "audio/wav", patient: Boolean = false, jsonFallback: Boolean = true,
+        reply: ((Map<String, Any?>) -> Unit)? = null,
     ): String {
         val k = currentKey() ?: throw LingException(LingException.Kind.NoKey)
         if (keyState == KeyState.Invalid) throw LingException(LingException.Kind.InvalidKey)
@@ -574,7 +588,15 @@ class LingClient(
             ticket = acquire(priority, c.provider.spacing, ticket, failIfPaused = waits.isEmpty())
             val started = System.nanoTime()
             try {
-                val root = postChat(base + "chat/completions", body, k, timeout)
+                val root = try {
+                    postChat(base + "chat/completions", body, k, timeout)
+                } catch (e: LingException) {
+                    if (!jsonFallback || e.kind != LingException.Kind.Http || e.status != 400 || body.remove("response_format") == null) throw e
+                    // Some hosts of a model refuse JSON mode (on OpenRouter, Novita for Ling 3.1 Flash)
+                    // while the model answers JSON anyway: the prompt asks for it, the parsers find it.
+                    Log.d("ling: $priority JSON mode refused (400), asking again without it")
+                    postChat(base + "chat/completions", body, k, timeout)
+                }
                 reply?.invoke(root)
                 val choice = root["choices"].arr().firstOrNull().obj()
                 val text = choice?.get("message").obj()?.get("content").str() ?: throw LingException(LingException.Kind.Parse)
@@ -699,13 +721,15 @@ class LingClient(
     /// A chat completion. A custom server that refuses `chat_template_kwargs` (a strict gateway
     /// answers 400 or 422 to fields it doesn't know) is asked again without it, and, when that
     /// works, isn't sent it again until settings change. A second refusal was about something else
-    /// (a hear model that takes no audio): the field stays. `body` loses the field either way.
-    private fun postChat(url: String, body: MutableMap<String, Any?>, k: String, timeout: Double): Map<String, Any?> {
+    /// (a hear model that takes no audio, no JSON mode): the field stays, in `body` too, so a
+    /// request asked again without JSON mode still turns thinking off.
+    private fun postChat(url: String, body: Map<String, Any?>, k: String, timeout: Double): Map<String, Any?> {
         try {
             return post(url, Json.write(body, pretty = false), k, timeout)
         } catch (e: LingException) {
-            if (e.kind != LingException.Kind.Http || e.status !in listOf(400, 422) || body.remove("chat_template_kwargs") == null) throw e
-            val root = post(url, Json.write(body, pretty = false), k, timeout)
+            if (e.kind != LingException.Kind.Http || e.status !in listOf(400, 422) || "chat_template_kwargs" !in body) throw e
+            val plain = LinkedHashMap(body).apply { remove("chat_template_kwargs") }
+            val root = try { post(url, Json.write(plain, pretty = false), k, timeout) } catch (_: LingException) { throw e }
             if (!noTemplateKwargs) Log.d("ai custom: chat_template_kwargs refused (HTTP ${e.status}), sent without it from now on")
             noTemplateKwargs = true
             return root

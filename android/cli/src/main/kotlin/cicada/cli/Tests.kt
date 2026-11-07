@@ -1147,6 +1147,8 @@ object Tests {
         check(found[1]!!.evidence.startsWith("00:40 “Thanks"), "evidence is the line: ${found[1]!!.evidence}")
         equal(mapOf(0 to "Christina"), refuted.toMap(), "no evidence near the voice")
         equal(0, SpeakerNamer.read("not json", lines).first.size, "not JSON")
+        // Without JSON mode (a host that refuses it) the reply may come fenced.
+        equal("George", SpeakerNamer.read("```json\n{\"speakers\": [{\"speaker\": 2, \"name\": \"George\", \"evidence\": \"L11\"}]}\n```", lines).first[1]?.name, "fenced")
         check(SpeakerNamer.content(lines)!!.contains("说话人1"), "Ling sees the numbers")
         check(SpeakerNamer.holds(found[1]!!, 1, lines), "the guess stands while its line does")
 

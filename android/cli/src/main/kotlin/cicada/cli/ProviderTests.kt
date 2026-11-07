@@ -36,6 +36,9 @@ object ProviderTests {
         "aiAThinkingModelIsSeenFromItsReply" to ::thought,
         "aiASlowSentenceIsFlagged" to ::slowSentence,
         "aiAServerThatRefusesTemplateKwargsIsAskedWithout" to ::kwargsRefused,
+        "aiARefusalForSomethingElseKeepsThinkingOff" to ::jsonModeRefused,
+        "aiACheckPassesAModelThatAnswersJSONWithoutJSONMode" to ::checkWithoutJSONMode,
+        "aiAJSONObjectInPlainTextCountsAsJSON" to ::answersJSON,
         "aiCustomCheckTimesARealSentence" to ::customCheckTimes,
         "aiTheHearModelMayHaveItsOwnAddress" to ::hearBase,
         "aiAHearServerThatCantBeReachedFailsHearing" to ::hearServerDown,
@@ -186,6 +189,41 @@ object ProviderTests {
         try { other.chat("c", "i", Priority.Translate) } catch (_: LingException) {}
         equal(4, deaf.sent.size, "each call tried both ways")
         check("chat_template_kwargs" in deaf.sent[2].second, "still sent")
+    }
+
+    fun jsonModeRefused() {
+        // No JSON mode on this server (OpenRouter's Novita for Ling 3.1 Flash): 400 with or without
+        // the kwargs. Asked again without JSON mode.
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "m"))
+        val fake = Fake({ _, b -> if ("response_format" in b) Transport.Response(400, "{}") else reply("好") })
+        val ling = client(fake, s, key = null)
+        equal("好", ling.chat("x", "Notes.", Priority.Translate, json = true), "answered without JSON mode")
+        val last = fake.sent.last().second
+        check("response_format" !in last && "chat_template_kwargs" in last, "thinking stays off")
+        ling.chat("y", "Translate.", Priority.Translate)
+        check("chat_template_kwargs" in fake.sent.last().second, "and is not dropped for later requests")
+    }
+
+    fun checkWithoutJSONMode() {
+        val s = AppSettings(aiProvider = "custom", aiCustomBase = "http://192.168.1.20:8000/v1", aiModels = mutableMapOf("custom" to "m"),
+                            aiHearModels = mutableMapOf("custom" to "m"))
+        val fake = Fake({ url, b -> if (url.endsWith("models")) Transport.Response(404, "") else if ("response_format" in b) Transport.Response(400, "{}")
+                          else if ("JSON object" in b) reply("```json\n{\"ok\": true}\n```") else reply("周五发布。") })
+        val ling = client(fake, s, key = null)
+        ling.check()
+        check(ling.aiCheck.failure == null, "passes: ${ling.aiCheck.summary}")
+        // One that can't answer JSON at all still fails.
+        val plain = Fake({ url, b -> if (url.endsWith("models")) Transport.Response(404, "") else if ("response_format" in b) Transport.Response(400, "{}") else reply("ok") })
+        val other = client(plain, s, key = null)
+        other.check()
+        equal(AICheck.Reason.NoJSON, other.aiCheck.failure?.reason, "no JSON either way")
+        equal(400, other.aiCheck.failure?.code, "the refusal's code")
+    }
+
+    fun answersJSON() {
+        check(LingClient.answersJSON("{\"ok\": true}"), "bare")
+        check(LingClient.answersJSON("```json\n{\"ok\": true}\n```"), "fenced")
+        check(!LingClient.answersJSON("ok") && !LingClient.answersJSON("} {") && !LingClient.answersJSON(null), "none")
     }
 
     fun customCheckTimes() {

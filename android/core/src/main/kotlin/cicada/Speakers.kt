@@ -158,7 +158,9 @@ class SpeakerNamer(private val ling: LingClient, private val store: SessionStore
         /// said nor spoke next to is refuted; a name Ling gives two voices goes to the one with more lines.
         fun read(reply: String, all: List<TranscriptLine>): Pair<MutableMap<Int, VoiceGuess>, MutableMap<Int, String>> {
             val found = LinkedHashMap<Int, VoiceGuess>(); val refuted = LinkedHashMap<Int, String>()
-            val list = try { Json.parse(reply).obj()?.get("speakers").arr() } catch (_: Exception) { null } ?: return found to refuted
+            // Without JSON mode (a host that refuses it) the object may come in a fence or a sentence.
+            val a = reply.indexOf('{'); val z = reply.lastIndexOf('}')
+            val list = (if (a in 0 until z) Json.parseObject(reply.substring(a, z + 1)) else null)?.get("speakers").arr() ?: return found to refuted
             val voiceOf = SpeakerLabels.voiceNumbers(all).entries.associate { (v, n) -> n to v }
             val lines = all.takeLast(400)
             fun count(v: Int) = all.count { it.voice == v }
