@@ -2695,4 +2695,342 @@ static class Tests
         foreach (var madeUp in new[] { "00:00", "00:00.", "1:02:03" }) Check(Translator.IsNoise(madeUp, 1.2), madeUp);
         foreach (var said in new[] { "Hello.", "3 点", "15%", "好的" }) Check(!Translator.IsNoise(said, 1.2), said);
     }
+
+    // MARK: 改正听错的词 (the Mac's CorrectionTests, VocabularyTests and LiveFixesTests, case for case;
+    // cases from a 21-minute meeting recording, a DeFi team's weekly)
+
+    static Correction.Verdict Verdict(string from, string to, double c, (string, string)[]? known = null, (string, string)[]? rejected = null) =>
+        Correction.Decide(new Correction.Edit(from, to, c), (a, b) => (known ?? []).Contains((a, b)), (a, b) => (rejected ?? []).Contains((a, b)));
+
+    public static void FixSoundAlikeChineseIsApplied()
+    {
+        Equal(Correction.Verdict.Apply, Verdict("解除质压", "解除质押", 0.9), "质压");
+        Check(Verdict("跳便是", "跳变", 0.9) != Correction.Verdict.Apply, "a word dropped: not a sound fix");
+        Equal(Correction.Verdict.Apply, Verdict("两个代笔", "两个代币", 0.9), "代笔");
+        Equal(Correction.Verdict.Apply, Verdict("管理房", "管理方", 0.9), "管理房");
+        Equal(Correction.Verdict.Apply, Verdict("追压", "质押", 0.85), "追压");
+        // Only the changed part is compared: 花/概 share nothing, though the phrase around them does.
+        Equal(Correction.Verdict.Drop, Verdict("花了大花", "花了大概", 0.85), "花/概");
+        Equal(Correction.Verdict.Apply, Verdict("FFT制押", "FFT质押", 0.9), "FFT制押");
+    }
+
+    public static void FixConfidentButUnlikeSoundIsDropped()
+    {
+        Equal(Correction.Verdict.Drop, Verdict("快销", "区块", 0.85), "快销");
+        Equal(Correction.Verdict.Drop, Verdict("苍蝇", "方向", 0.85), "苍蝇");
+        Equal(Correction.Verdict.Drop, Verdict("机录", "机会", 0.8), "机录");
+    }
+
+    public static void FixLowConfidenceIsDropped() => Equal(Correction.Verdict.Drop, Verdict("质压", "质押", 0.5), "low");
+
+    public static void FixSpellingNeedsHighConfidence()
+    {
+        Equal(Correction.Verdict.Apply, Verdict("cransfer", "transfer", 0.85), "near spelling");
+        Equal(Correction.Verdict.Drop, Verdict("cransfer", "transfer", 0.7), "not sure enough");
+        Equal(Correction.Verdict.Drop, Verdict("bos", "BOS", 0.9), "case only");
+    }
+
+    public static void FixNewNamesAreAsked()
+    {
+        Equal(Correction.Verdict.Ask, Verdict("莫拉", "Morpho", 0.85), "莫拉");
+        Equal(Correction.Verdict.Ask, Verdict("开布特", "Curve", 0.8), "开布特");
+        Equal(Correction.Verdict.Ask, Verdict("Ero", "Euler", 0.85), "Ero");
+        Equal(Correction.Verdict.Drop, Verdict("莫纳", "Morpho", 0.7), "莫纳");
+    }
+
+    public static void FixConfirmedHeardFormIsApplied()
+    {
+        Equal(Correction.Verdict.Apply, Verdict("莫拉", "Morpho", 0.5, known: [("莫拉", "Morpho")]), "known");
+        Equal(Correction.Verdict.Apply, Verdict("解释这个莫拉的", "解释这个Morpho的", 0.5, known: [("莫拉", "Morpho")]), "known core");
+    }
+
+    public static void FixRejectedIsDropped()
+    {
+        Equal(Correction.Verdict.Drop, Verdict("质压", "质押", 0.95, rejected: [("质压", "质押")]), "rejected");
+        Equal(Correction.Verdict.Drop, Verdict("莫拉", "Morpho", 0.95, known: [("莫拉", "Morpho")], rejected: [("莫拉", "Morpho")]), "rejected beats known");
+    }
+
+    public static void FixCoreDropsSharedEnds()
+    {
+        Equal(("质压", "质押"), Correction.Core("解除质压", "解除质押"), "shared ends");
+        Equal(("Un450P三", "Uniswap V3"), Correction.Core("Un450P三", "Uniswap V3"), "a Latin word stays whole");
+        Equal(("莫拉", "Morpho"), Correction.Core("解释这个莫拉的", "解释这个Morpho的"), "name");
+        Equal(("cransfer", "transfer"), Correction.Core("找了cransfer记录", "找了transfer记录"), "spelling");
+        // A Chinese change next to a Latin word leaves the word out.
+        Equal(("制押", "质押"), Correction.Core("FFT制押", "FFT质押"), "beside a Latin word");
+    }
+
+    public static void FixPinyinFromTheTable()
+    {
+        Equal("zhi|ya", string.Join("|", Correction.Pinyin("质押")), "质押");
+        Check(Correction.SoundsAlike("质压", "质押") && !Correction.SoundsAlike("苍蝇", "方向"), "sound-alike");
+        Check(Correction.Han("质押") && !Correction.Han("FFT") && !Correction.Han("质，"), "han");
+    }
+
+    public static void FixApplyReplacesAndMarks()
+    {
+        List<LineFix> fixes = [new("莫拉", "Morpho"), new("质压", "质押"), new("开布特", "Curve", ask: true), new("ropax", "RoPax", off: true)];
+        var (text, marks) = Correction.Apply(fixes, "解释这个莫拉的，质压和开布特，ropax");
+        Equal("解释这个Morpho的，质押和开布特，ropax", text, "applied");
+        Equal("Morpho|质押", string.Join("|", marks.Select(m => text.Substring(m.Start, m.Length))), "marks");
+        var (t2, m2) = Correction.Apply([new("质压", "质押"), new("莫拉", "Morpho")], "莫拉说质压");
+        Equal("Morpho说质押", t2, "later fix shifts");
+        Equal("Morpho|质押", string.Join("|", m2.Select(m => t2.Substring(m.Start, m.Length))), "earlier marks kept");
+        // The words went away (the line was heard again differently): nothing breaks.
+        Equal("解释这个摩托的", Correction.Apply([new("莫拉", "Morpho")], "解释这个摩托的").Text, "skipped");
+    }
+
+    public static void FixParseReply()
+    {
+        const string reply = """
+        {"translation": "I explained Morpho.", "fixes": [{"from": "莫拉", "to": "Morpho", "confidence": 0.85},
+         {"from": "不在原文", "to": "x", "confidence": 0.9}]}
+        """;
+        var p = Correction.Parse(reply, "解释这个莫拉的。");
+        Equal("I explained Morpho.", p?.Translation, "translation");
+        Equal(new Correction.Edit("莫拉", "Morpho", 0.85), p?.Edits.Single(), "only the words in the subtitle");
+        Check(Correction.Parse("I explained Mora.", "x") is null, "not JSON");
+        Equal("Hi", Correction.Parse("```json\n{\"translation\": \"Hi\"}\n```", "x")?.Translation, "fenced");
+    }
+
+    public static void FixMergeKeepsRefusals()
+    {
+        List<LineFix> old = [new("莫拉", "Morpho", off: true), new("质压", "质押")];
+        List<LineFix> fresh = [new("莫拉", "Morpho"), new("寻检", "巡检")];
+        Check(Correction.Merge(old, fresh).SequenceEqual([new LineFix("莫拉", "Morpho", off: true), new LineFix("寻检", "巡检")]), "refusal kept, guess replaced");
+        List<LineFix> mine = [new("跑好的", "跑跑的"), new("开布特", "Curve", user: true)];
+        Check(Correction.Merge(mine, []).SequenceEqual([new LineFix("开布特", "Curve", user: true)]), "the recheck takes back a guess, not the user's yes");
+        Check(Correction.Merge(mine, [new("开布特", "Cobalt")]).SequenceEqual([new LineFix("开布特", "Curve", user: true)]), "nor overrides the user's word");
+    }
+
+    public static void FixUserEditOnTopOfAFix()
+    {
+        List<LineFix> fixes = [new("莫纳", "Morpho")];
+        const string src = "扩展到这个莫纳的 Link";
+        var shown = Correction.Apply(fixes, src).Text;
+        var e = Correction.UserEdit(shown, "扩展到这个Monad的 Link", src, fixes);
+        Equal(new LineFix("Morpho", "Monad", user: true), e?.Fix, "edit of a fix");
+        Equal("莫纳", e?.Heard, "heard as");
+        Equal("扩展到这个Monad的 Link", Correction.Apply([.. fixes, e!.Value.Fix], src).Text, "applied last");
+        Equal("木娜", Correction.UserEdit("我木娜找了一个", "我在 Monad 找了一个", "我木娜找了一个", [])?.Heard, "a plain heard word");
+        Check(Correction.UserEdit("a", " a ", "a", []) is null, "unchanged");
+    }
+
+    public static void NumberedIntegerPlaceholders()
+    {
+        var files = new Dictionary<string, string> { ["en.lproj/Localizable.strings"] = "\"整场听成 %@ 的 %lld 处都改\" = \"All %2$lld places heard as %1$@ in this meeting\";" };
+        try
+        {
+            Strings.Load(p => files.GetValueOrDefault(p), "en");
+            Equal("All 2 places heard as 木娜 in this meeting", Strings.LF("整场听成 %@ 的 %lld 处都改", "木娜", 2), "positional");
+        }
+        finally { Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), "zh-Hans"); }
+    }
+
+    public static void VocabImportLinesWithHeardForms()
+    {
+        var v = new Vocabulary(null);
+        var r = v.Import("Uniswap V3\nMorpho = 莫拉、莫法\n\n" + new string('长', 41) + "\n巡检=寻检,巡练");
+        Equal("added=3 updated=0 skipped=[4]", r.ToString(), "result");
+        Check(v.Knows("莫法", "morpho"), "case-free word");
+        Equal("寻检|巡练", string.Join("|", v.Terms.First(t => t.Word == "巡检").Heard), "heard forms");
+    }
+
+    public static void VocabSameWordWhateverWidthOrCase()
+    {
+        var v = new Vocabulary(null);
+        v.Import("Aave");
+        var r = v.Import("ＡＡＶＥ = 阿韦");
+        Check(r.Updated == 1 && r.Added == 0, "updated");
+        Equal(1, v.Terms.Count, "one word");
+        Check(v.Knows("阿韦", "Aave"), "known");
+    }
+
+    public static void VocabConfirmAndForget()
+    {
+        var v = new Vocabulary(null);
+        v.Confirm("开布特", "Curve");
+        Check(v.Terms is [{ Word: "Curve", Heard: ["开布特"], Source: "live" }], "confirmed");
+        v.Forget("开布特", "Curve");
+        Check(!v.Knows("开布特", "Curve"), "forgotten");
+    }
+
+    public static void VocabPromptPutsRecentFirst()
+    {
+        var v = new Vocabulary(null);
+        v.Import("A\nB = b");
+        v.Use("B", DateTimeOffset.FromUnixTimeSeconds(100));
+        Equal("B (heard as b)|A", string.Join("|", v.PromptLines()), "recent first");
+    }
+
+    public static void VocabSavesAndLoadsTheMacsFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"vocab-{Guid.NewGuid()}.json");
+        try
+        {
+            var v = new Vocabulary(path);
+            v.Import("Morpho = 莫拉");
+            v.Use("Morpho", DateTimeOffset.Parse("2026-11-07T06:30:00Z"));
+            Check(new Vocabulary(path).Knows("莫拉", "Morpho"), "loaded");
+            var keys = JsonNode.Parse(File.ReadAllText(path))![0]!.AsObject().Select(p => p.Key);
+            Equal("fixes,heard,source,used,word", string.Join(",", keys), "the Mac's keys, sorted");
+            Check(File.ReadAllText(path).Contains("\"used\": \"2026-11-07T06:30:00Z\""), "ISO-8601 dates");
+            const string mac = """[ { "fixes" : 2, "heard" : [ "开布特" ], "source" : "live", "used" : "2026-11-07T06:30:00Z", "word" : "Curve" } ]""";
+            File.WriteAllText(path, mac);
+            var m = new Vocabulary(path);
+            Check(m.Knows("开布特", "Curve") && m.Terms[0].Fixes == 2, "reads the Mac's file");
+        }
+        finally { File.Delete(path); }
+    }
+
+    public static void VocabRenameKeepsHeardFormsAndMerges()
+    {
+        var v = new Vocabulary(null);
+        v.Import("Morfo = 莫拉\nMorpho = 莫法");
+        v.Rename("Morfo", "Morpho");
+        Equal(1, v.Terms.Count, "merged");
+        Check(v.Knows("莫拉", "Morpho") && v.Knows("莫法", "Morpho"), "both heard forms");
+    }
+
+    public static void VocabOwnersAndPreview()
+    {
+        var v = new Vocabulary(null);
+        v.Import("Morpho = 莫拉");
+        Equal("Morpho", string.Join(",", v.Owners("莫拉", "Mora")), "owner");
+        Equal(0, v.Owners("莫拉", "Morpho").Count, "not its own");
+        Equal("added=1 updated=1 skipped=[3]", v.Preview("Morpho = 莫法\nPendle\n" + new string('长', 41)).ToString(), "preview");
+        Equal(1, v.Terms.Count, "preview changes nothing");
+    }
+
+    static (LiveFixes fx, SessionStore store, string id) FixSetup(params string[] lines)
+    {
+        var store = new SessionStore();
+        var id = store.Begin(DateTimeOffset.Now.AddDays(-Random.Shared.Next(1, 100000))).Id;
+        for (int i = 0; i < lines.Length; i++)
+            store.Append(id, new TranscriptLine { Id = $"l{i}", T = i, Src = lines[i], SrcLang = "zh-CN", DstLang = "en" });
+        return (new LiveFixes(store, new Vocabulary(null), new AppSettings { FixMisheard = true, AskNames = true }), store, id);
+    }
+
+    static TranscriptLine FixLine(SessionStore store, string id, string l) => store.Get(id)!.Lines.First(x => x.Id == l);
+
+    public static void FixesRecheckTakesBackAGuessButKeepsTheUsersYes()
+    {
+        var (fx, store, id) = FixSetup("最近那个开布特提了，这个是跑好的测试");
+        fx.Received(id, "l0", [new("开布特", "Curve", 0.9), new("跑好的", "跑跑的", 0.9)]);
+        Check(FixLine(store, id, "l0").Shown.Contains("跑跑的"), "sound-alike applied");
+        fx.Answer(fx.Pending(id)[0].Fix, true, id);
+        Equal("最近那个Curve提了，这个是跑跑的测试", FixLine(store, id, "l0").Shown, "yes");
+        // The second pass, with the lines after it in view, proposes nothing.
+        fx.Received(id, "l0", []);
+        Equal("最近那个Curve提了，这个是跑好的测试", FixLine(store, id, "l0").Shown, "guess taken back, yes kept");
+    }
+
+    public static void FixesConfirmedHeardFormsApplyWithoutTheService()
+    {
+        var (fx, store, id) = FixSetup("扩展到这个莫拉的链", "单个的拉不改");
+        fx.Vocabulary.Confirm("莫拉", "Morpho");
+        fx.ApplyKnown(id, "l0");
+        fx.ApplyKnown(id, "l1");
+        Equal("扩展到这个Morpho的链", FixLine(store, id, "l0").Shown, "known");
+        Equal(null, FixLine(store, id, "l1").Fixes, "one character never");
+    }
+
+    public static void FixesEditEverywhereTeachesTheListAndUndoPutsItBack()
+    {
+        var (fx, store, id) = FixSetup("我木娜找了一个", "木娜那边也有", "别的");
+        Equal(2, fx.SameHeard("l0", id, "我Monad找了一个")?.Count, "same heard");
+        Equal(2, fx.Edit("l0", id, "我Monad找了一个", everywhere: true, remember: true), "changed");
+        Equal("Monad那边也有", FixLine(store, id, "l1").Shown, "everywhere");
+        Check(fx.Vocabulary.Knows("木娜", "Monad"), "taught");
+        Check(fx.Toast?.Text.Contains("Monad") == true, "toast");
+        // A later pass can't override what the user wrote.
+        fx.Received(id, "l1", [new("木娜", "Mona", 0.95)]);
+        Equal("Monad那边也有", FixLine(store, id, "l1").Shown, "user wins");
+        fx.Undo();
+        Equal("我木娜找了一个", FixLine(store, id, "l0").Shown, "undone");
+        Check(!fx.Vocabulary.Knows("木娜", "Monad"), "list undone");
+    }
+
+    public static void FixesOneOffEditDoesNotTeachTheList()
+    {
+        var (fx, store, id) = FixSetup("我木娜找了一个", "木娜那边也有");
+        fx.Edit("l0", id, "我Monad找了一个", everywhere: false, remember: true);
+        Equal("木娜那边也有", FixLine(store, id, "l1").Shown, "other line untouched");
+        Equal(0, fx.Vocabulary.Terms.Count, "nothing taught");
+    }
+
+    public static void FixesLaterTakesItOffTheCardButKeepsItWaiting()
+    {
+        var (fx, _, id) = FixSetup("最近那个开布特提了");
+        fx.Received(id, "l0", [new("开布特", "Curve", 0.9)]);
+        var a = fx.Asking(id)!.Value;
+        fx.Later(a.Fix, id);
+        Check(fx.Asking(id) is null, "off the card");
+        Equal(1, fx.Pending(id).Count, "still waiting");
+        fx.Undo();
+        Check(fx.Asking(id) is not null, "back on the card");
+    }
+
+    public static void FixesRevertStaysRevertedThroughTheRecheck()
+    {
+        var (fx, store, id) = FixSetup("但质压这种");
+        fx.Received(id, "l0", [new("质压", "质押", 0.9)]);
+        fx.Revert(FixLine(store, id, "l0").Fixes![0], "l0", id);
+        fx.Received(id, "l0", [new("质压", "质押", 0.9)]);
+        Equal("但质压这种", FixLine(store, id, "l0").Shown, "stays reverted");
+    }
+
+    public static void FixesOffLeavesLinesAsHeard()
+    {
+        var (fx, store, id) = FixSetup("但质压这种");
+        var off = new LiveFixes(store, fx.Vocabulary, new AppSettings { FixMisheard = false });
+        Check(off.Context(id, "l0") is null, "no context: the request is the plain translation");
+        off.Received(id, "l0", [new("质压", "质押", 0.9)]);
+        Equal(null, FixLine(store, id, "l0").Fixes, "nothing fixed");
+    }
+
+    /// A finished line goes to the AI service again with fixes asked for, in one request with the
+    /// Mac's prompt and no JSON mode; its translation (of the sentence as fixed) replaces Ming's.
+    public static async Task FixesRideOnTheSentencesTranslation()
+    {
+        var fake = new Fake(body =>
+        {
+            if (body.Contains("Ming-3.0-audio-flash")) return Reply("LANG: zh-CN\nORIGINAL: 我们讨论解除质压的事。\nTRANSLATION: We discussed unpledging.");
+            if (body.Contains("point out words the speech recognizer got wrong"))
+                return Reply("{\"translation\": \"We discussed releasing the staking.\", \"fixes\": [{\"from\": \"质压\", \"to\": \"质押\", \"confidence\": 0.9}]}");
+            return Reply("{}");
+        });
+        var old = LingClient.Spacing;
+        LingClient.Spacing = 0.05;
+        try
+        {
+            var ling = Client(fake);
+            var store = new SessionStore();
+            var settings = new AppSettings { Target = "en" };
+            var engine = new ListenEngine(ling, new Translator(ling), store, new NotesEngine(ling, store), settings)
+            {
+                Fixes = new LiveFixes(store, new Vocabulary(null), settings),
+            };
+            var path = Path.Combine(Path.GetTempPath(), $"cicada-fix-{Environment.ProcessId}.wav");
+            File.WriteAllBytes(path, Wav.Bytes([.. Tone(1.2), .. Silence(1)]));
+            var src = new FileAudioSource(path, speed: 0);
+            var ended = new TaskCompletionSource();
+            src.Ended += _ => ended.TrySetResult();
+            engine.Start(src);
+            await ended.Task;
+            for (int i = 0; i < 50 && store.Get(engine.SessionId!)!.Lines.FirstOrDefault()?.Fixes is null; i++) await Task.Delay(50);
+            await engine.Stop();
+            var l = store.Get(engine.SessionId!)!.Lines[0];
+            Equal("我们讨论解除质压的事。", l.Src, "heard");
+            Equal("我们讨论解除质押的事。", l.Shown, "fixed");
+            Equal("We discussed releasing the staking.", l.Dst, "the fixed sentence's translation");
+            string fixing;
+            lock (fake.Calls) fixing = fake.Calls.Select(c => c.body).First(b => b.Contains("point out words"));
+            Check(!fixing.Contains("response_format"), "no JSON mode");
+            Check(JsonNode.Parse(fixing)!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })
+                .Contains("Subtitle: 我们讨论解除质压的事。"), "the heard sentence");
+            File.Delete(path);
+        }
+        finally { LingClient.Spacing = old; }
+    }
 }

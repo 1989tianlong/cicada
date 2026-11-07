@@ -11,6 +11,17 @@ public interface IAudioSource
     void Stop();
 }
 
+/// Debug (`silentlisten`): a meeting with no audio at all, its lines given by `heard`.
+public sealed class SilentSource : IAudioSource
+{
+#pragma warning disable CS0067 // never raised: there is nothing to hear
+    public event Action<short[]>? Samples;
+    public event Action<string?>? Ended;
+#pragma warning restore CS0067
+    public void Start() { }
+    public void Stop() { }
+}
+
 /// Plays a WAV into listening, in real time or as fast as it can (`speed` 0).
 public sealed class FileAudioSource(string path, double speed = 1) : IAudioSource
 {

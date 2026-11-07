@@ -59,6 +59,10 @@ sealed class Controller
     public readonly SpeakEngine Speak;
     public readonly WindowsVoice WindowsVoice = new();
     public readonly UpdateChecker Updates;
+    public readonly Vocabulary Vocabulary;
+    public readonly LiveFixes Fixes;
+    /// Dev (`silentlisten`): the language `heard` lines are in.
+    public string? SilentLang;
     /// Started with Windows (--background): stay in the tray. Opened by hand, the main window shows.
     public bool Background { get; init; }
     Onboarding? onboarding;
@@ -128,7 +132,13 @@ sealed class Controller
         var loudness = new LoudnessLog();
         Listen.Loudness = loudness;
         Speak.Echo = loudness;
-        RoomListen = new ListenEngine(Ling, Translator, Store, Notes, Settings, roomSide: true);
+        // 改正听错的词: the word list beside the records, and the fixes both sides' lines take.
+        Vocabulary = new Vocabulary(Vocabulary.DefaultPath);
+        Fixes = new LiveFixes(Store, Vocabulary, Settings);
+        Fixes.Changed += Changed;
+        Vocabulary.Changed += Changed;
+        Listen.Fixes = Fixes;
+        RoomListen = new ListenEngine(Ling, Translator, Store, Notes, Settings, roomSide: true) { Fixes = Fixes };
         RoomListen.Changed += Changed;
         Listen.Changed += Changed;
         Notes.Changed += Changed;
@@ -1193,6 +1203,9 @@ sealed class Controller
 ///   aacencode <wav>|<out.aac> | aacrewrap <in.aac>|<out.m4a>[|<seconds>]
 ///   ai-check | ai-check-sim <reason|lowBalance|off> (unreachable, invalidKey, noCredit, noModel, deaf, busy…)
 ///   ai-custom-only on|off (语音和文字只发给你的服务; acts with the custom service only)
+///   改正听错的词: silentlisten [lang] | heard <text> (a finished sentence, no audio) | fixes on|off | asknames on|off
+///   vocabadd <word = heard、…|…> | vocabremove <word> | vocabstate | fixstate [@id] | fixanswer yes|no [@id]
+///   fixlater | fixrevert <line> [@id] | fixedit <line>=<text>[|one][|keep0] [@id] | fixundo
 static class DebugServer
 {
     static string Pipe => Paths.Dev ? "cicada-dev" : "cicada";
@@ -1323,10 +1336,68 @@ static class DebugServer
             case "updatefeed": app.Updates.Feed = arg; _ = app.CheckForUpdates(); break;
             case "updateinstall": app.InstallUpdate(); break;
             case "checkupdate": _ = app.CheckForUpdates(); break;
+            // 改正听错的词 (AppModel.debugCommand's fix commands). A command acts on the meeting being
+            // listened to, else the newest; "… @<id>" names another.
+            case "silentlisten": app.SilentLang = arg.Length > 0 ? arg : "zh-CN"; app.StartListening(new SilentSource()); break;
+            case "heard": app.Listen.DebugHeard(arg, app.SilentLang ?? "zh-CN"); break;
+            case "target": app.SetTarget(arg.Length > 0 ? arg : "system"); break;  // 翻译成: a code, or system
+            case "fixes": app.Settings.FixMisheard = arg != "off"; app.Settings.Save(); app.SettingsChanged(); break;
+            case "asknames": app.Settings.AskNames = arg != "off"; app.Settings.Save(); app.SettingsChanged(); break;
+            case "vocabadd": return new JsonObject { ["result"] = app.Vocabulary.Import(arg.Replace('|', '\n')).ToString() };
+            case "vocabremove": app.Vocabulary.Remove(arg); break;
+            case "vocabstate":
+                return new JsonObject { ["terms"] = new JsonArray(app.Vocabulary.Terms.Select(t => (JsonNode)$"{t.Word} = {string.Join("、", t.Heard)} · {t.Source} · {t.Fixes}").ToArray()) };
+            case "fixstate":
+                {
+                    var (id, _) = FixTarget(app, arg);
+                    var lines = app.Store.Get(id)?.Lines.ToList() ?? [];
+                    var all = lines.SelectMany(l => l.Fixes ?? []).ToList();
+                    return new JsonObject
+                    {
+                        ["session"] = id, ["on"] = app.Settings.FixMisheard,
+                        ["applied"] = all.Count(f => f.Applied), ["asked"] = all.Count(f => f.Ask == true), ["off"] = all.Count(f => f.Off == true),
+                        ["asking"] = app.Fixes.Asking(id) is { } ask ? $"{ask.Fix.From}→{ask.Fix.To}" : null,
+                        ["toast"] = app.Fixes.Toast?.Text, ["canUndo"] = app.Fixes.CanUndo,
+                        ["lines"] = new JsonArray(lines.Where(l => l.Fixes is not null).Select(l => (JsonNode)
+                            $"{l.Id} [{string.Join(", ", l.Fixes!.Select(f => $"{f.From}→{f.To}{(f.Ask == true ? "?" : f.Off == true ? "✗" : f.User == true ? "✓" : "")}"))}] {l.Shown} | {l.Dst}").ToArray()),
+                    };
+                }
+            case "fixanswer":   // fixanswer yes|no [@id]
+                {
+                    var (id, rest) = FixTarget(app, arg);
+                    if ((app.Fixes.Asking(id)?.Fix ?? app.Fixes.Pending(id).Select(p => p.Fix).FirstOrDefault()) is { } f) app.Fixes.Answer(f, rest == "yes", id);
+                    break;
+                }
+            case "fixlater": { var (id, _) = FixTarget(app, arg); if (app.Fixes.Asking(id) is { } ask) app.Fixes.Later(ask.Fix, id); break; }
+            case "fixrevert":   // fixrevert <line id> [@id]: the line's first applied fix
+                {
+                    var (id, lineId) = FixTarget(app, arg);
+                    if (app.Store.Get(id)?.Lines.FirstOrDefault(l => l.Id == lineId)?.Fixes?.FirstOrDefault(f => f.Applied) is { } f) app.Fixes.Revert(f, lineId, id);
+                    break;
+                }
+            case "fixedit":     // fixedit <line id>=<new text>[|one][|keep0] [@id]
+                {
+                    var (id, rest) = FixTarget(app, arg);
+                    var p = rest.Split('=', 2);
+                    if (p.Length < 2) break;
+                    var opts = p[1].Split('|');
+                    return new JsonObject { ["changed"] = app.Fixes.Edit(p[0], id, opts[0], everywhere: !opts.Contains("one"), remember: !opts.Contains("keep0")) };
+                }
+            case "fixundo": app.Fixes.Undo(); break;
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };
         }
         return app.State();
+    }
+
+    /// The meeting a fix command acts on ("… @<id>", else the one being listened to, else the
+    /// newest), and the rest of its argument.
+    static (string Id, string Arg) FixTarget(Controller app, string arg)
+    {
+        var at = arg.LastIndexOf(" @", StringComparison.Ordinal);
+        if (arg.StartsWith('@')) return (arg[1..].Trim(), "");
+        if (at >= 0) return (arg[(at + 2)..].Trim(), arg[..at].Trim());
+        return (app.Listen.SessionId ?? app.Store.All().FirstOrDefault()?.Id ?? "", arg);
     }
 
     /// Sends one command to the running app (a second launch uses it to bring records forward).

@@ -90,6 +90,13 @@ public static class Strings
                 b.Append(n >= 0 && n < args.Length ? args[n] : "");
                 i += 3;
             }
+            // A numbered integer: "All %2$lld places heard as %1$@".
+            else if (text[i] == '%' && i + 5 < text.Length && char.IsDigit(text[i + 1]) && text[i + 2] == '$' && text.AsSpan(i + 3, 3) is "lld")
+            {
+                int n = text[i + 1] - '1';
+                b.Append(n >= 0 && n < args.Length ? args[n] : "");
+                i += 5;
+            }
             // A percent sign, written %% in a format ("正在下载 %@：%lld%%").
             else if (text[i] == '%' && i + 1 < text.Length && text[i + 1] == '%') { b.Append('%'); i++; }
             else b.Append(text[i]);

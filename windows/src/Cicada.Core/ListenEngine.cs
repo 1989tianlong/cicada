@@ -121,6 +121,23 @@ public sealed class ListenEngine
     CancellationTokenSource? flush;
     readonly Dictionary<int, double> emitted = [];
 
+    /// 改正听错的词 (set by the app): null leaves lines as heard.
+    public LiveFixes? Fixes { get; set; }
+
+    /// Debug (`heard <text>` after `silentlisten`): a finished sentence as if Ming heard it in
+    /// `lang` with no translation, so the record, its translation and fixes and the windows all
+    /// follow without any audio. Each comes as its own line (a pause before it).
+    public void DebugHeard(string text, string lang)
+    {
+        if (!Listening || SessionId is null) return;
+        var start = Math.Max(lastEnd + 2, System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalSeconds);
+        Segment seg;
+        lock (gate) seg = new Segment(++debugSegments, start, new short[Segmenter.Rate / 2]);
+        Record(seg, new Heard(lang, text, null));
+        Changed?.Invoke();
+    }
+    int debugSegments = 100_000;
+
     public ListenEngine(LingClient ling, Translator translator, SessionStore store, NotesEngine notes, AppSettings settings, bool roomSide)
         : this(ling, translator, store, notes, settings) { RoomSide = roomSide; }
 
@@ -145,6 +162,7 @@ public sealed class ListenEngine
             if (recorder is null) Log.Debug("listen: no recording, the encoder refused");
         }
         Begin(from, room, 0, since);
+        Fixes?.MeetingStarted();
         notes.Language = () => Languages.EnglishName(settings.NotesCode);
         notes.Begin(session.Id);
         Log.Debug($"listen: started {session.Id} target={Target}");
@@ -438,14 +456,34 @@ public sealed class ListenEngine
             lastEnd = seg.Start + seg.Seconds;
         }
         if (joined) store.Replace(id, line.Copy()); else store.Append(id, line.Copy());
+        // 改正听错的词: the word list's confirmed heard forms, without asking anyone.
+        Fixes?.ApplyKnown(id, line.Id);
 
-        // A joined sentence is translated again as a whole; a line Ming didn't translate gets text translation.
-        if ((joined || line.Dst is null) && line.SrcLang != target)
+        // A joined sentence is translated again as a whole; a line Ming didn't translate gets text
+        // translation. With 改正听错的词 every finished line is translated again by the AI service,
+        // which also points out misheard words in the same request (the Mac's viaLingFixing): Ming
+        // gives the translation with the audio, so there is no text request of its own to ride on.
+        // The new translation (of the sentence as fixed) replaces Ming's; a joined line's second
+        // pass may take back a fix it no longer proposes. Lines Ming already translated go at the
+        // notes' priority, so the subtitles' hearing requests keep going first.
+        var retranslate = (joined || line.Dst is null) && line.SrcLang != target;
+        var context = line.SrcLang != target && ling.Usable ? Fixes?.Context(id, line.Id) : null;
+        if (retranslate || context is not null)
         {
             var src = line.Src;
+            var lineId = line.Id;
             _ = Task.Run(async () =>
             {
-                var dst = await translator.Translate(src, line.SrcLang, target, Translator.Kind.Sentence);
+                string? dst = null;
+                if (context is not null && Fixes is { } fixes
+                    && await translator.TranslateFixing(src, line.SrcLang, target, context, retranslate ? Priority.Translate : Priority.Notes) is { } got)
+                {
+                    lock (gate) if (line.Src != src) return;
+                    dst = got.Translation;
+                    fixes.Received(id, lineId, got.Edits);
+                }
+                if (dst is null && !retranslate) return;
+                dst ??= await translator.Translate(src, line.SrcLang, target, Translator.Kind.Sentence, lingTried: context is not null);
                 TranscriptLine copy;
                 lock (gate)
                 {
