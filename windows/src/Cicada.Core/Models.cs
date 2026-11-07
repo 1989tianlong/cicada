@@ -10,6 +10,8 @@ public sealed class TranscriptLine
 {
     [JsonPropertyName("dst")] public string? Dst { get; set; }
     [JsonPropertyName("dstLang")] public string DstLang { get; set; } = "";
+    /// Words the AI service fixed (Correction); `src` stays what was heard. Absent when none.
+    [JsonPropertyName("fixes")] public List<LineFix>? Fixes { get; set; }
     /// "h<n>-<segment>" for heard lines, "m<n>" for the user's own.
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     /// "them" (system audio) or "me" (microphone).
@@ -23,7 +25,33 @@ public sealed class TranscriptLine
     /// Experimental voice id on the Mac; Windows doesn't tell voices apart yet.
     [JsonPropertyName("voice")] public int? Voice { get; set; }
 
+    /// What the line says once its fixes are in: shown, searched, exported and read by the notes.
+    [JsonIgnore] public string Shown => Fixes is { Count: > 0 } f ? Correction.Apply(f, Src).Text : Src;
+
+    /// Shallow: Fixes is shared, so it is only ever replaced with a new list, never changed in place.
     public TranscriptLine Copy() => (TranscriptLine)MemberwiseClone();
+}
+
+/// A word the AI service said speech recognition got wrong in a finished line ("莫拉" → "Morpho"),
+/// field for field the Mac's LineFix. The flags are written only when true, as Swift leaves out nil.
+public sealed record LineFix
+{
+    /// Waiting for the user (a name sound can't check): not applied until confirmed.
+    [JsonPropertyName("ask")] public bool? Ask { get; init; }
+    [JsonPropertyName("from")] public string From { get; init; } = "";
+    /// The user said no (改回 or 不对): kept so the same line isn't fixed that way again.
+    [JsonPropertyName("off")] public bool? Off { get; init; }
+    [JsonPropertyName("to")] public string To { get; init; } = "";
+    /// The user's own: said 对, or wrote it (改这句…). A later pass never drops or overrides it.
+    [JsonPropertyName("user")] public bool? User { get; init; }
+
+    public LineFix() { }
+    public LineFix(string from, string to, bool ask = false, bool off = false, bool user = false)
+    {
+        From = from; To = to; Ask = ask ? true : null; Off = off ? true : null; User = user ? true : null;
+    }
+
+    [JsonIgnore] public bool Applied => Ask != true && Off != true;
 }
 
 public sealed class VoiceGuess

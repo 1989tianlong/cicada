@@ -136,7 +136,7 @@ sealed class MainWindow : Window
         q.Length == 0
         || SessionStore.DisplayTitle(s).Contains(q, StringComparison.OrdinalIgnoreCase)
         || (s.Notes?.Summary.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
-        || s.Lines.Any(l => l.Src.Contains(q, StringComparison.OrdinalIgnoreCase) || (l.Dst?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+        || s.Lines.Any(l => l.Shown.Contains(q, StringComparison.OrdinalIgnoreCase) || (l.Dst?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
 
     void Fill()
     {

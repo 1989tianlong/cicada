@@ -95,9 +95,25 @@ public sealed class SessionStore
             int i = s.Lines.FindIndex(l => l.Id == line.Id);
             if (i < 0) return;
             grew = line.Src.Length > s.Lines[i].Src.Length; // a half sentence joined, not a retranslation
+            // The listening engine keeps its own copy of the line and knows nothing of its fixes
+            // (SetFixes): a retranslation or a join keeps them.
+            line.Fixes ??= s.Lines[i].Fixes;
             s.Lines[i] = line;
         });
         if (grew) Words?.Invoke(id);
+    }
+
+    /// A line's fixes (Correction): what the AI service proposed and the user decided.
+    public void SetFixes(string id, string lineId, IReadOnlyList<LineFix> fixes)
+    {
+        Mutate(id, s =>
+        {
+            int i = s.Lines.FindIndex(l => l.Id == lineId);
+            if (i < 0) return;
+            var line = s.Lines[i].Copy();
+            line.Fixes = fixes.Count == 0 ? null : [.. fixes];
+            s.Lines[i] = line;
+        });
     }
 
     public void SetNotes(string id, MeetingNotes notes) => Mutate(id, s => s.Notes = notes);
@@ -249,8 +265,8 @@ public sealed class SessionStore
         {
             // Your own lines (the talk key) say so: what the meeting heard was their translation (同传).
             var who = l.Speaker == "me" ? Strings.L("你 · 同传") : numbers.TryGetValue(l.Id, out var num) ? names.GetValueOrDefault(num) ?? Strings.LF("说话人 %lld", num) : null;
-            b.AppendLine($"**{Languages.Clock(l.T)}**{(who is null ? "" : $" {who}：")} {l.Src}  ");
-            if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src) b.AppendLine($"{l.Dst}");
+            b.AppendLine($"**{Languages.Clock(l.T)}**{(who is null ? "" : $" {who}：")} {l.Shown}  ");
+            if (!string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src && l.Dst != l.Shown) b.AppendLine($"{l.Dst}");
             b.AppendLine();
         }
         return b.ToString();

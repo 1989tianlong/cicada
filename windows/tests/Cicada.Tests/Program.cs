@@ -271,6 +271,68 @@ static class Tests
         Check(JsonNode.DeepEquals(JsonNode.Parse(mac), JsonNode.Parse(Json.Write(s))), "written back unchanged");
     }
 
+    /// 改正听错的词: a Mac record whose lines carry fixes reads and writes back byte for byte in
+    /// value, and the line shows (and exports) the fixed words while `src` stays what was heard.
+    public static void KeepsTheMacsFixes()
+    {
+        const string mac = """
+        {
+          "hasAudio" : false,
+          "id" : "20261107-013000",
+          "lines" : [
+            {
+              "dst" : "Recently Curve raised it; Morpho too.",
+              "dstLang" : "en",
+              "fixes" : [
+                { "ask" : true, "from" : "开布特", "to" : "Curve" },
+                { "from" : "莫拉", "to" : "Morpho" },
+                { "from" : "质压", "off" : true, "to" : "质押" },
+                { "from" : "Morpho", "to" : "Monad", "user" : true }
+              ],
+              "id" : "h1-1",
+              "speaker" : "them",
+              "src" : "最近那个开布特提了，莫拉也是，质压",
+              "srcLang" : "zh-CN",
+              "t" : 1.5
+            },
+            { "dstLang" : "en", "id" : "h2-2", "speaker" : "them", "src" : "好的", "srcLang" : "zh-CN", "t" : 4 }
+          ],
+          "startedAt" : "2026-11-07T06:30:00Z",
+          "title" : "会议 11月7日 01:30"
+        }
+        """;
+        var s = Json.Read<Session>(mac)!;
+        var l = s.Lines[0];
+        Equal(4, l.Fixes!.Count, "fixes read");
+        Equal(true, l.Fixes[0].Ask, "ask");
+        Equal(null, l.Fixes[1].Ask, "absent flags stay null");
+        Equal("最近那个开布特提了，Monad也是，质压", l.Shown, "applied fixes in, the user's last; waiting and refused ones out");
+        Equal("最近那个开布特提了，莫拉也是，质压", l.Src, "src is what was heard");
+        Equal(null, s.Lines[1].Fixes, "a line without fixes");
+        Check(JsonNode.DeepEquals(JsonNode.Parse(mac), JsonNode.Parse(Json.Write(s))), "written back unchanged");
+        var written = Json.Write(s);
+        var keys = JsonNode.Parse(written)!["lines"]![0]!.AsObject().Select(p => p.Key).ToList();
+        Check(keys.SequenceEqual(keys.Order(StringComparer.Ordinal)), "line keys sorted with fixes");
+        var fixKeys = JsonNode.Parse(written)!["lines"]![0]!["fixes"]![2]!.AsObject().Select(p => p.Key).ToList();
+        Equal("from,off,to", string.Join(",", fixKeys), "fix keys sorted, false flags left out");
+        Check(!JsonNode.Parse(written)!["lines"]![1]!.AsObject().ContainsKey("fixes"), "no fixes key without fixes");
+        Check(SessionStore.Markdown(s).Contains("Monad也是"), "the export uses the shown text");
+        Check(!SessionStore.Markdown(s).Contains("莫拉"), "not the heard one");
+    }
+
+    public static void ARetranslationKeepsTheLinesFixes()
+    {
+        var store = new SessionStore();
+        var id = store.Begin().Id;
+        store.Append(id, new TranscriptLine { Id = "h1-1", Src = "但质压这种", SrcLang = "zh-CN", DstLang = "en" });
+        store.SetFixes(id, "h1-1", [new LineFix("质压", "质押")]);
+        store.Replace(id, new TranscriptLine { Id = "h1-1", Src = "但质压这种", Dst = "but staking", SrcLang = "zh-CN", DstLang = "en" });
+        Equal("但质押这种", store.Get(id)!.Lines[0].Shown, "fixes kept through Replace");
+        store.SetFixes(id, "h1-1", []);
+        Equal(null, store.Get(id)!.Lines[0].Fixes, "none is absent");
+        store.Delete(id);
+    }
+
     public static void StoreSavesAndDropsEmptyMeetings()
     {
         var store = new SessionStore();

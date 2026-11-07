@@ -382,8 +382,8 @@ sealed class NotesWindow : Window
             var whoRow = Ui.Row(8, Ui.Text(who, 12, NightAccent, wrap: false));
             whoRow.Children.Add(Gap(Ui.Text(listen.Listening && listen.Pending > 0 ? L("正在说") : Languages.Clock(line.T), 12, Palette.NightText, wrap: false), 8));
             stack.Children.Add(whoRow);
-            if (line.Dst is not null && line.Dst != line.Src) stack.Children.Add(Gap(Ui.Text(line.Src, 13, NightBody), 6, top: true));
-            stack.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, 16, Brushes.White, FontWeights.Bold), 6, top: true));
+            if (line.Dst is not null && line.Dst != line.Src) stack.Children.Add(Gap(Ui.Text(line.Shown, 13, NightBody), 6, top: true));
+            stack.Children.Add(Gap(Ui.Text(line.Dst ?? line.Shown, 16, Brushes.White, FontWeights.Bold), 6, top: true));
         }
         return new Border { Background = Palette.Night, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 14, 16, 14), Child = stack, MinHeight = 96 };
     }
@@ -617,8 +617,8 @@ sealed class NotesWindow : Window
         if (who is not null) head.Children.Insert(0, l.Speaker == "me" ? MeTag(who, ink) : Ui.Text(who, 12, ink ?? Palette.Secondary, wrap: false));
         for (int i = 1; i < head.Children.Count; i++) ((FrameworkElement)head.Children[i]).Margin = new Thickness(i == 1 && place && who is not null ? 6 : 8, 0, 0, 0);
         text.Children.Add(head);
-        var translated = !string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src;
-        text.Children.Add(Gap(Ui.Text(l.Src, translated ? 13 : 15, translated ? Palette.Secondary : Palette.Ink), 3, top: true));
+        var translated = !string.IsNullOrEmpty(l.Dst) && l.Dst != l.Src && l.Dst != l.Shown;
+        text.Children.Add(Gap(Ui.Text(l.Shown, translated ? 13 : 15, translated ? Palette.Secondary : Palette.Ink), 3, top: true));
         if (translated) text.Children.Add(Gap(Ui.Text(l.Dst!, 15, Palette.Ink), 2, top: true));
         return text;
     }
@@ -714,9 +714,9 @@ sealed class NotesWindow : Window
             var who = line.Speaker == "me" ? L("你 · 同传") : number is { } k ? LF("说话人 %lld", k) : null;
             var top = new TextBlock { FontFamily = Palette.Font, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Palette.NightText };
             if (who is not null) top.Inlines.Add(new System.Windows.Documents.Run(who + "  ") { Foreground = NightAccent });
-            if (line.Dst is not null && line.Dst != line.Src) top.Inlines.Add(new System.Windows.Documents.Run(line.Src));
+            if (line.Dst is not null && line.Dst != line.Src) top.Inlines.Add(new System.Windows.Documents.Run(line.Shown));
             if (top.Inlines.Count > 0) text.Children.Add(top);
-            text.Children.Add(Gap(Ui.Text(line.Dst ?? line.Src, app.Settings.SubtitleSize, Brushes.White, FontWeights.Bold), 4, top: true));
+            text.Children.Add(Gap(Ui.Text(line.Dst ?? line.Shown, app.Settings.SubtitleSize, Brushes.White, FontWeights.Bold), 4, top: true));
         }
         return text;
     }

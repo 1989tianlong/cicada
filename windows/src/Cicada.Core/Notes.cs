@@ -370,7 +370,7 @@ public sealed class NotesEngine
             // As Notes.swift: a named voice as its name, else 说话人N once voices are told apart,
             // 未识别 for a voice not on show.
             var who = l.Speaker == "me" ? "你" : numbers.TryGetValue(l.Id, out var n) ? names?.GetValueOrDefault(n) ?? $"说话人{n}" : numbers.Count == 0 ? "对方" : "未识别";
-            return $"[L{i + 1} {Languages.Clock(l.T)} {who}] {l.Src}";
+            return $"[L{i + 1} {Languages.Clock(l.T)} {who}] {l.Shown}";
         }
         var current = notes.IsEmpty ? "{}" : CompactJson(notes, frozen);
         int context = Math.Max(0, from - 2);
