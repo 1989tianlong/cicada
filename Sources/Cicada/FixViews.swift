@@ -37,9 +37,12 @@ struct LineEditor: View {
                     }
                     .pickerStyle(.radioGroup).labelsHidden().font(.system(size: 12))
                 }
-                Toggle("记进词表，以后自动改", isOn: $keep)
-                    .toggleStyle(.checkbox).font(.system(size: 12))
-                    .disabled(same.count > 1 && !everywhere)
+                // Only a word for a word can teach the list: an added or dropped word can't.
+                if same.swap {
+                    Toggle("记进词表，以后自动改", isOn: $keep)
+                        .toggleStyle(.checkbox).font(.system(size: 12))
+                        .disabled(same.count > 1 && !everywhere)
+                }
             }
             HStack(spacing: 8) {
                 Text("回车 改成 · esc 取消").font(.system(size: 11)).foregroundStyle(Palette.tertiary)

@@ -135,4 +135,27 @@ import Testing
         #expect(back.shown == "b")
         #expect(back.src == "a")
     }
+
+    @Test func addedWordStaysOnItsLineAndNeverMatchesPunctuation() {
+        // "now" added before the full stop: the fix is the last word, unique in the line, not ".".
+        let e = Correction.userEdit(shown: "Great, let's lock that in.", edited: "Great, let's lock that in now.", src: "Great, let's lock that in.", fixes: [])
+        #expect(e?.fix.from == "in")
+        #expect(e?.fix.to == "in now")
+        #expect(e?.swap == false)
+        #expect(Correction.apply([e!.fix], to: "Great, let's lock that in.").text == "Great, let's lock that in now.")
+        // A word added at the start.
+        let s = Correction.userEdit(shown: "Great, let's lock that in.", edited: "OK Great, let's lock that in.", src: "Great, let's lock that in.", fixes: [])
+        #expect(s?.fix.from == "Great")
+        #expect(s?.fix.to == "OK Great")
+        #expect(s?.swap == false)
+        // A word that appears twice: grown until the span is unique.
+        let t = Correction.userEdit(shown: "in the room in the hall", edited: "in the room inside the hall", src: "in the room in the hall", fixes: [])
+        #expect(Correction.apply([t!.fix], to: "in the room in the hall").text == "in the room inside the hall")
+        // Chinese: an inserted word takes its neighbour.
+        let c = Correction.userEdit(shown: "好的我来看一下", edited: "好的OK我来看一下", src: "好的我来看一下", fixes: [])
+        #expect(c.map { Correction.apply([$0.fix], to: "好的我来看一下").text } == "好的OK我来看一下")
+        #expect(c?.swap == false)
+        // A real swap is still a swap.
+        #expect(Correction.userEdit(shown: "我木娜找了", edited: "我Monad找了", src: "我木娜找了", fixes: [])?.swap == true)
+    }
 }

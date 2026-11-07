@@ -207,11 +207,12 @@ final class LiveFixes: ObservableObject {
     // MARK: 改这句…
 
     /// How many lines of the meeting the same edit would change ("整场同样听成 木娜 的 2 处都改").
-    func sameHeard(lineID: String, in id: String, edited: String) -> (heard: String, count: Int)? {
+    /// An edit that only adds or drops words stays on its line (count 1, nothing to learn).
+    func sameHeard(lineID: String, in id: String, edited: String) -> (heard: String, count: Int, swap: Bool)? {
         guard let s = store.session(id), let l = s.lines.first(where: { $0.id == lineID }),
               let e = Correction.userEdit(shown: l.shown, edited: edited, src: l.src, fixes: l.fixes ?? []) else { return nil }
-        let n = s.lines.filter { $0.shown.contains(e.fix.from) }.count
-        return (e.heard, max(1, n))
+        let n = e.swap ? s.lines.filter { $0.shown.contains(e.fix.from) }.count : 1
+        return (e.heard, max(1, n), e.swap)
     }
 
     /// The user rewrote a line (改这句…): what changed becomes their own fix, on this line or on
@@ -220,6 +221,7 @@ final class LiveFixes: ObservableObject {
     func edit(lineID: String, in id: String, to edited: String, everywhere: Bool, remember keep: Bool) -> Int {
         guard let s = store.session(id), let l = s.lines.first(where: { $0.id == lineID }),
               let e = Correction.userEdit(shown: l.shown, edited: edited, src: l.src, fixes: l.fixes ?? []) else { return 0 }
+        let everywhere = everywhere && e.swap
         let targets = everywhere ? s.lines.filter { $0.shown.contains(e.fix.from) } : [l]
         remember(id, lines: targets.map(\.id))
         for t in targets {

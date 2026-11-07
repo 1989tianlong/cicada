@@ -186,19 +186,55 @@ enum Correction {
         return kept + fresh
     }
 
-    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others,
-    /// and the heard form it replaces (for the word list): the words in `src` when they are
-    /// there, else the heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad").
-    static func userEdit(shown: String, edited: String, src: String, fixes: [LineFix]) -> (fix: LineFix, heard: String)? {
+    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others: the
+    /// changed span grown to whole tokens (a Latin word, or one CJK character), and further, a token
+    /// at a time, until it holds a letter and is the only such span in the line. An added word
+    /// ("lock that in." → "lock that in now.") is then "in" → "in now" on this line, never "." on
+    /// every line. `swap` is whether words were replaced (not only added or dropped): only a swap
+    /// may go to the rest of the meeting and teach the word list. `heard` is the words in `src`
+    /// when they are there, else the heard words of the fix the user corrected again.
+    static func userEdit(shown: String, edited: String, src: String, fixes: [LineFix]) -> (fix: LineFix, heard: String, swap: Bool)? {
         let new = edited.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !new.isEmpty, new != shown else { return nil }
-        let c = core(shown, new)
-        guard !c.from.isEmpty, !c.to.isEmpty else { return nil }
-        var heard = c.from
-        if !src.contains(c.from), let earlier = fixes.first(where: { $0.applied && c.from.contains($0.to) }) {
+        let a = Array(shown), b = Array(new)
+        var p = 0
+        while p < min(a.count, b.count), a[p] == b[p] { p += 1 }
+        var q = 0
+        while q < min(a.count, b.count) - p, a[a.count - 1 - q] == b[b.count - 1 - q] { q += 1 }
+        let swap = a.count - p - q > 0 && b.count - p - q > 0
+        // Tokens of the shown line: a run of ASCII letters and digits, else one character.
+        let latin: (Character) -> Bool = { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        var tokens: [Range<Int>] = []
+        var k = 0
+        while k < a.count {
+            var e = k + 1
+            if latin(a[k]) { while e < a.count, latin(a[e]) { e += 1 } }
+            tokens.append(k..<e)
+            k = e
+        }
+        var start = p, end = a.count - q
+        if let t = tokens.first(where: { $0.contains(start) }) { start = t.lowerBound }
+        if end > start, let t = tokens.first(where: { $0.contains(end - 1) }) { end = t.upperBound }
+        func span() -> String { String(a[start..<end]) }
+        func count(_ x: String) -> Int {
+            guard !x.isEmpty else { return 0 }
+            var n = 0, r = shown.startIndex..<shown.endIndex
+            while let f = shown.range(of: x, range: r) { n += 1; r = f.upperBound..<shown.endIndex }
+            return n
+        }
+        while !span().contains(where: { $0.isLetter || $0.isNumber }) || count(span()) != 1 {
+            if let t = tokens.last(where: { $0.upperBound <= start }) { start = t.lowerBound }
+            else if let t = tokens.first(where: { $0.lowerBound >= end }) { end = t.upperBound }
+            else { break }
+        }
+        let from = span()
+        let to = String(b[start..<(b.count - (a.count - end))])
+        guard !from.isEmpty, from != to else { return nil }
+        var heard = from
+        if !src.contains(from), let earlier = fixes.first(where: { $0.applied && from.contains($0.to) }) {
             heard = core(earlier.from, earlier.to).from
         }
-        return (LineFix(from: c.from, to: c.to, user: true), heard)
+        return (LineFix(from: from, to: to, user: true), heard, swap)
     }
 }
 
