@@ -266,8 +266,11 @@ class LiveFixes:
             if learned:
                 self.vocabulary.confirm(heard, word, source="user")
         Log.d("fix edited lines=%d learned=%s" % (len(targets), learned))
-        self._say(LF("已改 %lld 处：%@ → %@，记进词表", len(targets), heard, word) if learned
-                  else LF("已改 %lld 处：%@ → %@", len(targets), heard, word))
+        # A swap reads as the words swapped; an added or dropped word as the span it changed
+        # ("in → in now", not "in → now").
+        a, b = (heard, word) if swap else (fix.from_, fix.to)
+        self._say(LF("已改 %lld 处：%@ → %@，记进词表", len(targets), a, b) if learned
+                  else LF("已改 %lld 处：%@ → %@", len(targets), a, b))
         return len(targets)
 
     # 撤销

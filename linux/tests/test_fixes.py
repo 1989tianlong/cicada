@@ -352,6 +352,7 @@ class Live(Base):
         self.assertEqual(store.line(sid, "l1").shown, "We are in.")
         self.assertEqual(store.line(sid, "l2").shown, "Fine.")
         self.assertEqual(fx.vocabulary.terms, [])
+        self.assertEqual(fx.toast_text(), "已改 1 处：in → in now")
 
     def test_one_off_edit_does_not_teach_the_list(self):
         fx, store, sid = self.setup(["我木娜找了一个", "木娜那边也有"])
