@@ -5,6 +5,66 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes. Since 1.1.2 every release ships
 every platform (one with nothing new says No changes); earlier ones shipped only those listed. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
+## 1.5.0 — 2026-11-06
+
+### Mac
+
+#### New
+
+- What you say with the talk key is marked Interpreted in subtitles, records and exports, and goes only to people online, never the speakers ([3d0a438](https://github.com/wquguru/cicada/commit/3d0a438c6e1b5205b106fb2ac963bc9605d87845))
+
+#### Fixed
+
+- With the meeting turned down low, Cicada no longer says it can't tell the language while people are talking ([9dbb4e8](https://github.com/wquguru/cicada/commit/9dbb4e804b23bc58decb55f3d8764948c53f8dd7))
+- Holding the talk key without a virtual mic says so in the subtitle bar or notes window instead of doing nothing ([f9371fc](https://github.com/wquguru/cicada/commit/f9371fcafddb816dc927190685da918e108ce65d))
+- With OpenRouter's default model, notes no longer fail when the host it picks refuses JSON mode ([d60a59f](https://github.com/wquguru/cicada/commit/d60a59f6f420e937f860b623e346b37744181d02))
+- In Japanese, the interpreted tag on your lines says 自分 everywhere, as the rest of the app does ([9269c24](https://github.com/wquguru/cicada/commit/9269c249ddd8f477e4a096136a683fc8284d7585))
+- Speaker names from your AI service are still found when the reply comes wrapped in a code block ([b9aa1d0](https://github.com/wquguru/cicada/commit/b9aa1d0f37da5054a63bd18dc76439a0a164073f))
+- In English, a speaker who said one line shows 1 line, not 1 lines ([a99fb7f](https://github.com/wquguru/cicada/commit/a99fb7f6a26b77cf57759afdb059002e90dd82db))
+- In English, the remaining counts of one say 1 line and 1 person, not 1 lines and 1 people ([4078e07](https://github.com/wquguru/cicada/commit/4078e0799f25d438570de2b5b9270da4a7e9026d))
+
+### Windows
+
+#### New
+
+- What you say with the talk key is marked Interpreted in the notes, records and export ([d2033ea](https://github.com/wquguru/cicada/commit/d2033ea91f4510d69bb55baf4f3ceb2d083062a0))
+- The bar shown while you hold the talk key is marked Interpreted too, as in the notes and records ([0eac772](https://github.com/wquguru/cicada/commit/0eac772bab10c14cee635cf73a6c91ca58828f79))
+
+#### Fixed
+
+- If VB-Cable goes away while you hold the talk key, Cicada says nothing was sent instead of Sent to meeting, and keeps the line out of the record ([8cabc92](https://github.com/wquguru/cicada/commit/8cabc92ebbe4d6248d9f747813b156426a7a8f9c))
+- After a long sentence with the talk key, the bar's Speaking to others / Sent to meeting status is no longer pushed off its edge ([ef7839f](https://github.com/wquguru/cicada/commit/ef7839f17bd72c8ff7d288631e373628d3639cd9))
+- After onboarding's sound check, the interpreting step no longer says VB-Cable isn't installed when it is ([47895a5](https://github.com/wquguru/cicada/commit/47895a5e4fa250f2d45cb1ded1422b0ee0ebfade))
+- With OpenRouter's voice, the talk key no longer gets stuck on Speaking to others after the first sentence ([f598b84](https://github.com/wquguru/cicada/commit/f598b84997a7e3ae4a2ddf9a2b47339921e36b2e))
+- With OpenRouter's default model, notes no longer fail when the host it picks refuses JSON mode ([b756cd8](https://github.com/wquguru/cicada/commit/b756cd8e9d4461008a9fa02ed22eccfe06f1ed52))
+- In English, a meeting with one line says 1 line, not 1 lines ([7250b1e](https://github.com/wquguru/cicada/commit/7250b1e674094b0abaa75623076dc93eb65cdf07))
+
+### Android
+
+#### New
+
+- What you say with Me speaking is marked Interpreted in Face to face, live subtitles, records and exports ([af66480](https://github.com/wquguru/cicada/commit/af66480fe6b69ca471318ce5132aac4912b9673a))
+
+#### Fixed
+
+- The themed icon in dark mode no longer shows the cicada's eyes inverted ([cde3852](https://github.com/wquguru/cicada/commit/cde3852bcd38756bbd715d022be90a742fa4333e))
+- The floating subtitle bar marks what you say with Me speaking as Interpreted ([e24b199](https://github.com/wquguru/cicada/commit/e24b1990cedd3857ec5d058861fd36cef99cb495))
+- After changing the app language mid-meeting, the End button follows it ([3133f9a](https://github.com/wquguru/cicada/commit/3133f9a06137849b980f305cc4f16342df9aed00))
+- With OpenRouter's default model, notes no longer fail when the host it picks refuses JSON mode ([81caf15](https://github.com/wquguru/cicada/commit/81caf15e491db3a83167bfd10a7d4bb188518f3c))
+- In English, a meeting with one line says 1 line, not 1 lines ([fefcc60](https://github.com/wquguru/cicada/commit/fefcc60377dd19c40e222983f7838d6a246d7154))
+
+### Linux
+
+#### New
+
+- What you say with interpreting on is marked Interpreted in the notes, records and export ([d3d9458](https://github.com/wquguru/cicada/commit/d3d94589c21dfd668ca7770d99f2756af055057c))
+
+#### Fixed
+
+- Setup, settings and the meetings window say people online hear your interpreted voice, not "them" or the room ([a81c939](https://github.com/wquguru/cicada/commit/a81c939d140c78f8e4c272200d92c575e55281da))
+- With OpenRouter's default model, notes no longer fail when the host it picks refuses JSON mode ([4483f0e](https://github.com/wquguru/cicada/commit/4483f0e1745d02c1953b8bf767e97e122735d65c))
+- In English, a meeting with one line says 1 line, not 1 lines ([be9fa79](https://github.com/wquguru/cicada/commit/be9fa796a41d7a3a5669be6bf95279501627499b))
+
 ## 1.4.0 — 2026-11-06
 
 ### Mac
