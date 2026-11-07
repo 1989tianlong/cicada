@@ -806,7 +806,7 @@ struct MainWindowView: View {
         guard !query.isEmpty else { return store.sessions }
         return store.sessions.filter { s in
             s.displayTitle.localizedCaseInsensitiveContains(query)
-                || s.lines.contains { $0.src.localizedCaseInsensitiveContains(query) || ($0.dst ?? "").localizedCaseInsensitiveContains(query) }
+                || s.lines.contains { $0.shown.localizedCaseInsensitiveContains(query) || ($0.dst ?? "").localizedCaseInsensitiveContains(query) }
         }
     }
 
@@ -1285,7 +1285,7 @@ struct MainWindowView: View {
             } else if let speaker { SpeakerTag(number: speaker).padding(.bottom, 2) }
             else if voices, l.speaker != "me" { UnknownSpeakerTag().padding(.bottom, 2) }
             else if l.speaker == "me" { MeTag().padding(.bottom, 2) }
-            Text(l.src).font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(1)
+            Text(l.shown).font(.system(size: 12)).foregroundStyle(Palette.secondary).lineSpacing(1)
                 .textSelection(.enabled)
             Text(l.dst ?? L("翻译中…")).font(.system(size: 14)).lineSpacing(2)
                 .foregroundStyle(l.dst == nil ? Palette.secondary : Palette.ink)
@@ -1391,7 +1391,7 @@ struct MainWindowView: View {
                     if place, label, !me { PlaceTag(line: l) }
                 }
                 if view != "dst" {
-                    Text(l.src)
+                    Text(l.shown)
                         .font(.system(size: view == "src" ? 15 : 13))
                         .foregroundStyle(view == "src" ? Palette.ink : Palette.tertiary)
                         .lineSpacing(2)

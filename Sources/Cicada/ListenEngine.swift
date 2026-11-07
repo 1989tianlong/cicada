@@ -364,6 +364,16 @@ final class ListenEngine {
         updateHold()
         debugLog("listen start mode=\(settings.sourceMode) target=\(resolvedTarget)")
 
+        // Debug (`silentListen:<locale>`): a meeting with no audio at all, its lines given by
+        // `heard:` — to try what follows a finished sentence while another app is recording.
+        if let locale = Self.silentLocale {
+            activeLang = sourceLanguages.first { $0.locale == locale } ?? sourceLanguages[0]
+            languageConfirmed = true
+            isRunning = true
+            debugLog("listen start: silent (debug), no audio, \(activeLang!.code)")
+            return
+        }
+
         guard startTap() else { return }
         router.setVoiceCapture(settings.speakerVoices)
         isRunning = true
@@ -856,10 +866,23 @@ final class ListenEngine {
         renderSubtitles()
     }
 
+    /// 改正听错的词: a finished line as shown once its fixes are in. Kept apart from the segment's own
+    /// text, which deciding a join and the record's settling compare with what was heard.
+    private var fixedText: [Int: String] = [:]
+
+    /// The app fixed segment `id`'s words: the bar shows them if the line is still on it.
+    func showFixed(_ id: Int, text: String) {
+        guard let seg = segments.first(where: { $0.id == id }) else { return }
+        fixedText[id] = text == seg.text ? nil : text
+        if fixedText.count > 50, let oldest = fixedText.keys.min() { fixedText[oldest] = nil }
+        if segments.last?.id == id { renderSubtitles() }
+    }
+
     private func renderSubtitles() {
         guard !(segments.isEmpty && volatileText.isEmpty) else { return }
         let srcJoin = joiner(for: activeLang?.code ?? "en")
-        let source = [segments.last?.text ?? "", volatileText].filter { !$0.isEmpty }
+        let last = segments.last.map { fixedText[$0.id] ?? $0.text } ?? ""
+        let source = [last, volatileText].filter { !$0.isEmpty }
             .joined(separator: srcJoin.isEmpty ? " " : srcJoin)
         if settings.sourceMode == .auto, !recordable {
             onSubtitle?(source, asksLanguage ? L("听不出是哪种语言，到菜单栏里选一下") : L("正在识别语言…"))
@@ -1361,6 +1384,23 @@ final class ListenEngine {
     /// `retry` counts the earlier tries of a line every provider failed (Ling rate-limited while
     /// Google answers 429, and no on-device model): it is asked again a little later, as the copy
     /// `again`, since it may have scrolled off the bar meanwhile; the record still takes it.
+    /// Debug: listen without any audio (`silentListen`), the locale its lines are in.
+    static var silentLocale: String?
+
+    /// Debug (`heard:<text>`): a finished sentence as if the recognizer gave it, in a silent meeting.
+    /// The record, its translation and fixes, the bar and the notes window all follow.
+    func debugHeard(_ text: String) {
+        guard isRunning, Self.silentLocale != nil, let lang = activeLang else { return }
+        let seg = Segment(id: nextSegmentID, text: text, sourceCode: lang.code, translation: nil)
+        nextSegmentID += 1
+        segments.append(seg)
+        if segments.count > 8 { segments.removeFirst(segments.count - 8) }
+        finalTiming[seg.id] = (Date(), 0.5)
+        onFinal?(seg, 2)
+        translateSegment(id: seg.id)
+        renderSubtitles()
+    }
+
     private func translateSegment(id: Int, retry: Int = 0, again: Segment? = nil) {
         guard !translationOff(), let seg = again ?? segments.first(where: { $0.id == id }) else { return }
         let trace = TranslateTrace()

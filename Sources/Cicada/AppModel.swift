@@ -155,6 +155,8 @@ final class AppModel: ObservableObject {
     lazy var notes = NotesEngine(ling: ling, store: store)
     lazy var notesWindow = NotesWindowController(model: self)
     lazy var importer = FileImporter(store: store, settings: settings, translator: translator)
+    let vocabulary = Vocabulary(url: Vocabulary.defaultURL)
+    lazy var fixes = LiveFixes(store: store, vocabulary: vocabulary, settings: settings)
     let sample = SamplePlayer()
     let speakers = SpeakerTagger()
     lazy var speakerNamer = SpeakerNamer(ling: ling, store: store)
@@ -271,6 +273,10 @@ final class AppModel: ObservableObject {
             }
         }
         translator.glossary = { [weak self] in self?.notes.glossary ?? [] }
+        translator.fixContext = { [weak self] text in self?.fixes.context(for: text) }
+        translator.onFixes = { [weak self] text, edits in self?.fixes.received(text, edits) }
+        fixes.onLineFixed = { [weak self] id, line in self?.lineFixed(id, line) }
+        fixes.onChange = { [weak self] in self?.objectWillChange.send() }
         // An Intel Mac's imports: heard at a lower priority than the live meeting.
         Recognition.cloudHear = { [weak self] wav, seconds, locale in
             guard let self else { return nil }
@@ -670,6 +676,7 @@ final class AppModel: ObservableObject {
         lineOfSegment = [:]
         settledEarly = [:]
         refinedLines = []
+        fixes.meetingStarted()
         recentOnline = []
         heldRoom = []
         liveMain = ("", "", .distantPast)
@@ -1422,6 +1429,13 @@ final class AppModel: ObservableObject {
         recordHeard(h.seg, duration: h.duration + waited)
     }
 
+    /// A live line's words were fixed (or a fix undone): the subtitle bar follows if it still shows it.
+    private func lineFixed(_ session: String, _ line: TranscriptLine) {
+        guard session == store.liveID, let seg = lineForSegment.first(where: { $0.value == line.id })?.key else { return }
+        let engine = line.via == "room" && roomListen.isRunning ? roomListen : listen
+        engine.showFixed(seg, text: line.shown)
+    }
+
     private func translated(_ segID: Int, _ text: String) {
         if heldJoin?.seg.id == segID { heldJoin?.translation = text }
         if let i = heldRoom.firstIndex(where: { $0.id == segID }) { heldRoom[i].seg.translation = text }
@@ -1763,6 +1777,39 @@ final class AppModel: ObservableObject {
         case "step": onboardingStep = Int(arg) ?? 1
         case "samplePlay": ensureListening(); sample.play()
         case "speakers": settings.speakerVoices = arg == "on"
+        // 改正听错的词: switches, the word list, and the fixes of a meeting (live, or `<id>`).
+        case "fixes": settings.fixMisheard = arg != "off"
+        // A meeting without audio (no tap, no recognizer), fed lines by `heard:`.
+        case "silentListen": ListenEngine.silentLocale = arg.isEmpty || arg == "off" ? nil : arg
+        case "heard": listen.debugHeard(arg)
+        case "askNames": settings.askNames = arg != "off"
+        case "vocabAdd":   // vocabAdd:Morpho=莫拉、莫法 (several lines with "|")
+            let r = vocabulary.importText(arg.replacingOccurrences(of: "|", with: "\n"))
+            debugLog("vocab: added=\(r.added) updated=\(r.updated) skipped=\(r.skipped)")
+        case "vocabRemove": vocabulary.remove(arg)
+        case "vocabState":
+            debugLog("vocab: \(vocabulary.terms.count) terms")
+            for t in vocabulary.terms { contentLog("VOCAB \(t.word) heard=\(t.heard) source=\(t.source) fixes=\(t.fixes)") }
+        case "fixState":
+            let id = arg.isEmpty ? store.liveID ?? store.sessions.first?.id ?? "" : arg
+            let lines = store.session(id)?.lines ?? []
+            let all = lines.flatMap { $0.fixes ?? [] }
+            debugLog("fix state \(id): lines=\(lines.filter { $0.fixes != nil }.count) applied=\(all.filter(\.applied).count) "
+                     + "asked=\(all.filter { $0.ask == true }.count) off=\(all.filter { $0.off == true }.count) on=\(settings.fixMisheard)")
+            contentLog("BAR \(liveMain.src) | \(liveMain.dst)")
+            for l in lines where l.fixes != nil {
+                contentLog("FIXED \(l.id) \(l.fixes!.map { "\($0.from)→\($0.to)\($0.ask == true ? "?" : $0.off == true ? "✗" : "")" }) | \(l.shown)")
+            }
+        case "fixAnswer":  // fixAnswer:yes|no[,<id>]
+            let parts = arg.split(separator: ",", maxSplits: 1).map(String.init)
+            let id = parts.count > 1 ? parts[1] : store.liveID ?? store.sessions.first?.id ?? ""
+            if let first = fixes.pending(in: id).first { fixes.answer(first.fix, yes: parts.first == "yes", in: id) }
+        case "fixRevert":  // fixRevert:<line id>[,<session id>]: the line's first applied fix
+            let parts = arg.split(separator: ",", maxSplits: 1).map(String.init)
+            let id = parts.count > 1 ? parts[1] : store.liveID ?? store.sessions.first?.id ?? ""
+            if let l = store.session(id)?.lines.first(where: { $0.id == parts.first }), let f = l.fixes?.first(where: \.applied) {
+                fixes.revert(f, lineID: l.id, in: id)
+            }
         case "speakerGuess": speakerNamer.guess(arg, force: true)
         case "speakersRender":
             // speakersRender:<session id>=<png>[@width]: the people strip and the first lines with their labels.
@@ -1900,6 +1947,31 @@ final class AppModel: ObservableObject {
                 }
             }
             w?.performClose(nil)
+        case "transcriptRender":   // transcriptRender:<png>,<session id>,<first line>,<count>: the notes window's 原话
+            let p = arg.split(separator: ",").map(String.init)
+            guard p.count == 4, let s = store.session(p[1]), let first = Int(p[2]), let count = Int(p[3]) else { break }
+            let ls = Array(s.lines.dropFirst(max(0, first - 1)).prefix(count))
+            let waiting = fixes.pending(in: s.id)
+            // The row's own parts (the list itself is lazy and draws nothing off screen).
+            let view = VStack(alignment: .leading, spacing: 14) {
+                ForEach(ls) { l in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(TranscriptParagraphs.joinFixed([l])).font(.system(size: 14)).lineSpacing(2)
+                        if let d = l.dst { Text(d).font(.system(size: 13)).foregroundStyle(Palette.secondary) }
+                        let fixed = (l.fixes ?? []).filter(\.applied).map { (l.id, $0) }
+                        if !fixed.isEmpty { FixedWords(fixes: fixed) { _, _ in } }
+                    }
+                }
+                Spacer(minLength: 0)
+                if let w = waiting.first { FixConfirmCard(line: w.line, fix: w.fix, count: waiting.count) { _ in } }
+            }
+            .padding(16).frame(width: 460, height: 900).background(Color.white)
+            let r = ImageRenderer(content: view)
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: p[0]))
+            }
         case "notesRender":
             // The whole notes column as a PNG, for checking what is below the fold.
             let view = NotesContentView(notes: notes.notes, fresh: notes.fresh, live: store.liveID != nil,

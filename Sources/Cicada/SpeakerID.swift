@@ -336,7 +336,7 @@ enum SpeakerNameGuess {
         var out = "Meeting transcript. Speakers: 你 = the user; 说话人N = one person on the other side, told apart by voice; 对方 = someone on the other side, not identified.\n"
         for (i, l) in lines.enumerated() {
             let who = l.speaker == "me" ? "你" : numbers[l.id].map { "说话人\($0)" } ?? "对方"
-            out += "[L\(i + 1) \(TranscriptExport.clock(l.t)) \(who)] \(l.src)\n"
+            out += "[L\(i + 1) \(TranscriptExport.clock(l.t)) \(who)] \(l.shown)\n"
         }
         return out
     }
@@ -393,7 +393,7 @@ enum SpeakerNameGuess {
                 out[other] = nil
             }
             let l = lines[i]
-            let evidence = "\(TranscriptExport.clock(l.t)) “\(l.src.count > 60 ? String(l.src.prefix(60)) + "…" : l.src)”"
+            let evidence = "\(TranscriptExport.clock(l.t)) “\(l.shown.count > 60 ? String(l.shown.prefix(60)) + "…" : l.shown)”"
             out[v] = VoiceGuess(name: name, evidence: evidence)
         }
         return (out, refuted)
@@ -405,7 +405,7 @@ enum SpeakerNameGuess {
         guard let open = g.evidence.firstIndex(of: "“") else { return true }
         let clock = g.evidence[..<open].trimmingCharacters(in: .whitespaces)
         let quote = String(g.evidence[g.evidence.index(after: open)...].dropLast().prefix(while: { $0 != "…" }))
-        guard let i = s.lines.firstIndex(where: { TranscriptExport.clock($0.t) == clock && $0.src.hasPrefix(quote) }) else { return true }
+        guard let i = s.lines.firstIndex(where: { TranscriptExport.clock($0.t) == clock && $0.shown.hasPrefix(quote) }) else { return true }
         return s.lines[max(0, i - evidenceReach)...min(s.lines.count - 1, i + evidenceReach)]
             .contains { $0.speaker == "them" && $0.voice == v }
     }

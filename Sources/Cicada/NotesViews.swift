@@ -535,9 +535,14 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     /// Lines the meeting record's own recognizer is still settling: their words may change.
     var settling: Set<String> = []
     var onAssign: ((Set<String>, Int) -> Void)?
+    /// 改回 on a fixed word: the line goes back to what was heard.
+    var onRevert: ((String, LineFix) -> Void)?
+    /// Debug renders: every fixed paragraph shows its words as if pointed at.
+    var revealFixes = false
     @ViewBuilder var partial: Partial
 
     @State private var assigning: String?
+    @State private var hovered: String?
 
     @State private var following = true
     @State private var seenCount = 0
@@ -712,7 +717,7 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                     Image(systemName: "arrow.down").font(.system(size: 12, weight: .bold))
                     Text("\(lines.count - seenCount) 句新内容").font(.system(size: 13, weight: .semibold))
                     if let last = lines.last {
-                        Text(last.src).font(.system(size: 13)).foregroundStyle(Color(white: 0.74)).lineLimit(1)
+                        Text(last.shown).font(.system(size: 13)).foregroundStyle(Color(white: 0.74)).lineLimit(1)
                     }
                 }
                 .foregroundStyle(.white)
@@ -730,11 +735,15 @@ struct TranscriptListView<Partial: View>: View, Equatable {
     }
 
     private func matches(_ l: TranscriptLine) -> Bool {
-        terms.contains { l.src.localizedCaseInsensitiveContains($0) || (l.dst ?? "").localizedCaseInsensitiveContains($0) }
+        terms.contains { l.shown.localizedCaseInsensitiveContains($0) || (l.dst ?? "").localizedCaseInsensitiveContains($0) }
     }
 
     private func highlighted(_ text: String, current: Bool) -> AttributedString {
-        var a = AttributedString(text)
+        highlighted(AttributedString(text), current: current)
+    }
+
+    private func highlighted(_ base: AttributedString, current: Bool) -> AttributedString {
+        var a = base
         for term in terms where !term.isEmpty {
             var from = a.startIndex
             while from < a.endIndex, let r = a[from...].range(of: term, options: .caseInsensitive) {
@@ -751,8 +760,9 @@ struct TranscriptListView<Partial: View>: View, Equatable {
         let isMatch = ls.contains { $0.id == currentMatch }
         let latest = live && ls.last?.id == lines.last?.id
         let dim = searching && !ls.contains(where: matches)
-        let src = TranscriptParagraphs.join(ls.map(\.src))
-        let dst = TranscriptParagraphs.join(ls.compactMap { $0.dst != $0.src ? $0.dst : nil })
+        let src = TranscriptParagraphs.joinFixed(ls)
+        let dst = TranscriptParagraphs.join(ls.compactMap { $0.dst != $0.src && $0.dst != $0.shown ? $0.dst : nil })
+        let fixed = ls.flatMap { l in (l.fixes ?? []).filter(\.applied).map { (l.id, $0) } }
         return HStack(alignment: .top, spacing: 12) {
             Text(NotesEngine.clock(l.t)).font(.system(size: 12, weight: isMatch ? .semibold : .regular).monospacedDigit())
                 .foregroundStyle(latest || isMatch ? Palette.accentInk : Palette.tertiary)
@@ -787,6 +797,12 @@ struct TranscriptListView<Partial: View>: View, Equatable {
                     Text(highlighted(dst, current: isMatch)).font(.system(size: 13)).foregroundStyle(Palette.secondary)
                         .lineSpacing(2).textSelection(.enabled)
                 }
+                // 改正听错的词: pointing at the paragraph shows what each fixed word was heard as.
+                // The line being said is shown open too: hover in the notes panel, which never takes
+                // focus, is not to be counted on.
+                if hovered == l.id || revealFixes || latest, !fixed.isEmpty, let onRevert {
+                    FixedWords(fixes: fixed, onRevert: onRevert).padding(.top, 2)
+                }
                 if assigning == l.id, let onAssign {
                     LineSpeakerPicker(voices: voices, current: l.voice.flatMap { voices[$0] != nil ? $0 : nil },
                                       nearby: nearby(ls), several: ls.count > 1) { v in
@@ -805,6 +821,9 @@ struct TranscriptListView<Partial: View>: View, Equatable {
             : marked != nil && ls.contains(where: { $0.voice == marked }) ? SpeakerColor.ink(voices[marked!] ?? 1).opacity(0.07)
             : Color.clear))
         .opacity(dim ? 0.5 : 1)
+        .onHover { inside in
+            if inside { hovered = l.id } else if hovered == l.id { hovered = nil }
+        }
     }
 
 }
@@ -845,6 +864,29 @@ enum TranscriptParagraphs {
                 voice = v
             }
             key = k
+        }
+        return out
+    }
+
+    /// The lines as shown, each fixed word with a dotted underline.
+    static func joinFixed(_ lines: [TranscriptLine]) -> AttributedString {
+        var out = AttributedString()
+        var plain = ""
+        for l in lines {
+            let (text, marks) = Correction.apply(l.fixes ?? [], to: l.src)
+            let p = text.trimmingCharacters(in: .whitespaces)
+            guard !p.isEmpty else { continue }
+            if let last = plain.unicodeScalars.last, !(last.properties.isIdeographic || "。！？，、；：”）".unicodeScalars.contains(last)) {
+                out += AttributedString(" ")
+                plain += " "
+            }
+            var a = AttributedString(text)
+            for m in marks {
+                guard let lo = AttributedString.Index(m.lowerBound, within: a), let hi = AttributedString.Index(m.upperBound, within: a) else { continue }
+                a[lo..<hi].underlineStyle = Text.LineStyle(pattern: .dot, color: Palette.tertiary)
+            }
+            out += a
+            plain += text
         }
         return out
     }
@@ -1362,5 +1404,68 @@ struct MeetingEndingStrip: View {
         .padding(compact ? 12 : 14)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.accentPale))
         .onReceive(tick) { now = $0 }
+    }
+}
+
+
+/// Under a paragraph being pointed at: each fixed word, what it was heard as, and 改回.
+struct FixedWords: View {
+    let fixes: [(line: String, fix: LineFix)]
+    let onRevert: (String, LineFix) -> Void
+
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            ForEach(Array(fixes.enumerated()), id: \.offset) { _, item in
+                let c = Correction.core(item.fix.from, item.fix.to)
+                HStack(spacing: 6) {
+                    (Text("听成").foregroundStyle(Palette.tertiary) + Text(" " + c.from) + Text(" → ").foregroundStyle(Palette.tertiary) + Text(c.to))
+                        .font(.system(size: 11))
+                    Button(L("改回")) { onRevert(item.line, item.fix) }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.link)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.fill))
+            }
+        }
+    }
+}
+
+/// 这样改对吗？: a name the Mac couldn't check by sound, asked about once. Clicks only: the notes
+/// window never takes focus. 对 fixes every line waiting on it and adds it to the word list.
+struct FixConfirmCard: View {
+    let line: TranscriptLine
+    let fix: LineFix
+    let count: Int
+    let onAnswer: (Bool) -> Void
+
+    var body: some View {
+        let c = Correction.core(fix.from, fix.to)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("这样改对吗？").font(.system(size: 13, weight: .semibold))
+                Text("确认后整场一起改，以后也照此改").font(.system(size: 12)).foregroundStyle(Palette.tertiary).lineLimit(1)
+                Spacer(minLength: 4)
+                if count > 1 { Text("1 / \(count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(Palette.tertiary) }
+            }
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    (Text(c.from) + Text(" → ").foregroundStyle(Palette.tertiary) + Text(c.to).bold()).font(.system(size: 14))
+                    Text("\(NotesEngine.clock(line.t)) · \(line.src)").font(.system(size: 11)).foregroundStyle(Palette.tertiary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Button { onAnswer(true) } label: {
+                    Text("对").font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+                        .padding(.horizontal, 14).frame(height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Palette.ink))
+                }.buttonStyle(.plain)
+                Button { onAnswer(false) } label: {
+                    Text("不对").font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                        .padding(.horizontal, 14).frame(height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Palette.fill))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
     }
 }

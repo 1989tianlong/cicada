@@ -347,7 +347,7 @@ struct SpeakerPreview: View {
                     } else if l.speaker == "me" { MeTag() }
                     else if let n = numbers[l.id] { SpeakerTag(number: n) }
                     else if !numbers.isEmpty { UnknownSpeakerTag() }
-                    Text(l.src).font(.system(size: 13)).foregroundStyle(Palette.ink)
+                    Text(l.shown).font(.system(size: 13)).foregroundStyle(Palette.ink)
                 }
             }
         }

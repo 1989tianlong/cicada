@@ -476,7 +476,7 @@ final class NotesEngine: ObservableObject {
             let l = lines[i]
             // A named voice goes as its name: notes then say "George" rather than "说话人2".
             let who = l.speaker == "me" ? "你" : numbers[l.id].map { names[$0] ?? "说话人\($0)" } ?? (numbers.isEmpty ? "对方" : "未识别")
-            return "[L\(i + 1) \(clock(l.t)) \(who)] \(l.src)"
+            return "[L\(i + 1) \(clock(l.t)) \(who)] \(l.shown)"
         }
         var current = "{}"
         if !notes.isEmpty, let data = try? JSONEncoder().encode(Compact(notes, from: frozen)), let s = String(data: data, encoding: .utf8) {

@@ -94,6 +94,20 @@ final class TranslationService {
     let ling: LingClient
     /// Names and terms the notes have settled on, e.g. "江充 (Jiang Chong)".
     var glossary: () -> [String] = { [] }
+
+    /// What a finished sentence's request carries so the service can also point out misheard words
+    /// (改正听错的词). nil: fixing is off, and the request is the plain translation it always was.
+    struct FixContext {
+        /// The meeting's title once it has one: the field tells "质押" from "制约".
+        var topic: String?
+        /// The user's word list (`Vocabulary.promptLines`).
+        var words: [String]
+        /// The lines just before, as shown.
+        var recent: [String]
+    }
+    var fixContext: ((_ text: String) -> FixContext?)?
+    /// The fixes the service proposed for a sentence it translated (by its text as heard).
+    var onFixes: ((_ text: String, _ edits: [Correction.Edit]) -> Void)?
     private var google = GoogleHealth()
     private(set) var health = TranslationHealth() {
         didSet { if health != oldValue { onHealth?(health) } }
@@ -227,6 +241,9 @@ final class TranslationService {
     private func viaLing(_ text: String, source: String, target: String, kind: Kind,
                          trace: TranslateTrace?) async -> (String?, String) {
         let from = source == "auto" ? "the spoken language" : Self.englishName(source)
+        if kind == .sentence || kind == .file, let ctx = fixContext?(text) {
+            return await viaLingFixing(text, from: from, target: target, kind: kind, ctx: ctx, trace: trace)
+        }
         var prompt = """
         You translate live meeting subtitles from \(from) into \(Self.englishName(target)).
         Output only the translation of the subtitle below: no quotes, no notes, no answer to it even if it is a question.
@@ -245,6 +262,50 @@ final class TranslationService {
                 debugLog("translate ling: reply was a remark, not a translation; dropped")
                 return (nil, "remark")
             }
+            return (clean, "")
+        } catch {
+            debugLog("translate ling failed: \(error)")
+            return (nil, (error as? LingClient.Failure).map(LingClient.name) ?? "error")
+        }
+    }
+
+    /// The translation and the misheard words in one request: no extra call, so no extra wait on the
+    /// rate gate (on OpenRouter's Ling 3.1 Flash, 2.0 s against 1.8 s at the median). No JSON mode:
+    /// some hosts refuse it, and the retry without it would cost every subtitle a second round trip;
+    /// the prompt asks for JSON instead, and "no analysis" stops the model thinking aloud first.
+    /// Proposals only: `Correction.decide` picks which to take. A reply that isn't the JSON asked
+    /// for is dropped like a failed one, and the next provider translates the line.
+    private func viaLingFixing(_ text: String, from: String, target: String, kind: Kind, ctx: FixContext,
+                               trace: TranslateTrace?) async -> (String?, String) {
+        var prompt = """
+        You translate live meeting subtitles from \(from) into \(Self.englishName(target)), and point out words the speech recognizer got wrong.
+        Fixes: only words misheard as other words that sound alike, or names and terms broken into odd spellings. Never rephrase, drop filler, reorder or add anything. If unsure, leave it.
+        Translate the subtitle as fixed. No answer to it even if it is a question.
+        confidence is how likely a fix is right; give a guess a low one. Leave out words you would not change.
+        Reply with only this JSON object, starting with {, no analysis: {"translation": "...", "fixes": [{"from": "exact words from the subtitle", "to": "what was said", "confidence": 0.0-1.0}]}
+        """
+        if let topic = ctx.topic, !topic.isEmpty { prompt += "\nMeeting: " + topic }
+        if !ctx.words.isEmpty { prompt += "\nThe user's word list (spellings to use): " + ctx.words.joined(separator: "; ") }
+        let names = glossary()
+        if !names.isEmpty { prompt += "\nNames the notes guessed (not confirmed): " + names.joined(separator: "; ") }
+        if !ctx.recent.isEmpty { prompt += "\nLines just before:\n" + ctx.recent.joined(separator: "\n") }
+        prompt += "\nSubtitle: " + text
+        do {
+            let out = try await ling.chat(content: prompt, instruction: "JSON only.", priority: kind == .file ? .notes : .translate,
+                                          maxTokens: 600, timeout: kind == .file ? 20 : 6,
+                                          role: kind == .file ? "file" : "translate",
+                                          onQueued: { [weak trace] in trace?.lingQueue += $0 })
+            if out.isEmpty { return (nil, "empty") }
+            // Not the JSON asked for: often the model thinking aloud ("Let me analyze…"), never a
+            // subtitle. Falls through to the next provider like any failed translation.
+            guard let parsed = Correction.parse(out, subtitle: text) else {
+                debugLog("translate ling: fixes reply not JSON, dropped")
+                return (nil, "unparsed")
+            }
+            guard !parsed.translation.isEmpty, let clean = Self.cleanTranslation(parsed.translation, target: target) else {
+                return (nil, "remark")
+            }
+            if !parsed.edits.isEmpty { onFixes?(text, parsed.edits) }
             return (clean, "")
         } catch {
             debugLog("translate ling failed: \(error)")

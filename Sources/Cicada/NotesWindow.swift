@@ -267,6 +267,9 @@ struct NotesWindowView: View {
                         meetingBar.padding(.horizontal, 24).padding(.bottom, 4)
                         banner.padding(.horizontal, 24).padding(.bottom, 4)
                         if live { liveAsks.padding(.horizontal, 24).padding(.bottom, 4) }
+                        // 这样改对吗？ above both tabs: the window opens on 纪要, where a card in the
+                        // transcript would never be seen.
+                        fixAsk.padding(.horizontal, 24).padding(.bottom, 4)
                         if live { LanguageNotice(model: model).padding(.horizontal, 24).padding(.bottom, 8) }
                         // Where the scrolling starts: a hairline, and each column fades in under it (`topFade`).
                         Rectangle().fill(MainWindowView.hairline).frame(height: 1)
@@ -480,7 +483,7 @@ struct NotesWindowView: View {
         let terms = searchTerms
         guard !terms.isEmpty else { return [] }
         return (session?.lines ?? []).filter { l in
-            terms.contains { l.src.localizedCaseInsensitiveContains($0) || (l.dst ?? "").localizedCaseInsensitiveContains($0) }
+            terms.contains { l.shown.localizedCaseInsensitiveContains($0) || (l.dst ?? "").localizedCaseInsensitiveContains($0) }
         }.map(\.id)
     }
 
@@ -889,6 +892,17 @@ struct NotesWindowView: View {
         if animated { withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(id, anchor: .top) } } else { proxy.scrollTo(id, anchor: .top) }
     }
 
+    @ViewBuilder private var fixAsk: some View {
+        if let s = session {
+            let waiting = model.fixes.pending(in: s.id)
+            if let first = waiting.first {
+                FixConfirmCard(line: first.line, fix: first.fix, count: waiting.count) { yes in
+                    model.fixes.answer(first.fix, yes: yes, in: s.id)
+                }
+            }
+        }
+    }
+
     private var transcript: some View {
         let ms = matches
         let lines = session?.lines ?? []
@@ -904,7 +918,8 @@ struct NotesWindowView: View {
                                identifying: model.identifyingLanguage,
                                voices: speakers.isEmpty ? [:] : SpeakerLabels.voiceNumbers(lines), marked: editingVoice,
                                places: RecordList.heardBoth(lines), settling: model.settling,
-                               onAssign: { ids, voice in if let s = session { model.assignLines(session: s.id, ids, to: voice) } }) {
+                               onAssign: { ids, voice in if let s = session { model.assignLines(session: s.id, ids, to: voice) } },
+                               onRevert: { lineID, fix in if let s = session { model.fixes.revert(fix, lineID: lineID, in: s.id) } }) {
                 LivePartialRow(model: model, startedAt: store.liveStart)
             }
             .equatable()

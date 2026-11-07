@@ -1254,3 +1254,11 @@
 "在 Ling 开放平台点“创建令牌”，复制以 sk- 开头的那串。" = "On the Ling platform, click “Create token” and copy the string that starts with sk-.";
 "打开 Ling 开放平台 ↗" = "Open the Ling platform ↗";
 "Ling 提示此令牌无效，请检查是否复制完整，或重新创建一个" = "Ling says this token is invalid. Check that you copied all of it, or create a new one";
+
+/* NotesViews: 改正听错的词 */
+"听成" = "Heard as";
+"改回" = "Revert";
+"这样改对吗？" = "Is this fix right?";
+"确认后整场一起改，以后也照此改" = "Fixes the whole meeting, and future ones";
+"对" = "Yes";
+"不对" = "No";

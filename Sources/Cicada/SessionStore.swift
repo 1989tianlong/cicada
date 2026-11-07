@@ -17,6 +17,8 @@ struct TranscriptLine: Codable, Identifiable, Equatable {
     var voice: Int? = nil
     /// 电脑和会议室: "room" when the room mic heard it; absent for the Mac's audio (or older records).
     var via: String? = nil
+    /// Words the AI service fixed (`Correction`); `src` stays what was heard. Absent when none.
+    var fixes: [LineFix]? = nil
 }
 
 /// A name Ling found for a voice, and the line it is based on ("00:06 “Sure, Emma…”").
@@ -337,6 +339,24 @@ final class SessionStore: ObservableObject {
         scheduleSave(id)
     }
 
+    /// A line's fixes (`Correction`): what the AI service proposed and the user decided.
+    func setFixes(in id: String, lineID: String, _ fixes: [LineFix]) {
+        guard let i = index(id), let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
+        guard sessions[i].lines[j].fixes ?? [] != fixes else { return }
+        sessions[i].lines[j].fixes = fixes.isEmpty ? nil : fixes
+        scheduleSave(id)
+    }
+
+    /// The line a reply was for, by its text as heard: the newest such line in the live meeting,
+    /// else in a file being imported. Older meetings never: "好的。" is in all of them.
+    func lineHeard(as text: String) -> (session: String, line: TranscriptLine)? {
+        let ids = ([liveID].compactMap { $0 }) + sessions.filter { $0.importing == true }.map(\.id)
+        for id in ids {
+            if let s = session(id), let l = s.lines.last(where: { $0.src == text }) { return (id, l) }
+        }
+        return nil
+    }
+
     func setTranslation(in id: String, lineID: String, _ text: String) {
         guard let i = index(id), let j = sessions[i].lines.firstIndex(where: { $0.id == lineID }) else { return }
         sessions[i].lines[j].dst = text
@@ -458,8 +478,8 @@ enum TranscriptExport {
         for l in s.lines {
             // An imported file has no "other side" to name.
             let who = s.sourceFile == nil ? " \(speakerName(l, numbers, names))" : ""
-            out += "**[\(clock(l.t))]\(who)**  \n\(l.src)\n"
-            if let d = l.dst, d != l.src { out += "> \(d)\n" }
+            out += "**[\(clock(l.t))]\(who)**  \n\(l.shown)\n"
+            if let d = l.dst, d != l.shown { out += "> \(d)\n" }
             out += "\n"
         }
         return out
@@ -476,8 +496,8 @@ enum TranscriptExport {
             let end = max(l.t + 1, min(next, l.t + 8))
             // Your own lines (the talk key) say so, as the record does.
             let tag = l.speaker == "me" ? "[\(L("同传"))] " : ""
-            out += "\(i + 1)\n\(ts(l.t)) --> \(ts(end))\n\(tag)\(l.src)\n"
-            if let d = l.dst, d != l.src { out += "\(d)\n" }
+            out += "\(i + 1)\n\(ts(l.t)) --> \(ts(end))\n\(tag)\(l.shown)\n"
+            if let d = l.dst, d != l.shown { out += "\(d)\n" }
             out += "\n"
         }
         return out
@@ -524,8 +544,8 @@ enum TranscriptExport {
         let numbers = speakerNumbers(s), names = SpeakerLabels.names(s)
         for l in s.lines {
             add("[\(clock(l.t))]" + (s.sourceFile == nil ? " \(speakerName(l, numbers, names))" : ""), size: 9, weight: .semibold, color: .darkGray, after: 2)
-            add(l.src, size: 11, after: 2)
-            if let d = l.dst, d != l.src { add(d, size: 11, color: NSColor(calibratedWhite: 0.3, alpha: 1), after: 10) }
+            add(l.shown, size: 11, after: 2)
+            if let d = l.dst, d != l.shown { add(d, size: 11, color: NSColor(calibratedWhite: 0.3, alpha: 1), after: 10) }
         }
         return try doc.data(from: NSRange(location: 0, length: doc.length),
                             documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML])
