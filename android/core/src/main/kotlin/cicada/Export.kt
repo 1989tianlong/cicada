@@ -99,7 +99,7 @@ object TranscriptExport {
             b.append("\n")
         }
         if (n.conclusions.isNotEmpty()) b.append("### ${Strings.L("结论")}\n\n").append(n.conclusions.joinToString("") { "- ${it.text}\n" }).append("\n")
-        if (n.todos.isNotEmpty()) b.append("### ${Strings.L("待办")}\n\n").append(n.todos.joinToString("") { "- [ ] ${it.text}" + (it.owner?.let { o -> "（$o）" } ?: "") + "\n" }).append("\n")
+        if (n.todos.isNotEmpty()) b.append("### ${Strings.L("待办")}\n\n").append(n.todos.joinToString("") { "- [ ] ${it.withOwner}\n" }).append("\n")
         if (n.terms.isNotEmpty()) b.append("### ${Strings.L("人名和术语")}\n\n").append(n.terms.joinToString("") { "- **${it.name}** ${it.note}\n" }).append("\n")
         return b.toString()
     }
@@ -164,7 +164,7 @@ object TranscriptExport {
                 add("", 6.0, after = 4.0)
             }
             if (n.conclusions.isNotEmpty()) { add(Strings.L("结论"), 12.0, bold = true, after = 3.0); for (c in n.conclusions) add("• ${c.text}", 11.0, after = 2.0) }
-            if (n.todos.isNotEmpty()) { add(Strings.L("待办"), 12.0, bold = true, after = 3.0); for (t in n.todos) add("☐ ${t.text}" + (t.owner?.let { "（$it）" } ?: ""), 11.0, after = 2.0) }
+            if (n.todos.isNotEmpty()) { add(Strings.L("待办"), 12.0, bold = true, after = 3.0); for (t in n.todos) add("☐ ${t.withOwner}", 11.0, after = 2.0) }
             add(Strings.L("文字记录"), 15.0, bold = true, after = 6.0)
         }
         val numbers = SpeakerLabels.numbers(s.lines); val names = SpeakerLabels.names(s)

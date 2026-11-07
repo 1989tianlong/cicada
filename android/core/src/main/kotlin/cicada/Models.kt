@@ -197,6 +197,18 @@ class NoteItem(
     var t: Double? = null,
 ) {
     fun toJson(): Map<String, Any?> = mapOf("text" to text, "owner" to owner, "support" to support, "t" to t)
+
+    /// The owner as stored ("你", "对方", "说话人2" or a name) in the UI language.
+    val ownerShown: String? get() {
+        val o = owner ?: return null
+        when (o) { "你", "对方", "未识别" -> return Strings.L(o) }
+        if (o.startsWith("说话人")) o.substring(3).trim().toIntOrNull()?.let { return Strings.LF("说话人 %lld", it) }
+        return o
+    }
+
+    /// The to-do with its owner after it: "（对方）" in Chinese, " (Them)" in English.
+    val withOwner: String get() = text + (ownerShown?.let { Strings.LF("待办的负责人 %@", it) } ?: "")
+
     companion object {
         fun from(o: Map<String, Any?>) = NoteItem(o["text"].str() ?: "", o["owner"].str(), o["support"].int() ?: 0, o["t"].num())
     }

@@ -97,6 +97,14 @@
       {
         "kind": "fixed",
         "platforms": [
+          "android"
+        ],
+        "title": "Android 英文、日文、韩文界面里，待办后面的负责人不再显示成中文的“对方”“你”“说话人2”。",
+        "text": "纪要和导出的 Markdown、Word 里都用界面语言显示（Them、You、Speaker 2），写法和 Mac 一样放在括号里；会议记录里仍按原样存着。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
           "windows"
         ],
         "title": "在 Mac 上改过听错的词的会议记录，Windows 版也显示改后的文字，再保存也不会丢掉这些改动。",

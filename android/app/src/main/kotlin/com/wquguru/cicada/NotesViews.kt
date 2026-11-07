@@ -348,7 +348,7 @@ object NotesViews {
         }
         if (!compact && notes.todos.isNotEmpty()) {
             body.addView(ui.notesLabel(L("待办")), ui.lp(top = 22))
-            for (t in notes.todos) body.addView(todo(ui, t.text, t.owner), ui.lp(top = 8))
+            for (t in notes.todos) body.addView(todo(ui, t.withOwner), ui.lp(top = 8))
         }
         return body
     }
@@ -531,9 +531,9 @@ object NotesViews {
         addView(ui.text(text, size, Palette.ink).apply { leading(if (size >= Ui.Type.BODY) Ui.Type.LINE else 1.35f) }, ui.weight())
     }
 
-    fun todo(ui: Ui, text: String, owner: String?) = LinearLayout(ui.context).apply {
+    fun todo(ui: Ui, text: String) = LinearLayout(ui.context).apply {
         orientation = LinearLayout.HORIZONTAL
         addView(View(ui.context).apply { background = ui.rounded(0, 8, Palette.tertiary, 1.5) }, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)).apply { topMargin = ui.dp(5); rightMargin = ui.dp(10) })
-        addView(ui.notesText(text + (owner?.let { " · $it" } ?: "")), ui.weight())
+        addView(ui.notesText(text), ui.weight())
     }
 }

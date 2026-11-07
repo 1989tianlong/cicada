@@ -22,6 +22,7 @@ object Tests {
         home.mkdirs()
         val tests: List<Pair<String, () -> Unit>> = listOf(
             "sessionJsonMatchesTheMac" to ::sessionJsonMatchesTheMac,
+            "todoOwnersShowInTheUiLanguage" to ::todoOwnersShowInTheUiLanguage,
             "readsAMacRecordAndWritesItBackByteForByte" to ::readsAMacRecord,
             "keepsTheMacsImportAndRoomFields" to ::keepsTheMacsImportAndRoomFields,
             "jsonEdgeCases" to ::jsonEdgeCases,
@@ -698,6 +699,17 @@ object Tests {
         equal("%@ min", t["%@ 分钟"], "placeholders kept")
         equal("3 分钟", Strings.LF("%@ 分钟", 3), "LF fills %@")
         equal("1 句", Strings.LF("%lld 句", 1), "Chinese has no plural forms")
+    }
+
+    fun todoOwnersShowInTheUiLanguage() {
+        val notes = MeetingNotes(summary = "s", todos = mutableListOf(NoteItem("Ship it", "对方"), NoteItem("Review", "说话人2"), NoteItem("Call", "Anna"), NoteItem("Plan")))
+        try {
+            loadStrings("en")
+            equal(listOf("Ship it (Them)", "Review (Speaker 2)", "Call (Anna)", "Plan"), notes.todos.map { it.withOwner }, "English")
+            check(TranscriptExport.notesMarkdown(notes).contains("- [ ] Ship it (Them)\n"), "markdown export")
+        } finally { loadStrings("zh-Hans") }
+        equal("Ship it（对方）", notes.todos[0].withOwner, "Chinese as stored")
+        equal("对方", notes.todos[0].owner, "the record keeps the Chinese label")
     }
 
     fun pluralsFromTheMacsStringsdict() {
