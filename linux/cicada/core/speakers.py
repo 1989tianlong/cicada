@@ -346,8 +346,10 @@ def read(reply: str, s):
     """(found: voice → VoiceGuess, refuted: voice → name). A name given on a line the voice neither said
     nor spoke next to is refuted; a name Ling gives two voices goes to the one with more lines."""
     from .models import VoiceGuess
+    # Without JSON mode (a host that refuses it) the object may come in a fence or a sentence.
+    a, z = reply.find("{"), reply.rfind("}")
     try:
-        obj = json.loads(reply)
+        obj = json.loads(reply[a:z + 1]) if 0 <= a < z else None
     except ValueError:
         return {}, {}
     lst = obj.get("speakers") if isinstance(obj, dict) else None

@@ -164,6 +164,18 @@ class TemplateKwargs(Base):
         ling.chat("x", "Translate.", TRANSLATE)
         self.assertIn("chat_template_kwargs", fake.sent[-1][1])  # nothing remembered
 
+    def test_a_refusal_for_something_else_keeps_thinking_off(self):
+        # No JSON mode on this server (OpenRouter's Novita for Ling 3.1 Flash): 400 with or without
+        # the kwargs. Asked again without JSON mode.
+        fake = Fake(lambda u, b: Response(400, "{}") if "response_format" in b else answer("好"))
+        ling, _ = self.client(fake, "custom", key=None, **custom())
+        self.assertEqual("好", ling.chat("x", "Notes.", TRANSLATE, json=True))
+        last = jsonfmt.parse_object(fake.sent[-1][1])
+        self.assertNotIn("response_format", last)
+        self.assertIn("chat_template_kwargs", last)
+        ling.chat("y", "Translate.", TRANSLATE)
+        self.assertIn("chat_template_kwargs", fake.sent[-1][1])
+
     def test_other_errors_are_not_retried(self):
         fake = Fake(lambda u, b: Response(500, "{}"))
         ling, _ = self.client(fake, "custom", key=None, **custom())
@@ -198,6 +210,30 @@ class Check(Base):
         self.assertTrue(r.translate.thinks)
         self.assertTrue(r.slow)
         self.assertIn("思考", r.slow_line())
+
+    def test_a_model_that_answers_json_without_json_mode_passes(self):
+        def respond(url, body):
+            if url.endswith("/models"):
+                return Response(404, "")
+            if "response_format" in body:
+                return Response(400, "{}")
+            return answer('```json\n{"ok": true}\n```' if "JSON object" in body else "周五发布。")
+        ling, _ = self.client(Fake(respond), "custom", key=None, **custom())
+        ling.check()
+        self.assertIsNone(ling.check_result.failure)
+        # One that can't answer JSON at all still fails.
+        fake = Fake(lambda u, b: Response(404, "") if u.endswith("/models") else Response(400, "{}") if "response_format" in b else answer())
+        ling, _ = self.client(fake, "custom", key=None, **custom())
+        ling.check()
+        self.assertEqual(("text", aicheck.NO_JSON, 400), ling.check_result.failure)
+
+    def test_a_json_object_in_plain_text_counts_as_json(self):
+        from cicada.core.ling import answers_json
+        self.assertTrue(answers_json('{"ok": true}'))
+        self.assertTrue(answers_json('```json\n{"ok": true}\n```'))
+        self.assertFalse(answers_json("ok"))
+        self.assertFalse(answers_json("} {"))
+        self.assertFalse(answers_json(None))
 
     def test_bad_address_words_the_local_network(self):
         ling, _ = self.client(Fake(lambda u, b: answer()), "custom", key="sk-x", aiCustomBase="http://gpu.example.com/v1")

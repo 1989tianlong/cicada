@@ -423,12 +423,20 @@ class LingClient:
             self.seconds = time.monotonic() - started
             r.pass_up_to("text", self.seconds)
             if c.provider.id == "custom":
+                ask = "Reply with the JSON object {\"ok\": true}."
                 try:
-                    self.chat("Reply with the JSON object {\"ok\": true}.", "Reply.", SPEAK, json=True, max_tokens=20, timeout=30.0)
+                    self.chat(ask, "Reply.", SPEAK, json=True, max_tokens=20, timeout=30.0, json_fallback=False)
                 except LingError as e:
                     if e.kind != LingError.HTTP:
                         raise
-                    r.fail("text", aicheck.NO_JSON, e.status)
+                    # JSON mode refused (some hosts of a model do): meetings then ask without it, so
+                    # what counts is whether the model still answers with a JSON object.
+                    try:
+                        said = self.chat(ask, "Reply.", SPEAK, max_tokens=20, timeout=30.0)
+                    except LingError:
+                        said = None
+                    if not answers_json(said):
+                        r.fail("text", aicheck.NO_JSON, e.status)
         except LingError as e:
             self._failed(r, aicheck.classify(e, "text"), "text")
         except Exception:  # noqa: BLE001
@@ -606,13 +614,15 @@ class LingClient:
 
     def chat(self, content: str, instruction: str, priority: int, json: bool = False, max_tokens: int = 1024,
              timeout: float = 30.0, model: str | None = None, audio: bytes | None = None, patient: bool = False,
-             reply: list | None = None) -> str:
+             reply: list | None = None, json_fallback: bool = True) -> str:
         """One chat completion. `content` goes in the system message, `instruction` is the fixed user
         message, `audio` (a WAV) goes before it for the hear model. Notes and heard audio retry 429s
         with backoff (retry_waits); the rest fail fast so the caller can fall back. `patient` (the
         final notes) keeps retrying for about a minute. A 429 holds every request start for a while
         (_rate_limited), and a retry keeps its place in the queue, so lines stay in order. Audio goes
-        to the hear model's address (`hear_url`). `reply`, when given, gets the whole JSON reply."""
+        to the hear model's address (`hear_url`). `reply`, when given, gets the whole JSON reply. A JSON
+        request refused with 400 is asked again without JSON mode unless `json_fallback` is off (the
+        check asks again itself)."""
         k = self.current_key()
         if k is None:
             raise LingError(LingError.NO_KEY)
@@ -639,7 +649,16 @@ class LingClient:
             ticket = self._acquire(priority, c.provider.spacing, ticket, fail_if_paused=not waits)
             started = time.monotonic()
             try:
-                root = self._post_chat(base, body, k, timeout)
+                try:
+                    root = self._post_chat(base, body, k, timeout)
+                except LingError as e:
+                    if not (json_fallback and e.kind == LingError.HTTP and e.status == 400 and "response_format" in body):
+                        raise
+                    # Some hosts of a model refuse JSON mode (on OpenRouter, Novita for Ling 3.1 Flash)
+                    # while the model answers JSON anyway: the prompt asks for it, the parsers find it.
+                    Log.d("ling: %s JSON mode refused (400), asking again without it" % name)
+                    del body["response_format"]
+                    root = self._post_chat(base, body, k, timeout)
                 choices = arr(root.get("choices"))
                 choice = obj(choices[0]) if choices else None
                 text = string((obj(choice.get("message")) or {}).get("content")) if choice else None
@@ -838,6 +857,14 @@ class LingClient:
 
 
 MAX_PAUSE = 30.0
+
+
+def answers_json(text: str | None) -> bool:
+    """A chat reply's text holds a JSON object (a fence or a sentence around it is fine)."""
+    if not text:
+        return False
+    a, z = text.find("{"), text.rfind("}")
+    return 0 <= a < z and jsonfmt.parse_object(text[a:z + 1]) is not None
 
 
 def retry_waits(priority: int, audio: bool = False, patient: bool = False) -> list:

@@ -1377,6 +1377,9 @@ class Speakers(Base):
         self.assertTrue(found[1].evidence.startswith("00:40 “Thanks"))
         self.assertEqual({0: "Christina"}, refuted)
         self.assertEqual(({}, {}), speakers.read("not json", s))
+        # Without JSON mode (a host that refuses it) the reply may come fenced.
+        fenced, _ = speakers.read('```json\n{"speakers": [{"speaker": 2, "name": "George", "evidence": "L11"}]}\n```', s)
+        self.assertEqual("George", fenced[1].name)
         self.assertIn("说话人1", speakers.content(s))
 
     def test_notes_prompt_names_the_voices(self):
