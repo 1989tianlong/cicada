@@ -89,6 +89,7 @@ class ListenEngine:
         # 说话人识别: a voiceprint per segment on its own thread while Ming hears it, labelled in order.
         self.speakers = None  # speakers.Tagger, set by the app
         self.on_voice = None  # called with the meeting's id when a line gets a voice (Ling may name it)
+        self.fixes = None  # LiveFixes (改正听错的词), set by the app
         self._voice_pool = ThreadPoolExecutor(1, thread_name_prefix="Voiceprint")
         self._deliver_lock = threading.Lock()
         self._voices_waiting = 0
@@ -573,12 +574,24 @@ class ListenEngine:
             self.store.append(sid, copy)
         if voice is not None and self.on_voice is not None:
             self.on_voice(sid)
+        if self.fixes is not None:
+            self.fixes.apply_known(copy.id, sid)
         # A joined sentence is translated again as a whole; a line Ming didn't translate gets text translation.
-        if (joined or line.dst is None) and line.srcLang != target:
+        # 改正听错的词: a line Ming did translate goes to the text model too, for the fixes the Mac gets
+        # with every finished sentence's translation (Ming hears and translates in one call, so on
+        # Linux it is one more text request per line; its translation, as fixed, replaces Ming's).
+        fixing = self.settings.fixMisheard and self.fixes is not None
+        if (joined or line.dst is None or fixing) and line.srcLang != target:
             src = line.src
+            only_fix = not joined and line.dst is not None
 
             def retranslate():
-                dst = self.translator.translate(src, line.srcLang, target, Translator.SENTENCE)
+                if only_fix:
+                    dst = self.translator.fix(src, line.srcLang, target)
+                    if dst is None:
+                        return  # Ming's translation stays
+                else:
+                    dst = self.translator.translate(src, line.srcLang, target, Translator.SENTENCE)
                 if dst is None:
                     # The notes window may now say the user's own service can't be reached.
                     self._changed()

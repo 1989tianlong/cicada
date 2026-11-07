@@ -129,6 +129,34 @@ class SessionStore:
         if grew:
             self._words(sid)
 
+    # 改正听错的词 (SessionStore.swift)
+
+    def set_fixes(self, sid: str, line_id: str, fixes: list) -> None:
+        """A line's fixes: what the AI service proposed and the user decided. None when empty."""
+        with self._gate:
+            s = self._sessions.get(sid)
+            l = next((x for x in s.lines if x.id == line_id), None) if s else None
+            if l is None or (l.fixes or []) == fixes:
+                return
+        self._mutate(sid, lambda s: [setattr(x, "fixes", [f.copy() for f in fixes] or None) for x in s.lines if x.id == line_id])
+
+    def line(self, sid: str, line_id: str):
+        """A copy of one line, or None."""
+        with self._gate:
+            s = self._sessions.get(sid)
+            l = next((x for x in s.lines if x.id == line_id), None) if s else None
+            return l.copy() if l else None
+
+    def line_heard(self, text: str):
+        """The line a reply was for, by its text as heard: (meeting id, a copy of the line), the newest
+        such line in the live meeting. Older meetings never: "好的。" is in all of them."""
+        with self._gate:
+            s = self._sessions.get(self.live) if self.live else None
+            if s is None:
+                return None
+            l = next((x for x in reversed(s.lines) if x.src == text), None)
+            return (s.id, l.copy()) if l else None
+
     # Voices (说话人识别, SessionStore.swift)
 
     def set_line_voices(self, sid: str, ids: set, voice: int) -> None:

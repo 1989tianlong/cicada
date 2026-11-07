@@ -411,9 +411,124 @@ def command(app, line: str) -> dict:
         app.show_onboarding()
         app.onboarding.go(int(arg))
         return {"ok": True, "step": app.onboarding.step if app.onboarding is not None else "done"}
+    if cmd.startswith(("fix", "vocab")) or cmd in ("heard", "ask-names", "resettle"):
+        return _fixes(app, cmd, arg)
     if cmd == "quit":
         app.quit()
         return {"ok": True}
+    return {"ok": False, "error": "unknown command " + cmd}
+
+
+def _fix_state(app, sid: str) -> dict:
+    lines = app.store.lines(sid)
+    every = [f for l in lines for f in l.fixes or []]
+    return {"session": sid, "on": app.settings.fixMisheard, "askNames": app.settings.askNames,
+            "applied": sum(1 for f in every if f.applied), "asked": sum(1 for f in every if f.ask),
+            "off": sum(1 for f in every if f.off), "toast": app.fixes.toast_text(), "canUndo": app.fixes.can_undo,
+            "asking": (lambda a: [a[1].from_, a[1].to, a[3]] if a else None)(app.fixes.asking(sid)),
+            "pending": [[f.from_, f.to] for _l, f in app.fixes.pending(sid)],
+            "lines": [{"id": l.id, "src": l.src, "shown": l.shown, "dst": l.dst,
+                       "fixes": [f.to_json() for f in l.fixes]} for l in lines if l.fixes]}
+
+
+def _fixes(app, cmd: str, arg: str) -> dict:
+    """改正听错的词 (the Mac's fixes / heard / fixState / fixAnswer / fixLater / fixUndo / fixEdit /
+    fixRevert / vocabAdd / vocabState / resettle):
+      fixes on|off | ask-names on|off | heard <text> (a finished sentence as if Ming heard it, in the
+      meeting being listened to: the record, the fixing request, the notes window all follow) |
+      fix-state [<id>] | fix-answer yes|no [<id>] | fix-later [<id>] | fix-undo | fix-revert <line> [<id>] |
+      fix-edit <line>=<text>[|one][|keep0][|@<id>] | vocab-add Morpho=莫拉、莫法[|…] | vocab-remove <word> |
+      vocab-state | resettle <line>=<text> (the line heard again as <text>, then translated and fixed
+      again with the lines after it in view)"""
+    words = arg.split()
+    fx = app.fixes
+
+    def sid_at(i):
+        return words[i] if len(words) > i else (app.store.live or (app.store.all()[0].id if app.store.all() else ""))
+    if cmd == "fixes":
+        app.settings.fixMisheard = arg != "off"
+        app.settings.save()
+        app.changed()
+        return {"ok": True, "on": app.settings.fixMisheard}
+    if cmd == "ask-names":
+        app.settings.askNames = arg != "off"
+        app.settings.save()
+        return {"ok": True, "askNames": app.settings.askNames}
+    if cmd == "heard":
+        listen = app.listen
+        if not listen.listening or listen.session_id is None:
+            return {"ok": False, "error": "not listening"}
+        from types import SimpleNamespace
+        from ..core.translator import Heard
+        lang = listen._main.hint or "zh-CN"
+        seg = SimpleNamespace(start=listen.heard_seconds, seconds=2.0, index=0, voiceprint=None,
+                              asked=app.settings.resolved_target(lang))
+        heard = Heard(lang, arg, None)
+
+        def run():
+            listen._record(listen._main, seg, heard)
+            app.changed()
+        threading.Thread(target=run, daemon=True).start()
+        return {"ok": True}
+    if cmd == "resettle":
+        line_id, _, text = arg.partition("=")
+        sid = app.store.live
+        line = app.store.line(sid, line_id) if sid else None
+        if line is None:
+            return {"ok": False, "error": "no such live line"}
+        line.src = text
+        app.store.replace(sid, line)
+        fx.apply_known(line_id, sid)
+
+        def run():
+            dst = app.translator.translate(text, line.srcLang, line.dstLang, app.translator.SENTENCE)
+            if dst:
+                now = app.store.line(sid, line_id)
+                now.dst = dst
+                app.store.replace(sid, now)
+        threading.Thread(target=run, daemon=True).start()
+        return {"ok": True}
+    if cmd == "fix-state":
+        return {"ok": True, **_fix_state(app, sid_at(0))}
+    if cmd == "fix-answer":
+        sid = sid_at(1)
+        a = fx.asking(sid) or next(((l, f, 1, 1) for l, f in fx.pending(sid)), None)
+        if a is None:
+            return {"ok": False, "error": "nothing waiting"}
+        fx.answer(a[1], words[0] == "yes", sid)
+        return {"ok": True, **_fix_state(app, sid)}
+    if cmd == "fix-later":
+        sid = sid_at(0)
+        a = fx.asking(sid)
+        if a is not None:
+            fx.later(a[1], sid)
+        return {"ok": a is not None, **_fix_state(app, sid)}
+    if cmd == "fix-undo":
+        fx.undo()
+        return {"ok": True}
+    if cmd == "fix-revert":
+        sid = sid_at(1)
+        line = app.store.line(sid, words[0]) if words else None
+        f = next((f for f in (line.fixes or []) if f.applied), None) if line else None
+        if f is None:
+            return {"ok": False, "error": "no applied fix on that line"}
+        fx.revert(f, line.id, sid)
+        return {"ok": True, **_fix_state(app, sid)}
+    if cmd == "fix-edit":
+        line_id, _, rest = arg.partition("=")
+        opts = rest.split("|")
+        sid = next((o[1:] for o in opts[1:] if o.startswith("@")), None) or sid_at(99)
+        n = fx.edit(line_id, sid, opts[0], everywhere="one" not in opts, remember="keep0" not in opts)
+        return {"ok": n > 0, "changed": n, **_fix_state(app, sid)}
+    if cmd == "vocab-add":
+        r = app.vocabulary.import_text(arg.replace("|", "\n"))
+        return {"ok": True, "added": r.added, "updated": r.updated, "skipped": r.skipped}
+    if cmd == "vocab-remove":
+        app.vocabulary.remove(arg)
+        return {"ok": True}
+    if cmd == "vocab-state":
+        return {"ok": True, "path": app.vocabulary.path,
+                "terms": [t.to_json() for t in app.vocabulary.snapshot()]}
     return {"ok": False, "error": "unknown command " + cmd}
 
 

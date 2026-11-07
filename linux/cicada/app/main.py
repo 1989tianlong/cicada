@@ -78,6 +78,16 @@ class Controller:
         self.translator = Translator(self.ling)
         self.translator.google_off = self.settings.google_off
         self.listen = ListenEngine(self.ling, self.translator, self.store, self.notes, self.settings)
+        # 改正听错的词: the word list beside the records, and the fixes the translation brings back.
+        from ..core import vocabulary
+        from ..core.live_fixes import LiveFixes
+        self.vocabulary = vocabulary.Vocabulary(vocabulary.default_path())
+        self.fixes = LiveFixes(self.store, self.vocabulary, self.settings)
+        self.fixes.on_change = self.changed
+        self.vocabulary.on_change = self.changed
+        self.listen.fixes = self.fixes
+        self.translator.fix_context = self.fixes.context
+        self.translator.on_fixes = self.fixes.received
         # 同声传译: my microphone → the AI service → 知了 麦克风. The listen side's loudness feeds its echo check.
         from ..core.speak import SpeakEngine
         from .room import EchoCanceller, Player, VirtualMic
@@ -669,6 +679,7 @@ class Controller:
         self.end_watch = meeting_end.MeetingEndWatch(self.end_config(), time.time())
         self.notices.start()
         room = self._room_side_source() if kind == "both" else None
+        self.fixes.meeting_started()
         self.listen.start(source, kind, mic=kind == "room")
         if room is not None:
             self.listen.start_room(*room)

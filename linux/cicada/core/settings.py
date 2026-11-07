@@ -41,6 +41,10 @@ class AppSettings:
         # 同声传译: what I say is interpreted and spoken into 知了 麦克风 (the Mac's speakEnabled etc.).
         # 保存会议录音 (the Mac's recordAudio): system.m4a beside session.json, when GStreamer has an AAC encoder.
         "recordAudio": True,
+        # 会中改正听错的词 (the Mac's keys): finished sentences carry the word list to the AI service, which
+        # points out misheard words (correction.py); askNames: a new name is asked about once.
+        "fixMisheard": True,
+        "askNames": True,
         "speakerVoices": True,       # 说话人识别: tell the other side's voices apart (说话人 1、2…), as on the Mac
         "speakEnabled": False,
         "speakFrom": "system",       # the language I speak; "system" = the subtitles' language

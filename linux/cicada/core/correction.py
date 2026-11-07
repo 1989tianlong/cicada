@@ -1,6 +1,12 @@
 """改正听错的词: which of the AI service's proposed fixes to take, and the line as shown once they are
-in. A port of the Mac's Correction.swift, rule for rule (its tests are tests/test_correction.py)."""
+in. A port of the Mac's Correction.swift, rule for rule (its tests are in tests/test_fixes.py)."""
 from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+from . import jsonfmt
+from .models import LineFix
 
 
 def _word(c: str) -> bool:
@@ -59,3 +65,179 @@ def apply(fixes: list, src: str) -> tuple:
         spans.append((f.to, start))
     marks = sorted((o, o + len(w)) for w, o in spans if o + len(w) <= len(text))
     return text, marks
+
+
+# Deciding which of the service's proposed fixes to take, without asking it again. Its own confidence
+# isn't enough: in a 21-minute test it rated "快销 → 区块" and "苍蝇 → 方向" above 0.85. So a Chinese
+# word may only be swapped for one that sounds alike, a Latin word only for a near spelling, and a new
+# name only once the user says so.
+
+APPLY, ASK, DROP = "apply", "ask", "drop"
+APPLY_AT = 0.6
+SPELLING_AT = 0.8
+ASK_AT = 0.8
+
+
+@dataclass
+class Edit:
+    """A fix the service proposed: the subtitle's words, what was said, how sure it is."""
+    from_: str
+    to: str
+    confidence: float
+
+
+def decide(e: Edit, known, rejected) -> str:
+    """`known(heard, word)`: the user confirmed this heard form for this word (the word list).
+    `rejected(heard, word)`: they said no to it in this meeting."""
+    cf, ct = core(e.from_, e.to)
+    if not cf or not ct or cf.lower() == ct.lower() or rejected(e.from_, e.to) or rejected(cf, ct):
+        return DROP
+    if known(e.from_, e.to) or known(cf, ct):
+        return APPLY
+    if e.confidence < APPLY_AT:
+        return DROP
+    latin_from = any(_latin_letter(c) for c in cf)
+    latin_to = any(_latin_letter(c) for c in ct)
+    if not latin_from and not latin_to and han(cf) and han(ct) and sounds_alike(cf, ct):
+        return APPLY
+    if latin_from and latin_to and cf.isascii() and ct.isascii() and e.confidence >= SPELLING_AT \
+            and cf.lower() != ct.lower() and distance(cf.lower(), ct.lower()) <= 2:
+        return APPLY
+    # A new name (Chinese heard as a Latin name, or a respelled one): sound can't check it.
+    if latin_to and e.confidence >= ASK_AT:
+        return ASK
+    return DROP
+
+
+def _latin_letter(c: str) -> bool:
+    return c.isascii() and c.isalpha()
+
+
+# Toneless pinyin per character. Ubuntu's Python has no Mandarin transform, so the table is the Mac's
+# own: generated once from Apple's ICU/CLDR Han-Latin transform (kCFStringTransformMandarinLatin, then
+# diacritics stripped) for U+4E00–U+9FFF, 20,924 characters, one "<char>\t<syllable>" per line. Data,
+# not a dependency; the same readings the Mac compares, so both decide alike.
+_PINYIN: dict | None = None
+
+
+def _table() -> dict:
+    global _PINYIN
+    if _PINYIN is None:
+        t = {}
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "pinyin.tsv"), encoding="utf-8") as f:
+            for line in f:
+                ch, _, syl = line.rstrip("\n").partition("\t")
+                if ch and syl:
+                    t[ch] = syl
+        _PINYIN = t
+    return _PINYIN
+
+
+def pinyin(s: str) -> list:
+    """One toneless syllable per character; a character the table doesn't know stays itself."""
+    t = _table()
+    return [t.get(c, c.lower()) for c in s]
+
+
+_INITIALS = ("zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q",
+             "x", "r", "z", "c", "s", "y", "w")
+
+
+def _split(syllable: str) -> tuple:
+    for i in _INITIALS:
+        if syllable.startswith(i):
+            return i, syllable[len(i):]
+    return "", syllable
+
+
+def sounds_alike(a: str, b: str) -> bool:
+    """Same number of syllables, and on average three quarters alike: a syllable counts whole when
+    equal, half when its initial or its final matches (质/追, 销/照). 苍蝇/方向 is a quarter."""
+    x, y = pinyin(a), pinyin(b)
+    if len(x) != len(y) or not x:
+        return False
+    score = 0.0
+    for p, q in zip(x, y):
+        if p == q:
+            score += 1
+            continue
+        i1, f1 = _split(p)
+        i2, f2 = _split(q)
+        if i1 == i2 or f1 == f2 or f1.replace("ng", "n") == f2.replace("ng", "n"):
+            score += 0.5
+    return score / len(x) >= 0.75
+
+
+def han(s: str) -> bool:
+    """Every character a Han ideograph (Swift's isIdeographic)."""
+    def ideograph(c):
+        o = ord(c)
+        return (0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF or 0x20000 <= o <= 0x3134F
+                or o in (0x3006, 0x3007) or 0x3021 <= o <= 0x3029 or 0x3038 <= o <= 0x303A)
+    return all(ideograph(c) for c in s)
+
+
+def distance(a: str, b: str) -> int:
+    row = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        prev = row[0]
+        row[0] = i + 1
+        for j, cb in enumerate(b):
+            cur = row[j + 1]
+            row[j + 1] = min(row[j + 1] + 1, row[j] + 1, prev + (0 if ca == cb else 1))
+            prev = cur
+    return row[len(b)]
+
+
+def parse(reply: str, subtitle: str):
+    """The service's reply to a sentence sent with fixes asked for: {"translation": "…", "fixes":
+    [{"from", "to", "confidence"}]} → (translation, [Edit]). None when it isn't that shape, and the
+    caller treats it as a failed translation. Fixes whose words aren't in the subtitle are dropped:
+    the service sometimes quotes them rephrased."""
+    # Asked for JSON in the prompt only: take the outermost {…}, fenced or not.
+    a, b = reply.find("{"), reply.rfind("}")
+    if a < 0 or b <= a:
+        return None
+    o = jsonfmt.parse_object(reply[a:b + 1])
+    if o is None or not isinstance(o.get("translation"), str):
+        return None
+    edits = []
+    for f in jsonfmt.arr(o.get("fixes")):
+        if not isinstance(f, dict):
+            continue
+        frm, to = jsonfmt.string(f.get("from")), jsonfmt.string(f.get("to"))
+        if not frm or to is None or frm == to or frm not in subtitle:
+            continue
+        edits.append(Edit(frm, to, float(jsonfmt.num(f.get("confidence")) or 0.0)))
+    return o["translation"].strip(), edits
+
+
+def merge(old: list, new: list) -> list:
+    """What a line's fixes become after the service answered for it again (a joined line, or a
+    recheck with the lines after it in view): the user's decisions stay (said no, said yes, wrote it),
+    and of the rest only what is proposed again. So a recheck that no longer proposes a fix takes it back."""
+    kept = [f for f in old if f.off is True or f.user is True]
+    fresh = []
+    for n in new:
+        cf = core(n.from_, n.to)[0]
+        if not any(k.from_ == n.from_ or core(k.from_, k.to)[0] == cf for k in kept):
+            fresh.append(n)
+    return kept + fresh
+
+
+def user_edit(shown: str, edited: str, src: str, fixes: list):
+    """改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others, and
+    the heard form it replaces (for the word list): the words in `src` when they are there, else the
+    heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad"). None: no change."""
+    new = edited.strip()
+    if not new or new == shown:
+        return None
+    cf, ct = core(shown, new)
+    if not cf or not ct:
+        return None
+    heard = cf
+    if cf not in src:
+        earlier = next((f for f in fixes if f.applied and f.to in cf), None)
+        if earlier is not None:
+            heard = core(earlier.from_, earlier.to)[0]
+    return LineFix(cf, ct, user=True), heard

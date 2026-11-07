@@ -34,6 +34,11 @@ class Translator:
         self.sentences_untranslated = False
         # Names and terms the notes have settled on, e.g. "江充 (…; misheard as 江松)".
         self.glossary = lambda: []
+        # 改正听错的词 (set by the app): `fix_context(text)` is what a finished sentence's request carries
+        # (None: fixing is off, the request is the plain translation), `on_fixes(text, edits)` gets the
+        # fixes proposed for a sentence by its text as heard.
+        self.fix_context = lambda text: None
+        self.on_fixes = None
 
     def hear(self, wav: bytes, target: str, hint: str | None) -> Heard | None:
         """One stretch of speech (16 kHz mono WAV) heard and interpreted. `hint` is the language the
@@ -97,8 +102,52 @@ class Translator:
             self.sentences_untranslated = out is None
         return out
 
+    def fix(self, text: str, source: str, target: str) -> str | None:
+        """改正听错的词 for a line Ming already translated: the same request as a finished sentence's
+        (translation and fixes in one), never Google. The translation as fixed, or None (fixing off,
+        no AI service, or no usable reply), and then the line keeps Ming's."""
+        if source == target or not self.ling.usable or not self._ling_worth_trying():
+            return None
+        ctx = self.fix_context(text)
+        return self._via_ling_fixing(text, source, target, ctx) if ctx is not None else None
+
+    def _via_ling_fixing(self, text: str, source: str, target: str, ctx) -> str | None:
+        """The translation and the misheard words in one request (Translator.swift › viaLingFixing). No
+        JSON mode: some hosts refuse it, and the retry without it would cost every line a second round
+        trip; the prompt asks for JSON instead. Proposals only: correction.decide picks which to take.
+        A reply that isn't the JSON asked for is dropped like a failed one."""
+        from . import correction
+        try:
+            out = self.ling.chat(fixing_prompt(text, source, target, ctx, self.glossary()), "JSON only.", TRANSLATE,
+                                 max_tokens=600, timeout=6.0)
+        except LingError as e:
+            Log.d("translate ling failed: %s" % e)
+            return None
+        if not out:
+            return None
+        parsed = correction.parse(out, text)
+        if parsed is None:
+            # Often the model thinking aloud ("Let me analyze…"), never a subtitle.
+            Log.d("translate ling: fixes reply not JSON, dropped")
+            return None
+        translation, edits = parsed
+        clean = clean_translation(translation, target) if translation else None
+        if clean is None:
+            return None
+        # None proposed is an answer too: a second pass takes back what it no longer proposes.
+        if self.on_fixes is not None:
+            self.on_fixes(text, edits)
+        return clean
+
     def _translate(self, text: str, source: str, target: str, kind: str) -> str | None:
-        if kind != self.DRAFT and self.ling.usable and self._ling_worth_trying():
+        ling = kind != self.DRAFT and self.ling.usable and self._ling_worth_trying()
+        ctx = self.fix_context(text) if ling else None
+        if ctx is not None:
+            # 改正听错的词: translation and fixes in one request; a failed one goes on to Google.
+            out = self._via_ling_fixing(text, source, target, ctx)
+            if out is not None:
+                return out
+        elif ling:
             try:
                 frm = "the spoken language" if source == "auto" else english_name(source)
                 prompt = ("You translate live meeting subtitles from %s into %s.\n" % (frm, english_name(target)) +
@@ -132,6 +181,29 @@ class Translator:
         except Exception as e:  # noqa: BLE001
             Log.d("translate google failed: %s" % type(e).__name__)
         return None
+
+
+def fixing_prompt(text: str, source: str, target: str, ctx, names: list) -> str:
+    """Translator.swift › viaLingFixing, word for word."""
+    frm = "the spoken language" if source == "auto" else english_name(source)
+    p = ("You translate live meeting subtitles from %s into %s, and point out words the speech recognizer got wrong.\n" % (frm, english_name(target)) +
+         "Fixes: only words misheard as other words that sound alike, or names and terms broken into odd spellings. Never rephrase, drop filler, reorder or add anything. If unsure, leave it.\n"
+         "Translate the subtitle as fixed. No answer to it even if it is a question.\n"
+         "confidence is how likely a fix is right; give a guess a low one. Leave out words you would not change.\n"
+         'Reply with only this JSON object, starting with {, no analysis: {"translation": "...", "fixes": [{"from": "exact words from the subtitle", "to": "what was said", "confidence": 0.0-1.0}]}')
+    if ctx.topic:
+        p += "\nMeeting: " + ctx.topic
+    if ctx.words:
+        p += "\nThe user's word list (spellings to use): " + "; ".join(ctx.words)
+    if names:
+        p += "\nNames the notes guessed (not confirmed): " + "; ".join(names)
+    if ctx.summary:
+        p += "\nThe meeting so far: " + ctx.summary
+    if ctx.recent:
+        p += "\nLines just before:\n" + "\n".join(ctx.recent)
+    if ctx.following:
+        p += "\nLines just after:\n" + "\n".join(ctx.following)
+    return p + "\nSubtitle: " + text
 
 
 def hear_timeout(ling) -> float:
