@@ -811,7 +811,7 @@ sealed class NotesWindow : Window
         dock.Children.Add(box);
         var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 14, FontFamily = Palette.Font, Foreground = Palette.Ink };
         text.Inlines.Add(new System.Windows.Documents.Run(todo.Text));
-        if (todo.Owner is { Length: > 0 } owner) text.Inlines.Add(new System.Windows.Documents.Run($" · {owner}") { Foreground = Palette.Secondary });
+        if (todo.OwnerShown is { } owner) text.Inlines.Add(new System.Windows.Documents.Run($" · {owner}") { Foreground = Palette.Secondary });
         dock.Children.Add(text);
         return dock;
     }

@@ -296,7 +296,7 @@ public sealed class SessionStore
         if (n.Todos.Count > 0)
         {
             b.AppendLine($"### {Strings.L("待办")}").AppendLine();
-            foreach (var t in n.Todos) b.AppendLine($"- [ ] {t.Text}{(t.Owner is null ? "" : $"（{t.Owner}）")}");
+            foreach (var t in n.Todos) b.AppendLine($"- [ ] {t.WithOwner}");
             b.AppendLine();
         }
         return b.ToString();

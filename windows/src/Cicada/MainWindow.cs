@@ -565,7 +565,7 @@ sealed class MainWindow : Window
                     DockPanel.SetDock(at, Dock.Right);
                     row.Children.Add(at);
                 }
-                row.Children.Add(Ui.Text(item.Text + (item.Owner is { Length: > 0 } o ? $"（{o}）" : ""), 15, item.Support == 0 ? Palette.Tertiary : Palette.Ink));
+                row.Children.Add(Ui.Text(item.WithOwner, 15, item.Support == 0 ? Palette.Tertiary : Palette.Ink));
                 block.Children.Add(row);
             }
             article.Children.Add(new Border { Background = Palette.Mica, CornerRadius = new CornerRadius(16), Padding = new Thickness(26, 22, 26, 22), Child = block, Margin = new Thickness(0, 0, 0, 32) });

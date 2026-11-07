@@ -1005,6 +1005,26 @@ static class Tests
 
     // MARK: Strings
 
+    /// The notes store a to-do's owner as the transcript's Chinese label; it shows and exports in the UI language.
+    public static void TodoOwnersShowInTheUILanguage()
+    {
+        var res = Path.Combine(AppContext.BaseDirectory, "Resources");
+        try
+        {
+            Strings.Load(res, "en");
+            Equal("Them", new NoteItem { Owner = "对方" }.OwnerShown, "them");
+            Equal("You", new NoteItem { Owner = "你" }.OwnerShown, "you");
+            Equal("Speaker 2", new NoteItem { Owner = "说话人2" }.OwnerShown, "speaker");
+            Equal("Alice", new NoteItem { Owner = "Alice" }.OwnerShown, "a name stays");
+            var s = new Session { Notes = new MeetingNotes { Summary = "s", Todos = [new NoteItem { Text = "Send the deck", Owner = "对方" }] } };
+            Check(SessionStore.Markdown(s).Contains("- [ ] Send the deck (Them)"), "export: " + SessionStore.Markdown(s));
+            Equal("Misheard words fixed: 3", Strings.LF("改了 %lld 处听错的词", 3), "banner");
+            Strings.Load(res, "zh-Hans");
+            Equal("发资料（对方）", new NoteItem { Text = "发资料", Owner = "对方" }.WithOwner, "Chinese");
+        }
+        finally { Strings.Load(res, "zh-Hans"); }
+    }
+
     public static void LoadsTheMacsTranslations()
     {
         Strings.Load(Path.Combine(AppContext.BaseDirectory, "Resources"), "en");

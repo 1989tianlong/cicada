@@ -139,6 +139,20 @@ public sealed class NoteItem
     /// When it was said (first evidence line).
     [JsonPropertyName("t")] public double? T { get; set; }
     [JsonPropertyName("text")] public string Text { get; set; } = "";
+
+    /// The owner as stored ("你", "对方", "说话人2" or a name) in the UI language.
+    [JsonIgnore]
+    public string? OwnerShown => Owner switch
+    {
+        null or "" => null,
+        "你" or "对方" or "未识别" => Strings.L(Owner),
+        _ when Owner.StartsWith("说话人", StringComparison.Ordinal) && int.TryParse(Owner[3..].Trim(), out var n) => Strings.LF("说话人 %lld", n),
+        _ => Owner,
+    };
+
+    /// The to-do with its owner after it: "（对方）" in Chinese, " (Them)" in English.
+    [JsonIgnore]
+    public string WithOwner => Text + (OwnerShown is { } o ? Strings.LF("待办的负责人 %@", o) : "");
 }
 
 /// A name or term as the notes settled on it, and how speech recognition heard it.
