@@ -138,15 +138,23 @@ class LiveFixes(val store: SessionStore, val vocabulary: Vocabulary, private val
     /// and a yes goes into the word list so the next meeting fixes it without asking.
     @Synchronized fun answer(fix: LineFix, yes: Boolean, id: String) {
         val c = Correction.core(fix.from, fix.to)
-        val touched = store.lines(id).filter { l -> (l.fixes ?: emptyList()).any { it.ask == true && Correction.core(it.from, it.to) == c } }
-        remember(id, touched.map { it.id })
+        val lines = store.lines(id)
+        val touched = lines.filter { l -> (l.fixes ?: emptyList()).any { it.ask == true && Correction.core(it.from, it.to) == c } }
+        val others = if (yes) lines.filter { l -> l.src.contains(c.first) && touched.none { it.id == l.id } } else emptyList()
+        remember(id, (touched + others).map { it.id })
         for (l in touched) {
             val fixes = (l.fixes ?: emptyList()).map { f ->
                 if (f.ask == true && Correction.core(f.from, f.to) == c) f.copy(ask = null, user = if (yes) true else f.user, off = if (yes) f.off else true) else f
             }
             set(fixes, l.id, id)
         }
-        if (yes) vocabulary.confirm(c.first, c.second) else refused.add(pair(c.first, c.second))
+        if (yes) {
+            vocabulary.confirm(c.first, c.second)
+            // The rest of the meeting heard the same way follows now, not with the next line.
+            for (l in others) applyKnown(l.id, id)
+        } else {
+            refused.add(pair(c.first, c.second))
+        }
         Log.d("fix answered ${if (yes) "yes" else "no"}")
         say(if (yes) Strings.LF("已改 %@ → %@，记进词表", c.first, c.second) else Strings.LF("这场不再问 %@", c.first))
     }

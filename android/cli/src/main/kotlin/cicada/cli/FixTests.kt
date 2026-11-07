@@ -7,6 +7,7 @@ import cicada.*
 object FixTests {
     val tests: List<Pair<String, () -> Unit>> = listOf(
         "fixesReadAndWrittenLikeTheMac" to ::recordWithFixes,
+        "yesFixesTheRestOfTheMeetingHeardTheSameWayAtOnce" to ::yesFixesTheRestOfTheMeetingHeardTheSameWayAtOnce,
         "recordFormatUnchangedWithoutFixes" to ::recordFormatUnchangedWithoutFixes,
         "exportsShowTheFixedText" to ::exportsShowTheFixedText,
         "applyReplacesAndMarks" to ::applyReplacesAndMarks,
@@ -357,6 +358,17 @@ object FixTests {
         t.fx.edit("l0", t.id, "我Monad找了一个", everywhere = false, keep = true)
         equal("木娜那边也有", t.line("l1").shown, "one line only")
         check(t.fx.vocabulary.terms.isEmpty(), "not taught")
+    }
+
+    fun yesFixesTheRestOfTheMeetingHeardTheSameWayAtOnce() {
+        val t = setup("最近那个开布特提了", "开布特那边也有", "别的")
+        t.fx.received(t.line("l0").src, listOf(Correction.Edit("开布特", "Curve", 0.9)))
+        t.fx.answer(t.fx.asking(t.id)!!.fix, true, t.id)
+        equal("Curve那边也有", t.line("l1").shown, "the other line follows at once")
+        equal(null, t.line("l2").fixes, "a line without it untouched")
+        t.fx.undo()
+        equal("开布特那边也有", t.line("l1").shown, "undo takes it back too")
+        equal("最近那个开布特提了", t.line("l0").shown, "and the asked line")
     }
 
     fun laterTakesItOffTheCardButKeepsItWaiting() {
