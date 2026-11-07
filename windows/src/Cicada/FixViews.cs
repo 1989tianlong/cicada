@@ -238,10 +238,14 @@ static class FixViews
                 one.Checked += (_, _) => { everywhere = false; Options(); };
                 stack.Children.Add(all); stack.Children.Add(one);
             }
-            var remember = new CheckBox { Content = L("记进词表，以后自动改"), IsChecked = keep, FontSize = 12, Margin = new Thickness(0, 6, 0, 0), IsEnabled = same.Count <= 1 || everywhere };
-            remember.Checked += (_, _) => keep = true;
-            remember.Unchecked += (_, _) => keep = false;
-            stack.Children.Add(remember);
+            // Only a word for a word can teach the list: an added or dropped word can't.
+            if (same.Swap)
+            {
+                var remember = new CheckBox { Content = L("记进词表，以后自动改"), IsChecked = keep, FontSize = 12, Margin = new Thickness(0, 6, 0, 0), IsEnabled = same.Count <= 1 || everywhere };
+                remember.Checked += (_, _) => keep = true;
+                remember.Unchecked += (_, _) => keep = false;
+                stack.Children.Add(remember);
+            }
             options.Content = stack;
         }
 

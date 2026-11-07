@@ -2836,6 +2836,41 @@ static class Tests
         Check(Correction.UserEdit("a", " a ", "a", []) is null, "unchanged");
     }
 
+    public static void FixAddedWordStaysOnItsLineAndNeverMatchesPunctuation()
+    {
+        // "now" added before the full stop: the fix is the last word, unique in the line, not ".".
+        const string line = "Great, let's lock that in.";
+        var e = Correction.UserEdit(line, "Great, let's lock that in now.", line, []);
+        Equal("in", e?.Fix.From, "from");
+        Equal("in now", e?.Fix.To, "to");
+        Equal(false, e?.Swap, "added, not swapped");
+        Equal("Great, let's lock that in now.", Correction.Apply([e!.Value.Fix], line).Text, "applied");
+        // A word added at the start.
+        var s = Correction.UserEdit(line, "OK Great, let's lock that in.", line, []);
+        Equal("Great", s?.Fix.From, "start from");
+        Equal("OK Great", s?.Fix.To, "start to");
+        Equal(false, s?.Swap, "start swap");
+        // A word that appears twice: grown until the span is unique.
+        var t = Correction.UserEdit("in the room in the hall", "in the room inside the hall", "in the room in the hall", []);
+        Equal("in the room inside the hall", Correction.Apply([t!.Value.Fix], "in the room in the hall").Text, "unique span");
+        // Chinese: an inserted word takes its neighbour.
+        var c = Correction.UserEdit("好的我来看一下", "好的OK我来看一下", "好的我来看一下", []);
+        Equal("好的OK我来看一下", c is { } cc ? Correction.Apply([cc.Fix], "好的我来看一下").Text : null, "Chinese insert");
+        Equal(false, c?.Swap, "Chinese swap");
+        // A real swap is still a swap.
+        Equal(true, Correction.UserEdit("我木娜找了", "我Monad找了", "我木娜找了", [])?.Swap, "swap");
+    }
+
+    public static void FixesAddedWordEditStaysOnItsLine()
+    {
+        var (fx, store, id) = FixSetup("Great, let's lock that in.", "Done.");
+        Equal(1, fx.SameHeard("l0", id, "Great, let's lock that in now.")?.Count, "one line");
+        Equal(1, fx.Edit("l0", id, "Great, let's lock that in now.", everywhere: true, remember: true), "changed");
+        Equal("Done.", FixLine(store, id, "l1").Shown, "the full stop elsewhere untouched");
+        Equal(0, fx.Vocabulary.Terms.Count, "nothing taught");
+        Check(fx.Toast?.Text.Contains("in → in now") == true, "the toast shows the span it changed: " + fx.Toast?.Text);
+    }
+
     public static void NumberedIntegerPlaceholders()
     {
         var files = new Dictionary<string, string> { ["en.lproj/Localizable.strings"] = "\"整场听成 %@ 的 %lld 处都改\" = \"All %2$lld places heard as %1$@ in this meeting\";" };

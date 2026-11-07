@@ -197,18 +197,66 @@ public static class Correction
         return [.. kept, .. added];
     }
 
-    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others,
-    /// and the heard form it replaces (for the word list): the words in `src` when they are there,
-    /// else the heard words of the fix the user corrected again ("莫纳" → "Morpho" → "Monad").
-    public static (LineFix Fix, string Heard)? UserEdit(string shown, string edited, string src, IReadOnlyList<LineFix> fixes)
+    /// 改这句…: the user rewrote the line as shown. What changed, as a fix on top of the others: the
+    /// changed span grown to whole tokens (a Latin word, or one CJK character), and further, a token
+    /// at a time, until it holds a letter and is the only such span in the line. An added word
+    /// ("lock that in." → "lock that in now.") is then "in" → "in now" on this line, never "." on
+    /// every line. `Swap` is whether words were replaced (not only added or dropped): only a swap
+    /// may go to the rest of the meeting and teach the word list. `Heard` is the words in `src`
+    /// when they are there, else the heard words of the fix the user corrected again ("莫纳" →
+    /// "Morpho" → "Monad").
+    public static (LineFix Fix, string Heard, bool Swap)? UserEdit(string shown, string edited, string src, IReadOnlyList<LineFix> fixes)
     {
         var now = edited.Trim();
         if (now.Length == 0 || now == shown) return null;
-        var c = Core(shown, now);
-        if (c.From.Length == 0 || c.To.Length == 0) return null;
-        var heard = c.From;
-        if (!src.Contains(c.From, StringComparison.Ordinal) && fixes.FirstOrDefault(f => f.Applied && c.From.Contains(f.To, StringComparison.Ordinal)) is { } earlier)
+        // Characters as the Mac counts them (grapheme clusters), so the spans match Swift's.
+        static string[] Chars(string x)
+        {
+            var e = StringInfo.GetTextElementEnumerator(x);
+            var o = new List<string>();
+            while (e.MoveNext()) o.Add(e.GetTextElement());
+            return [.. o];
+        }
+        string[] a = Chars(shown), b = Chars(now);
+        int p = 0;
+        while (p < Math.Min(a.Length, b.Length) && a[p] == b[p]) p++;
+        int q = 0;
+        while (q < Math.Min(a.Length, b.Length) - p && a[a.Length - 1 - q] == b[b.Length - 1 - q]) q++;
+        bool swap = a.Length - p - q > 0 && b.Length - p - q > 0;
+        // Tokens of the shown line: a run of ASCII letters and digits, else one character.
+        static bool Latin(string c) => c.Length == 1 && c[0] < 128 && char.IsLetterOrDigit(c[0]);
+        var tokens = new List<(int Lo, int Hi)>();
+        for (int k = 0; k < a.Length;)
+        {
+            int e = k + 1;
+            if (Latin(a[k])) while (e < a.Length && Latin(a[e])) e++;
+            tokens.Add((k, e));
+            k = e;
+        }
+        int start = p, end = a.Length - q;
+        foreach (var t in tokens) if (t.Lo <= start && start < t.Hi) { start = t.Lo; break; }
+        if (end > start) foreach (var t in tokens) if (t.Lo <= end - 1 && end - 1 < t.Hi) { end = t.Hi; break; }
+        string Span() => string.Concat(a[start..end]);
+        int Count(string x)
+        {
+            if (x.Length == 0) return 0;
+            int n = 0;
+            for (int at = shown.IndexOf(x, StringComparison.Ordinal); at >= 0; at = shown.IndexOf(x, at + x.Length, StringComparison.Ordinal)) n++;
+            return n;
+        }
+        while (!Span().Any(char.IsLetterOrDigit) || Count(Span()) != 1)
+        {
+            int before = tokens.FindLastIndex(t => t.Hi <= start), after = tokens.FindIndex(t => t.Lo >= end);
+            if (before >= 0) start = tokens[before].Lo;
+            else if (after >= 0) end = tokens[after].Hi;
+            else break;
+        }
+        var from = Span();
+        var to = string.Concat(b[start..(b.Length - (a.Length - end))]);
+        if (from.Length == 0 || from == to) return null;
+        var heard = from;
+        if (!src.Contains(from, StringComparison.Ordinal) && fixes.FirstOrDefault(f => f.Applied && from.Contains(f.To, StringComparison.Ordinal)) is { } earlier)
             heard = Core(earlier.From, earlier.To).From;
-        return (new LineFix(c.From, c.To, user: true), heard);
+        return (new LineFix(from, to, user: true), heard, swap);
     }
 }

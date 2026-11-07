@@ -212,12 +212,13 @@ public sealed class LiveFixes
     // MARK: 改这句…
 
     /// How many lines of the meeting the same edit would change ("整场听成 木娜 的 2 处都改").
-    public (string Heard, int Count)? SameHeard(string lineId, string id, string edited)
+    /// An edit that only adds or drops words stays on its line (count 1, nothing to learn).
+    public (string Heard, int Count, bool Swap)? SameHeard(string lineId, string id, string edited)
     {
         if (store.Get(id) is not { } s || s.Lines.FirstOrDefault(l => l.Id == lineId) is not { } l
             || Correction.UserEdit(l.Shown, edited, l.Src, l.Fixes ?? []) is not { } e) return null;
-        var n = s.Lines.Count(x => x.Shown.Contains(e.Fix.From, StringComparison.Ordinal));
-        return (e.Heard, Math.Max(1, n));
+        var n = e.Swap ? s.Lines.Count(x => x.Shown.Contains(e.Fix.From, StringComparison.Ordinal)) : 1;
+        return (e.Heard, Math.Max(1, n), e.Swap);
     }
 
     /// The user rewrote a line (改这句…): what changed becomes their own fix, on this line or on
@@ -231,6 +232,7 @@ public sealed class LiveFixes
         {
             if (store.Get(id) is not { } s || s.Lines.FirstOrDefault(l => l.Id == lineId) is not { } l
                 || Correction.UserEdit(l.Shown, edited, l.Src, l.Fixes ?? []) is not { } e) return 0;
+            everywhere = everywhere && e.Swap;
             var targets = everywhere ? s.Lines.Where(x => x.Shown.Contains(e.Fix.From, StringComparison.Ordinal)).ToList() : [l];
             Remember(id, targets.Select(t => t.Id));
             foreach (var t in targets)
@@ -247,6 +249,9 @@ public sealed class LiveFixes
             // word for a word (`Vocabulary.Learnable`).
             learned = remember && everywhere && Vocabulary.Learnable(heard, to) is not null;
             if (learned) Vocabulary.Confirm(heard, to, "user");
+            // A swap reads as the words swapped; an added or dropped word as the span it changed
+            // ("in → in now", not "in → now").
+            if (!e.Swap) (heard, to) = (e.Fix.From, e.Fix.To);
         }
         Log.Debug($"fix edited lines={count} learned={learned}");
         Say(learned ? Strings.LF("已改 %lld 处：%@ → %@，记进词表", count, heard, to) : Strings.LF("已改 %lld 处：%@ → %@", count, heard, to));
