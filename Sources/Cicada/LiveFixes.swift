@@ -240,8 +240,11 @@ final class LiveFixes: ObservableObject {
         let learned = keep && everywhere && Vocabulary.learnable(heard: e.heard, word: word) != nil
         if learned { vocabulary.confirm(heard: e.heard, word: word, source: "user") }
         debugLog("fix edited lines=\(targets.count) learned=\(learned)")
-        say(learned ? L("已改 \(targets.count) 处：\(e.heard) → \(word)，记进词表")
-                    : L("已改 \(targets.count) 处：\(e.heard) → \(word)"))
+        // A swap reads as the words swapped; an added or dropped word as the span it changed
+        // ("in → in now", not "in → now").
+        let (a, b) = e.swap ? (e.heard, word) : (e.fix.from, e.fix.to)
+        say(learned ? L("已改 \(targets.count) 处：\(a) → \(b)，记进词表")
+                    : L("已改 \(targets.count) 处：\(a) → \(b)"))
         return targets.count
     }
 
