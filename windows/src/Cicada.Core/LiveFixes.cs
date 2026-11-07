@@ -226,6 +226,7 @@ public sealed class LiveFixes
     {
         int count;
         string heard, to;
+        bool learned;
         lock (gate)
         {
             if (store.Get(id) is not { } s || s.Lines.FirstOrDefault(l => l.Id == lineId) is not { } l
@@ -242,11 +243,13 @@ public sealed class LiveFixes
             count = targets.Count;
             heard = e.Heard;
             to = Correction.Core(e.Fix.From, e.Fix.To).To.Trim();
-            // Only a change made everywhere teaches the word list: a one-off must not.
-            if (remember && everywhere) Vocabulary.Confirm(heard, to, "user");
+            // Only a change made everywhere teaches the word list (a one-off must not), and only a
+            // word for a word (`Vocabulary.Learnable`).
+            learned = remember && everywhere && Vocabulary.Learnable(heard, to) is not null;
+            if (learned) Vocabulary.Confirm(heard, to, "user");
         }
-        Log.Debug($"fix edited lines={count} keep={remember}");
-        Say(remember ? Strings.LF("已改 %lld 处：%@ → %@，记进词表", count, heard, to) : Strings.LF("已改 %lld 处：%@ → %@", count, heard, to));
+        Log.Debug($"fix edited lines={count} learned={learned}");
+        Say(learned ? Strings.LF("已改 %lld 处：%@ → %@，记进词表", count, heard, to) : Strings.LF("已改 %lld 处：%@ → %@", count, heard, to));
         return count;
     }
 

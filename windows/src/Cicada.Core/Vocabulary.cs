@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -57,9 +58,37 @@ public sealed class Vocabulary
         lock (gate) return Find(word) is { } t && t.Heard.Any(x => Key(x) == h);
     }
 
-    /// The user said yes to a fix (or added it): the word, and the form it was heard as.
+    /// What a fix can teach the list, or null: both sides trimmed of spaces and punctuation, no
+    /// punctuation inside, short, and a real swap. An edit that only adds or drops words around the
+    /// heard ones ("我来" → "OK我来") or ends on a full stop ("持。" → "讲。") teaches nothing.
+    public static (string Heard, string Word)? Learnable(string heard, string word)
+    {
+        static bool Edge(Rune r) => Rune.IsWhiteSpace(r) || Rune.IsPunctuation(r) || Rune.IsSymbol(r);
+        static string Trim(string s)
+        {
+            var r = s.EnumerateRunes().ToList();
+            int a = 0, b = r.Count;
+            while (a < b && Edge(r[a])) a++;
+            while (b > a && Edge(r[b - 1])) b--;
+            return string.Concat(r.Skip(a).Take(b - a).Select(x => x.ToString()));
+        }
+        var h = Trim(heard); var w = Trim(word);
+        if (h.Length == 0 || w.Length == 0 || new StringInfo(h).LengthInTextElements > 20 || new StringInfo(w).LengthInTextElements > 40
+            || Key(h) == Key(w) || w.Contains(h, StringComparison.Ordinal) || h.Contains(w, StringComparison.Ordinal)
+            || h.EnumerateRunes().Any(Rune.IsPunctuation)
+            || w.EnumerateRunes().Any(r => Rune.IsPunctuation(r) && r.Value != '.' && r.Value != '-')) return null;
+        return (h, w);
+    }
+
+    /// The user said yes to a fix (or added it): the word, and the form it was heard as. A pair
+    /// that isn't a word for a word (`Learnable`) adds the word only, or nothing.
     public void Confirm(string heard, string word, string source = "live")
     {
+        if (heard.Length > 0)
+        {
+            if (Learnable(heard, word) is not { } l) return;
+            (heard, word) = l;
+        }
         lock (gate)
         {
             if (Find(word) is { } t)

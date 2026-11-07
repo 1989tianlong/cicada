@@ -2912,6 +2912,28 @@ static class Tests
         Check(v.Knows("莫拉", "Morpho") && v.Knows("莫法", "Morpho"), "both heard forms");
     }
 
+    public static void VocabEditsThatArentAWordForAWordTeachNothing()
+    {
+        var v = new Vocabulary(null);
+        v.Confirm("持。", "讲。");
+        Check(v.Knows("持", "讲"), "trimmed of the full stop");
+        v.Confirm("我来", "OK我来", "user");
+        v.Confirm("然后，", "然后");
+        Equal("讲", string.Join(",", v.Terms.Select(t => t.Word)), "words around the heard ones teach nothing");
+        v.Confirm("木娜", "Monad", "user");
+        v.Confirm("Uni斯图 V三", "Uniswap V3");
+        Check(v.Knows("木娜", "Monad") && v.Knows("Uni斯图 V三", "Uniswap V3"), "a word for a word is learned");
+    }
+
+    public static void FixesEditThatIsntAWordForAWordStillAppliesButTeachesNothing()
+    {
+        var (fx, store, id) = FixSetup("我来", "我来吧");
+        fx.Edit("l0", id, "OK我来", everywhere: true, remember: true);
+        Equal("OK我来", FixLine(store, id, "l0").Shown, "applied");
+        Equal(0, fx.Vocabulary.Terms.Count, "nothing taught");
+        Check(fx.Toast?.Text.Contains("记进词表") == false, "the toast doesn't say it was saved: " + fx.Toast?.Text);
+    }
+
     public static void VocabOwnersAndPreview()
     {
         var v = new Vocabulary(null);
