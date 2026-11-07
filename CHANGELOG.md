@@ -22,6 +22,8 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Saying yes to a fixed name fixes the rest of the meeting heard the same way at once, not only with the next line ([46dae9f](https://github.com/wquguru/cicada/commit/46dae9fa7cfc77a703a33d162e7ad54b34b96852))
 - In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([5d20f2e](https://github.com/wquguru/cicada/commit/5d20f2e1a7617ebe680be59c31a0679c3839ecbf))
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([28ab28e](https://github.com/wquguru/cicada/commit/28ab28e0f29219a46a55f3074b64821b16fa7882))
+- Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([bc6cc3c](https://github.com/wquguru/cicada/commit/bc6cc3c5b8e3242a447756c09f103f4fc75fafe9))
+- The toast after Edit line… shows the span an added word changed (in → in now), not a fragment ([194cdd1](https://github.com/wquguru/cicada/commit/194cdd16d7530f771f60aca7d663017d3efe2642))
 
 ### Windows
 
@@ -36,6 +38,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Saying yes to a fixed name fixes the rest of the meeting heard the same way at once, not only with the next line ([e38bd1b](https://github.com/wquguru/cicada/commit/e38bd1be856c92610f6475861c0624e311bc52d6))
 - In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([d5fbff2](https://github.com/wquguru/cicada/commit/d5fbff2957f11833eb2e60aedd013cf1c2e4979d))
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([331e094](https://github.com/wquguru/cicada/commit/331e094a6ded82ca32ba5cc152659e2c8fb279df))
+- Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([53846ad](https://github.com/wquguru/cicada/commit/53846adf3d0f08a1a705be768557cebd34aa0bd3))
 
 ### Android
 
@@ -51,6 +54,8 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - The Word list says Tap to change the spelling, not Click, in English, Japanese and Korean ([0e5c8b2](https://github.com/wquguru/cicada/commit/0e5c8b2fe5d231c18295a65fb04919b2fafcc18b))
 - In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([ea9dd62](https://github.com/wquguru/cicada/commit/ea9dd622de5a5ad8c3f25718399de6b520584912))
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([7a11c5a](https://github.com/wquguru/cicada/commit/7a11c5a4023f64d709fa7f622ddd24dfa22426db))
+- Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([2f51cd8](https://github.com/wquguru/cicada/commit/2f51cd877171023b3ca7ab6a7969d5d55249e0cb))
+- The toast after Edit line… shows the span an added word changed (in → in now), not a fragment ([b842de4](https://github.com/wquguru/cicada/commit/b842de461a5aec59ad31cfc77c2019c10e099190))
 
 ### Linux
 
@@ -66,6 +71,8 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Saying yes to a fixed name fixes the rest of the meeting heard the same way at once, not only with the next line ([bd14ca1](https://github.com/wquguru/cicada/commit/bd14ca118a7b47f69578fa0445d7bb8702dd912a))
 - In English, Japanese and Korean, a to-do's owner no longer shows as 对方, 你 or 说话人2 ([75164ec](https://github.com/wquguru/cicada/commit/75164ec08881cfeb038e0bc4206464dae02de15e))
 - Edit line… no longer teaches the word list punctuation or words added around the heard ones ([ab28ff7](https://github.com/wquguru/cicada/commit/ab28ff7286535d171e18f61950913c287e300cf5))
+- Edit line… that adds a word fixes only that line, never every line with a full stop, and adding a word at the start works ([bd62bda](https://github.com/wquguru/cicada/commit/bd62bda660ff127a1acf273242cfd60f2659cfb3))
+- The toast after Edit line… shows the span an added word changed (in → in now), not a fragment ([4f3f75a](https://github.com/wquguru/cicada/commit/4f3f75a862f1e0ff62956a31d8c0c3bb8cd86978))
 
 ## 1.5.0 — 2026-11-07
 
