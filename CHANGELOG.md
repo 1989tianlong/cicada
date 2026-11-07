@@ -5,7 +5,7 @@ writes it from the `feat:` and `fix:` commits since the last tag, grouped by pla
 scope), and the release workflow publishes it as the release notes. Since 1.1.2 every release ships
 every platform (one with nothing new says No changes); earlier ones shipped only those listed. Lines under `## Unreleased` become the release's summary. The Chinese changelog for users is `site/changelog.json`.
 
-## 1.5.0 — 2026-11-06
+## 1.5.0 — 2026-11-07
 
 ### Mac
 
@@ -38,6 +38,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - With OpenRouter's voice, the talk key no longer gets stuck on Speaking to others after the first sentence ([f598b84](https://github.com/wquguru/cicada/commit/f598b84997a7e3ae4a2ddf9a2b47339921e36b2e))
 - With OpenRouter's default model, notes no longer fail when the host it picks refuses JSON mode ([b756cd8](https://github.com/wquguru/cicada/commit/b756cd8e9d4461008a9fa02ed22eccfe06f1ed52))
 - In English, a meeting with one line says 1 line, not 1 lines ([7250b1e](https://github.com/wquguru/cicada/commit/7250b1e674094b0abaa75623076dc93eb65cdf07))
+- On a small screen, the talk bar no longer covers the notes panel's live line ([82e8138](https://github.com/wquguru/cicada/commit/82e8138e68959a4e11c49bf4bd8b35ffc036807f))
 
 ### Android
 
@@ -64,6 +65,7 @@ every platform (one with nothing new says No changes); earlier ones shipped only
 - Setup, settings and the meetings window say people online hear your interpreted voice, not "them" or the room ([a81c939](https://github.com/wquguru/cicada/commit/a81c939d140c78f8e4c272200d92c575e55281da))
 - With OpenRouter's default model, notes no longer fail when the host it picks refuses JSON mode ([4483f0e](https://github.com/wquguru/cicada/commit/4483f0e1745d02c1953b8bf767e97e122735d65c))
 - In English, a meeting with one line says 1 line, not 1 lines ([be9fa79](https://github.com/wquguru/cicada/commit/be9fa796a41d7a3a5669be6bf95279501627499b))
+- A new meeting's notes window no longer keeps showing the last meeting's interpreted sentence ([ddc29ef](https://github.com/wquguru/cicada/commit/ddc29efb3b48b1845a4b37b61cfc2b7d3bde0538))
 
 ## 1.4.0 — 2026-11-06
 
