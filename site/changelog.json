@@ -104,6 +104,14 @@
         ],
         "title": "用 OpenRouter 的声音同传时，说完一句后说话键不再卡在“正在说给对方听…”，之后按下也能接着说。",
         "text": "OpenRouter 送来的声音有时停在半个采样上，知了一直等它播完，还占满一个 CPU 核。"
+      },
+      {
+        "kind": "fixed",
+        "platforms": [
+          "mac"
+        ],
+        "title": "用 OpenRouter 的默认模型时，纪要不再因为服务商不支持 JSON 格式而写不出来，设置里也不再说这个模型不能用。",
+        "text": "OpenRouter 有时把 Ling 3.1 Flash 交给不支持 JSON 格式的服务商；现在被拒时会换个问法再问一次。"
       }
     ]
   },

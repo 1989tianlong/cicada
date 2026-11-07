@@ -82,12 +82,11 @@ final class LingStub: URLProtocol, @unchecked Sendable {
 
     @Test func aRefusalForSomethingElseKeepsThinkingOff() async throws {
         LingStub.reset(200, "")
-        // No JSON mode on this server: 400 with or without the kwargs.
+        // No JSON mode on this server: 400 with or without the kwargs. Asked again without JSON mode.
         LingStub.respond = { body in body["response_format"] != nil ? (400, "{}") : (200, LingStub.chatReply("好")) }
         let ling = customClient()
-        await #expect(throws: LingClient.Failure.http(400)) {
-            try await ling.chat(content: "x", instruction: "Notes.", priority: .translate, json: true)
-        }
+        #expect(try await ling.chat(content: "x", instruction: "Notes.", priority: .translate, json: true) == "好")
+        #expect(LingStub.seen.last?.body["response_format"] == nil && LingStub.seen.last?.body["chat_template_kwargs"] != nil)
         _ = try await ling.chat(content: "y", instruction: "Translate.", priority: .translate)
         #expect(LingStub.seen.last?.body["chat_template_kwargs"] != nil)
     }
@@ -234,6 +233,14 @@ final class LingStub: URLProtocol, @unchecked Sendable {
         let c = try #require(calls.first)
         #expect(c.role == "voice" && c.provider == "ling" && c.model == "Ming-3.0-tts-0.5B")
         #expect(c.outcome == "ok" && c.chars == 4 && c.firstAudio != nil && c.promptTokens == 0)
+    }
+
+    @Test func aJSONObjectInPlainTextCountsAsJSON() {
+        func reply(_ t: String) -> [String: Any] { ["choices": [["message": ["content": t]]]] }
+        #expect(LingClient.answersJSON(reply("{\"ok\": true}")))
+        #expect(LingClient.answersJSON(reply("```json\n{\"ok\": true}\n```")))
+        #expect(!LingClient.answersJSON(reply("ok")))
+        #expect(!LingClient.answersJSON(nil))
     }
 
     @Test func rejectedKeyIsMarkedInvalid() async {

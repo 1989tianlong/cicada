@@ -154,6 +154,15 @@ final class LingClient: ObservableObject {
     }
 
     static let models = AIProvider.ling.textModels.map(\.id)
+
+    /// A chat reply whose text holds a JSON object (a fence or a sentence around it is fine).
+    static func answersJSON(_ root: [String: Any]?) -> Bool {
+        let message = ((root?["choices"] as? [[String: Any]])?.first?["message"]) as? [String: Any]
+        guard let text = message?["content"] as? String,
+              let a = text.firstIndex(of: "{"), let b = text.lastIndex(of: "}"), a < b,
+              let data = String(text[a...b]).data(using: .utf8) else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
+    }
     private static let hijackPrefixes = ["根据现有检索证据", "暂未找到足够可靠的信息", "根据检索"]
 
     @Published private(set) var keyState: KeyState
@@ -334,7 +343,11 @@ final class LingClient: ObservableObject {
                                                         ["role": "user", "content": "Reply."]]]
                 c.shape(&json, maxTokens: 20, templateKwargs: !noTemplateKwargs)
                 do { _ = try await postChat(json, key: key, timeout: 30) } catch Failure.http(let code) {
-                    r.fail(.text, .noJSON, code: code)
+                    // JSON mode refused (some hosts of a model do): meetings then ask without it, so
+                    // what counts is whether the model still answers with a JSON object.
+                    json["response_format"] = nil
+                    let plain = try? await postChat(json, key: key, timeout: 30)
+                    if !Self.answersJSON(plain) { r.fail(.text, .noJSON, code: code) }
                 }
                 if r.failure == nil, c.transcribes {
                     r.hear = await checkHearing(c, key: key)
@@ -524,7 +537,16 @@ final class LingClient: ObservableObject {
             onQueued?(queued)
             let started = Date()
             do {
-                let root = try await postChat(body, key: key, timeout: timeout)
+                let root: [String: Any]
+                do {
+                    root = try await postChat(body, key: key, timeout: timeout)
+                } catch Failure.http(400) where body["response_format"] != nil {
+                    // Some hosts of a model refuse JSON mode (on OpenRouter, Novita for Ling 3.1 Flash)
+                    // while the model answers JSON anyway: the prompt asks for it, the parsers find it.
+                    debugLog("ling: \(priority) JSON mode refused (400), asking again without it")
+                    body["response_format"] = nil
+                    root = try await postChat(body, key: key, timeout: timeout)
+                }
                 guard let choice = (root["choices"] as? [[String: Any]])?.first,
                       let message = choice["message"] as? [String: Any],
                       let text = message["content"] as? String else { throw Failure.parse }
