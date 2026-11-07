@@ -450,7 +450,7 @@ class Onboarding(Gtk.Window):
         # The two sounds side by side: people try speaking first, but this step hears the computer.
         sources = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, homogeneous=True)
         sources.pack_start(self._source(L("对方的声音"), L("这一步"), [L("会议软件"), L("扬声器"), L("知了：字幕和纪要")], True), True, True, 0)
-        sources.pack_start(self._source(L("你的声音 · 麦克风"), L("第 4 步再用"), [L("麦克风"), L("同声传译"), L("对方听到译文")], False), True, True, 0)
+        sources.pack_start(self._source(L("你的声音 · 麦克风"), L("第 4 步再用"), [L("麦克风"), L("同声传译"), L("线上的人听到译文")], False), True, True, 0)
         self.page.pack_start(ui.gap(sources, 12), False, False, 0)
         self.sources = sources
         sources.set_no_show_all(True)  # _fill_silent decides, not the window's show_all

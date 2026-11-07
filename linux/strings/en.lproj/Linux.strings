@@ -62,7 +62,7 @@
 "知了 · 给会议的声音" = "Cicada · Voice for the meeting";
 "知了 麦克风" = "Cicada Microphone";
 "开始 / 停止说的快捷键" = "Start / stop speaking shortcut";
-"你说的话翻译后，用“知了 麦克风”传给对方" = "What you say is translated and sent to them through “Cicada Microphone”";
+"你说的话翻译后，用“知了 麦克风”传给线上的人" = "What you say is translated and sent to people online through “Cicada Microphone”";
 "和字幕一样（%@）" = "Same as subtitles (%@)";
 "在会议软件里把麦克风选成“知了 麦克风”（或“默认”），并戴上耳机：外放时对方的声音会被当成你说的。" = "In your meeting app, choose “Cicada Microphone” (or “Default”) as the microphone, and wear headphones: on speakers, their voice is taken for yours.";
 "这种语言还没有可用的声音" = "No voice is available for this language yet";
@@ -117,7 +117,7 @@
 "知了：字幕和纪要" = "Cicada: subtitles and notes";
 "你的声音 · 麦克风" = "Your voice · microphone";
 "第 4 步再用" = "Used in step 4";
-"对方听到译文" = "They hear the translation";
+"线上的人听到译文" = "People online hear the translation";
 "%@ · 只听声音，不录屏幕画面" = "%@ · Sound only, never the screen";
 "测试声音放了，但知了没听到" = "The test sound played, but Cicada didn't hear it";
 "看看声音是不是从别的设备出来（比如 HDMI 显示器），或被静音了。" = "Check whether the sound is going to another device (an HDMI monitor, say) or is muted.";
@@ -126,8 +126,8 @@
 "继续设置" = "Continue setup";
 "还差 %@ 步就能用" = "Almost ready: %@ to go";
 "知了把电脑里放出来的会议声音变成字幕和纪要。" = "Cicada turns the meeting audio your computer plays into subtitles and notes.";
-"按 %@ 说话，对方听到翻译后的声音" = "Press %@ to speak; the room hears you translated";
-"点纪要窗的麦克风说话，对方听到翻译后的声音" = "Click the mic in the notes window to speak; the room hears you translated";
+"按 %@ 说话，线上的人听到翻译后的声音" = "Press %@ to speak; people online hear you translated";
+"点纪要窗的麦克风说话，线上的人听到翻译后的声音" = "Click the mic in the notes window to speak; people online hear you translated";
 "只存在这台电脑上（只有你的账户能读）" = "Kept only on this computer (only your account can read it)";
 "识别、翻译和纪要都靠它，约 1 分钟" = "Transcription, translation and notes need it. About a minute.";
 "听一下电脑里的声音" = "Check your computer's sound";

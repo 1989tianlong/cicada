@@ -507,8 +507,8 @@ class RecordsWindow(Gtk.Window):
         line.set_halign(Gtk.Align.CENTER)
         page.pack_start(ui.gap(line, 8), False, False, 0)
         from .settings_window import SHORTCUTS, gnome_shortcut
-        speak = (LF("按 %@ 说话，对方听到翻译后的声音", SHORTCUTS["speak"][2].replace(" + Shift + ", " ⇧ "))
-                 if gnome_shortcut("speak") else L("点纪要窗的麦克风说话，对方听到翻译后的声音"))
+        speak = (LF("按 %@ 说话，线上的人听到翻译后的声音", SHORTCUTS["speak"][2].replace(" + Shift + ", " ⇧ "))
+                 if gnome_shortcut("speak") else L("点纪要窗的麦克风说话，线上的人听到翻译后的声音"))
         service = L("接上 Ling") if app.settings.aiProvider == "ling" else LF("接上 %@", app.ling.provider.name)
         # A key that the check found failing: why, and 去修 opens 设置 › AI 服务 (not the onboarding).
         from . import aicheck_view

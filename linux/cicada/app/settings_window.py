@@ -387,7 +387,7 @@ class SettingsWindow(Gtk.Window):
             for d in dependents:
                 d.set_sensitive(s.speakEnabled)
         switch.connect("notify::active", toggled)
-        rows.append(ui.prow(L("同声传译"), switch, L("你说的话翻译后，用“知了 麦克风”传给对方")))
+        rows.append(ui.prow(L("同声传译"), switch, L("你说的话翻译后，用“知了 麦克风”传给线上的人")))
 
         def set_from(v):
             s.speakFrom = v
