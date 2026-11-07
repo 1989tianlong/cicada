@@ -148,6 +148,8 @@ final class ListenEngine {
     private var nextPeriodicDetection = 30.0
     private var lastForeignCheck = Date.distantPast
     private var lastDetectionAt = Date.distantPast
+    /// When the recognizer last wrote anything: speech, even where the loudness gate heard none.
+    private var lastWordsAt = Date.distantPast
     private var ambiguousDetections = 0
     /// Sentences finished before detection settled the language: recorded once it confirms the
     /// language they were heard in, dropped on a switch (the replay into the new model redoes them).
@@ -349,6 +351,7 @@ final class ListenEngine {
         sureStreak = 0
         unconfirmed = []
         lastDetectionAt = .distantPast
+        lastWordsAt = .distantPast
         firstHeardAt = nil
         askShown = false
         fetchFailed = []
@@ -774,7 +777,7 @@ final class ListenEngine {
         failureStreak = 0
         var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Before any holding for the language: words at all is what tells speech from music.
-        if !text.isEmpty { onWords?() }
+        if !text.isEmpty { lastWordsAt = Date(); onWords?() }
         if result.isFinal {
             text = HeardText.clean(text)
             let fuller = HeardText.fuller(final: text, draft: volatileText)
@@ -889,6 +892,17 @@ final class ListenEngine {
         guard isRunning, settings.sourceMode == .auto, !detecting, !legacySingleLanguage, !cloudListening,
               candidates.count >= 2 || (!languageConfirmed && candidates.first == activeLang && activeLang != nil) else { return }
         var stats = router.stats(window: 6)
+        // Speech under the gate's line (a quiet remote voice, an app turned low: measured at RMS 0.008
+        // against 0.01) is still written down, but never voiced 2.5 s, so nothing was checked and
+        // 听不出 came at 20 s. The words say someone is talking: check what was just played.
+        if stats.recentVoiced < 2.5, Date().timeIntervalSince(lastWordsAt) < 2 {
+            if Date().timeIntervalSince(lastDetectionAt) >= 20 { needsDetection = true }
+            guard needsDetection, let firstHeardAt, Date().timeIntervalSince(firstHeardAt) >= 4,
+                  Date().timeIntervalSince(lastDetectionAt) >= 4 else { return }
+            debugLog("detect: words under the loudness gate, checking the last 6 s")
+            runDetection(router.snapshot(seconds: 6))
+            return
+        }
         if stats.silenceRun >= AudioRouter.gapSeconds { needsDetection = true }
         if stats.voicedTotal >= nextPeriodicDetection { needsDetection = true }
         guard needsDetection, Date().timeIntervalSince(lastDetectionAt) >= 3 else { return }
