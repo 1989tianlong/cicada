@@ -84,7 +84,7 @@ class RecordsActivity : Activity() {
         val q = query.lowercase()
         return SessionStore.displayTitle(s).lowercase().contains(q) ||
             s.notes?.let { n -> (n.summary + n.topics.joinToString { it.title + it.points.joinToString() } + n.terms.joinToString { it.name }).lowercase().contains(q) } == true ||
-            s.lines.any { it.src.lowercase().contains(q) || it.dst?.lowercase()?.contains(q) == true }
+            s.lines.any { it.shown.lowercase().contains(q) || it.dst?.lowercase()?.contains(q) == true }
     }
 
     private fun render() {
@@ -371,9 +371,9 @@ class RecordActivity : Activity() {
                 visibility = if (who) View.VISIBLE else View.GONE
                 setTextColor(if (l.speaker == "me") Palette.ink else NotesViews.voiceColor(numbers[l.id]).second.takeIf { numbers[l.id] != null } ?: Palette.secondary)
             }
-            val translated = !l.dst.isNullOrEmpty() && l.dst != l.src
-            (texts.getChildAt(1) as TextView).apply { text = l.src; visibility = if (translated) View.VISIBLE else View.GONE }
-            (texts.getChildAt(2) as TextView).text = if (translated) l.dst else l.src
+            val translated = !l.dst.isNullOrEmpty() && l.dst != l.shown
+            (texts.getChildAt(1) as TextView).apply { text = l.shown; visibility = if (translated) View.VISIBLE else View.GONE }
+            (texts.getChildAt(2) as TextView).text = if (translated) l.dst else l.shown
             return row
         }
     }

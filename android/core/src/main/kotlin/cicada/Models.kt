@@ -31,12 +31,19 @@ class TranscriptLine(
     /// "room": heard by the Mac's room microphone in a 电脑和会议室 meeting; kept so a Mac record
     /// opened here keeps its 现场 / 线上.
     var via: String? = null,
+    /// Words the AI service or the user fixed (Correction.kt); `src` stays what was heard. Absent
+    /// when none, as the Mac writes it.
+    var fixes: MutableList<LineFix>? = null,
 ) {
-    fun copy() = TranscriptLine(id, t, speaker, src, dst, srcLang, dstLang, voice, via)
+    fun copy() = TranscriptLine(id, t, speaker, src, dst, srcLang, dstLang, voice, via, fixes?.map { it.copy() }?.toMutableList())
+
+    /// What the line says once its fixes are in: shown, searched, exported and read by the notes.
+    val shown: String get() = fixes?.let { Correction.apply(it, src).text } ?: src
 
     fun toJson(): Map<String, Any?> = mapOf(
         "id" to id, "t" to t, "speaker" to speaker, "src" to src, "dst" to dst,
         "srcLang" to srcLang, "dstLang" to dstLang, "voice" to voice, "via" to via,
+        "fixes" to fixes?.map { it.toJson() },
     )
 
     companion object {
@@ -44,6 +51,7 @@ class TranscriptLine(
             id = o["id"].str() ?: "", t = o["t"].num() ?: 0.0, speaker = o["speaker"].str() ?: "them",
             src = o["src"].str() ?: "", dst = o["dst"].str(), srcLang = o["srcLang"].str() ?: "",
             dstLang = o["dstLang"].str() ?: "", voice = o["voice"].int(), via = o["via"].str(),
+            fixes = (o["fixes"] as? List<*>)?.mapNotNull { it.obj()?.let(LineFix::from) }?.toMutableList(),
         )
     }
 }

@@ -149,7 +149,7 @@ class SpeakerNamer(private val ling: LingClient, private val store: SessionStore
             for ((i, l) in lines.takeLast(400).withIndex()) {
                 val n = if (l.speaker == "them") l.voice?.let { numbers[it] } else null
                 val who = if (l.speaker == "me") "你" else if (n != null) "说话人$n" else "对方"
-                sb.append("[L${i + 1} ${Languages.clock(l.t)} $who] ${l.src}\n")
+                sb.append("[L${i + 1} ${Languages.clock(l.t)} $who] ${l.shown}\n")
             }
             return sb.toString()
         }
@@ -180,7 +180,7 @@ class SpeakerNamer(private val ling: LingClient, private val store: SessionStore
                     found.remove(other)
                 }
                 val l = lines[i]
-                val quote = if (l.src.length > 60) l.src.take(60) + "…" else l.src
+                val quote = if (l.shown.length > 60) l.shown.take(60) + "…" else l.shown
                 found[v] = VoiceGuess(name, "${Languages.clock(l.t)} “$quote”")
             }
             return found to refuted
@@ -192,7 +192,7 @@ class SpeakerNamer(private val ling: LingClient, private val store: SessionStore
             val at = g.evidence.substringBefore("“").trim()
             val quote = g.evidence.substringAfter("“").removeSuffix("”").substringBefore("…")
             for ((i, l) in lines.withIndex()) {
-                if (Languages.clock(l.t) == at && l.src.startsWith(quote))
+                if (Languages.clock(l.t) == at && l.shown.startsWith(quote))
                     return lines.subList(maxOf(0, i - EVIDENCE_REACH), minOf(lines.size, i + EVIDENCE_REACH + 1))
                         .any { it.speaker == "them" && it.voice == v }
             }

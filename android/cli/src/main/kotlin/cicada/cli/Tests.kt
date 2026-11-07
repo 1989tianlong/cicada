@@ -90,7 +90,7 @@ object Tests {
             "notesPromptNamesTheVoices" to ::notesPromptNamesTheVoices,
             "aHalfSentenceJoinsOnlyTheSameVoice" to ::aHalfSentenceJoinsOnlyTheSameVoice,
             "slowVoiceprintsNeverHoldSubtitlesBack" to ::slowVoiceprintsNeverHoldSubtitlesBack,
-        ) + ProviderTests.tests + AICheckTests.tests
+        ) + ProviderTests.tests + AICheckTests.tests + FixTests.tests
         var passed = 0; var failed = 0
         for ((name, test) in tests) {
             try { test(); passed++ } catch (e: Throwable) { failed++; println("FAIL $name: ${e.message ?: e.javaClass.simpleName}") }

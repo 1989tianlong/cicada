@@ -108,7 +108,7 @@ class ListenService : Service() {
                 else -> L("知了 · 正在听手机里的声音")
             }
             val text = if (file != null) "${cicada.Languages.clock(file.done)} / ${cicada.Languages.clock(file.total)}"
-                else if (ending != null) app.endingDetail(ending) else blocking ?: listen.problem ?: line?.let { it.dst ?: it.src } ?: L("等有人说话…")
+                else if (ending != null) app.endingDetail(ending) else blocking ?: listen.problem ?: line?.let { it.dst ?: it.shown } ?: L("等有人说话…")
             val b = Notification.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
@@ -141,7 +141,7 @@ class ListenService : Service() {
         fun refresh(context: Context) {
             val app = context.cicada
             if (!app.listen.listening || (app.listen.sourceKind == "file" && app.importing == null)) { lastText = null; return }
-            val text = app.importing?.let { "${it.done.toInt()}" } + app.listen.sessionId?.let { app.store.lines(it).lastOrNull()?.let { l -> l.dst ?: l.src } } + "|" + app.listen.problem +
+            val text = app.importing?.let { "${it.done.toInt()}" } + app.listen.sessionId?.let { app.store.lines(it).lastOrNull()?.let { l -> l.dst ?: l.shown } } + "|" + app.listen.problem +
                 "|" + app.ling.blocking + "|" + app.ending?.let { app.endingLeft(it) }
             if (text == lastText) return
             lastText = text

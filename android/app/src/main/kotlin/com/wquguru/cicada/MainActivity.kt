@@ -110,7 +110,7 @@ class MainActivity : Activity() {
         clockText = status
         val card = ui.card(ui.row(8, ui.dot(Palette.accent), status), gap = 12)
         card.addView(ui.helper(NotesViews.sourceLine(app)), ui.lp(top = 4))
-        NotesViews.currentLines(app).lastOrNull()?.let { l -> card.addView(ui.text(l.dst ?: l.src, 18f, Palette.ink, bold = true, lines = 3).apply { leading(1.4f) }, ui.lp(top = 12)) }
+        NotesViews.currentLines(app).lastOrNull()?.let { l -> card.addView(ui.text(l.dst ?: l.shown, 18f, Palette.ink, bold = true, lines = 3).apply { leading(1.4f) }, ui.lp(top = 12)) }
         card.addView(ui.button(L("回到正在听"), "primary", R.drawable.i_waves) { app.openLive() }, ui.lp(top = 16))
         return card
     }

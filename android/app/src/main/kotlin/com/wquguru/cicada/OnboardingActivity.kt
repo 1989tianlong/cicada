@@ -409,7 +409,7 @@ class OnboardingActivity : Activity() {
             // apart, and showing only the newest made the first one flash by.
             lines.dropLast(1).takeLast(2).forEachIndexed { i, l ->
                 val row = ui.stack(2, ui.text(NotesViews.said(l), 13f, Palette.secondary))
-                if (!l.dst.isNullOrEmpty() && l.dst != l.src) row.addView(ui.text(l.dst!!, 15f, Palette.ink))
+                if (!l.dst.isNullOrEmpty() && l.dst != l.shown) row.addView(ui.text(l.dst!!, 15f, Palette.ink))
                 card.addView(row, 1 + i, ui.lp(top = 10))
             }
             content.addView(card, ui.lp(top = 12))

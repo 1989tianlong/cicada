@@ -112,8 +112,8 @@ object TranscriptExport {
         for (l in s.lines) {
             // An imported file has no "other side" to name.
             val who = if (s.sourceFile == null) " ${SpeakerLabels.speakerName(l, numbers, names)}" else ""
-            b.append("**[${Languages.clock(l.t)}]$who**  \n${l.src}\n")
-            l.dst?.takeIf { it != l.src && it.isNotEmpty() }?.let { b.append("> $it\n") }
+            b.append("**[${Languages.clock(l.t)}]$who**  \n${l.shown}\n")
+            l.dst?.takeIf { it != l.shown && it.isNotEmpty() }?.let { b.append("> $it\n") }
             b.append("\n")
         }
         return b.toString()
@@ -130,8 +130,8 @@ object TranscriptExport {
             val end = maxOf(l.t + 1, minOf(next, l.t + 8))
             // Your own lines (我说) say so, as the record does.
             val tag = if (l.speaker == "me") "[${Strings.L("同传")}] " else ""
-            b.append("${i + 1}\n${ts(l.t)} --> ${ts(end)}\n$tag${l.src}\n")
-            l.dst?.takeIf { it != l.src && it.isNotEmpty() }?.let { b.append("$it\n") }
+            b.append("${i + 1}\n${ts(l.t)} --> ${ts(end)}\n$tag${l.shown}\n")
+            l.dst?.takeIf { it != l.shown && it.isNotEmpty() }?.let { b.append("$it\n") }
             b.append("\n")
         }
         return b.toString()
@@ -170,8 +170,8 @@ object TranscriptExport {
         val numbers = SpeakerLabels.numbers(s.lines); val names = SpeakerLabels.names(s)
         for (l in s.lines) {
             add("[${Languages.clock(l.t)}]" + if (s.sourceFile == null) " ${SpeakerLabels.speakerName(l, numbers, names)}" else "", 9.0, bold = true, color = "555555", after = 2.0)
-            add(l.src, 11.0, after = 2.0)
-            l.dst?.takeIf { it != l.src && it.isNotEmpty() }?.let { add(it, 11.0, color = "4D4D4D", after = 10.0) }
+            add(l.shown, 11.0, after = 2.0)
+            l.dst?.takeIf { it != l.shown && it.isNotEmpty() }?.let { add(it, 11.0, color = "4D4D4D", after = 10.0) }
         }
         val doc = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
             "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>$body" +

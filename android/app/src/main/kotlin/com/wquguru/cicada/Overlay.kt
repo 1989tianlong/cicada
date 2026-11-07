@@ -332,9 +332,9 @@ class Overlay(private val app: CicadaApp) {
                 dark -> {
                     val col = ui.stack(4)
                     // My line (我说) says so, as the Mac's subtitle bar does.
-                    if (!line.dst.isNullOrEmpty() && line.dst != line.src) col.addView(ui.text(NotesViews.said(line), 13f, Palette.onScrim, lines = 2))
+                    if (!line.dst.isNullOrEmpty() && line.dst != line.shown) col.addView(ui.text(NotesViews.said(line), 13f, Palette.onScrim, lines = 2))
                     else if (line.speaker == "me") col.addView(ui.text(L("你 · 同传"), 13f, Palette.onScrim))
-                    col.addView(ui.text(line.dst ?: line.src, 20f, Color.WHITE, bold = true, lines = 3).apply { leading(1.2f) })
+                    col.addView(ui.text(line.dst ?: line.shown, 20f, Color.WHITE, bold = true, lines = 3).apply { leading(1.2f) })
                     box.addView(col)
                 }
                 else -> box.addView(NotesViews.liveCard(ui, app, line, 18f, Palette.ground, lines = 3, dots = false).apply { setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12)) })

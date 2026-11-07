@@ -319,7 +319,7 @@ class NotesEngine(private val ling: LingClient, private val store: SessionStore)
                 val l = lines[i]
                 val n = numbers[l.id]
                 val who = if (l.speaker == "me") "你" else if (n != null) names[n] ?: "说话人$n" else if (numbers.isEmpty()) "对方" else "未识别"
-                return "[L${i + 1} ${Languages.clock(l.t)} $who] ${l.src}"
+                return "[L${i + 1} ${Languages.clock(l.t)} $who] ${l.shown}"
             }
             val current = if (notes.isEmpty) "{}" else compactJson(notes, frozen)
             val context = maxOf(0, from - 2)

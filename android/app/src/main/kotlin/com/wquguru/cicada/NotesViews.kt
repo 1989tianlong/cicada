@@ -30,7 +30,7 @@ object NotesViews {
         val listen = app.listen
         val line = listen.sessionId?.let { app.store.lines(it).lastOrNull() }
         return listOf(listen.listening, listen.sourceKind, listen.sessionId, listen.pending > 0, listen.problem, app.startProblem, silent(app), app.micSilenced,
-                      line?.id, line?.src, line?.dst, app.notes.status, app.notes.notes.updatedAt, app.notes.notes.covered,
+                      line?.id, line?.shown, line?.dst, app.notes.status, app.notes.notes.updatedAt, app.notes.notes.covered,
                       app.ending?.deadline, app.ling.blocking, listen.problemKind, app.ling.provider.id, customOnlyUntranslated(app)).joinToString("|")
     }
 
@@ -210,9 +210,9 @@ object NotesViews {
         // An initial only for someone known (你, a numbered or named voice); 对方 has no face.
         val head = ui.text("$who · ${Languages.clock(line.t)}", 12f, Palette.secondary, lines = 1)
         card.addView(if (line.speaker == "me" || numbers[line.id] != null) ui.row(8, avatar(ui, line, numbers, who), head) else head)
-        val translated = !line.dst.isNullOrEmpty() && line.dst != line.src
-        if (translated) card.addView(ui.text(line.src, Ui.Type.ORIGINAL, Palette.secondary).apply { leading(1.45f) })
-        card.addView(ui.text(line.dst?.takeIf { translated } ?: line.src, Ui.Type.TRANSLATION, Palette.ink).apply { leading(1.5f) })
+        val translated = !line.dst.isNullOrEmpty() && line.dst != line.shown
+        if (translated) card.addView(ui.text(line.shown, Ui.Type.ORIGINAL, Palette.secondary).apply { leading(1.45f) })
+        card.addView(ui.text(line.dst?.takeIf { translated } ?: line.shown, Ui.Type.TRANSLATION, Palette.ink).apply { leading(1.5f) })
         if (newest) card.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         return card
     }
@@ -252,7 +252,7 @@ object NotesViews {
         }
         for (l in lines.dropLast(1).takeLast(earlier)) {
             val texts = ui.stack(2, ui.text(said(l), 13f, Palette.secondary))
-            if (!l.dst.isNullOrEmpty() && l.dst != l.src) texts.addView(ui.text(l.dst!!, 16f, Palette.ink), ui.lp(top = 2))
+            if (!l.dst.isNullOrEmpty() && l.dst != l.shown) texts.addView(ui.text(l.dst!!, 16f, Palette.ink), ui.lp(top = 2))
             box.addView(LinearLayout(ui.context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(ui.text(Languages.clock(l.t), 12f, Palette.secondary, bold = true), LinearLayout.LayoutParams(-2, -2).apply { topMargin = ui.dp(1); rightMargin = ui.dp(10) })
@@ -265,17 +265,17 @@ object NotesViews {
 
     /// The newest line as a card, with the "still listening" dots under it.
     /// The original as shown above its translation: mine is marked, so it's clear who said it.
-    fun said(l: TranscriptLine) = if (l.speaker == "me") L("你 · 同传") + " · " + l.src else l.src
+    fun said(l: TranscriptLine) = if (l.speaker == "me") L("你 · 同传") + " · " + l.shown else l.shown
 
     fun liveCard(ui: Ui, app: CicadaApp, line: TranscriptLine, big: Float, bg: Int = Palette.card, lines: Int = 0, dots: Boolean = true): LinearLayout {
         val card = ui.stack(0)
         card.background = ui.rounded(bg, 20)
         card.setPadding(ui.dp(18), ui.dp(16), ui.dp(18), ui.dp(16))
         card.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        val translated = !line.dst.isNullOrEmpty() && line.dst != line.src
+        val translated = !line.dst.isNullOrEmpty() && line.dst != line.shown
         if (!translated && line.speaker == "me") card.addView(ui.text(L("你 · 同传"), 14f, Palette.secondary))
         if (translated) card.addView(ui.text(said(line), 14f, Palette.secondary, lines = if (lines > 0) lines - 1 else 0))
-        card.addView(ui.text(line.dst ?: line.src, big, Palette.ink, bold = true, lines = lines).apply { leading(1.25f) }, ui.lp(top = if (translated || line.speaker == "me") 8 else 0))
+        card.addView(ui.text(line.dst ?: line.shown, big, Palette.ink, bold = true, lines = lines).apply { leading(1.25f) }, ui.lp(top = if (translated || line.speaker == "me") 8 else 0))
         if (dots && app.listen.listening) card.addView(LinearLayout(ui.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
