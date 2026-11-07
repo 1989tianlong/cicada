@@ -733,6 +733,9 @@ sealed class Controller
     // MARK: Speaking (同声传译)
 
     public bool NotesVisible => notesWindow?.IsVisible == true;
+    /// Where the notes panel is on screen, when it shows as a panel: the talk bar keeps out of it.
+    public Rect? NotesBounds => NotesVisible && Settings.View == "notes"
+        ? new Rect(notesWindow!.Left, notesWindow.Top, notesWindow.ActualWidth, notesWindow.ActualHeight) : null;
 
     public void SetFakeMic(string? path) { fakeMic = path; Log.Debug($"speak: fake mic {(path is null ? "off" : "on")}"); }
 

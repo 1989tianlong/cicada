@@ -36,6 +36,14 @@ sealed class SpeakBar : Window
         Left = area.Left + (area.Width - ActualWidth) / 2;
         var above = app.Settings.View == "subtitles" && app.NotesVisible ? 150 : 16;
         Top = area.Bottom - ActualHeight - above + Ui.ShadowRoom;
+        // Centred, it would sit over the notes panel's live card on a small screen: centre it in the
+        // wider free side instead, if it fits there.
+        if (app.NotesBounds is { } n && new Rect(Left, Top, ActualWidth, ActualHeight).IntersectsWith(n))
+        {
+            double leftRoom = n.Left - area.Left, rightRoom = area.Right - n.Right;
+            if (leftRoom >= rightRoom && leftRoom >= ActualWidth) Left = area.Left + (leftRoom - ActualWidth) / 2;
+            else if (rightRoom >= ActualWidth) Left = n.Right + (rightRoom - ActualWidth) / 2;
+        }
     }
 
     public void Refresh()
