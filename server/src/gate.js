@@ -61,6 +61,21 @@ export class Gate extends DurableObject {
     await this.ctx.storage.put("attempts", a);
   }
 
+  /**
+   * One Jev call, made from here rather than the Worker: ZenMux answers 451 to requests that leave
+   * Cloudflare near mainland China, and a Worker runs next to its visitor. The review objects are
+   * created in North America (see `askJev` below), so the call always leaves from there.
+   */
+  async jev(body) {
+    const r = await fetch("https://zenmux.ai/api/v1/systemone", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + this.env.ZENMUX_API_KEY, "Content-Type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+    return { status: r.status, text: r.ok ? await r.text() : "" };
+  }
+
   /** Forget the share (it was revoked or expired). */
   async clear() {
     await this.ctx.storage.deleteAll();
@@ -82,6 +97,12 @@ export class Gate extends DurableObject {
     const w = items.get("w");
     if (w && t / 1000 - w.start > 86400) await this.ctx.storage.delete("w");
   }
+}
+
+/** Jev via one of a few review objects pinned to North America. → { status, text } */
+export function askJev(env, body) {
+  const name = "jev-us-" + Math.floor(Math.random() * 4);
+  return env.GATE.get(env.GATE.idFromName(name), { locationHint: "enam" }).jev(body);
 }
 
 export function gate(env, key) {
