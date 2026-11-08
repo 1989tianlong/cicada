@@ -11,8 +11,11 @@ cd "$(dirname "$0")/.."
 command -v xcodegen >/dev/null || { echo "xcodegen missing: brew install xcodegen" >&2; exit 1; }
 
 STAGE=build/device/Resources
-rm -rf "$STAGE"
-mkdir -p "$STAGE"
+rm -rf "$STAGE" build/device/plists
+mkdir -p "$STAGE" build/device/plists
+# Build settings like INFOPLIST_FILE are resolved against SRCROOT (build/device/), so stage copies.
+cp ios/Resources/Info.plist build/device/plists/App-Info.plist
+cp ios/LiveActivity/Info.plist build/device/plists/Live-Info.plist
 # UI text is the Mac's: the Chinese source is the key, the other languages translate it.
 for d in Resources/*.lproj; do
   mkdir -p "$STAGE/$(basename "$d")"

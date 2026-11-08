@@ -49,7 +49,7 @@ targets:
       - build/device/Resources
     settings:
       base:
-        INFOPLIST_FILE: ios/Resources/Info.plist
+        INFOPLIST_FILE: plists/App-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.1989tianlong.cicada
     dependencies:
       - target: CicadaLive
@@ -58,11 +58,13 @@ targets:
     type: app-extension
     platform: iOS
     sources:
-      - ios/LiveActivity
+      - path: ios/LiveActivity
+        excludes:
+          - "Info.plist"
       - ios/Sources/Cicada/ListenActivity.swift
     settings:
       base:
-        INFOPLIST_FILE: ios/LiveActivity/Info.plist
+        INFOPLIST_FILE: plists/Live-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.1989tianlong.cicada.live
         OTHER_SWIFT_FLAGS: "$(inherited) -D CICADA_IOS -application-extension"
         # The extension is entered through _NSExtensionMain instead of @main (see
