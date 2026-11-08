@@ -24,11 +24,30 @@ done
 cp -R "$STAGE/zh-Hans.lproj" "$STAGE/zh-Hant.lproj"
 cp Resources/sample/sample.m4a "$STAGE/"
 cp -R Resources/models/SpeakerEmbedding.mlpackage "$STAGE/"
-# The logo on the 听会议室 card, drawn by the app's own icon tool.
+# The logo on the 听会议室 card, drawn by the app's own icon tool. The same 1024 master
+# becomes the iOS home-screen icon (single-size AppIcon, asset catalog below).
 LOGO_TOOL=$(swift build -c release --product CicadaIcon >/dev/null 2>&1 && swift build -c release --show-bin-path)/CicadaIcon
 ICONS=$(mktemp -d)
 "$LOGO_TOOL" "$ICONS/logo.iconset" >/dev/null
 cp "$ICONS/logo.iconset/icon_128x128@2x.png" "$STAGE/logo.png"
+mkdir -p "$STAGE/Assets.xcassets/AppIcon.appiconset"
+cat > "$STAGE/Assets.xcassets/Contents.json" <<'JSON'
+{ "info" : { "author" : "xcode", "version" : 1 } }
+JSON
+cat > "$STAGE/Assets.xcassets/AppIcon.appiconset/Contents.json" <<'JSON'
+{
+  "images" : [
+    {
+      "filename" : "icon_1024.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}
+JSON
+cp "$ICONS/logo.iconset/icon_512x512@2x.png" "$STAGE/Assets.xcassets/AppIcon.appiconset/icon_1024.png"
 rm -rf "$ICONS"
 
 # xcodegen resolves the spec's relative paths against the spec's own directory, so run it on a

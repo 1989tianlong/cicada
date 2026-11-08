@@ -9,8 +9,8 @@ UDID=${1:?usage: scripts/sign-device.sh <device-udid>   # xcrun devicectl list d
 IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')
 PROFILE=$(ls "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision 2>/dev/null | head -1)
 [[ -n "$PROFILE" ]] || { echo "no provisioning profile in Xcode UserData" >&2; exit 1; }
-APP=$(find ~/Library/Developer/Xcode/DerivedData/Cicada-*/Build/Products/Debug-iphoneos \
-  -maxdepth 1 -name "Cicada.app" | head -1)
+APP=$(find ~/Library/Developer/Xcode/DerivedData/Cicada-*/Build/Products/*-iphoneos \
+  -maxdepth 1 -name "Cicada.app" -exec stat -f '%m %N' {} \; | sort -rn | head -1 | cut -d' ' -f2-)
 
 cp "$PROFILE" "$APP/embedded.mobileprovision"
 security cms -D -i "$PROFILE" > /tmp/prov.plist

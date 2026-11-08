@@ -45,12 +45,15 @@ targets:
       - Sources/Cicada/CloudHearing.swift
       - Sources/Cicada/SoundKind.swift
       - ios/Sources/Cicada
-    resources:
-      - build/device/Resources
+      # Strings, sample audio, voiceprint model, logo and the AppIcon asset catalog
+      # (staged by scripts/make-device-project.sh).
+      - path: build/device/Resources
+        buildPhase: resources
     settings:
       base:
         INFOPLIST_FILE: plists/App-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.1989tianlong.cicada
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: CicadaLive
         embed: true
