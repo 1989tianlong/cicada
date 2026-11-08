@@ -36,3 +36,4 @@ server/.dev.vars
 # Signing keys never enter the repo (android/scripts/keystore.sh keeps them in ~/.cicada-android)
 *.jks
 *.keystore
+*.gen.yml
