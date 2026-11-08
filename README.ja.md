@@ -4,6 +4,11 @@
 
 <h1 align="center">Cicada · 知了</h1>
 
+<blockquote align="center">
+  <p>このリポジトリは <a href="https://github.com/wquguru/cicada">wquguru/cicada</a> の複製スナップショットです（Apache-2.0、元のライセンスとクレジットを保持）。</p>
+  <p>オリジナルの作者：<a href="https://x.com/wquguru">@wquguru</a>。変更内容は <a href="REPLICA-NOTES.md">REPLICA-NOTES.md</a> を参照。</p>
+</blockquote>
+
 <p align="center">
   どんな会議も、どんな配信も、言葉の壁なく。<br>
   聞き取れて、話せて、記録に残る。Mac・Windows・Linux・Android で使えるリアルタイムの議事メモ、二か国語の書き起こし、字幕、同時通訳。

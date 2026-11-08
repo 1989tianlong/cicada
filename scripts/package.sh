@@ -23,7 +23,7 @@ for A in $ARCHS; do
   ARCH="$A" RELEASE=1 scripts/build.sh
   APP=build/Cicada.app
   ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Contents/Info.plist")
-  [[ "$ID" == com.wquguru.cicada ]] || { echo "Not a release build: $ID" >&2; exit 1; }
+  [[ "$ID" == com.1989tianlong.cicada ]] || { echo "Not a release build: $ID" >&2; exit 1; }
 
   ditto -c -k --keepParent "$APP" "build/$NAME.zip"
 

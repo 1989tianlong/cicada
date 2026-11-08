@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds build/Cicada.app (Apple silicon or Intel via ARCH=arm64|x86_64, default: host arch).
 # Shown as 知了 on Chinese systems, Cicada elsewhere.
-# Without RELEASE=1 it is a dev build: "知了 Dev" / "Cicada Dev", bundle id com.wquguru.cicada.dev (its own
+# Without RELEASE=1 it is a dev build: "知了 Dev" / "Cicada Dev", bundle id com.1989tianlong.cicada.dev (its own
 # settings, permissions and meeting records), stamped with the branch and commit, which show in the
-# menu bar and panel; its icon carries a "DEV" band. RELEASE=1 builds the real com.wquguru.cicada.
+# menu bar and panel; its icon carries a "DEV" band. RELEASE=1 builds the real com.1989tianlong.cicada.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -33,7 +33,7 @@ PLIST="$APP/Contents/Info.plist"
 if [[ "${RELEASE:-}" != 1 ]]; then
   STAMP="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo local) @ $(git rev-parse --short HEAD 2>/dev/null || echo none)"
   [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]] && STAMP+="+"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.wquguru.cicada.dev" \
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.1989tianlong.cicada.dev" \
     -c "Set :CFBundleName Cicada Dev" -c "Set :CFBundleDisplayName Cicada Dev" \
     -c "Add :LiveSubsDev string $STAMP" "$PLIST"
   # Only the two name lines change: the usage descriptions in the same files stay.

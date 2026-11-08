@@ -218,7 +218,7 @@
   "f_tm": "언급된 앱 이름은 각 소유자의 상표이며 호환성 설명을 위해서만 사용합니다. Cicada는 이들과 제휴나 관계가 없습니다.",
   "privacy_h": "권한과 개인정보",
   "privacy_link": "권한별 설명 →",
-  "privacy_url": "https://github.com/wquguru/cicada/blob/main/README.en.md#privacy--permissions",
+  "privacy_url": "https://github.com/1989tianlong/cicada/blob/main/README.en.md#privacy--permissions",
   "p1_small": "로컬",
   "p1_h": "Mac에서는 소리가 기기 안에서 텍스트가 됩니다",
   "p1_p": "녹음과 회의 기록은 내 기기에만 저장됩니다. Mac에서 밖으로 나가는 것은 인식된 텍스트(번역과 회의록용)와, 동시통역 때 키를 누른 채 말한 몇 문장뿐입니다. 음성 인식을 내 서비스에 맡기면 회의 소리가 그 머신으로 갑니다. Windows·Linux·Android 버전은 말소리를 짧게 나눠 선택한 AI 서비스로 보내 인식합니다.",

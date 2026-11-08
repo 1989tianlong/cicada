@@ -218,7 +218,7 @@
   "f_tm": "記載のアプリ名は各所有者の商標であり、互換性の説明のためにのみ使用しています。Cicada はそれらと提携・関係していません。",
   "privacy_h": "権限とプライバシー",
   "privacy_link": "各権限の説明 →",
-  "privacy_url": "https://github.com/wquguru/cicada/blob/main/README.en.md#privacy--permissions",
+  "privacy_url": "https://github.com/1989tianlong/cicada/blob/main/README.en.md#privacy--permissions",
   "p1_small": "ローカル",
   "p1_h": "Mac では、音声は端末内で文字になります",
   "p1_p": "録音と会議の記録はご自身の端末にのみ保存されます。Mac で外部に送られるのは認識されたテキスト（翻訳と議事メモ用）と、同時通訳でキーを押しながら話した数文だけです。音声認識を自分のサービスに任せた場合は、会議の音声がそのマシンに送られます。Windows・Linux・Android 版は、話された音声を短く区切って、選んだ AI サービスに送って認識します。",

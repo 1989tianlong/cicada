@@ -4,6 +4,11 @@
 
 <h1 align="center">Cicada · 知了</h1>
 
+<blockquote align="center">
+  <p>이 저장소는 <a href="https://github.com/wquguru/cicada">wquguru/cicada</a>의 복제 스냅샷입니다(Apache-2.0, 원본 라이선스와 출처 유지).</p>
+  <p>원작자: <a href="https://x.com/wquguru">@wquguru</a>. 변경 사항은 <a href="REPLICA-NOTES.md">REPLICA-NOTES.md</a>를 참고하세요.</p>
+</blockquote>
+
 <p align="center">
   어떤 회의도, 어떤 방송도 언어 장벽 없이.<br>
   알아듣고, 말하고, 기록합니다. Mac, Windows, Linux, Android에서 실시간 회의록, 이중 언어 기록, 자막, 동시통역을 제공합니다.

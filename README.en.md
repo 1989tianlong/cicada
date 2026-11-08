@@ -4,6 +4,11 @@
 
 <h1 align="center">Cicada · 知了</h1>
 
+<blockquote align="center">
+  <p>This repository is a replication snapshot of <a href="https://github.com/wquguru/cicada">wquguru/cicada</a> (Apache-2.0, upstream license and attribution preserved).</p>
+  <p>Original author: <a href="https://x.com/wquguru">@wquguru</a>. See <a href="REPLICA-NOTES.md">REPLICA-NOTES.md</a> for what this copy changes.</p>
+</blockquote>
+
 <p align="center">
   Every call. Every stream. No language barrier.<br>
   Understand, speak back, and remember everything. Live meeting notes, bilingual transcripts, subtitles and interpreting on Mac, Windows, Linux and Android.

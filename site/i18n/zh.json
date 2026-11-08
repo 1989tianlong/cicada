@@ -218,7 +218,7 @@
   "f_tm": "页面里提到的各款 app 名称均为对应公司的商标，这里仅用来说明兼容性，知了与它们没有合作或关联。",
   "privacy_h": "权限与隐私",
   "privacy_link": "每项权限的说明 →",
-  "privacy_url": "https://github.com/wquguru/cicada/blob/main/README.md#隐私与权限",
+  "privacy_url": "https://github.com/1989tianlong/cicada/blob/main/README.md#隐私与权限",
   "p1_small": "本机",
   "p1_h": "Mac 上，声音在本机转成文字",
   "p1_p": "录音和会议记录只存在你自己的设备里。Mac 上需要联网发送的，只有转出来的文字（用来翻译和写纪要），以及同声传译时你按住按键说的那几句话；把语音识别交给自建服务时，会议声音会发到那台机器。Windows、Linux、Android 版说话的声音会分段发给你选的 AI 服务识别。",

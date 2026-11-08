@@ -1680,7 +1680,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: Debug control (only with `defaults write com.wquguru.cicada debug -bool true`)
+    // MARK: Debug control (only with `defaults write com.1989tianlong.cicada debug -bool true`)
 
     func installDebugControl() {
         guard settings.debug || DevBuild.isDev else { return }

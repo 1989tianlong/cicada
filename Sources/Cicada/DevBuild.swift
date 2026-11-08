@@ -2,7 +2,7 @@ import Foundation
 
 /// A build run from a checkout rather than installed from a release, so the two can run side by
 /// side and be told apart. `scripts/build.sh` without `RELEASE=1` stamps `LiveSubsDev` (branch and
-/// commit) into Info.plist and gives the app its own bundle id (`com.wquguru.cicada.dev`): its own
+/// commit) into Info.plist and gives the app its own bundle id (`com.1989tianlong.cicada.dev`): its own
 /// settings, permissions, meeting records and log. `swift run` has no bundle at all.
 enum DevBuild {
     /// Where it came from ("main @ 1b3d7f7"), "swift run", or nil for a release build.

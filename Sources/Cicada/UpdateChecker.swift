@@ -18,14 +18,14 @@ final class UpdateChecker {
         let size: Int
     }
 
-    static let repository = URL(string: "https://github.com/wquguru/cicada")!
+    static let repository = URL(string: "https://github.com/1989tianlong/cicada")!
 
     /// `CICADA_UPDATE_FEED` (or the `updateFeed:` debug command) points at another release JSON,
     /// a list or a single release; a file:// URL works, for testing.
     /// The list, not `releases/latest`: every platform shares one version, and a release that only
     /// ships Windows, Android or Linux has no Mac zip, so the newest Mac release may be further down.
     var feed = ProcessInfo.processInfo.environment["CICADA_UPDATE_FEED"].flatMap(URL.init(string:))
-        ?? URL(string: "https://api.github.com/repos/wquguru/cicada/releases?per_page=20")!
+        ?? URL(string: "https://api.github.com/repos/1989tianlong/cicada/releases?per_page=20")!
     private let onUpdate: (Update?) -> Void
     private var timer: Timer?
     private var wakeObserver: Any?

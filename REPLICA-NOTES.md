@@ -1,0 +1,33 @@
+# 复刻说明（Replica Notes）
+
+本仓库是 [wquguru/cicada](https://github.com/wquguru/cicada)（版本 1.5.1，2026-11-08 快照）的复刻，
+基于 **Apache-2.0** 协议发布，完整保留上游 LICENSE 与 git 提交历史。原项目作者：[@wquguru](https://x.com/wquguru)。
+
+## 本仓库相对上游的修改
+
+按 Apache-2.0 第 4(b) 条要求声明，全部改动如下（上游身份字符串 `wquguru` 仅在下列位置替换为本仓库标识 `1989tianlong`）：
+
+| 文件 | 改动 |
+|---|---|
+| `Resources/Info.plist` | Bundle ID `com.wquguru.cicada` → `com.1989tianlong.cicada` |
+| `scripts/build.sh` / `scripts/package.sh` | dev/正式 Bundle ID 及校验同步更新 |
+| `ios/Resources/Info.plist`、`ios/LiveActivity/Info.plist`、`ios/scripts/build.sh` | iOS Bundle ID 同步更新 |
+| `Sources/Cicada/UpdateChecker.swift` | 更新检查与仓库链接指向 `1989tianlong/cicada` 的 Releases |
+| `scripts/site.py` | 官网下载/仓库链接指向 `1989tianlong/cicada` |
+| `site/i18n/*.json`（4 个） | 隐私说明链接指向本仓库 README |
+| `README.md` / `README.en.md` / `README.ja.md` / `README.ko.md` | 顶部增加复刻署名 |
+| 本文 | 新增 |
+
+## 有意保留、未修改的部分
+
+- **应用名与图标**：仍为「知了 Cicada」，未改名（如需改名另行处理）。
+- **分享服务默认地址**（`Sources/Cicada/ShareClient.swift`）：仍指向原服务的 `https://cicada.indaloop.app`，分享功能开箱即用；可用 `defaults write com.1989tianlong.cicada shareServer <url>` 覆盖。
+- **GCD 队列标签、聚合音频设备 UID 前缀、调试通知名**（`Sources/Cicada/SystemAudioTap.swift`、`DevBuild.swift`、`tools/lsctl.swift` 等）：`com.wquguru.cicada.*` 字符串为内部自洽标识（发送方与监听方成对出现），改动无收益且有回归风险，保留原样。
+- **官网页脚的作者 X 联系方式**：保留指向原作者 @wquguru（署名）。
+- **Android / Windows / Linux**：Bundle ID 与链接保持上游原样（本仓库暂不构建这三个平台）。
+
+## 构建与部署
+
+- Mac 版：`scripts/build.sh`（开发版）/ `RELEASE=1 scripts/package.sh`（DMG/zip/校验值）
+- iOS 模拟器：`ios/scripts/build.sh`
+- 官网：`python3 scripts/site.py` → `build/site/`；阿里云部署脚本 `scripts/deploy-site-aliyun.sh`

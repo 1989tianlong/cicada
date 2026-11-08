@@ -145,7 +145,7 @@ final class ShareClient {
         var views: Int
     }
 
-    /// Dev builds can point at a local Worker: `defaults write com.wquguru.cicada.dev shareServer http://127.0.0.1:8787`.
+    /// Dev builds can point at a local Worker: `defaults write com.1989tianlong.cicada.dev shareServer http://127.0.0.1:8787`.
     var base: URL {
         if let s = UserDefaults.standard.string(forKey: "shareServer"), let u = URL(string: s) { return u }
         return URL(string: "https://cicada.indaloop.app")!

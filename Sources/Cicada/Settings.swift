@@ -365,7 +365,7 @@ func debugLog(_ message: String) {
     }
 }
 
-/// Transcript content is only logged when `defaults write com.wquguru.cicada debug -bool true`.
+/// Transcript content is only logged when `defaults write com.1989tianlong.cicada debug -bool true`.
 func contentLog(_ message: @autoclosure () -> String) {
     if UserDefaults.standard.bool(forKey: "debug") { debugLog(message()) }
 }

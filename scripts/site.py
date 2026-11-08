@@ -29,7 +29,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT_DIR, "site")
 OUT = os.path.join(ROOT_DIR, "build", "site")
 SITE = (os.environ.get("SITE_URL") or "https://cicada.indaloop.app/").rstrip("/") + "/"
-REPO = "https://github.com/wquguru/cicada"
+REPO = "https://github.com/1989tianlong/cicada"
 DOWNLOAD = REPO + "/releases/latest"
 # The files each platform's release carries (release.yml); {v} is the version.
 PLATFORMS = ["mac", "windows", "linux", "android"]

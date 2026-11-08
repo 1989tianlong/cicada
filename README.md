@@ -4,6 +4,11 @@
 
 <h1 align="center">知了 · Cicada</h1>
 
+<blockquote align="center">
+  <p>本仓库是 <a href="https://github.com/wquguru/cicada">wquguru/cicada</a> 的复刻快照（Apache-2.0 协议，保留原许可与署名）。</p>
+  <p>原项目作者：<a href="https://x.com/wquguru">@wquguru</a>。本仓库相对上游的修改见 <a href="REPLICA-NOTES.md">REPLICA-NOTES.md</a>。</p>
+</blockquote>
+
 <p align="center">
   任何会议、任何直播，没有语言障碍。<br>
   听得懂，说得出，记得住。Mac、Windows、Linux 和 Android 上的实时纪要、双语文字记录、字幕与同声传译。
