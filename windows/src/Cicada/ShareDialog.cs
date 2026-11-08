@@ -287,6 +287,7 @@ sealed class ShareDialog : Window
         {
             Text = text, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, FontSize = 12,
             FontFamily = new FontFamily("Cascadia Mono, Consolas"), Foreground = Palette.Ink, VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(0), MinHeight = 0, VerticalContentAlignment = VerticalAlignment.Center,
         };
         var box = new Border { Background = Palette.Subtle, CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 0, 8, 0), Child = value, Height = 32, VerticalAlignment = VerticalAlignment.Center };
         var b = Ui.Button(copied == what ? L("已复制") : label, () => { Copy(text, what); Render(); }, height: 32);
