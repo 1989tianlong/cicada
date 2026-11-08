@@ -3,6 +3,7 @@
 // LingClient runs against a fake handler.
 using System.Net;
 using System.Reflection;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Cicada;
@@ -3160,5 +3161,181 @@ static class Tests
             File.Delete(path);
         }
         finally { LingClient.Spacing = old; }
+    }
+
+    // MARK: 分享… (the Mac's ShareTests, case for case: Tests/fixtures/share is the contract)
+
+    static Session ShareSession() =>
+        Json.Read<Session>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "share", "session.json")))!;
+
+    public static void ShareFixtureBytes()
+    {
+        var want = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "share", "share-doc.json")).Trim();
+        Equal(want, ShareProjection.Encode(ShareProjection.Doc(ShareSession(), ShareScope.Full, names: false)), "the Mac's bytes");
+    }
+
+    public static void ShareNothingPrivateLeaves()
+    {
+        var text = ShareProjection.Encode(ShareProjection.Doc(ShareSession(), ShareScope.Full, names: false));
+        foreach (var secret in new[] { "/Users/someone", "Emma", "Kenji", "Emmer", "Sure, Emma", "hasAudio", "room", "voice" })
+            Check(!text.Contains(secret), secret);
+    }
+
+    public static void ShareNamesWhenAsked()
+    {
+        var d = ShareProjection.Doc(ShareSession(), ShareScope.Full, names: true);
+        Equal("Emma", d.Notes!.Todos[0].Owner, "todo owner");
+        Equal("Emma", d.Notes!.Terms[0].Name, "term");
+        Equal(null, d.Notes!.Conclusions[0].Owner, "conclusions never have one");
+    }
+
+    public static void ShareNotesOnlyAndRemoved()
+    {
+        var s = ShareSession();
+        Equal(0, ShareProjection.Doc(s, ShareScope.Notes, false).Lines.Count, "notes only");
+        var d = ShareProjection.Doc(s, ShareScope.Full, false, new HashSet<int> { 3 }, dropNotes: true);
+        Check(d.Lines.Count == 3 && d.Notes is null && d.Hidden == 2, "removed lines and notes counted");
+        Check(!ShareProjection.Encode(d).Contains("\"notes\""), "no notes key");
+    }
+
+    public static void ShareSpeakerNumbersWithoutNames()
+    {
+        var s = ShareSession();
+        s.Lines = [.. Enumerable.Range(0, 10).Select(i => new TranscriptLine
+        {
+            Id = $"v{i}", T = i, Speaker = "them", Src = $"this is line number {i}", Dst = $"第 {i} 句话", SrcLang = "en", DstLang = "zh", Voice = i % 2 == 0 ? 3 : 7,
+        })];
+        Equal("说话人 1,说话人 2", string.Join(",", ShareProjection.Doc(s, ShareScope.Full, false).Lines.Select(l => l.Who).Distinct().Order()), "numbers");
+        Equal("Emma,Kenji", string.Join(",", ShareProjection.Doc(s, ShareScope.Full, true).Lines.Select(l => l.Who).Distinct().Order()), "names");
+    }
+
+    public static void ShareRoundsAndLanguages()
+    {
+        var s = ShareSession();
+        s.Lines = [
+            new TranscriptLine { Id = "a", T = 0.25, Src = "x", Dst = "x", SrcLang = "ja-JP", DstLang = "zh-Hans" },
+            new TranscriptLine { Id = "b", T = 0.35, Src = "y", Dst = "", SrcLang = "en-US", DstLang = "zh" },
+            new TranscriptLine { Id = "c", T = 1.05, Src = "z", Dst = "zz", SrcLang = "en", DstLang = "zh-CN" },
+        ];
+        var d = ShareProjection.Doc(s, ShareScope.Full, false);
+        Equal("0.3,0.4,1.1", string.Join(",", d.Lines.Select(l => l.T.ToString(System.Globalization.CultureInfo.InvariantCulture))), "half away from zero");
+        Check(d.Lines[0].Dst is null && d.Lines[1].Dst is null, "dst left out when empty or the same");
+        Equal("en,zh", string.Join(",", d.Langs), "most lines by base code");
+        Equal("\"a\\\"b\\\\c\\nd/e\"", ShareProjection.Encode(d with { Title = "a\"b\\c\nd/e" }).Split("\"title\":")[^1].Split(",\"v\"")[0], "escapes as Swift");
+    }
+
+    public static void SharePasswordVerifier()
+    {
+        var salt = Enumerable.Repeat((byte)1, 16).ToArray();
+        var v = SharePassword.Verifier("ruby-41-lake", salt, 1000);
+        Equal("eab69fcd00a0517794c156495dd76ad1fbfb036ea03df3d59a68a33519009c81", Convert.ToHexStringLower(v), "the browser's PBKDF2");
+        Check(!v.SequenceEqual(SharePassword.Verifier("ruby-41-laka", salt, 1000)), "another password");
+        Equal(3, SharePassword.Make().Split('-').Length, "word-NN-word");
+    }
+
+    public static void ShareBlockedHitsMapBack()
+    {
+        var hits = new[] { new ShareHit("lines", 2, 3, ["credential"]), new ShareHit("notes", null, null, ["personal"]) };
+        Equal("4,5", string.Join(",", ShareHit.RecordLines(hits, [0, 1, 4, 5, 6]).Order()), "sent lines back to the record's");
+    }
+
+    public static void Ed25519Rfc8032()
+    {
+        (string sk, string pk, string msg, string sig)[] vectors =
+        [
+            ("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60", "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "",
+             "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"),
+            ("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb", "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", "72",
+             "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"),
+            ("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7", "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025", "af82",
+             "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a"),
+        ];
+        foreach (var (sk, pk, msg, sig) in vectors)
+        {
+            var seed = Convert.FromHexString(sk);
+            var m = Convert.FromHexString(msg);
+            Equal(pk, Convert.ToHexStringLower(Ed25519.PublicKey(seed)), "public key");
+            Equal(sig, Convert.ToHexStringLower(Ed25519.Sign(seed, m)), "signature");
+            Check(Ed25519.Verify(Convert.FromHexString(pk), m, Convert.FromHexString(sig)), "verifies");
+            var bad = Convert.FromHexString(sig); bad[5] ^= 1;
+            Check(!Ed25519.Verify(Convert.FromHexString(pk), m, bad), "a changed signature doesn't");
+        }
+    }
+
+    static byte[] UnB64Url(string s) => Convert.FromBase64String(s.Replace('-', '+').Replace('_', '/').PadRight((s.Length + 3) / 4 * 4, '='));
+
+    /// Answers the share service's routes and checks each signed request as server/src/auth.js does.
+    sealed class ShareServer(Func<HttpRequestMessage, string, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public readonly List<string> Seen = [];
+        public byte[]? Pub;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken cancel)
+        {
+            var body = r.Content is null ? "" : await r.Content.ReadAsStringAsync(cancel);
+            var path = r.RequestUri!.PathAndQuery;
+            if (path == "/api/v1/devices")
+            {
+                var j = JsonNode.Parse(body)!;
+                Pub = UnB64Url(j["key"]!.GetValue<string>());
+                var h = System.Security.Cryptography.SHA256.HashData([.. Pub, .. UnB64Url(j["pow"]!.GetValue<string>())]);
+                Check(h[0] == 0 && h[1] == 0 && h[2] < 16, "proof of work");
+                Check(j["platform"]!.GetValue<string>() == "windows", "platform");
+            }
+            else
+            {
+                string H(string k) => r.Headers.TryGetValues("X-Cicada-" + k, out var v) ? v.First() : "";
+                var message = $"{r.Method.Method}\n{path}\n{H("Time")}\n{H("Nonce")}\n{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(body)))}";
+                Check(Ed25519.Verify(Pub!, Encoding.UTF8.GetBytes(message), UnB64Url(H("Signature"))), "signed " + path);
+                Check(Regex.IsMatch(H("Nonce"), "^[A-Za-z0-9_-]{16,64}$"), "nonce");
+            }
+            Check(r.Headers.GetValues("X-Cicada-Client").First() == "windows/9.9.9", "client header");
+            lock (Seen) Seen.Add($"{r.Method.Method} {path}");
+            return respond(r, body);
+        }
+    }
+
+    public static async Task ShareClientSignsAndStores()
+    {
+        var folder = Path.Combine(Paths.Root, "share-test");
+        bool forgotten = true;
+        var server = new ShareServer((r, body) =>
+        {
+            var path = r.RequestUri!.AbsolutePath;
+            if (path == "/api/v1/devices") return Status(201, "{\"device\":\"0123456789abcdef0123456789abcdef\"}");
+            if (path == "/api/v1/shares" && r.Method == HttpMethod.Post)
+            {
+                // The first signed call finds the device forgotten: the client registers again once.
+                if (forgotten) { forgotten = false; return Status(401, "{\"code\":\"unknown_device\"}"); }
+                var j = JsonNode.Parse(body)!;
+                Check(r.Headers.GetValues("Idempotency-Key").First().StartsWith("20261106-140000-"), "idempotency key");
+                if (j["scope"]!.GetValue<string>() == "full")
+                    return Status(422, "{\"code\":\"blocked\",\"hits\":[{\"part\":\"lines\",\"from\":1,\"to\":1,\"questions\":[\"credential\"]}]}");
+                Check(j["password"]!["iter"]!.GetValue<int>() == 210000, "iterations");
+                Check(j["doc"]!["lines"]!.AsArray().Count == 0 && j["doc"]!["notes"] is not null, "notes only");
+                return Status(201, "{\"id\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"url\":\"https://x/s/AAAAAAAAAAAAAAAAAAAAAA\",\"token\":\"tok\",\"expiresAt\":1900000000}");
+            }
+            if (r.Method == HttpMethod.Get) return Status(200, "{\"shares\":[{\"id\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"expiresAt\":1900000000,\"state\":\"live\",\"views\":3}]}");
+            if (r.Method == HttpMethod.Delete)
+            {
+                Check(r.Headers.Authorization?.ToString() == "Bearer tok", "manage token");
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            return Status(404, "{\"code\":\"not_found\"}");
+        });
+        var client = new ShareClient(new PlainProtector(), "windows", "9.9.9", server, folder);
+        var s = ShareSession();
+        var shared = await client.Share(s, new ShareOptions { Password = "ruby-41-lake" }) as ShareOutcome.Shared;
+        Check(shared is not null, "shared");
+        Equal(2, server.Seen.Count(x => x == "POST /api/v1/devices"), "registered again after unknown_device");
+        Equal("tok", client.Store.Read(s.Id)!.Token, "token kept");
+        Equal("ruby-41-lake", client.Store.Read(s.Id)!.Password, "password kept");
+        if (!OperatingSystem.IsWindows())
+            Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Path.Combine(folder, "Shares", s.Id + ".json")), "0600");
+        Equal(3, (await client.StatsOf(["AAAAAAAAAAAAAAAAAAAAAA"]))["AAAAAAAAAAAAAAAAAAAAAA"].Views, "views");
+        var blocked = await client.Share(s, new ShareOptions { Scope = ShareScope.Full }) as ShareOutcome.Blocked;
+        Equal("1", string.Join(",", ShareHit.RecordLines(blocked!.Hits, blocked.Kept)), "blocked line");
+        Check(await client.Revoke(shared!.Record, s.Id), "revoked");
+        Equal(null, client.Store.Read(s.Id), "forgotten after revoke");
+        Equal(2, server.Seen.Count(x => x == "POST /api/v1/devices"), "the device file is reused");
     }
 }

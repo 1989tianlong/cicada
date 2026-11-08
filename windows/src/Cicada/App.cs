@@ -61,6 +61,8 @@ sealed class Controller
     public readonly UpdateChecker Updates;
     public readonly Vocabulary Vocabulary;
     public readonly LiveFixes Fixes;
+    /// 分享…: the share service, its device key and the links made (sealed files, never the record).
+    public readonly ShareClient Sharing = new(new DpapiProtector(), "windows", Version);
     /// Dev (`silentlisten`): the language `heard` lines are in.
     public string? SilentLang;
     /// Started with Windows (--background): stay in the tray. Opened by hand, the main window shows.
@@ -872,6 +874,15 @@ sealed class Controller
     public void OpenRecord(string id, string tab) { ShowRecords(id); mainWindow?.Select(id, tab); }
     public void Play(string arg) => mainWindow?.DebugPlay(arg);
 
+    /// 分享…: the dialog over the records window (or the screen's centre without it).
+    public ShareDialog ShareSheet(Session s)
+    {
+        ShareDialog.Current?.Close();
+        var d = new ShareDialog(this, s, mainWindow is { IsVisible: true } ? mainWindow : null);
+        d.Show();
+        return d;
+    }
+
     public void ShowRecords(string? id)
     {
         if (mainWindow is null) { mainWindow = new MainWindow(this, id); mainWindow.Closed += (_, _) => { mainWindow = null; WindowClosed(); }; }
@@ -1389,6 +1400,58 @@ static class DebugServer
             case "fixundo": app.Fixes.Undo(); break;
             case "fixeditor": { var (id, lineId) = FixTarget(app, arg); app.DebugEditLine(id, lineId); break; }  // fixeditor <line> [@id]
             case "vocabpaste": app.DebugPaste(arg); break;  // vocabpaste <line|line…>: 粘贴导入, filled in, not imported
+            case "share":
+            {
+                // share <record id>[,full][,pw] shares a meeting as the dialog would (CICADA_SHARE_SERVER
+                // points a dev build at a local Worker); unshare <record id> turns it off.
+                var p = arg.Split(',');
+                if (app.Store.Get(p[0]) is not { } s) return new JsonObject { ["error"] = "no such record" };
+                var o = new ShareOptions
+                {
+                    Scope = p.Contains("full") || s.Notes is not { IsEmpty: false } ? ShareScope.Full : ShareScope.Notes,
+                    Password = p.Contains("pw") ? SharePassword.Make() : null,
+                };
+                _ = Task.Run(async () =>
+                {
+                    var r = await app.Sharing.Share(s, o);
+                    Log.Debug(r switch
+                    {
+                        ShareOutcome.Shared x => $"share: {x.Record.Url}",
+                        ShareOutcome.Blocked b => $"share: blocked lines {string.Join(",", ShareHit.RecordLines(b.Hits, b.Kept).Order())}{(b.Hits.Any(h => h.Part == "notes") ? " and notes" : "")}",
+                        ShareOutcome.Failed f => $"share: failed {f.Code}",
+                        _ => "share: ?",
+                    });
+                });
+                break;
+            }
+            case "unshare":
+            {
+                if (app.Sharing.Store.Read(arg) is not { } r) return new JsonObject { ["error"] = "not shared" };
+                _ = Task.Run(async () => Log.Debug($"share: revoked {await app.Sharing.Revoke(r, arg)}"));
+                break;
+            }
+            // sharesheet <record id>[,full][,pw][,names][,30|365][,go] opens 分享… (go presses 生成链接);
+            // sharesheet leaveout presses 去掉这些内容后分享; sharesheet alone closes it.
+            case "sharesheet" or "shareSheet":
+            {
+                var p = arg.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                if (p.Length == 0) { ShareDialog.Current?.Close(); break; }
+                if (p[0] == "leaveout") { ShareDialog.Current?.DebugLeaveOut(); break; }
+                if (app.Store.Get(p[0]) is not { } s) return new JsonObject { ["error"] = "no such record" };
+                app.ShowRecords(p[0]);
+                app.Dispatcher().BeginInvoke(() => app.ShareSheet(s).Debug(p));
+                break;
+            }
+            // shareinfo <record id>: the link kept for it (dev builds only, never logged) and the open dialog's step.
+            case "shareinfo":
+            {
+                var r = app.Sharing.Store.Read(arg);
+                return new JsonObject
+                {
+                    ["url"] = r?.Url, ["expiresAt"] = r?.ExpiresAt.ToUnixTimeSeconds(), ["scope"] = r?.Scope, ["password"] = r?.Password,
+                    ["sheet"] = ShareDialog.Current?.StepName,
+                };
+            }
             case "state": break;
             default: return new JsonObject { ["error"] = $"unknown command {parts[0]}" };
         }

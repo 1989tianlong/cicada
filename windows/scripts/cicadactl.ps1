@@ -4,6 +4,8 @@
 #   AI 服务检查: ai-check | ai-check-sim <unreachable|invalidKey|noCredit|mgmtKey|noModel|noJSON|deaf|busy|serverError|lowBalance|off> (state › ai.check: every step)
 #   结束会议: calls zoom.exe=Zoom|none|real | realcalls | endtimes <silence> <countdown> <grace>|off | endkeep
 #   改正听错的词: silentlisten zh-CN | heard <text> | fixstate | fixanswer yes|no | fixlater | fixrevert <line> | fixedit <line>=<text>[|one][|keep0] | fixundo | vocabadd Morpho=莫拉 | vocabstate (… @<id> for another meeting)
+#   分享…: share "<id>[,full][,pw]" | unshare <id> | sharesheet "<id>[,full][,pw][,names][,30|365][,go]" | sharesheet leaveout | sharesheet | shareinfo <id>
+#     (quote anything with a comma: PowerShell would make it a list)
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Command)
 $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", "cicada-dev", [System.IO.Pipes.PipeDirection]::InOut)
 $pipe.Connect(3000)
