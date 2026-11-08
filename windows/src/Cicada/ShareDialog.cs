@@ -204,7 +204,8 @@ sealed class ShareDialog : Window
 
     FrameworkElement HitRow(ShareHit h)
     {
-        var what = string.Join("、", h.Questions.Select(Category));
+        // A list in the reader's language (the Mac's ListFormatter): 、 in Chinese and Japanese, ", " otherwise.
+        var what = string.Join(Strings.Culture.TwoLetterISOLanguageName is "zh" or "ja" ? "、" : ", ", h.Questions.Select(Category));
         string place, quote;
         if (h.Part == "notes")
         {
