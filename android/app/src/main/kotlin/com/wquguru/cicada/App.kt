@@ -23,6 +23,7 @@ import cicada.Paths
 import cicada.PcmAudioSource
 import cicada.Providers
 import cicada.SessionStore
+import cicada.ShareClient
 import cicada.SpeakerLabels
 import cicada.SpeakerNamer
 import cicada.SpeakerTagger
@@ -50,6 +51,10 @@ class CicadaApp : Application() {
     lateinit var overlay: Overlay
     lateinit var voice: Voice
     lateinit var updates: AppUpdates
+    /// 分享…: the share service on cicada.indaloop.app (Share.kt). Its version without "-dev".
+    val share by lazy {
+        ShareClient("android", (packageManager.getPackageInfo(packageName, 0).versionName ?: "0.0.0").substringBefore('-'))
+    }
     val main = Handler(Looper.getMainLooper())
     val background = Executors.newCachedThreadPool { r -> Thread(r, "App").apply { isDaemon = true } }
     private val observers = LinkedHashSet<() -> Unit>()

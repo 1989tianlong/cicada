@@ -199,6 +199,9 @@ class RecordActivity : Activity() {
             ui.roundButton(R.drawable.i_share, L("分享"), onWhite = true) { cicada.store.get(id)?.let(::share) },
             ui.roundButton(R.drawable.i_more, L("更多"), onWhite = true) { more() })))
         toast = FixViews.Toast(this, ui, cicada, above = 140)
+        // Debug `shareSheet <id>`: the 分享… sheet opens over the record.
+        if (savedInstanceState == null && intent.getBooleanExtra("share", false))
+            list.post { cicada.store.get(id)?.takeIf { ShareSheet.canShare(cicada, it) }?.let { ShareSheet(this, ui, id).show() } }
     }
 
     private fun audio() = cicada.store.audioFile(id)
@@ -569,7 +572,10 @@ class RecordActivity : Activity() {
         val s = cicada.store.get(id) ?: return
         lateinit var d: android.app.Dialog
         fun act(res: Int, label: String, helper: String? = null, red: Boolean = false, run: () -> Unit) = ui.sheetAction(res, label, helper, red) { d.dismiss(); run() }
-        val box = ui.stack(0,
+        // 分享…: a link on cicada.indaloop.app (the round 分享 above sends the Markdown).
+        val link = act(R.drawable.i_external, L("分享…"), L("生成链接")) { ShareSheet(this, ui, s.id).show() }
+        if (!ShareSheet.canShare(cicada, s)) { link.alpha = 0.4f; link.isEnabled = false; link.isClickable = false }
+        val box = ui.stack(0, link,
             act(R.drawable.i_clipboard, L("复制为 Markdown")) { copy(s) },
             act(R.drawable.i_doc, L("导出 Markdown…")) { export(s, "md") },
             act(R.drawable.i_doc, L("导出 Word…")) { export(s, "docx") },

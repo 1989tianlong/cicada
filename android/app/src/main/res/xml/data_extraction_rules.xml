@@ -12,5 +12,8 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="ling-api-key" />
+        <!-- 分享…: this phone's share identity and the links' manage tokens stay on this phone. -->
+        <exclude domain="file" path="share-device.json" />
+        <exclude domain="file" path="Shares" />
     </device-transfer>
 </data-extraction-rules>

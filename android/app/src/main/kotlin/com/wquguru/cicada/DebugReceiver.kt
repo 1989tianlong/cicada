@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 ///   ai-check (重新检查) | ai-check-sim <reason|lowBalance|off> (every check ends that way; the state's ai.check has the steps)
 ///   改正听错的词: fixes on|off · asknames on|off · silent (a meeting with no audio) · heard <text> · vocab add|remove|state
 ///   fixstate · fixanswer yes|no · fixrevert <line> · fixlater · fixundo · fixedit <line>=<text>[|one][|keep0] · pinyin <text>
+///   分享…: share <id>[,full][,pw] · unshare <id> · shares · shareSheet <id> (no id: closes it) · delete <id>
 class DebugReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!BuildConfig.DEBUG) return
@@ -167,6 +168,35 @@ class DebugReceiver : BroadcastReceiver() {
                 val s = Session.read(File(app.filesDir, arg).readText()) ?: return mapOf("error" to "unreadable")
                 app.store.import(s)
             }
+            "delete" -> app.store.delete(arg)
+            // 分享… (the Mac's share: / unshare: / shareSheet:): `share <id>[,full][,pw]` shares as the
+            // sheet would and logs the link; `unshare <id>` turns it off; `shares` lists them (never the token).
+            "share" -> {
+                val p = arg.split(",").map { it.trim() }
+                val s = app.store.get(p[0])?.let { Session.from(it.toJson()) } ?: return mapOf("error" to "no such record")
+                val o = cicada.ShareClient.Options(
+                    scope = if ("full" in p || s.notes?.isEmpty != false) cicada.ShareScope.Full else cicada.ShareScope.Notes,
+                    password = if ("pw" in p) cicada.SharePassword.make() else null)
+                app.background.execute {
+                    when (val out = app.share.share(s, o)) {
+                        is cicada.ShareClient.Outcome.Shared -> Log.d("debug: share ${out.record.url}${out.record.password?.let { " password $it" } ?: ""}")
+                        is cicada.ShareClient.Outcome.Blocked -> Log.d("debug: share blocked lines ${cicada.ShareHit.recordLines(out.hits, out.kept).sorted()}${if (out.hits.any { it.part == "notes" }) " notes" else ""}")
+                        is cicada.ShareClient.Outcome.Failed -> Log.d("debug: share failed ${out.code}")
+                    }
+                }
+                return mapOf("sharing" to s.id)
+            }
+            "unshare" -> {
+                val r = cicada.ShareStore.read(arg) ?: return mapOf("error" to "$arg not shared")
+                app.background.execute { Log.d("debug: share revoked ${app.share.revoke(r, arg)}") }
+                return mapOf("unsharing" to arg)
+            }
+            "shares" -> return mapOf("shares" to cicada.ShareStore.all().mapValues { (_, r) ->
+                mapOf("id" to r.id, "url" to r.url, "scope" to r.scope, "password" to r.password, "expiresAt" to cicada.Iso8601.write(r.expiresAt))
+            })
+            "shareSheet" -> if (arg.isEmpty()) ShareSheet.open?.let { it.dismiss() } else
+                app.startActivity(Intent(app, RecordActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra("id", arg).putExtra("share", true))
             "show" -> when (arg.substringBefore(' ')) {
                 "settings" -> open(SettingsActivity::class.java)
                 "words" -> open(WordListActivity::class.java)

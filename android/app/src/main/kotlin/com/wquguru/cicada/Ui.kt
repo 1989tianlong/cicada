@@ -108,7 +108,7 @@ class Ui(val context: Context) {
     }
 
     /// A row with a switch; the whole row toggles it.
-    fun switchRow(label: String, helper: String, on: Boolean, changed: (Boolean) -> Unit): LinearLayout {
+    fun switchRow(label: String, helper: String?, on: Boolean, titleLines: Int = 1, changed: (Boolean) -> Unit): LinearLayout {
         val sw = android.widget.Switch(context).apply {
             isChecked = on
             val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
@@ -120,7 +120,7 @@ class Ui(val context: Context) {
             isClickable = false
         }
         lateinit var row: LinearLayout
-        row = listRow(label, helper, trailing = sw, chevron = false) {
+        row = listRow(label, helper, trailing = sw, chevron = false, titleView = text(label, 16f, Palette.ink, lines = titleLines)) {
             sw.isChecked = !sw.isChecked
             changed(sw.isChecked)
             row.stateDescription = if (sw.isChecked) cicada.Strings.L("已开启") else cicada.Strings.L("已关闭")

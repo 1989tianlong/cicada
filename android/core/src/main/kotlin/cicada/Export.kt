@@ -66,6 +66,24 @@ object SpeakerLabels {
 
     fun label(number: Int, names: Map<Int, String>): String = names[number] ?: Strings.LF("说话人 %lld", number)
 
+    /// The notes with names: Ling wrote "说话人 6" before anyone named them (SpeakerLabels.named on
+    /// the Mac). A copy; the record keeps what Ling wrote.
+    fun named(notes: MeetingNotes, names: Map<Int, String>): MeetingNotes {
+        val n = MeetingNotes.from(notes.toJson())
+        if (names.isEmpty()) return n
+        fun swap(text: String): String {
+            if (!text.contains("说话人") && !text.contains("Speaker")) return text
+            var out = text
+            for ((k, name) in names.entries.sortedByDescending { it.key }) // 说话人 12 before 说话人 1
+                for (form in listOf("说话人 $k", "说话人$k", "Speaker $k")) out = out.replace(form, name)
+            return out
+        }
+        n.summary = swap(n.summary)
+        for (t in n.topics) { t.title = swap(t.title); t.summary = swap(t.summary); t.points = t.points.map(::swap).toMutableList() }
+        for (i in n.conclusions + n.todos) { i.text = swap(i.text); i.owner = i.owner?.let(::swap) }
+        return n
+    }
+
     /// Who said a line: 你 · 同传 (said with 我说, so the other side heard its translation), a
     /// speaker's name or number, else 对方 (未识别 once others have numbers).
     fun speakerName(l: TranscriptLine, numbers: Map<String, Int>, names: Map<Int, String>): String {
