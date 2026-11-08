@@ -658,3 +658,69 @@ h2.big { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 52px); line-height: 1.2
 .step-text .svc + p.hint { margin-top: 12px; font-size: 13px; line-height: 1.6; }
 .step-text p.alt-svc { margin-top: 14px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line2); font-size: 13px; line-height: 1.6; color: var(--grey); }
 .step-text p.alt-svc b { color: var(--ink); }
+
+/* Shared meeting (/s/<id>, share.html + share.js): the home page's notes card and subtitle bar, a dark
+   card that says how the notes were made, and the transcript. */
+.share { padding-top: 40px; padding-bottom: 64px; display: flex; flex-direction: column; gap: 24px; }
+.share [hidden] { display: none !important; }
+.sh-status { margin: 80px 0; text-align: center; color: var(--grey); }
+.sh-note { margin: 0; font-size: 13px; color: var(--grey2); }
+.sh-gate { max-width: 520px; margin: 48px auto; padding: 32px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.sh-gate img { width: 44px; height: 44px; border-radius: 10px; }
+.sh-gate h1 { margin: 0; font-size: 22px; font-weight: 900; }
+.sh-gate p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--grey); }
+.sh-pw-row { width: 100%; display: flex; gap: 8px; }
+.sh-pw-row input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #DADDE2; font: inherit; font-size: 15px; }
+.sh-pw-row .btn { min-height: 48px; border-radius: 12px; }
+#sh-doc { display: flex; flex-direction: column; gap: 24px; }
+.sh-head { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.sh-head h1 { margin: 0; font-size: clamp(30px, 5vw, 52px); line-height: 1.12; font-weight: 900; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.sh-meta { margin: 0; font-size: 15px; color: var(--grey2); }
+.sh-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.sh-actions .btn { min-height: 44px; padding: 0 16px; border-radius: 11px; font-size: 14px; }
+.sh-grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.sh-notes { flex: 999 1 560px; min-width: 0; padding: 28px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 12px 32px rgba(21,23,28,0.06); }
+.sh-notes h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.sh-summary { margin: 0; font-size: 20px; line-height: 1.5; font-weight: 700; }
+.sh-block { display: flex; flex-direction: column; gap: 8px; }
+.sh-block h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--grey2); }
+.sh-block ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.6; color: var(--ink2); }
+.sh-block ul.sh-checks { padding: 0; list-style: none; }
+.sh-checks li { display: flex; gap: 10px; align-items: baseline; font-weight: 600; color: var(--ink); }
+.sh-checks .box { flex: none; width: 14px; height: 14px; border: 2px solid var(--ink); border-radius: 4px; transform: translateY(2px); }
+.sh-topic-list { display: flex; flex-direction: column; gap: 14px; }
+.sh-topic h4 { margin: 0 0 4px; font-size: 15px; }
+.sh-topic p { margin: 0 0 6px; font-size: 14px; line-height: 1.6; color: var(--grey); }
+.sh-quote { background: var(--ink); border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; }
+.sh-quote .src { display: flex; gap: 8px; align-items: baseline; font-size: 14px; color: var(--on-dark2); }
+.sh-quote .src::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--orange); transform: translateY(-2px); }
+.sh-quote .dst { font-size: 20px; font-weight: 700; color: #FFFFFF; }
+.sh-aside { flex: 1 1 300px; min-width: 0; background: var(--ink); color: #FFFFFF; border-radius: 18px; padding: 28px; display: flex; flex-direction: column; gap: 16px; }
+.sh-aside .row { display: flex; align-items: center; gap: 10px; }
+.sh-aside .row img { border-radius: 8px; }
+.sh-aside .row b { font-size: 20px; font-weight: 900; }
+.sh-aside .row span { font-size: 15px; font-weight: 600; color: var(--on-dark2); }
+.sh-aside .h { margin: 0; font-size: 22px; line-height: 1.45; font-weight: 700; }
+.sh-aside ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.5; color: var(--on-dark); }
+.sh-aside li b { color: #FFFFFF; }
+.sh-aside li b.o { color: var(--orange); }
+.sh-aside .m { font-size: 13px; color: var(--on-dark2); }
+.sh-lines { padding: 28px; }
+.sh-lines-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.sh-lines-head h2 { margin: 0; font-size: 22px; font-weight: 800; }
+.sh-seg { display: flex; gap: 6px; }
+.sh-seg button { min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #DADDE2; background: var(--card); font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.sh-seg button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: #FFFFFF; }
+#sh-line-list { margin: 0; padding: 0; list-style: none; }
+#sh-line-list li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+#sh-line-list .t { font-size: 12px; color: var(--grey2); padding-top: 3px; font-variant-numeric: tabular-nums; }
+#sh-line-list div { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+#sh-line-list .who { font-size: 12px; font-weight: 600; color: var(--grey2); }
+#sh-line-list .src { font-size: 14px; line-height: 1.5; color: var(--grey); }
+#sh-line-list .dst { font-size: 17px; line-height: 1.5; font-weight: 600; }
+#sh-line-list[data-view=src] .dst, #sh-line-list[data-view=dst] .src { display: none; }
+#sh-line-list[data-view=src] .src { font-size: 17px; color: var(--ink); }
+.sh-cta { padding: 36px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+.sh-cta .k { margin: 0; font-size: 14px; font-weight: 600; color: var(--grey); }
+.sh-cta .h { margin: 0; font-size: clamp(24px, 3.4vw, 40px); line-height: 1.2; font-weight: 900; letter-spacing: -0.02em; }
+.sh-cta .b { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }

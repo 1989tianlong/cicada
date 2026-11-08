@@ -46,7 +46,7 @@ OLD_ASSETS = {("windows", "1.1.0"): {"x64": "Cicada-Setup.exe", "arm64": "Cicada
 FIRST_INTEL = (1, 3, 0)
 # The author on X: the app is not notarized yet, so a real person to ask helps people trust the first launch.
 X = "https://x.com/wquguru"
-STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "og-en.png", "og-ja.png", "og-ko.png", "img", "audio"]
+STATIC = ["style.css", "icon.svg", "icon.png", "og.png", "og-en.png", "og-ja.png", "og-ko.png", "img", "audio", "share.js"]
 # The home page's meeting with sound, in the language its reader listens to (the English page's is
 # Chinese): file, length in seconds, and who talks when as (person, start, end), one turn per
 # subtitle. Both clips come from scripts/make-sample.sh; the English one is the app's onboarding
@@ -249,12 +249,14 @@ def main():
     tr = strings()
     urls = []  # (absolute url, last modified) for the sitemap
 
-    def page(template, code, rel, extra, alternates=True, current=None):
-        """Writes one page: `rel` is its path under the site ("en/start/"), `code` its language."""
+    def page(template, code, rel, extra, alternates=True, current=None, shell=False):
+        """Writes one page: `rel` is its path under the site ("en/start/"), `code` its language.
+        `shell`: the share page, served by the Worker at /s/<id> rather than where it is built, so
+        its links are absolute; it stays out of the sitemap, and its strict CSP allows no inline script."""
         t = tr[code]
         prefix = dict(LANGS)[code]
         depth = rel.count("/")
-        root = "../" * depth
+        root = "/" if shell else "../" * depth
         kind = rel[len(prefix):]  # "" or "start/" or "changelog/"
         langs = LANGS if alternates else [(code, prefix)]
         alts = {c: root + p + kind for c, p in langs}
@@ -286,9 +288,13 @@ def main():
                                        "copied": t["send_copied"], "prompt": t["send_prompt"]}, ensure_ascii=False))
         v["HEADER"] = fill(translate(read("header.html"), t), v)
         v["FOOTER"] = fill(translate(read("footer.html"), t), v)
+        if shell:
+            for k in ("HEADER", "FOOTER"):
+                v[k] = re.sub(r"<script>.*?</script>\n?", "", v[k], flags=re.S)
         v.update(extra)
         write(rel + "index.html", fill(translate(read(template), t), v))
-        urls.append(SITE + rel)
+        if not shell:
+            urls.append(SITE + rel)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for code, prefix in LANGS:
@@ -352,6 +358,11 @@ def main():
                  "step": [{"@type": "HowToStep", "position": i + 1, "name": t[k]} for i, k in enumerate(["s1_h", "s2_h", "s3_h"])]}
         page("start.html", code, prefix + "start/", {
             "JSONLD": json.dumps(howto, ensure_ascii=False).replace("</", "<\\/")}, current="start")
+        # Shared meeting (the Worker serves it at /s/<id>; share.js fills it in). The words share.js
+        # needs at run time go in as JSON.
+        share_text = {k[len("share_js_"):]: t[k] for k in t if k.startswith("share_js_")}
+        page("share.html", code, prefix + "share/", {
+            "SHARE_TEXT": json.dumps(share_text, ensure_ascii=False).replace("</", "<\\/")}, alternates=False, shell=True)
 
     # Changelog
     counts = {k: sum(1 for r in log for i in r["items"] if i["kind"] == k) for k, _ in KINDS}

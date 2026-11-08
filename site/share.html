@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="{{t.html_lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{t.share_og_title}} · {{t.brand_name}}</title>
+<meta name="description" content="{{t.share_og_desc}}">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.png">
+<meta name="theme-color" content="#F6F7F9">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="知了 Cicada">
+<meta property="og:title" content="{{t.share_og_title}}">
+<meta property="og:description" content="{{t.share_og_desc}}">
+<meta property="og:url" content="{{SITE}}">
+<meta property="og:image" content="{{OG_IMAGE}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="{{t.og_locale}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{t.share_og_title}}">
+<meta name="twitter:description" content="{{t.share_og_desc}}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{{FONTS}}">
+<link rel="stylesheet" href="/style.css?v={{REV}}">
+<script type="application/json" id="share-text">{{SHARE_TEXT}}</script>
+<script src="/share.js?v={{REV}}" defer></script>
+</head>
+<body>
+{{HEADER}}
+<main class="share wrap" id="share">
+  <p class="sh-status" id="sh-loading">{{t.share_loading}}</p>
+
+  <section class="sh-gate card" id="sh-password" hidden>
+    <img src="/icon.svg" alt="" width="44" height="44">
+    <h1>{{t.share_pw_h}}</h1>
+    <form id="sh-pw-form" class="sh-pw-row">
+      <label class="sr" for="sh-pw">{{t.share_pw_label}}</label>
+      <input id="sh-pw" type="password" autocomplete="off" placeholder="{{t.share_pw_ph}}" required>
+      <button class="btn btn-dark" type="submit">{{t.share_pw_btn}}</button>
+    </form>
+    <p class="sh-note" id="sh-pw-msg" role="status">{{t.share_pw_note}}</p>
+  </section>
+
+  <section class="sh-gate card" id="sh-gone" hidden>
+    <h1 id="sh-gone-h"></h1>
+    <p id="sh-gone-p"></p>
+    <a class="btn btn-orange" href="{{DOWNLOAD_PAGE}}?ref=share-gone">{{t.share_gone_btn}}</a>
+  </section>
+
+  <article id="sh-doc" hidden>
+    <header class="sh-head">
+      <span class="pill"><span class="dot"></span><span id="sh-pill"></span></span>
+      <h1 id="sh-title"></h1>
+      <p class="sh-meta" id="sh-meta"></p>
+      <div class="sh-actions">
+        <button class="btn btn-light" type="button" id="sh-forward">{{t.share_forward}}</button>
+        <button class="btn btn-light" type="button" id="sh-copy">{{t.share_copy_notes}}</button>
+      </div>
+    </header>
+
+    <div class="sh-grid">
+      <section class="card sh-notes" id="sh-notes" aria-labelledby="sh-notes-h">
+        <h2 id="sh-notes-h"><span class="dot"></span>{{t.share_notes_h}}</h2>
+        <p class="sh-summary" id="sh-summary"></p>
+        <div id="sh-conclusions" class="sh-block" hidden><h3>{{t.share_conclusions}}</h3><ul></ul></div>
+        <div id="sh-todos" class="sh-block" hidden><h3>{{t.share_todos}}</h3><ul class="sh-checks"></ul></div>
+        <div id="sh-topics" class="sh-block" hidden><h3>{{t.share_topics}}</h3><div class="sh-topic-list"></div></div>
+        <div id="sh-terms" class="sh-block" hidden><h3>{{t.share_terms}}</h3><ul></ul></div>
+        <div class="sh-quote" id="sh-quote" hidden><span class="src"></span><span class="dst"></span></div>
+      </section>
+
+      <aside class="sh-aside">
+        <div class="row"><img src="/icon.svg" alt="" width="36" height="36"><b>{{t.brand_name}}</b><span>{{t.brand_sub}}</span></div>
+        <p class="h">{{t.share_aside_h}}</p>
+        <ul>
+          <li><b>{{t.share_b1_k}}</b> {{t.share_b1}}</li>
+          <li><b class="o">{{t.share_b2_k}}</b> {{t.share_b2}}</li>
+          <li><b>{{t.share_b3_k}}</b> {{t.share_b3}}</li>
+        </ul>
+        <a class="btn btn-orange" href="{{DOWNLOAD_PAGE}}?ref=share">{{t.download_free}}</a>
+        <span class="m">{{t.pill}}</span>
+      </aside>
+    </div>
+
+    <section class="card sh-lines" id="sh-lines" aria-labelledby="sh-lines-h" hidden>
+      <div class="sh-lines-head">
+        <h2 id="sh-lines-h">{{t.share_lines_h}}</h2>
+        <div class="sh-seg" role="group" aria-label="{{t.share_lines_h}}">
+          <button type="button" data-view="both" aria-pressed="true">{{t.share_view_both}}</button>
+          <button type="button" data-view="src" aria-pressed="false">{{t.share_view_src}}</button>
+          <button type="button" data-view="dst" aria-pressed="false">{{t.share_view_dst}}</button>
+        </div>
+      </div>
+      <ol id="sh-line-list" data-view="both"></ol>
+    </section>
+    <p class="sh-note" id="sh-hidden"></p>
+
+    <section class="card sh-cta">
+      <p class="k">{{t.kicker}}</p>
+      <p class="h">{{t.share_cta_h}}</p>
+      <div class="b">
+        <a class="btn btn-orange" href="{{DOWNLOAD_PAGE}}?ref=share">{{t.download_free}}</a>
+        <a class="btn btn-light" href="{{HOME}}?ref=share">{{t.share_cta_more}}</a>
+      </div>
+    </section>
+  </article>
+</main>
+{{FOOTER}}
+</body>
+</html>
