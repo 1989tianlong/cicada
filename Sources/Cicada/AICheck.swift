@@ -265,7 +265,8 @@ struct AICheck: Equatable {
 
     /// Debug and logs: "reach=ok key=fail(invalidKey) text=skipped".
     var summary: String {
-        steps.map { s -> String in
+        // Broken into sub-expressions so the type-checker handles it in reasonable time.
+        var parts = steps.map { s -> String in
             let v: String = switch s.state {
             case .running: "running"
             case .ok(let sec): sec.map { "ok(\(String(format: "%.1f", $0))s)" } ?? "ok"
@@ -275,9 +276,13 @@ struct AICheck: Equatable {
             case .untested: "untested"
             }
             return "\(s.id.rawValue)=\(v)"
-        }.joined(separator: " ") + (proxy.map { " proxy=\($0)" } ?? "") + (localNetworkDenied ? " localNetwork=denied" : "") + (balance.map { " balance=\(String(format: "%.2f", $0))" } ?? "")
-            + (passive ? " passive" : "")
-            + (translate.map { " translate=\(String(format: "%.1f", $0.seconds))s\($0.thinks ? " thinks" : "")" } ?? "")
-            + (hear.map { " hear=\($0)" } ?? "")
+        }
+        if let proxy { parts.append("proxy=\(proxy)") }
+        if localNetworkDenied { parts.append("localNetwork=denied") }
+        if let balance { parts.append("balance=\(String(format: "%.2f", balance))") }
+        if passive { parts.append("passive") }
+        if let translate { parts.append("translate=\(String(format: "%.1f", translate.seconds))s\(translate.thinks ? " thinks" : "")") }
+        if let hear { parts.append("hear=\(hear)") }
+        return parts.joined(separator: " ")
     }
 }
