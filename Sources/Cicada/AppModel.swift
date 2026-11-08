@@ -1716,6 +1716,29 @@ final class AppModel: ObservableObject {
             // recordTrack:off compares the meeting record without its own recognizer (next start).
             Recognition.recordTrackOff = arg == "off"
             debugLog("record track: \(Recognition.recordTrack ? "on" : "off")")
+        case "share":
+            // share:<record id>[,full][,pw] shares a meeting as the sheet would (point a dev build at a
+            // local Worker with the shareServer default); unshare:<record id> turns it off.
+            let p = arg.split(separator: ",").map(String.init)
+            guard let s = p.first.flatMap({ store.session($0) }) else { debugLog("share: no such record"); break }
+            var o = ShareClient.Options()
+            o.scope = p.contains("full") || s.notes?.isEmpty ?? true ? .full : .notes
+            o.password = p.contains("pw") ? SharePassword.make() : nil
+            Task {
+                switch await ShareClient.shared.share(s, o) {
+                case .shared(let r): debugLog("share: \(r.url)\(r.password.map { " password \($0)" } ?? "")")
+                case .blocked(let hits, let kept): debugLog("share: blocked lines \(ShareHit.recordLines(hits, kept: kept).sorted())")
+                case .failed(let code, _): debugLog("share: failed \(code)")
+                }
+            }
+        case "shareSheet":
+            if !arg.isEmpty { openMainWindow?(); mainShow = arg }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NotificationCenter.default.post(name: .debugShareSheet, object: arg.isEmpty ? nil : arg)
+            }
+        case "unshare":
+            guard let r = ShareStore.read(arg) else { debugLog("share: \(arg) not shared"); break }
+            Task { debugLog("share: revoked \(await ShareClient.shared.revoke(r, sessionID: arg))") }
         case "recordState": debugLog("record track: \(Recognition.recordTrack ? "on" : "off") settling=\(settling.count) tracked=\(refining.count)")
         case "recognizer":
             // recognizer:legacy runs the macOS 14/15 recognizer (SFSpeechRecognizer) on 26; recognizer:cloud

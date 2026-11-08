@@ -797,6 +797,8 @@ struct MainWindowView: View {
     /// The bilingual column beside the notes is opt-in: three full columns of text read as crowded.
     @AppStorage("mainShowQuotes") private var showQuotes = false
     @State private var showOlder = false
+    /// 分享…: the meeting whose share sheet is open.
+    @State private var sharing: Session?
     /// 改这句…: the line being rewritten, and what the editor opens with.
     @State private var editingLine: String?
     @State private var editingStart = ""
@@ -853,6 +855,9 @@ struct MainWindowView: View {
         .onChange(of: store.audioFinished) { _, id in if id == current?.id { loadPlayer() } }
         .onReceive(NotificationCenter.default.publisher(for: .debugPlay)) { n in
             if let t = n.object as? Double { player.play(from: t) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .debugShareSheet)) { n in
+            sharing = (n.object as? String).flatMap { store.session($0) }
         }
         .onChange(of: model.mainShow) { _, show in
             guard let parts = show?.split(separator: ",").map(String.init), let id = parts.first else { return }
@@ -1135,6 +1140,13 @@ struct MainWindowView: View {
                 .buttonStyle(.plain)
                 .help(showQuotes ? L("收起原话") : L("在纪要旁显示原话"))
             }
+            // Not while the meeting is still going, nor before an import has its text.
+            Button { sharing = s } label: {
+                Text("分享…").font(.system(size: 13)).foregroundStyle(Palette.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled((s.lines.isEmpty && (s.notes?.isEmpty ?? true)) || store.liveID == s.id || importer.status(of: s) != nil)
+            .sheet(item: $sharing) { shared in ShareSheet(session: shared) { sharing = nil } }
             Menu {
                 Button("复制为 Markdown") { model.export(s, kind: "copy") }
                 Divider()
@@ -1716,4 +1728,6 @@ struct LanguageNotice: View {
 extension Notification.Name {
     /// Debug `play:<seconds>`: the shown record plays from there.
     static let debugPlay = Notification.Name("cicada.debugPlay")
+    /// Debug `shareSheet:<id>`: the 分享… sheet opens for that record (no id: it closes).
+    static let debugShareSheet = Notification.Name("cicada.debugShareSheet")
 }
