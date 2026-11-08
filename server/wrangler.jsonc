@@ -13,7 +13,7 @@
     "run_worker_first": ["/s/*", "/api/*"]
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "cicada-share", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "cicada-share", "database_id": "1fa377d0-ec6a-49cc-b1f5-45b9681aa36e", "migrations_dir": "migrations" }
   ],
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "cicada-share" }],
   "durable_objects": { "bindings": [{ "name": "GATE", "class_name": "Gate" }] },
