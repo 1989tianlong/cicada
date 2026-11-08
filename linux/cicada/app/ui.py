@@ -107,6 +107,11 @@ spinner { color: #6B7080; }
 .endingstrip { background-color: #FDEEE8; border-radius: 12px; }
 .notice { background-color: #F2F3F5; border-radius: 12px; }
 dialog.endask { background-color: #FFFFFF; border: 1px solid #E4E6EA; border-radius: 12px; }
+/* The share dialog (ShareViews.swift): the review's hits on the accent's pale, the link and password on the fill. */
+.sharehit { background-color: #FCEDE7; border-radius: 8px; }
+.sharefield { background-color: #F2F3F5; border-radius: 6px; }
+dialog.sharesheet separator { background-color: #EEF0F3; min-height: 1px; }
+dialog.sharesheet entry.mono { font-family: "Ubuntu Sans Mono", monospace; }
 .notice.error { background-color: #FDECEA; }
 /* StatusLine (Views.swift): a service in trouble in one line on the plain fill; colour only in the dot. */
 .statusline { background-color: #F2F3F5; border-radius: 10px; min-height: 36px; }

@@ -18,7 +18,9 @@ per connection, one JSON line back. Never in release builds.
   online both|no (answer 线上也有人？) | room-mic-force <source>|"" (a null sink's monitor as the room mic)
   hide notes | problem-wait <seconds>|off (how long unreachable lasts before its notification; off: 2 min)
   codecs (AAC encoder / decoders here) | play [<seconds>] | pause | rate (next speed) | playstate (the shown record's
-  recording: state, time, length, rate, the highlighted line) | settings-general (设置 at 通用)"""
+  recording: state, time, length, rate, the highlighted line) | settings-general (设置 at 通用)
+  share <record id>[,full][,pw] | unshare <record id> | share-last (how the last ended) | shareSheet <record id>|""
+  share-ui scope notes|full | days 7|30|365 | names|pw|summary on|off | go | strip | back | confirm | revoke | close | state"""
 from __future__ import annotations
 
 import os
@@ -413,10 +415,92 @@ def command(app, line: str) -> dict:
         return {"ok": True, "step": app.onboarding.step if app.onboarding is not None else "done"}
     if cmd.startswith(("fix", "vocab")) or cmd in ("heard", "ask-names", "resettle", "word-list"):
         return _fixes(app, cmd, arg)
+    if cmd in ("share", "unshare", "share-last", "shareSheet", "share-ui"):
+        return _share(app, cmd, arg)
     if cmd == "quit":
         app.quit()
         return {"ok": True}
     return {"ok": False, "error": "unknown command " + cmd}
+
+
+_share_last: dict = {}
+
+
+def _share(app, cmd: str, arg: str) -> dict:
+    """分享… (the Mac's share / unshare / shareSheet debug commands). The network runs on a thread:
+    `share` and `unshare` answer at once, `share-last` says how the last one ended."""
+    from ..core import share
+    from . import share_dialog
+    if cmd == "share-last":
+        return {"ok": True, **_share_last}
+    if cmd in ("share", "unshare"):
+        p = arg.split(",")
+        sid = p[0]
+        s = app.store.get(sid)
+        if s is None:
+            return {"ok": False, "error": "no such record"}
+        _share_last.clear()
+        _share_last["running"] = cmd
+
+        def run():
+            c = share_dialog.client()
+            if cmd == "unshare":
+                r = share.ShareStore.read(sid)
+                ok = r is not None and c.revoke(r, sid)
+                Log.d("share: revoked %s" % ok)
+                out = {"revoked": ok, "id": r.id if r else None}
+            else:
+                o = share.Options(scope="full" if "full" in p else "notes", password=share.make_password() if "pw" in p else None)
+                res = c.share(s, o)
+                out = {"kind": res.kind, "code": res.code, "hits": res.hits,
+                       "lines": sorted(share.record_lines(res.hits, res.kept))}
+                if res.record is not None:
+                    out.update({"id": res.record.id, "url": res.record.url, "password": res.record.password})
+                    Log.d("share: %s" % res.record.url)
+            _share_last.clear()
+            _share_last.update(out)
+        threading.Thread(target=run, name="Share", daemon=True).start()
+        return {"ok": True, "started": cmd}
+    if cmd == "shareSheet":
+        if not arg:
+            if app.share_dialog is not None:
+                app.share_dialog.close()
+            return {"ok": True}
+        s = app.store.get(arg)
+        if s is None:
+            return {"ok": False, "error": "no such record"}
+        app.show_records()
+        w = app.records_window
+        w.selected = arg
+        w.fill()
+        return {"ok": True, **share_dialog.open_for(app, s, w).state()}
+    # share-ui scope notes|full | days 7|30|365 | names|pw|summary on|off | go | strip | back | confirm | revoke | close | state
+    d = app.share_dialog
+    if d is None:
+        return {"ok": False, "error": "no share dialog"}
+    act, _, val = arg.partition(" ")
+    if act == "scope":
+        d.scope = val
+    elif act == "days":
+        d.days = int(val)
+    elif act in ("names", "pw", "summary"):
+        setattr(d, {"names": "names", "pw": "use_password", "summary": "summary"}[act], val == "on")
+    elif act == "go":
+        d.go()
+    elif act == "strip":
+        d.strip()
+    elif act == "back":
+        d.step = "settings"
+    elif act == "confirm":
+        d.confirm = True
+    elif act == "revoke":
+        d.revoke()
+    elif act == "close":
+        d.close()
+        return {"ok": True}
+    if act in ("scope", "days", "names", "pw", "summary", "back", "confirm"):
+        d.render()
+    return {"ok": True, **d.state()}
 
 
 def _fix_state(app, sid: str) -> dict:

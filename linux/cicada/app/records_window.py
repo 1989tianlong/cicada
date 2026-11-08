@@ -13,7 +13,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 from ..core import aac, roommic, session_store, speakers
 from ..core.strings import L, LF
 from ..core.support import SOURCES, TARGETS, Log, clock
-from . import ui
+from . import share_dialog, ui
 
 LANG_NAMES = {code: name for name, code in SOURCES + TARGETS}
 
@@ -460,6 +460,7 @@ class RecordsWindow(Gtk.Window):
         row.pack_start(title, True, True, 0)
         row.pack_end(self._more_menu(s), False, False, 0)
         row.pack_end(ui.button(L("导出…"), lambda: self.export(s), "outline", "document-save-symbolic"), False, False, 0)
+        row.pack_end(self._share_button(s), False, False, 0)
         heads = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=40)
         heads.set_homogeneous(True)
         heads.pack_start(self._section_title(L("纪要")), True, True, 0)
@@ -700,6 +701,7 @@ class RecordsWindow(Gtk.Window):
         top.pack_start(left, True, True, 0)
         actions = ui.hbox(8)
         actions.set_valign(Gtk.Align.START)
+        actions.pack_start(self._share_button(s), False, False, 0)
         actions.pack_start(ui.button(L("导出…"), lambda: self.export(s), "outline", "document-save-symbolic"), False, False, 0)
         actions.pack_start(self._more_menu(s), False, False, 0)
         top.pack_end(actions, False, False, 0)
@@ -1526,6 +1528,18 @@ class RecordsWindow(Gtk.Window):
         GLib.timeout_add(150, lambda: self.refresh() or False)
 
     # Actions
+
+    def _share_button(self, s) -> Gtk.Widget:
+        """分享…, beside 导出…: off while the meeting is live or has nothing in it (share_dialog.can_share)."""
+        sid = s.id
+        b = ui.button(L("分享…"), lambda: self.share(sid), "outline", "emblem-shared-symbolic")
+        b.set_sensitive(share_dialog.can_share(self.app, s))
+        return b
+
+    def share(self, sid: str) -> None:
+        s = self.app.store.get(sid)
+        if s is not None and share_dialog.can_share(self.app, s):
+            share_dialog.open_for(self.app, s, self)
 
     def export(self, s) -> None:
         dialog = Gtk.FileChooserDialog(title=L("导出"), transient_for=self, action=Gtk.FileChooserAction.SAVE)

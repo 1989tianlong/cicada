@@ -119,6 +119,7 @@ class Controller:
         self.store.on_words(self._words)
         self.ling.on_change(self.changed)
         self.notes_window = None
+        self.share_dialog = None  # 分享… (share_dialog.py), one at a time
         self.records_window = None
         self.settings_window = None
         self.onboarding = None
