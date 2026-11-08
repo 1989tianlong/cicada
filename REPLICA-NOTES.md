@@ -41,6 +41,6 @@
 - **GitHub**：https://github.com/1989tianlong/cicada （main），Release **v1.5.1** 已发布，含 Mac DMG/zip、Windows、Linux 安装包（Android APK 需先配置 keystore secret，见 `android/scripts/keystore.sh --github`）
 - **官网**：阿里云 OSS `cicada-site-1989tianlong`（cn-hangzhou，静态网站托管）
   - 默认端点：https://cicada-site-1989tianlong.oss-cn-hangzhou.aliyuncs.com/index.html
-  - 自定义域名：`zhiliao.omniquest.fun`（DNS 在火山引擎；`cicada.omniquest.fun` 已被账号内函数计算服务占用，故换用 zhiliao）
-  - 域名归属验证 token：`229f305c1029a903560f4cee38af9ceb`（有效期至 2026-11-11，TXT 记录主机 `_dnsauth.zhiliao.omniquest.fun`）
+  - 自定义域名：`zhiliao.omniquest.fun`（DNS 在火山引擎，CNAME 已加；绑定 Status: Enabled，2026-11-08 验证 HTTP 200）
+  - HTTPS：自定义域名尚未挂证书（OSS 证书需上传或用 CDN 免费证书），先用 HTTP 访问
 - **分享后端**：保留上游 Cloudflare Worker（`server/`），未迁移阿里云
