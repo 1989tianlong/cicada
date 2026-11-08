@@ -33,7 +33,7 @@
 ## 构建与部署
 
 - Mac 版：`scripts/build.sh`（开发版）/ `RELEASE=1 scripts/package.sh`（DMG/zip/校验值）
-- iOS 模拟器：`ios/scripts/build.sh`；真机安装：`scripts/make-device-project.sh` → Xcode 打开 `build/device/Cicada.xcodeproj` → Run
+- iOS 模拟器：`ios/scripts/build.sh`；真机安装：`scripts/make-device-project.sh` → Xcode 打开 `build/device/Cicada.xcodeproj` → Run（或 `xcodebuild CODE_SIGNING_ALLOWED=NO` + `scripts/sign-device.sh <udid>` 用本机通配符 profile 手动签名，无需登录 Xcode 账号；团队 ID 为证书实际所属 `BA7A52F58S`）
 - 官网：`python3 scripts/site.py` → `build/site/`；阿里云部署脚本 `scripts/deploy-site-aliyun.sh`
 
 ## 线上部署状态（2026-11-08）
