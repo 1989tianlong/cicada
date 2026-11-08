@@ -210,5 +210,53 @@
 			<string>%lld people</string>
 		</dict>
 	</dict>
+	<key>打开 %lld 次</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Opened %lld time</string>
+			<key>other</key>
+			<string>Opened %lld times</string>
+		</dict>
+	</dict>
+	<key>%lld 天后失效</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Expires in %lld day</string>
+			<key>other</key>
+			<string>Expires in %lld days</string>
+		</dict>
+	</dict>
+	<key>还有 %lld 处</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>And %lld more</string>
+			<key>other</key>
+			<string>And %lld more</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

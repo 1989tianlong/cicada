@@ -164,7 +164,8 @@ struct ShareSheet: View {
     }
 
     private func hitRow(_ h: ShareHit, kept: [Int]) -> some View {
-        let what = h.questions.map(Self.category).joined(separator: "、")
+        // A list in the reader's language: 、 in Chinese, ", " in English.
+        let what = ListFormatter.localizedString(byJoining: h.questions.map(Self.category))
         let quote: String
         let place: String
         if h.part == "notes" {
