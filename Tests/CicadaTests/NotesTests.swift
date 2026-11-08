@@ -137,7 +137,7 @@ import Testing
           {"start": 300, "title": "no evidence", "summary": "s", "points": ["c"]}]}
         """
         let n = NotesEngine.parse(raw, times: times, startedAt: 0)
-        #expect(n?.topics.map(\.start) == [51 * 60, 300])
+        #expect(n?.topics.map(\.start) == [51.0 * 60, 300.0])
     }
 
     @Test func partTopicsJoinedNotDropped() {
@@ -146,7 +146,7 @@ import Testing
         #expect(four.count == 4)
         #expect(four.first?.start == 0)
         #expect(ten.allSatisfy { t in four.contains { $0.title.components(separatedBy: " / ").contains(t.title) } })
-        #expect(NotesEngine.thinned(ten, to: 1, end: 3000).map(\.start) == [0])
+        #expect(NotesEngine.thinned(ten, to: 1, end: 3000).map(\.start) == [0.0])
         #expect(NotesEngine.thinned(Array(ten.prefix(3)), to: 4, end: 3000).count == 3)
     }
 

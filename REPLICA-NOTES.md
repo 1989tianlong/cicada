@@ -17,6 +17,7 @@
 | `site/i18n/*.json`（4 个） | 隐私说明链接指向本仓库 README |
 | `README.md` / `README.en.md` / `README.ja.md` / `README.ko.md` | 顶部增加复刻署名 |
 | `Sources/Cicada/AICheck.swift` | 拆分 `summary` 的长链式表达式，修复 Xcode 26.3 下「type-check in reasonable time」编译错误（行为不变） |
+| `Tests/CicadaTests/SpeakerTests.swift`、`Tests/CicadaTests/NotesTests.swift` | 同因（Xcode 26.3 类型检查/推断更严格）的测试表达式拆分与字面量显式化，测试逻辑不变 |
 | `scripts/deploy-site-aliyun.sh` | 新增：官网一键部署到阿里云 OSS 静态托管 |
 | 本文 | 新增 |
 
